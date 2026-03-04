@@ -27,3 +27,19 @@ yarn-error.log
 *.swo
 *.kate-swp
 *~
+
+# Laravel / Filament generated caches
+/bootstrap/cache/*.php
+/bootstrap/cache/filament/
+
+# Local runtime artifacts
+/storage/logs/*
+/database/*.sqlite
+
+# Stray / accidental file (from earlier submodule issue)
+cspam
+/bootstrap/cache/*.php
+/bootstrap/cache/filament/
+/storage/logs/*
+/database/*.sqlite
+cspams
