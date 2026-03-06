@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages\Auth;
 
+use App\Support\Auth\UserRoleResolver;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\TextInput;
@@ -49,7 +50,7 @@ class CspamsLogin extends BaseLogin
     {
         return [
             Hidden::make('role')
-                ->default('monitor')
+                ->default(UserRoleResolver::MONITOR)
                 ->dehydrated(),
 
             TextInput::make('email')
@@ -82,7 +83,7 @@ class CspamsLogin extends BaseLogin
     {
         $user = Filament::auth()->user();
 
-        if ($user?->hasRole('monitor')) {
+        if (UserRoleResolver::isDivisionLevel($user)) {
             return Route::has('filament.admin.pages.monitor-dashboard')
                 ? route('filament.admin.pages.monitor-dashboard')
                 : url('/admin');
@@ -104,14 +105,14 @@ class CspamsLogin extends BaseLogin
     {
         $response = parent::authenticate();
 
-        $state = $this->form->getState(); // because statePath('data')
-        $rolePicked = $state['role'] ?? 'monitor';
-
+        $rolePicked = $this->selectedRole();
         $user = Filament::auth()->user();
 
-        $roleOk =
-            ($rolePicked === 'monitor' && $user?->hasRole('monitor')) ||
-            ($rolePicked === 'school_head' && $user?->hasRole('school_head'));
+        $roleOk = match ($rolePicked) {
+            UserRoleResolver::MONITOR => UserRoleResolver::isDivisionLevel($user),
+            UserRoleResolver::SCHOOL_HEAD => UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD),
+            default => false,
+        };
 
         if (! $roleOk) {
             Filament::auth()->logout();
@@ -126,5 +127,15 @@ class CspamsLogin extends BaseLogin
         }
 
         return $response;
+    }
+
+    private function selectedRole(): string
+    {
+        $state = $this->form->getState(); // because statePath('data')
+        $role = $state['role'] ?? UserRoleResolver::MONITOR;
+
+        return in_array($role, UserRoleResolver::loginRoles(), true)
+            ? $role
+            : UserRoleResolver::MONITOR;
     }
 }
