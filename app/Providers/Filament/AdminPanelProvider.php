@@ -28,34 +28,34 @@ class AdminPanelProvider extends PanelProvider
         ->id('admin')
         ->path('admin')
 
-        // ✅ CSPAMS custom login page
+        // CSPAMS custom login page
         ->login(CspamsLogin::class)
 
-        // ✅ Use Laravel's default auth guard (typical for Filament)
+        // Use Laravel's default auth guard (typical for Filament)
         ->authGuard('web')
 
-        // ✅ Theme colors
+        // Theme colors
         ->colors([
             'primary' => Color::Amber,
         ])
 
-        // ✅ Auto-discovery (resources & pages)
+        // Auto-discovery (resources & pages)
         ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
         ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
 
-        // ✅ Panel landing pages (your dashboard)
+        // Panel landing pages (your dashboard)
         ->pages([
             MonitorDashboard::class,
         ])
 
-        // ✅ Widgets
+        // Widgets
         ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
         ->widgets([
             Widgets\AccountWidget::class,
             Widgets\FilamentInfoWidget::class,
         ])
 
-        // ✅ Standard middleware stack for Filament panel
+        // Standard middleware stack for Filament panel
         ->middleware([
             EncryptCookies::class,
             AddQueuedCookiesToResponse::class,
@@ -68,9 +68,10 @@ class AdminPanelProvider extends PanelProvider
             DispatchServingFilamentEvent::class,
         ])
 
-        // ✅ Auth middleware for protecting the panel routes
+        // Auth middleware for protecting the panel routes
         ->authMiddleware([
             Authenticate::class,
         ]);
     }
 }
+

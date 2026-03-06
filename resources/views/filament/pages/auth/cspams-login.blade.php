@@ -49,7 +49,7 @@ x-init="$nextTick(() => { $wire.set('data.role', 'monitor') })"
 </div>
 
 <div class="text-lg text-slate-500 dark:text-zinc-400">
-SMM&amp;E – Schools Division Office of Santiago City
+SMM&amp;E - Schools Division Office of Santiago City
 </div>
 
 @if (method_exists($this, 'getSubheading') && filled($this->getSubheading()))
@@ -133,7 +133,7 @@ forgot = (tab === 'monitor')
     {{-- Footer --}}
     <div class="flex flex-col items-center gap-3 text-sm text-slate-500 pb-8 border-t border-slate-100 dark:border-zinc-800 pt-6 px-8">
     <p>Contact SMM&amp;E unit for credentials</p>
-    <a href="/" class="text-blue-600 hover:underline font-medium">← Back to Home</a>
+    <a href="/" class="text-blue-600 hover:underline font-medium">&larr; Back to Home</a>
     </div>
     </div>
 
@@ -145,7 +145,7 @@ forgot = (tab === 'monitor')
     class="absolute top-4 right-4 text-blue-500 hover:text-blue-700"
     @click="forgot=null"
     >
-    ✕
+    &times;
     </button>
 
     <p class="text-blue-700 dark:text-blue-300 whitespace-pre-line leading-relaxed" x-text="forgot"></p>
@@ -155,3 +155,4 @@ forgot = (tab === 'monitor')
     </div>
     </div>
     </x-filament-panels::layout.base>
+

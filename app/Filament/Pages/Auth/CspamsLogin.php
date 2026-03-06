@@ -15,7 +15,7 @@ use Illuminate\Validation\ValidationException;
 class CspamsLogin extends BaseLogin
 {
     /**
-     * ✅ Matches your actual folder:
+     * Matches your actual folder:
      * resources/views/filament/pages/auth/cspams-login.blade.php
      */
     protected static string $view = 'filament.pages.auth.cspams-login';
@@ -33,7 +33,7 @@ class CspamsLogin extends BaseLogin
     }
 
     /**
-     * ✅ Ensure Blade $wire.set('data.role', ...) works.
+     * Ensure Blade $wire.set('data.role', ...) works.
      */
     public function form(Form $form): Form
     {
@@ -43,7 +43,7 @@ class CspamsLogin extends BaseLogin
     }
 
     /**
-     * ✅ Login form schema for CSPAMS.
+     * Login form schema for CSPAMS.
      */
     protected function getFormSchema(): array
     {
@@ -72,7 +72,7 @@ class CspamsLogin extends BaseLogin
     }
 
     /**
-     * ✅ Redirect after login depending on role.
+     * Redirect after login depending on role.
      */
     protected function getRedirectUrl(): string
     {
@@ -91,7 +91,7 @@ class CspamsLogin extends BaseLogin
     }
 
     /**
-     * ✅ Enforce that chosen tab matches account role.
+     * Enforce that chosen tab matches account role.
      * Tabs must set:
      * - data.role = 'monitor'
      * - data.role = 'school_head'
@@ -124,3 +124,4 @@ class CspamsLogin extends BaseLogin
         return $response;
     }
 }
+
