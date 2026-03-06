@@ -38,8 +38,8 @@ class CspamsLogin extends BaseLogin
     public function form(Form $form): Form
     {
         return $form
-        ->schema($this->getFormSchema())
-        ->statePath('data');
+            ->schema($this->getFormSchema())
+            ->statePath('data');
     }
 
     /**
@@ -49,25 +49,29 @@ class CspamsLogin extends BaseLogin
     {
         return [
             Hidden::make('role')
-            ->default('monitor')
-            ->dehydrated(),
+                ->default('monitor')
+                ->dehydrated(),
 
             TextInput::make('email')
-            ->label('DepEd Email')
-            ->email()
-            ->required()
-            ->rules(['email', 'ends_with:@deped.gov.ph'])
-            ->autocomplete('username')
-            ->maxLength(255)
-            ->dehydrateStateUsing(fn (?string $state) => $state ? mb_strtolower(trim($state)) : null),
+                ->label('DepEd Email')
+                ->email()
+                ->required()
+                ->rules(['email', 'ends_with:@deped.gov.ph'])
+                ->autocomplete('username')
+                ->autofocus()
+                ->placeholder('name@deped.gov.ph')
+                ->helperText('Use your official DepEd email address.')
+                ->maxLength(255)
+                ->dehydrateStateUsing(fn (?string $state) => $state ? mb_strtolower(trim($state)) : null),
 
             TextInput::make('password')
-            ->label('Password')
-            ->password()
-            ->revealable()
-            ->required()
-            ->rule(Password::min(6))
-            ->autocomplete('current-password'),
+                ->label('Password')
+                ->password()
+                ->revealable()
+                ->required()
+                ->rule(Password::min(6))
+                ->autocomplete('current-password')
+                ->placeholder('Enter your password'),
         ];
     }
 
@@ -80,14 +84,14 @@ class CspamsLogin extends BaseLogin
 
         if ($user?->hasRole('monitor')) {
             return Route::has('filament.admin.pages.monitor-dashboard')
-            ? route('filament.admin.pages.monitor-dashboard')
-            : url('/admin');
+                ? route('filament.admin.pages.monitor-dashboard')
+                : url('/admin');
         }
 
         // school_head default landing
         return Route::has('filament.admin.resources.students.index')
-        ? route('filament.admin.resources.students.index')
-        : url('/admin');
+            ? route('filament.admin.resources.students.index')
+            : url('/admin');
     }
 
     /**
@@ -106,8 +110,8 @@ class CspamsLogin extends BaseLogin
         $user = Filament::auth()->user();
 
         $roleOk =
-        ($rolePicked === 'monitor' && $user?->hasRole('monitor')) ||
-        ($rolePicked === 'school_head' && $user?->hasRole('school_head'));
+            ($rolePicked === 'monitor' && $user?->hasRole('monitor')) ||
+            ($rolePicked === 'school_head' && $user?->hasRole('school_head'));
 
         if (! $roleOk) {
             Filament::auth()->logout();
@@ -124,4 +128,3 @@ class CspamsLogin extends BaseLogin
         return $response;
     }
 }
-
