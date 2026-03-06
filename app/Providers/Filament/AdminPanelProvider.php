@@ -36,7 +36,7 @@ class AdminPanelProvider extends PanelProvider
 
         // Theme colors
         ->colors([
-            'primary' => Color::Amber,
+            'primary' => Color::Blue,
         ])
 
         // Auto-discovery (resources & pages)
@@ -74,4 +74,3 @@ class AdminPanelProvider extends PanelProvider
         ]);
     }
 }
-

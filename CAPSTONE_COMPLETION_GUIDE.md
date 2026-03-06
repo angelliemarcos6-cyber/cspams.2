@@ -6,10 +6,10 @@ This guide turns the current codebase into a finishable capstone plan.
 
 - **Laravel 11 + Filament 3 admin foundation**
 - **Custom role-aware login page** for `monitor` and `school_head`
-- **Section management CRUD** with role-based visibility/query scope
+- **Section management CRUD** with role-based visibility and query scope
 
 These are solid foundations for an academic capstone because they demonstrate:
-- authentication + authorization,
+- authentication and authorization,
 - role-based workflows,
 - and an initial school management module.
 
@@ -32,20 +32,20 @@ Keep MVP small but complete.
 
 ---
 
-## 3) Proposed roles and permissions (normalize naming)
+## 3) Proposed roles and permissions (normalized)
 
-The current code uses mixed role labels (`monitor`, `school_head`, `Division Admin`, `School Head`).
-For maintainability, standardize to one naming style.
+The current code supports mixed role labels through aliases in `app/Support/Auth/UserRoleResolver.php`.
+For maintainability, keep one canonical naming style in seeders/migrations and map legacy labels using the resolver.
 
 ### Recommended canonical roles
 - `division_admin`
-- `school_monitor`
+- `monitor`
 - `school_head`
 
 ### Example permission matrix
 - **division_admin**
-  - manage schools, users, global reports
-- **school_monitor**
+  - manage schools, users, and global reports
+- **monitor**
   - manage sections/students in assigned school
   - encode and update performance metrics
 - **school_head**
@@ -67,7 +67,7 @@ Implement/verify these tables and key relations:
 - `report_snapshots` (optional, for generated report history)
 
 Also ensure:
-- foreign keys + indexes,
+- foreign keys and indexes,
 - soft deletes where needed,
 - seeders for demo data.
 
@@ -115,13 +115,13 @@ Prepare these early (not just code):
 - user flow per role
 
 ### B) Academic documentation
-- Chapter 1–5 alignment with actual implemented features
+- Chapter 1-5 alignment with actual implemented features
 - clear evaluation criteria (accuracy, usability, performance)
 - user acceptance test forms
 
 ### C) Demo package
 - seeded demo accounts per role
-- scripted end-to-end demo scenario (5–10 minutes)
+- scripted end-to-end demo scenario (5-10 minutes)
 - fallback offline screenshots if internet fails
 
 ---
@@ -159,11 +159,11 @@ During defense, highlight:
 
 ## 9) Immediate next coding tasks for this repository
 
-1. Standardize role names in login/resource checks.
-2. Add missing resources: `StudentResource`, `AcademicYearResource`, `SchoolResource`.
-3. Create dashboard widgets for key KPIs.
-4. Add seeders for users/roles/schools/sections/students.
-5. Add feature tests for role access and scoped data.
+1. Add missing resources: `StudentResource`, `AcademicYearResource`, `SchoolResource`.
+2. Create dashboard widgets for key KPIs.
+3. Add seeders for users/roles/schools/sections/students.
+4. Add feature tests for role access and scoped data.
+5. Add tests for `UserRoleResolver` alias/normalization behavior.
 
 ---
 

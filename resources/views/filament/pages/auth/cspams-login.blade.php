@@ -1,4 +1,11 @@
 <x-filament-panels::layout.base :title="__('Sign in')">
+    @php
+        $loginTabs = method_exists($this, 'getLoginTabs') ? $this->getLoginTabs() : [];
+        $defaultLoginRole = method_exists($this, 'getDefaultLoginRole') ? $this->getDefaultLoginRole() : null;
+        $defaultLoginRole = is_string($defaultLoginRole) && array_key_exists($defaultLoginRole, $loginTabs)
+            ? $defaultLoginRole
+            : (array_key_first($loginTabs) ?? \App\Support\Auth\UserRoleResolver::MONITOR);
+    @endphp
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
 
@@ -411,8 +418,8 @@
             <section class="flex items-center justify-center">
                 <div
                     class="csp-login-card w-full max-w-lg"
-                    x-data="{ tab: 'monitor', forgot: null }"
-                    x-init="$nextTick(() => { $wire.set('data.role', 'monitor') })"
+                    x-data="{ tab: @js($defaultLoginRole), forgot: null, tabs: @js($loginTabs) }"
+                    x-init="$nextTick(() => { $wire.set('data.role', tab) })"
                 >
                     <div class="p-6 sm:p-10">
                         <div class="csp-mobile-brand mb-7 lg:hidden">
@@ -442,38 +449,25 @@
                         </div>
 
                         <div class="csp-role-switch mt-7 mb-5">
-                            <button
-                                type="button"
-                                class="csp-role-tab"
-                                :class="{ 'csp-role-tab-active': tab === 'monitor' }"
-                                @click="
-                                    tab = 'monitor';
-                                    $wire.set('data.role', 'monitor');
-                                    forgot = null;
-                                "
-                            >
-                                School Monitor
-                            </button>
-
-                            <button
-                                type="button"
-                                class="csp-role-tab"
-                                :class="{ 'csp-role-tab-active': tab === 'school_head' }"
-                                @click="
-                                    tab = 'school_head';
-                                    $wire.set('data.role', 'school_head');
-                                    forgot = null;
-                                "
-                            >
-                                School Administrator
-                            </button>
+                            @foreach ($loginTabs as $roleKey => $tabConfig)
+                                <button
+                                    type="button"
+                                    class="csp-role-tab"
+                                    :class="{ 'csp-role-tab-active': tab === @js($roleKey) }"
+                                    @click="
+                                        tab = @js($roleKey);
+                                        $wire.set('data.role', @js($roleKey));
+                                        forgot = null;
+                                    "
+                                >
+                                    {{ $tabConfig['label'] }}
+                                </button>
+                            @endforeach
                         </div>
 
                         <p
                             class="csp-role-note mb-6"
-                            x-text="tab === 'monitor'
-                                ? 'Monitor account: use your assigned DepEd credentials to access division monitoring tools.'
-                                : 'School Administrator account: sign in with credentials coordinated through your School Monitor.'"
+                            x-text="tabs[tab] ? tabs[tab].note : ''"
                         ></p>
 
                         <x-filament-panels::form wire:submit="authenticate" class="space-y-5">
@@ -484,9 +478,7 @@
                                     type="button"
                                     class="csp-forgot-link"
                                     @click="
-                                        forgot = (tab === 'monitor')
-                                            ? 'Please contact the SMM&E unit for password reset assistance.'
-                                            : 'For School Administrators: please request your School Monitor to reset your password. School Monitors can manage administrator password resets.'
+                                        forgot = tabs[tab] ? tabs[tab].forgot : null
                                     "
                                 >
                                     Forgot your password?
@@ -502,7 +494,7 @@
                                 <span
                                     wire:loading.remove
                                     wire:target="authenticate"
-                                    x-text="tab === 'monitor' ? 'Sign in as School Monitor' : 'Sign in as School Administrator'"
+                                    x-text="tabs[tab] ? tabs[tab].submit : 'Sign in'"
                                 ></span>
 
                                 <span wire:loading wire:target="authenticate">Signing in...</span>

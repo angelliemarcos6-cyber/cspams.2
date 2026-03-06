@@ -34,6 +34,21 @@ class CspamsLogin extends BaseLogin
     }
 
     /**
+     * Exposed for Blade to keep tab labels/messages synced with backend roles.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public function getLoginTabs(): array
+    {
+        return UserRoleResolver::loginTabConfig();
+    }
+
+    public function getDefaultLoginRole(): string
+    {
+        return UserRoleResolver::MONITOR;
+    }
+
+    /**
      * Ensure Blade $wire.set('data.role', ...) works.
      */
     public function form(Form $form): Form
@@ -89,17 +104,19 @@ class CspamsLogin extends BaseLogin
                 : url('/admin');
         }
 
-        // school_head default landing
-        return Route::has('filament.admin.resources.students.index')
-            ? route('filament.admin.resources.students.index')
-            : url('/admin');
+        if (Route::has('filament.admin.resources.students.index')) {
+            return route('filament.admin.resources.students.index');
+        }
+
+        if (Route::has('filament.admin.resources.sections.index')) {
+            return route('filament.admin.resources.sections.index');
+        }
+
+        return url('/admin');
     }
 
     /**
      * Enforce that chosen tab matches account role.
-     * Tabs must set:
-     * - data.role = 'monitor'
-     * - data.role = 'school_head'
      */
     public function authenticate(): ?LoginResponse
     {
@@ -132,10 +149,7 @@ class CspamsLogin extends BaseLogin
     private function selectedRole(): string
     {
         $state = $this->form->getState(); // because statePath('data')
-        $role = $state['role'] ?? UserRoleResolver::MONITOR;
 
-        return in_array($role, UserRoleResolver::loginRoles(), true)
-            ? $role
-            : UserRoleResolver::MONITOR;
+        return UserRoleResolver::normalizeLoginRole($state['role'] ?? null);
     }
 }
