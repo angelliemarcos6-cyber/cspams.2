@@ -9,10 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestRaw, isApiError } from "@/lib/api";
 import type { SchoolRecord, SchoolRecordPayload } from "@/types";
 
 type SyncScope = "division" | "school" | null;
+type SyncStatus = "idle" | "updated" | "up_to_date" | "error";
 
 interface SchoolRecordsResponse {
   data: SchoolRecord[];
@@ -30,13 +31,14 @@ interface DataContextType {
   error: string;
   lastSyncedAt: string | null;
   syncScope: SyncScope;
+  syncStatus: SyncStatus;
   refreshRecords: () => Promise<void>;
   addRecord: (record: SchoolRecordPayload) => Promise<void>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 30_000;
+const AUTO_SYNC_INTERVAL_MS = 12_000;
 
 function normalizeScope(value: string | undefined): SyncScope {
   if (value === "division" || value === "school") return value;
@@ -52,7 +54,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncScope, setSyncScope] = useState<SyncScope>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const syncInFlightRef = useRef(false);
+  const etagRef = useRef<string>("");
 
   const handleApiError = useCallback(
     async (err: unknown) => {
@@ -62,6 +66,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
+      setSyncStatus("error");
     },
     [logout],
   );
@@ -75,6 +80,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setError("");
         setLastSyncedAt(null);
         setSyncScope(null);
+        setSyncStatus("idle");
+        etagRef.current = "";
         return;
       }
 
@@ -86,10 +93,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        const payload = await apiRequest<SchoolRecordsResponse>("/api/dashboard/records", { token });
-        setRecords(payload.data || []);
-        setLastSyncedAt(payload.meta?.syncedAt ?? new Date().toISOString());
-        setSyncScope(normalizeScope(payload.meta?.scope));
+        const response = await apiRequestRaw<SchoolRecordsResponse>("/api/dashboard/records", {
+          token,
+          extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
+        });
+
+        const nextEtag = response.headers.get("X-Sync-Etag") || response.headers.get("ETag");
+        if (nextEtag) {
+          etagRef.current = nextEtag.replace(/^W\//, "").replace(/"/g, "");
+        }
+
+        if (response.status === 304) {
+          setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          setSyncScope(normalizeScope(response.headers.get("X-Sync-Scope") || undefined));
+          setSyncStatus("up_to_date");
+          return;
+        }
+
+        const payload = response.data;
+        setRecords(payload?.data || []);
+        setLastSyncedAt(payload?.meta?.syncedAt ?? new Date().toISOString());
+        setSyncScope(normalizeScope(payload?.meta?.scope));
+        setSyncStatus("updated");
       } catch (err) {
         await handleApiError(err);
       } finally {
@@ -187,11 +212,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       error,
       lastSyncedAt,
       syncScope,
+      syncStatus,
       refreshRecords,
       addRecord,
       updateRecord,
     }),
-    [records, isLoading, isSaving, error, lastSyncedAt, syncScope, refreshRecords, addRecord, updateRecord],
+    [records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

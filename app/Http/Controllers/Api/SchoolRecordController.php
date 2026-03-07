@@ -8,6 +8,7 @@ use App\Http\Resources\SchoolRecordResource;
 use App\Models\School;
 use App\Models\User;
 use App\Support\Auth\UserRoleResolver;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -23,31 +24,67 @@ class SchoolRecordController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $query = School::query()
-            ->with('submittedBy:id,name')
-            ->withCount('students')
-            ->orderByDesc('submitted_at')
-            ->orderByDesc('updated_at');
+        $baseQuery = School::query();
 
         if (UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)) {
             if (! $user->school_id) {
                 return SchoolRecordResource::collection(collect());
             }
-            $query->whereKey($user->school_id);
+            $baseQuery->whereKey($user->school_id);
         } elseif (! UserRoleResolver::has($user, UserRoleResolver::MONITOR)) {
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
-        $records = $query->get();
         $scope = UserRoleResolver::has($user, UserRoleResolver::MONITOR) ? 'division' : 'school';
+        $syncProbe = (clone $baseQuery)
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->selectRaw('MAX(updated_at) as latest_updated_at')
+            ->selectRaw('MAX(submitted_at) as latest_submitted_at')
+            ->first();
 
-        return SchoolRecordResource::collection($records)->additional([
+        $recordCount = (int) ($syncProbe?->aggregate_count ?? 0);
+        $latestAt = $this->resolveLatestTimestamp(
+            $syncProbe?->latest_updated_at,
+            $syncProbe?->latest_submitted_at,
+        );
+
+        $etag = sha1(implode('|', [
+            $scope,
+            (string) $recordCount,
+            $latestAt?->format('U.u') ?? '0',
+        ]));
+
+        $incomingEtag = trim((string) $request->header('If-None-Match'));
+        if ($incomingEtag !== '' && trim($incomingEtag, '"') === $etag) {
+            return $this->buildNotModifiedResponse($etag, $scope, $recordCount, $latestAt);
+        }
+
+        $records = (clone $baseQuery)
+            ->with('submittedBy:id,name')
+            ->withCount('students')
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $resource = SchoolRecordResource::collection($records)->additional([
             'meta' => [
                 'syncedAt' => now()->toISOString(),
                 'scope' => $scope,
                 'recordCount' => $records->count(),
             ],
         ]);
+
+        $response = $resource->response();
+        $response->setEtag($etag);
+        if ($latestAt) {
+            $response->setLastModified($latestAt);
+        }
+
+        $response->headers->set('X-Sync-Scope', $scope);
+        $response->headers->set('X-Sync-Record-Count', (string) $recordCount);
+        $response->headers->set('X-Sync-Etag', $etag);
+
+        return $response;
     }
 
     public function store(UpsertSchoolRecordRequest $request): JsonResponse
@@ -135,5 +172,43 @@ class SchoolRecordController extends Controller
         }
 
         $school->save();
+    }
+
+    private function buildNotModifiedResponse(string $etag, string $scope, int $recordCount, ?Carbon $latestAt): JsonResponse
+    {
+        $response = response()->json(null, Response::HTTP_NOT_MODIFIED);
+        $response->setEtag($etag);
+        if ($latestAt) {
+            $response->setLastModified($latestAt);
+        }
+
+        $response->headers->set('X-Sync-Scope', $scope);
+        $response->headers->set('X-Sync-Record-Count', (string) $recordCount);
+        $response->headers->set('X-Sync-Etag', $etag);
+        $response->headers->set('X-Synced-At', now()->toISOString());
+
+        return $response;
+    }
+
+    private function resolveLatestTimestamp(?string $updatedAt, ?string $submittedAt): ?Carbon
+    {
+        $timestamps = [];
+        if ($updatedAt) {
+            $timestamps[] = Carbon::parse($updatedAt);
+        }
+        if ($submittedAt) {
+            $timestamps[] = Carbon::parse($submittedAt);
+        }
+
+        if ($timestamps === []) {
+            return null;
+        }
+
+        usort(
+            $timestamps,
+            static fn (Carbon $a, Carbon $b): int => $b->greaterThan($a) ? 1 : ($a->equalTo($b) ? 0 : -1),
+        );
+
+        return $timestamps[0];
     }
 }

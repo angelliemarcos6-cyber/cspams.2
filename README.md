@@ -73,9 +73,10 @@ The `frontend/` app now authenticates and reads/writes records from Laravel API 
 
 Synchronization behavior:
 
-- Dashboards auto-refresh every 30 seconds
+- Dashboards auto-refresh every 12 seconds
 - Dashboards auto-refresh when tab focus returns or network reconnects
 - Manual refresh is available in both monitor and school administrator dashboards
+- Records sync now uses conditional requests (`If-None-Match` / `ETag`) to avoid full payload downloads when there are no backend changes
 
 Setup:
 

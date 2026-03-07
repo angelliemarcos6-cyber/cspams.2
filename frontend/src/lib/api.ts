@@ -11,6 +11,13 @@ interface ApiRequestOptions {
   token?: string;
   body?: unknown;
   signal?: AbortSignal;
+  extraHeaders?: Record<string, string>;
+}
+
+export interface ApiRawResponse<T> {
+  status: number;
+  data: T | null;
+  headers: Headers;
 }
 
 export class ApiError extends Error {
@@ -29,8 +36,8 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
-export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { method = "GET", token, body, signal } = options;
+export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiRawResponse<T>> {
+  const { method = "GET", token, body, signal, extraHeaders } = options;
 
   const headers = new Headers();
   headers.set("Accept", "application/json");
@@ -39,6 +46,11 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (extraHeaders) {
+    for (const [key, value] of Object.entries(extraHeaders)) {
+      headers.set(key, value);
+    }
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -59,6 +71,14 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   if (!response.ok) {
+    if (response.status === 304) {
+      return {
+        status: response.status,
+        data: null,
+        headers: response.headers,
+      };
+    }
+
     const message =
       (payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
         ? payload.message
@@ -66,5 +86,14 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     throw new ApiError(message, response.status, payload);
   }
 
-  return payload as T;
+  return {
+    status: response.status,
+    data: payload as T,
+    headers: response.headers,
+  };
+}
+
+export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const response = await apiRequestRaw<T>(path, options);
+  return response.data as T;
 }

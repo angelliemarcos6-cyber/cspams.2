@@ -67,7 +67,7 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 export function MonitorDashboard() {
-  const { records, isLoading, error, lastSyncedAt, syncScope, refreshRecords } = useData();
+  const { records, isLoading, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
@@ -126,6 +126,8 @@ export function MonitorDashboard() {
             Read-only monitor mode
           </span>
           <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+            {syncStatus === "up_to_date" ? "No backend changes" : "Records updated"}
+            {" • "}
             {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
             {syncScope ? ` (${syncScope})` : ""}
           </span>
