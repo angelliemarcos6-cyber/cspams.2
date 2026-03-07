@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::post('/records', [SchoolRecordController::class, 'store']);
     Route::put('/records/{school}', [SchoolRecordController::class, 'update']);
     Route::patch('/records/{school}', [SchoolRecordController::class, 'update']);
+    Route::delete('/records/{school}', [SchoolRecordController::class, 'destroy']);
 });
 
 Route::middleware('auth:sanctum')->prefix('forms')->group(function (): void {

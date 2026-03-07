@@ -90,7 +90,16 @@ class SchoolRecordController extends Controller
 
     public function store(UpsertSchoolRecordRequest $request): JsonResponse
     {
-        $user = $this->requireSchoolHead($request);
+        $user = $this->requireAuthenticatedUser($request);
+
+        if (UserRoleResolver::has($user, UserRoleResolver::MONITOR)) {
+            return $this->storeAsMonitor($request, $user);
+        }
+
+        if (! UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)) {
+            return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
+        }
+
         if (! $user->school_id) {
             return response()->json(
                 ['message' => 'Your account is not linked to any school.'],
@@ -114,9 +123,15 @@ class SchoolRecordController extends Controller
 
     public function update(UpsertSchoolRecordRequest $request, School $school): JsonResponse
     {
-        $user = $this->requireSchoolHead($request);
+        $user = $this->requireAuthenticatedUser($request);
+        $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
+        $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
 
-        if ((int) $user->school_id !== (int) $school->id) {
+        if (! $isMonitor && ! $isSchoolHead) {
+            return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
+        }
+
+        if ($isSchoolHead && ! $isMonitor && (int) $user->school_id !== (int) $school->id) {
             return response()->json(
                 ['message' => 'You can only update your assigned school record.'],
                 Response::HTTP_FORBIDDEN,
@@ -128,17 +143,86 @@ class SchoolRecordController extends Controller
         return $this->buildMutationResponse($school, $user);
     }
 
-    private function requireSchoolHead(Request $request): User
+    public function destroy(Request $request, School $school): JsonResponse
+    {
+        $user = $this->requireMonitor($request);
+
+        $deletedRecord = [
+            'id' => (string) $school->id,
+            'schoolId' => $school->school_code,
+            'schoolName' => $school->name,
+        ];
+
+        $school->delete();
+
+        $syncMeta = $this->buildSyncMetadataForUser($user);
+        $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);
+        $syncedAt = now()->toISOString();
+
+        $response = response()->json([
+            'data' => $deletedRecord,
+            'meta' => [
+                'syncedAt' => $syncedAt,
+                'scope' => $syncMeta['scope'],
+                'scopeKey' => $syncMeta['scopeKey'],
+                'recordCount' => $syncMeta['recordCount'],
+                'targetsMet' => $targetsMetBundle['targetsMet'],
+                'alerts' => $targetsMetBundle['alerts'],
+            ],
+        ]);
+
+        return $this->applySyncHeaders(
+            $response,
+            $syncMeta['etag'],
+            $syncMeta['scope'],
+            $syncMeta['scopeKey'],
+            $syncMeta['recordCount'],
+            $syncMeta['latestAt'],
+            $syncedAt,
+        );
+    }
+
+    private function requireAuthenticatedUser(Request $request): User
     {
         $user = ApiUserResolver::fromRequest($request);
         abort_if(! $user, Response::HTTP_UNAUTHORIZED, 'Unauthenticated.');
+
+        return $user;
+    }
+
+    private function requireMonitor(Request $request): User
+    {
+        $user = $this->requireAuthenticatedUser($request);
         abort_if(
-            ! UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD),
+            ! UserRoleResolver::has($user, UserRoleResolver::MONITOR),
             Response::HTTP_FORBIDDEN,
-            'Only School Heads can modify school records.',
+            'Only Division Monitors can modify division school records.',
         );
 
         return $user;
+    }
+
+    private function storeAsMonitor(UpsertSchoolRecordRequest $request, User $user): JsonResponse
+    {
+        $schoolId = trim($request->string('schoolId')->toString());
+        $schoolName = trim($request->string('schoolName')->toString());
+        $level = trim($request->string('level')->toString());
+        $type = trim($request->string('type')->toString());
+        $address = trim($request->string('address')->toString());
+
+        if ($schoolId === '' || $schoolName === '' || $level === '' || $type === '' || $address === '') {
+            return response()->json(
+                ['message' => 'School ID, school name, level, type, and address are required for monitor record creation.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $school = new School();
+        $school->school_code = $schoolId;
+
+        $this->applyPayload($school, $request, $user);
+
+        return $this->buildMutationResponse($school, $user);
     }
 
     private function applyPayload(School $school, UpsertSchoolRecordRequest $request, User $user): void
@@ -156,24 +240,57 @@ class SchoolRecordController extends Controller
         // School identity fields are division-managed. School Heads can submit
         // compliance counts/status, but cannot rewrite profile metadata.
         if (! $isSchoolHead) {
+            if ($request->filled('schoolId')) {
+                $school->school_code = trim($request->string('schoolId')->toString());
+            }
+
             if ($request->filled('schoolName')) {
                 $school->name = $request->string('schoolName')->toString();
             }
 
-            if ($request->filled('region')) {
-                $school->region = $request->string('region')->toString();
+            if ($request->filled('level')) {
+                $school->level = $request->string('level')->toString();
+            }
+
+            if ($request->filled('type')) {
+                $school->type = strtolower($request->string('type')->toString());
+            }
+
+            if ($request->filled('address')) {
+                $school->address = $request->string('address')->toString();
+                if (! $request->filled('district')) {
+                    $school->district = $school->address;
+                }
             }
 
             if ($request->filled('district')) {
                 $school->district = $request->string('district')->toString();
             }
 
-            if ($request->filled('type')) {
-                $school->type = $request->string('type')->toString();
+            if ($request->filled('region')) {
+                $school->region = $request->string('region')->toString();
+            } elseif (! empty($school->address) && empty($school->region)) {
+                $school->region = $this->deriveRegionFromAddress($school->address);
             }
         }
 
         $school->save();
+    }
+
+    private function deriveRegionFromAddress(string $address): string
+    {
+        $segments = array_values(
+            array_filter(
+                array_map(static fn (string $segment): string => trim($segment), explode(',', $address)),
+                static fn (string $segment): bool => $segment !== '',
+            ),
+        );
+
+        if (count($segments) >= 2) {
+            return implode(', ', array_slice($segments, -2));
+        }
+
+        return $segments[0] ?? 'N/A';
     }
 
     private function buildMutationResponse(School $school, User $user): JsonResponse

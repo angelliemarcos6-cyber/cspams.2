@@ -21,9 +21,12 @@ class SchoolRecordResource extends JsonResource
 
         return [
             'id' => (string) $this->id,
+            'schoolId' => $this->school_code,
             'schoolCode' => $this->school_code,
             'schoolName' => $this->name,
+            'level' => $this->level,
             'district' => $this->district,
+            'address' => $this->address ?? $this->district,
             'type' => $this->type,
             'studentCount' => (int) $studentCount,
             'teacherCount' => (int) $this->reported_teacher_count,

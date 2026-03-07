@@ -6,9 +6,12 @@ export type IndicatorComplianceStatus = "met" | "below_target";
 
 export interface SchoolRecord {
   id: string;
+  schoolId?: string | null;
   schoolCode?: string | null;
   schoolName: string;
+  level?: string | null;
   district?: string | null;
+  address?: string | null;
   type?: string | null;
   studentCount: number;
   teacherCount: number;
@@ -29,12 +32,15 @@ export interface SessionUser {
 }
 
 export interface SchoolRecordPayload {
+  schoolId?: string;
   schoolName?: string;
+  level?: string | null;
   studentCount: number;
   teacherCount: number;
   region?: string;
   status: SchoolStatus;
   district?: string | null;
+  address?: string | null;
   type?: "public" | "private" | null;
 }
 

@@ -34,6 +34,15 @@ interface SchoolRecordMutationResponse {
   meta?: SyncMeta;
 }
 
+interface SchoolRecordDeleteResponse {
+  data: {
+    id: string;
+    schoolId?: string;
+    schoolName?: string;
+  };
+  meta?: SyncMeta;
+}
+
 interface DataContextType {
   records: SchoolRecord[];
   targetsMet: TargetsMetSnapshot | null;
@@ -47,6 +56,7 @@ interface DataContextType {
   refreshRecords: () => Promise<void>;
   addRecord: (record: SchoolRecordPayload) => Promise<void>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
+  deleteRecord: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -348,6 +358,58 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, syncRecords, handleApiError],
   );
 
+  const deleteRecord = useCallback(
+    async (id: string) => {
+      if (!token) {
+        const authError = new Error("You are signed out. Please sign in again.");
+        setError(authError.message);
+        setSyncStatus("error");
+        throw authError;
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolRecordDeleteResponse>(`/api/dashboard/records/${id}`, {
+          method: "DELETE",
+          token,
+        });
+
+        setRecords((current) => current.filter((item) => item.id !== id));
+
+        const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+        if (scope) {
+          setSyncScope(scope);
+        }
+
+        const scopeKey = normalizeScopeKey(response.data?.meta?.scopeKey ?? (response.headers.get("X-Sync-Scope-Key") || undefined));
+        if (scopeKey) {
+          syncScopeKeyRef.current = scopeKey;
+        }
+
+        const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+        if (nextEtag) {
+          etagRef.current = nextEtag;
+        }
+
+        setLastSyncedAt(response.headers.get("X-Synced-At") ?? response.data?.meta?.syncedAt ?? new Date().toISOString());
+        setTargetsMet(response.data?.meta?.targetsMet ?? null);
+        setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
+        setSyncStatus("updated");
+
+        etagRef.current = "";
+        await syncRecords(true);
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, syncRecords, handleApiError],
+  );
+
   useEffect(() => {
     void syncRecords(false);
   }, [syncRecords]);
@@ -387,8 +449,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       refreshRecords,
       addRecord,
       updateRecord,
+      deleteRecord,
     }),
-    [records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord],
+    [records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord, deleteRecord],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

@@ -142,6 +142,14 @@ function statusTone(status: SchoolStatus) {
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
+function schoolTypeLabel(value: string | null | undefined): string {
+  if (!value) return "N/A";
+  const normalized = value.toLowerCase();
+  if (normalized === "public") return "Public";
+  if (normalized === "private") return "Private";
+  return value;
+}
+
 function compareRecords(a: SchoolRecord, b: SchoolRecord, column: SortColumn, direction: SortDirection) {
   const sign = direction === "asc" ? 1 : -1;
 
@@ -305,6 +313,9 @@ export function SchoolAdminDashboard() {
         const matchesSearch =
           query.length === 0 ||
           record.schoolName.toLowerCase().includes(query) ||
+          (record.schoolId ?? record.schoolCode ?? "").toLowerCase().includes(query) ||
+          (record.level ?? "").toLowerCase().includes(query) ||
+          (record.address ?? record.district ?? "").toLowerCase().includes(query) ||
           record.region.toLowerCase().includes(query) ||
           record.submittedBy.toLowerCase().includes(query);
         const matchesStatus = statusFilter === "all" || record.status === statusFilter;
@@ -925,7 +936,7 @@ export function SchoolAdminDashboard() {
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search school, region, or submitted by"
+              placeholder="Search school ID, name, level, type, address, or region"
               className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
           </div>
@@ -971,6 +982,7 @@ export function SchoolAdminDashboard() {
             <table className="min-w-full">
               <thead className="table-head-sticky">
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  <th className="px-5 py-3 text-left">School ID</th>
                   <th className="px-5 py-3 text-left">
                     <button
                       type="button"
@@ -991,6 +1003,9 @@ export function SchoolAdminDashboard() {
                       <SortIndicator active={sortColumn === "region"} direction={sortDirection} />
                     </button>
                   </th>
+                  <th className="px-5 py-3 text-left">Level</th>
+                  <th className="px-5 py-3 text-left">Type</th>
+                  <th className="px-5 py-3 text-left">Address</th>
                   <th className="px-5 py-3 text-right">
                     <button
                       type="button"
@@ -1038,10 +1053,16 @@ export function SchoolAdminDashboard() {
                 {filteredRecords.map((record) => (
                   <tr key={record.id} className="dashboard-table-row">
                     <td className="px-5 py-3.5 align-top">
+                      <p className="text-sm font-semibold text-slate-900">{record.schoolId ?? record.schoolCode ?? "N/A"}</p>
+                    </td>
+                    <td className="px-5 py-3.5 align-top">
                       <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
                       <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>
                     </td>
                     <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.region}</td>
+                    <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.level ?? "N/A"}</td>
+                    <td className="px-5 py-3.5 align-top text-sm text-slate-700">{schoolTypeLabel(record.type)}</td>
+                    <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.address ?? record.district ?? "N/A"}</td>
                     <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
                       {record.studentCount.toLocaleString()}
                     </td>

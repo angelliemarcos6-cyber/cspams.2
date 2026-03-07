@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import {
   AlertCircle,
   ArrowDown,
@@ -8,11 +8,14 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
-  Eye,
+  Edit2,
   Filter,
   GraduationCap,
+  Plus,
   RefreshCw,
+  Save,
   Search,
+  Trash2,
   TrendingUp,
   Users,
   X,
@@ -71,6 +74,17 @@ interface SchoolRequirementSummary {
   missingCount: number;
   lastActivityAt: string | null;
   lastActivityTime: number;
+}
+
+interface MonitorRecordFormState {
+  schoolId: string;
+  schoolName: string;
+  level: string;
+  type: "public" | "private";
+  address: string;
+  studentCount: string;
+  teacherCount: string;
+  status: SchoolStatus;
 }
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
@@ -149,10 +163,29 @@ const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }
   { id: "missing", label: "Missing requirements" },
 ];
 
+const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
+  schoolId: "",
+  schoolName: "",
+  level: "Elementary",
+  type: "public",
+  address: "",
+  studentCount: "",
+  teacherCount: "",
+  status: "active",
+};
+
 function statusTone(status: SchoolStatus) {
   if (status === "active") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
   if (status === "pending") return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+}
+
+function schoolTypeLabel(value: string | null | undefined): string {
+  if (!value) return "N/A";
+  const normalized = value.toLowerCase();
+  if (normalized === "public") return "Public";
+  if (normalized === "private") return "Private";
+  return value;
 }
 
 function workflowTone(status: string | null) {
@@ -278,7 +311,7 @@ function latestBySchool<
 }
 
 export function MonitorDashboard() {
-  const { records, targetsMet, syncAlerts, isLoading, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
+  const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord, deleteRecord } = useData();
   const { submissions: formSubmissions } = useFormData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
 
@@ -292,10 +325,143 @@ export function MonitorDashboard() {
     typeof window === "undefined" ? true : window.innerWidth >= 768,
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
+  const [showRecordForm, setShowRecordForm] = useState(false);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+  const [recordForm, setRecordForm] = useState<MonitorRecordFormState>(EMPTY_MONITOR_RECORD_FORM);
+  const [recordFormError, setRecordFormError] = useState("");
+  const [recordFormMessage, setRecordFormMessage] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
   const activeNavigatorLabel = useMemo(
     () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
     [activeTopNavigator],
   );
+
+  const resetRecordForm = () => {
+    setEditingRecordId(null);
+    setRecordForm(EMPTY_MONITOR_RECORD_FORM);
+    setRecordFormError("");
+    setRecordFormMessage("");
+  };
+
+  const openCreateRecordForm = () => {
+    resetRecordForm();
+    setActiveTopNavigator("records");
+    setShowRecordForm(true);
+  };
+
+  const closeRecordForm = () => {
+    setShowRecordForm(false);
+    resetRecordForm();
+  };
+
+  const openEditRecordForm = (record: SchoolRecord) => {
+    setEditingRecordId(record.id);
+    setRecordForm({
+      schoolId: record.schoolId ?? record.schoolCode ?? "",
+      schoolName: record.schoolName ?? "",
+      level: record.level ?? "Elementary",
+      type: String(record.type ?? "").toLowerCase() === "private" ? "private" : "public",
+      address: record.address ?? record.district ?? "",
+      studentCount: String(record.studentCount ?? 0),
+      teacherCount: String(record.teacherCount ?? 0),
+      status: record.status,
+    });
+    setRecordFormError("");
+    setRecordFormMessage("");
+    setDeleteError("");
+    setShowRecordForm(true);
+    setActiveTopNavigator("records");
+  };
+
+  const validateRecordForm = (): boolean => {
+    const schoolId = recordForm.schoolId.trim();
+    const schoolName = recordForm.schoolName.trim();
+    const level = recordForm.level.trim();
+    const address = recordForm.address.trim();
+    const studentCount = Number(recordForm.studentCount);
+    const teacherCount = Number(recordForm.teacherCount);
+
+    if (!schoolId || !schoolName || !level || !address) {
+      setRecordFormError("School ID, school name, level, and address are required.");
+      return false;
+    }
+
+    if (!Number.isFinite(studentCount) || studentCount < 0 || !Number.isInteger(studentCount)) {
+      setRecordFormError("Student count must be a non-negative whole number.");
+      return false;
+    }
+
+    if (!Number.isFinite(teacherCount) || teacherCount < 0 || !Number.isInteger(teacherCount)) {
+      setRecordFormError("Teacher count must be a non-negative whole number.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleRecordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRecordFormError("");
+    setRecordFormMessage("");
+    setDeleteError("");
+
+    if (!validateRecordForm()) {
+      return;
+    }
+
+    const payload = {
+      schoolId: recordForm.schoolId.trim(),
+      schoolName: recordForm.schoolName.trim(),
+      level: recordForm.level.trim(),
+      type: recordForm.type,
+      address: recordForm.address.trim(),
+      district: recordForm.address.trim(),
+      region: "Santiago City, Isabela",
+      studentCount: Number(recordForm.studentCount),
+      teacherCount: Number(recordForm.teacherCount),
+      status: recordForm.status,
+    };
+
+    try {
+      if (editingRecordId) {
+        await updateRecord(editingRecordId, payload);
+        setRecordFormMessage("School record updated.");
+      } else {
+        await addRecord(payload);
+        setRecordFormMessage("School record created.");
+      }
+
+      setTimeout(() => {
+        closeRecordForm();
+      }, 800);
+    } catch (err) {
+      setRecordFormError(err instanceof Error ? err.message : "Unable to save school record.");
+    }
+  };
+
+  const handleDeleteRecord = async (record: SchoolRecord) => {
+    setDeleteError("");
+    setRecordFormMessage("");
+
+    const schoolName = record.schoolName || "this school";
+    const confirmed = window.confirm(`Delete ${schoolName}? This also removes related submissions and student records.`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingRecordId(record.id);
+    try {
+      await deleteRecord(record.id);
+      if (editingRecordId === record.id) {
+        closeRecordForm();
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Unable to delete school record.");
+    } finally {
+      setDeletingRecordId(null);
+    }
+  };
 
   const totalStudents = useMemo(() => records.reduce((total, record) => total + record.studentCount, 0), [records]);
   const totalTeachers = useMemo(() => records.reduce((total, record) => total + record.teacherCount, 0), [records]);
@@ -384,7 +550,7 @@ export function MonitorDashboard() {
     };
 
     for (const record of records) {
-      const row = ensureRow(record.schoolCode ?? null, record.schoolName, record.region, record.status);
+      const row = ensureRow(record.schoolId ?? record.schoolCode ?? null, record.schoolName, record.region, record.status);
       if (!row) continue;
 
       row.hasComplianceRecord = true;
@@ -488,13 +654,16 @@ export function MonitorDashboard() {
         const matchesSearch =
           query.length === 0 ||
           record.schoolName.toLowerCase().includes(query) ||
+          (record.schoolId ?? record.schoolCode ?? "").toLowerCase().includes(query) ||
+          (record.level ?? "").toLowerCase().includes(query) ||
+          (record.address ?? record.district ?? "").toLowerCase().includes(query) ||
           record.region.toLowerCase().includes(query) ||
           record.submittedBy.toLowerCase().includes(query);
         const matchesStatus = statusFilter === "all" || record.status === statusFilter;
         if (!matchesSearch || !matchesStatus) return false;
 
         if (requirementFilter === "all") return true;
-        const key = normalizeSchoolKey(record.schoolCode ?? null, record.schoolName);
+        const key = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
         const summary = schoolRequirementByKey.get(key);
         return summary ? matchesRequirementFilter(summary, requirementFilter) : false;
       })
@@ -524,10 +693,14 @@ export function MonitorDashboard() {
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </button>
-          <span className="inline-flex items-center gap-2 rounded-sm border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-700">
-            <Eye className="h-3.5 w-3.5" />
-            Read-only monitor mode
-          </span>
+          <button
+            type="button"
+            onClick={openCreateRecordForm}
+            className="inline-flex items-center gap-2 rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-600"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add School Record
+          </button>
           <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
             {syncStatus === "up_to_date" ? "No backend changes" : "Records updated"}
             {" | "}
@@ -920,7 +1093,7 @@ export function MonitorDashboard() {
         <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Records</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Search, filter, and inspect all records submitted by school heads.</p>
+            <p className="mt-0.5 text-xs text-slate-500">Manage school master records with full details and compliance counts.</p>
           </div>
 
           <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto]">
@@ -930,7 +1103,7 @@ export function MonitorDashboard() {
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search school, region, or submitted by"
+                placeholder="Search school ID, name, level, type, address, or region"
                 className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               />
             </div>
@@ -954,6 +1127,162 @@ export function MonitorDashboard() {
             </div>
           </div>
 
+          {deleteError && (
+            <div className="mx-5 mt-4 rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              {deleteError}
+            </div>
+          )}
+
+          {showRecordForm && (
+            <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">{editingRecordId ? "Edit School Record" : "Add School Record"}</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">School ID, school name, level, type, and address are required.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeRecordForm}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Close
+                </button>
+              </div>
+              <form className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleRecordSubmit}>
+                <div>
+                  <label htmlFor="monitor-school-id" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    School ID
+                  </label>
+                  <input
+                    id="monitor-school-id"
+                    type="text"
+                    value={recordForm.schoolId}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, schoolId: event.target.value }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="monitor-school-name" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    School Name
+                  </label>
+                  <input
+                    id="monitor-school-name"
+                    type="text"
+                    value={recordForm.schoolName}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, schoolName: event.target.value }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="monitor-level" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Level
+                  </label>
+                  <input
+                    id="monitor-level"
+                    type="text"
+                    value={recordForm.level}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, level: event.target.value }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="monitor-type" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Type
+                  </label>
+                  <select
+                    id="monitor-type"
+                    value={recordForm.type}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, type: event.target.value as "public" | "private" }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  >
+                    <option value="public">Public</option>
+                    <option value="private">Private</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2 xl:col-span-4">
+                  <label htmlFor="monitor-address" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Address
+                  </label>
+                  <input
+                    id="monitor-address"
+                    type="text"
+                    value={recordForm.address}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, address: event.target.value }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="monitor-students" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Students
+                  </label>
+                  <input
+                    id="monitor-students"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={recordForm.studentCount}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, studentCount: event.target.value }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="monitor-teachers" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Teachers
+                  </label>
+                  <input
+                    id="monitor-teachers"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={recordForm.teacherCount}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, teacherCount: event.target.value }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="monitor-status" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Status
+                  </label>
+                  <select
+                    id="monitor-status"
+                    value={recordForm.status}
+                    onChange={(event) => setRecordForm((current) => ({ ...current, status: event.target.value as SchoolStatus }))}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSaving ? "Saving..." : editingRecordId ? "Save Changes" : "Create Record"}
+                  </button>
+                </div>
+                {(recordFormError || recordFormMessage) && (
+                  <div className="md:col-span-2 xl:col-span-4">
+                    {recordFormError && (
+                      <p className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                        {recordFormError}
+                      </p>
+                    )}
+                    {recordFormMessage && (
+                      <p className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                        {recordFormMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </form>
+            </section>
+          )}
+
           {isLoading && records.length === 0 ? (
             <div className="space-y-3 px-5 py-5">
               <div className="skeleton-line h-4 w-48" />
@@ -976,6 +1305,7 @@ export function MonitorDashboard() {
               <table className="min-w-full">
                 <thead className="table-head-sticky">
                   <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="px-5 py-3 text-left">School ID</th>
                     <th className="px-5 py-3 text-left">
                       <button
                         type="button"
@@ -996,6 +1326,9 @@ export function MonitorDashboard() {
                         <SortIndicator active={sortColumn === "region"} direction={sortDirection} />
                       </button>
                     </th>
+                    <th className="px-5 py-3 text-left">Level</th>
+                    <th className="px-5 py-3 text-left">Type</th>
+                    <th className="px-5 py-3 text-left">Address</th>
                     <th className="px-5 py-3 text-right">
                       <button
                         type="button"
@@ -1036,16 +1369,23 @@ export function MonitorDashboard() {
                         <SortIndicator active={sortColumn === "lastUpdated"} direction={sortDirection} />
                       </button>
                     </th>
+                    <th className="px-5 py-3 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredRecords.map((record) => (
                     <tr key={record.id} className="dashboard-table-row">
                       <td className="px-5 py-3.5 align-top">
+                        <p className="text-sm font-semibold text-slate-900">{record.schoolId ?? record.schoolCode ?? "N/A"}</p>
+                      </td>
+                      <td className="px-5 py-3.5 align-top">
                         <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
                         <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>
                       </td>
                       <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.region}</td>
+                      <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.level ?? "N/A"}</td>
+                      <td className="px-5 py-3.5 align-top text-sm text-slate-700">{schoolTypeLabel(record.type)}</td>
+                      <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.address ?? record.district ?? "N/A"}</td>
                       <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
                         {record.studentCount.toLocaleString()}
                       </td>
@@ -1058,6 +1398,27 @@ export function MonitorDashboard() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-sm text-slate-600">{formatDateTime(record.lastUpdated)}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditRecordForm(record)}
+                            className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteRecord(record)}
+                            disabled={deletingRecordId === record.id}
+                            className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {deletingRecordId === record.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
