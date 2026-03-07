@@ -255,6 +255,10 @@ export function MonitorDashboard() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("first_glance");
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
+  const activeNavigatorLabel = useMemo(
+    () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "First Glance",
+    [activeTopNavigator],
+  );
 
   const totalStudents = useMemo(() => records.reduce((total, record) => total + record.studentCount, 0), [records]);
   const totalTeachers = useMemo(() => records.reduce((total, record) => total + record.teacherCount, 0), [records]);
@@ -511,7 +515,11 @@ export function MonitorDashboard() {
           <button
             type="button"
             onClick={() => setShowNavigatorManual((current) => !current)}
-            className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+            className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
+              showNavigatorManual
+                ? "border-primary-200 bg-primary-50 text-primary-700"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            }`}
           >
             <BookOpenText className="h-3.5 w-3.5" />
             User Manual
@@ -530,10 +538,24 @@ export function MonitorDashboard() {
             </button>
           ))}
         </div>
+        <p className="mt-3 text-[11px] text-slate-500">
+          Current view:
+          {" "}
+          <span className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-slate-700">
+            {activeNavigatorLabel}
+          </span>
+        </p>
       </section>
 
       {showNavigatorManual && (
-        <aside className="fixed right-4 top-24 z-[70] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl">
+        <>
+        <button
+          type="button"
+          onClick={() => setShowNavigatorManual(false)}
+          className="fixed inset-0 z-[65] bg-slate-900/20"
+          aria-label="Close manual overlay"
+        />
+        <aside className="fixed right-4 top-24 z-[70] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl animate-fade-slide">
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Monitor Navigator Manual</p>
             <button
@@ -547,15 +569,21 @@ export function MonitorDashboard() {
           </div>
           <div className="max-h-[72vh] overflow-y-auto p-3">
             <ol className="grid gap-2">
-              {MONITOR_NAVIGATOR_MANUAL.map((step) => (
+              {MONITOR_NAVIGATOR_MANUAL.map((step, index) => (
                 <li key={step.id} className="dashboard-subtle-panel p-2.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{step.title}</p>
+                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-primary-100 text-[10px] text-primary-700">
+                      {index + 1}
+                    </span>
+                    {step.title}
+                  </p>
                   <p className="mt-1 text-xs text-slate-600">{step.instruction}</p>
                 </li>
               ))}
             </ol>
           </div>
         </aside>
+        </>
       )}
 
       <section className="dashboard-shell mb-5 rounded-sm p-3">
