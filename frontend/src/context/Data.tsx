@@ -9,20 +9,27 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, apiRequestRaw, isApiError } from "@/lib/api";
+import { apiRequestRaw, isApiError } from "@/lib/api";
 import type { SchoolRecord, SchoolRecordPayload } from "@/types";
 
 type SyncScope = "division" | "school" | null;
 type SyncStatus = "idle" | "updated" | "up_to_date" | "error";
 
+interface SyncMeta {
+  syncedAt?: string;
+  scope?: string;
+  scopeKey?: string;
+  recordCount?: number;
+}
+
 interface SchoolRecordsResponse {
   data: SchoolRecord[];
-  meta?: {
-    syncedAt?: string;
-    scope?: string;
-    scopeKey?: string;
-    recordCount?: number;
-  };
+  meta?: SyncMeta;
+}
+
+interface SchoolRecordMutationResponse {
+  data: SchoolRecord;
+  meta?: SyncMeta;
 }
 
 interface DataContextType {
@@ -46,6 +53,15 @@ function normalizeScope(value: string | undefined): SyncScope {
   return null;
 }
 
+function normalizeScopeKey(value: string | undefined): string | null {
+  const normalized = value?.trim() || "";
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEtag(value: string | null): string {
+  return (value || "").replace(/^W\//, "").replace(/"/g, "");
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { token, logout } = useAuth();
 
@@ -58,6 +74,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const syncInFlightRef = useRef(false);
   const etagRef = useRef<string>("");
+  const syncScopeKeyRef = useRef<string>("");
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
 
@@ -70,6 +87,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
     etagRef.current = "";
+    syncScopeKeyRef.current = "";
     setRecords([]);
     setIsLoading(false);
     setIsSaving(false);
@@ -105,6 +123,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncScope(null);
         setSyncStatus("idle");
         etagRef.current = "";
+        syncScopeKeyRef.current = "";
         return;
       }
 
@@ -122,9 +141,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
           extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         });
 
-        const nextEtag = response.headers.get("X-Sync-Etag") || response.headers.get("ETag");
+        const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
         if (nextEtag) {
-          etagRef.current = nextEtag.replace(/^W\//, "").replace(/"/g, "");
+          etagRef.current = nextEtag;
         }
 
         if (requestGeneration !== syncGenerationRef.current) {
@@ -132,6 +151,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         const scopeFromHeaders = normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+        const scopeKeyFromHeaders = normalizeScopeKey(response.headers.get("X-Sync-Scope-Key") || undefined);
+        if (scopeKeyFromHeaders) {
+          if (syncScopeKeyRef.current && syncScopeKeyRef.current !== scopeKeyFromHeaders) {
+            etagRef.current = "";
+          }
+          syncScopeKeyRef.current = scopeKeyFromHeaders;
+        }
 
         if (response.status === 304) {
           setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
@@ -143,8 +169,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         const payload = response.data;
+        const payloadScopeKey = normalizeScopeKey(payload?.meta?.scopeKey);
+        if (payloadScopeKey) {
+          if (syncScopeKeyRef.current && syncScopeKeyRef.current !== payloadScopeKey) {
+            etagRef.current = "";
+          }
+          syncScopeKeyRef.current = payloadScopeKey;
+        }
+
         setRecords(Array.isArray(payload?.data) ? payload.data : []);
-        setLastSyncedAt(payload?.meta?.syncedAt ?? new Date().toISOString());
+        setLastSyncedAt(response.headers.get("X-Synced-At") ?? payload?.meta?.syncedAt ?? new Date().toISOString());
         setSyncScope(normalizeScope(payload?.meta?.scope) ?? scopeFromHeaders);
         setSyncStatus("updated");
       } catch (err) {
@@ -170,19 +204,57 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addRecord = useCallback(
     async (record: SchoolRecordPayload) => {
-      if (!token) return;
+      if (!token) {
+        const authError = new Error("You are signed out. Please sign in again.");
+        setError(authError.message);
+        setSyncStatus("error");
+        throw authError;
+      }
 
       setIsSaving(true);
       setError("");
 
       try {
-        await apiRequest("/api/dashboard/records", {
+        const response = await apiRequestRaw<SchoolRecordMutationResponse>("/api/dashboard/records", {
           method: "POST",
           token,
           body: record,
         });
-        await syncRecords(true);
+
+        const nextRecord = response.data?.data;
+        if (nextRecord) {
+          setRecords((current) => {
+            const existingIndex = current.findIndex((item) => item.id === nextRecord.id);
+            if (existingIndex < 0) {
+              return [nextRecord, ...current];
+            }
+
+            const updated = [...current];
+            updated[existingIndex] = nextRecord;
+            return updated;
+          });
+        }
+
+        const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+        if (scope) {
+          setSyncScope(scope);
+        }
+
+        const scopeKey = normalizeScopeKey(response.data?.meta?.scopeKey ?? (response.headers.get("X-Sync-Scope-Key") || undefined));
+        if (scopeKey) {
+          syncScopeKeyRef.current = scopeKey;
+        }
+
+        const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+        if (nextEtag) {
+          etagRef.current = nextEtag;
+        }
+
+        setLastSyncedAt(response.headers.get("X-Synced-At") ?? response.data?.meta?.syncedAt ?? new Date().toISOString());
         setSyncStatus("updated");
+
+        etagRef.current = "";
+        await syncRecords(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -195,19 +267,57 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const updateRecord = useCallback(
     async (id: string, updates: SchoolRecordPayload) => {
-      if (!token) return;
+      if (!token) {
+        const authError = new Error("You are signed out. Please sign in again.");
+        setError(authError.message);
+        setSyncStatus("error");
+        throw authError;
+      }
 
       setIsSaving(true);
       setError("");
 
       try {
-        await apiRequest(`/api/dashboard/records/${id}`, {
+        const response = await apiRequestRaw<SchoolRecordMutationResponse>(`/api/dashboard/records/${id}`, {
           method: "PUT",
           token,
           body: updates,
         });
-        await syncRecords(true);
+
+        const nextRecord = response.data?.data;
+        if (nextRecord) {
+          setRecords((current) => {
+            const existingIndex = current.findIndex((item) => item.id === nextRecord.id);
+            if (existingIndex < 0) {
+              return [nextRecord, ...current];
+            }
+
+            const updated = [...current];
+            updated[existingIndex] = nextRecord;
+            return updated;
+          });
+        }
+
+        const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+        if (scope) {
+          setSyncScope(scope);
+        }
+
+        const scopeKey = normalizeScopeKey(response.data?.meta?.scopeKey ?? (response.headers.get("X-Sync-Scope-Key") || undefined));
+        if (scopeKey) {
+          syncScopeKeyRef.current = scopeKey;
+        }
+
+        const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+        if (nextEtag) {
+          etagRef.current = nextEtag;
+        }
+
+        setLastSyncedAt(response.headers.get("X-Synced-At") ?? response.data?.meta?.syncedAt ?? new Date().toISOString());
         setSyncStatus("updated");
+
+        etagRef.current = "";
+        await syncRecords(true);
       } catch (err) {
         await handleApiError(err);
         throw err;

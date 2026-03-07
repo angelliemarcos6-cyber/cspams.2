@@ -84,4 +84,41 @@ class ApiSyncTest extends TestCase
 
         $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
+
+    public function test_school_head_update_returns_sync_metadata_and_headers(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolHead->email,
+            'password' => 'password123',
+        ]);
+
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $updated = $this->withToken($token)->putJson('/api/dashboard/records/' . $schoolHead->school_id, [
+            'schoolName' => 'School Head 1 Synced',
+            'studentCount' => 1250,
+            'teacherCount' => 60,
+            'region' => 'Region II',
+            'status' => 'active',
+        ]);
+
+        $updated->assertOk()
+            ->assertHeader('X-Sync-Scope', 'school')
+            ->assertHeader('X-Sync-Scope-Key', 'school:' . $schoolHead->school_id)
+            ->assertHeader('X-Sync-Record-Count', '1')
+            ->assertHeader('X-Sync-Etag')
+            ->assertHeader('X-Synced-At')
+            ->assertJsonPath('meta.scope', 'school')
+            ->assertJsonPath('meta.scopeKey', 'school:' . $schoolHead->school_id)
+            ->assertJsonPath('meta.recordCount', 1)
+            ->assertJsonPath('data.id', (string) $schoolHead->school_id)
+            ->assertJsonPath('data.schoolName', 'School Head 1 Synced');
+    }
 }
