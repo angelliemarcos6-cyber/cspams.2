@@ -14,6 +14,7 @@ import type {
   AcademicYearOption,
   IndicatorMetric,
   IndicatorSubmission,
+  FormSubmissionHistoryEntry,
   IndicatorSubmissionPayload,
 } from "@/types";
 
@@ -35,6 +36,10 @@ interface IndicatorSubmissionResponse {
   data: IndicatorSubmission;
 }
 
+interface IndicatorHistoryResponse {
+  data: FormSubmissionHistoryEntry[];
+}
+
 interface IndicatorDataContextType {
   submissions: IndicatorSubmission[];
   metrics: IndicatorMetric[];
@@ -47,6 +52,7 @@ interface IndicatorDataContextType {
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
   reviewSubmission: (id: string, decision: ReviewDecision, notes?: string) => Promise<IndicatorSubmission>;
+  loadHistory: (id: string) => Promise<FormSubmissionHistoryEntry[]>;
 }
 
 const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>(undefined);
@@ -251,6 +257,23 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [token, syncSubmissions, handleApiError],
   );
 
+  const loadHistory = useCallback(
+    async (id: string): Promise<FormSubmissionHistoryEntry[]> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      try {
+        const response = await apiRequest<IndicatorHistoryResponse>(`/api/indicators/submissions/${id}/history`, { token });
+        return Array.isArray(response.data) ? response.data : [];
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, handleApiError],
+  );
+
   useEffect(() => {
     void syncSubmissions(false);
   }, [syncSubmissions]);
@@ -289,6 +312,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       createSubmission,
       submitSubmission,
       reviewSubmission,
+      loadHistory,
     }),
     [
       submissions,
@@ -302,6 +326,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       createSubmission,
       submitSubmission,
       reviewSubmission,
+      loadHistory,
     ],
   );
 
