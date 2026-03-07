@@ -6,11 +6,30 @@ This guide turns the current codebase into a finishable capstone plan.
 
 - **Laravel 11 + Filament 3 admin foundation**
 - **Custom role-aware login page** for `monitor` and `school_head`
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 - **Section management CRUD** with role-based visibility and query scope
 - **Reports Center module** with filter-based CSV exports and dashboard evidence widgets
 
 These are solid foundations for an academic capstone because they demonstrate:
 - authentication and authorization,
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+- **Section management CRUD** with role-based visibility/query scope
+
+These are solid foundations for an academic capstone because they demonstrate:
+- authentication + authorization,
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 - role-based workflows,
 - and an initial school management module.
 
@@ -23,7 +42,19 @@ These are solid foundations for an academic capstone because they demonstrate:
 
 ### Recommended system scope (MVP)
 Focus your defense on a complete, coherent flow:
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 1. User authentication (Division Monitor vs School Head)
+=======
+1. User authentication (Monitor vs School Head)
+>>>>>>> theirs
+=======
+1. User authentication (Monitor vs School Head)
+>>>>>>> theirs
+=======
+1. User authentication (Monitor vs School Head)
+>>>>>>> theirs
 2. Master data setup (School, Academic Year, Sections, Students)
 3. Performance encoding (I-META / TARGETS-MET indicators)
 4. Analytics dashboard (trend + summary)
@@ -33,6 +64,9 @@ Keep MVP small but complete.
 
 ---
 
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 ## 3) Proposed roles and permissions (normalized)
 
 The current code supports mixed role labels through aliases in `app/Support/Auth/UserRoleResolver.php`.
@@ -49,6 +83,37 @@ For maintainability, keep one canonical naming style in seeders/migrations and m
 - **school_head**
   - manage sections/students in assigned school
   - encode performance data and view school analytics
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+## 3) Proposed roles and permissions (normalize naming)
+
+The current code uses mixed role labels (`monitor`, `school_head`, `Division Admin`, `School Head`).
+For maintainability, standardize to one naming style.
+
+### Recommended canonical roles
+- `division_admin`
+- `school_monitor`
+- `school_head`
+
+### Example permission matrix
+- **division_admin**
+  - manage schools, users, global reports
+- **school_monitor**
+  - manage sections/students in assigned school
+  - encode and update performance metrics
+- **school_head**
+  - view analytics/reports
+  - approve/acknowledge reports
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 
 ---
 
@@ -65,7 +130,19 @@ Implement/verify these tables and key relations:
 - `report_snapshots` (optional, for generated report history)
 
 Also ensure:
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 - foreign keys and indexes,
+=======
+- foreign keys + indexes,
+>>>>>>> theirs
+=======
+- foreign keys + indexes,
+>>>>>>> theirs
+=======
+- foreign keys + indexes,
+>>>>>>> theirs
 - soft deletes where needed,
 - seeders for demo data.
 
@@ -113,13 +190,37 @@ Prepare these early (not just code):
 - user flow per role
 
 ### B) Academic documentation
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 - Chapter 1-5 alignment with actual implemented features
+=======
+- Chapter 1–5 alignment with actual implemented features
+>>>>>>> theirs
+=======
+- Chapter 1–5 alignment with actual implemented features
+>>>>>>> theirs
+=======
+- Chapter 1–5 alignment with actual implemented features
+>>>>>>> theirs
 - clear evaluation criteria (accuracy, usability, performance)
 - user acceptance test forms
 
 ### C) Demo package
 - seeded demo accounts per role
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 - scripted end-to-end demo scenario (5-10 minutes)
+=======
+- scripted end-to-end demo scenario (5–10 minutes)
+>>>>>>> theirs
+=======
+- scripted end-to-end demo scenario (5–10 minutes)
+>>>>>>> theirs
+=======
+- scripted end-to-end demo scenario (5–10 minutes)
+>>>>>>> theirs
 - fallback offline screenshots if internet fails
 
 ---
@@ -157,11 +258,31 @@ During defense, highlight:
 
 ## 9) Immediate next coding tasks for this repository
 
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 1. Add feature and policy tests for role-based access and scoped data.
 2. Extend exports to PDF/Excel formatting matching division templates (CSV exports are now available).
 3. Add API endpoints for future mobile/reporting integrations.
 4. Add notification rules for at-risk and dropout-status changes.
 5. Prepare deployment profile (env hardening, queue workers, backups, monitoring).
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+1. Standardize role names in login/resource checks.
+2. Add missing resources: `StudentResource`, `AcademicYearResource`, `SchoolResource`.
+3. Create dashboard widgets for key KPIs.
+4. Add seeders for users/roles/schools/sections/students.
+5. Add feature tests for role access and scoped data.
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 
 ---
 

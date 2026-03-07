@@ -53,8 +53,20 @@ class CspamsLogin extends BaseLogin
     {
         return [
             Hidden::make('role')
+<<<<<<< ours
                 ->default(UserRoleResolver::MONITOR)
                 ->dehydrated(),
+=======
+            ->default('monitor')
+            ->dehydrated(true)
+            ->required(),
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 
             TextInput::make('email')
                 ->label('DepEd Email')

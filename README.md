@@ -1,3 +1,6 @@
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 # CSPAMS
 
 Centralized Student Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
@@ -112,3 +115,24 @@ Setup:
 Source of truth for role aliases and login-tab metadata:
 
 - `app/Support/Auth/UserRoleResolver.php`
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+# cspams.2
+
+## Capstone planning
+
+See `CAPSTONE_COMPLETION_GUIDE.md` for a step-by-step completion roadmap.
+## User manual
+
+See `USER_MANUAL.md` for end-user instructions (login, navigation, section management, and troubleshooting).
+
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
