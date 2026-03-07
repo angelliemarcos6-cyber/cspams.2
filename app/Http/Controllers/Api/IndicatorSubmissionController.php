@@ -212,6 +212,9 @@ class IndicatorSubmissionController extends Controller
             'status' => FormSubmissionStatus::SUBMITTED->value,
             'submitted_by' => $user->id,
             'submitted_at' => now(),
+            'reviewed_by' => null,
+            'reviewed_at' => null,
+            'review_notes' => null,
         ])->save();
 
         app(FormSubmissionHistoryLogger::class)->log(

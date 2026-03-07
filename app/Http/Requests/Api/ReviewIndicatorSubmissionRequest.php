@@ -23,7 +23,24 @@ class ReviewIndicatorSubmissionRequest extends FormRequest
                 FormSubmissionStatus::VALIDATED->value,
                 FormSubmissionStatus::RETURNED->value,
             ])],
-            'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'notes' => [
+                Rule::requiredIf(
+                    fn (): bool => $this->input('decision') === FormSubmissionStatus::RETURNED->value,
+                ),
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'notes.required' => 'Review notes are required when returning an indicator submission.',
         ];
     }
 }

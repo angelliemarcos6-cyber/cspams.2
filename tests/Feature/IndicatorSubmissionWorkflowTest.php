@@ -119,6 +119,59 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
 
+    public function test_returned_indicator_review_requires_notes_and_resubmission_clears_review_metadata(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $metricId = (int) PerformanceMetric::query()->where('is_active', true)->value('id');
+
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 88,
+                    'actual_value' => 85,
+                ],
+            ],
+        ]);
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->withToken($schoolHeadToken)
+            ->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk();
+
+        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+
+        $missingNotes = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
+            'decision' => 'returned',
+        ]);
+        $missingNotes->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['notes']);
+
+        $returned = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
+            'decision' => 'returned',
+            'notes' => 'Please update Q1 values and remarks.',
+        ]);
+        $returned->assertOk()
+            ->assertJsonPath('data.status', 'returned')
+            ->assertJsonPath('data.reviewNotes', 'Please update Q1 values and remarks.')
+            ->assertJsonPath('data.reviewedAt', fn (?string $value): bool => $value !== null);
+
+        $resubmitted = $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+        $resubmitted->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.reviewNotes', null)
+            ->assertJsonPath('data.reviewedAt', null);
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $loginResponse = $this->postJson('/api/auth/login', [

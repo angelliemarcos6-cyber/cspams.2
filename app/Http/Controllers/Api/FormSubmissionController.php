@@ -193,6 +193,9 @@ class FormSubmissionController extends Controller
             'status' => FormSubmissionStatus::SUBMITTED->value,
             'submitted_by' => $user->id,
             'submitted_at' => now(),
+            'validated_by' => null,
+            'validated_at' => null,
+            'validation_notes' => null,
         ])->save();
 
         app(FormSubmissionHistoryLogger::class)->log(
@@ -239,6 +242,9 @@ class FormSubmissionController extends Controller
             'status' => FormSubmissionStatus::SUBMITTED->value,
             'submitted_by' => $user->id,
             'submitted_at' => now(),
+            'validated_by' => null,
+            'validated_at' => null,
+            'validation_notes' => null,
         ])->save();
 
         app(FormSubmissionHistoryLogger::class)->log(

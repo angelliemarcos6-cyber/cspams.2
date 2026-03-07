@@ -86,6 +86,50 @@ class FormSubmissionWorkflowTest extends TestCase
         $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
 
+    public function test_returned_sf1_requires_notes_and_resubmission_clears_validation_metadata(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $generated = $this->withToken($schoolHeadToken)->postJson('/api/forms/sf1/generate', [
+            'academic_year_id' => $academicYearId,
+        ]);
+        $generated->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $generated->json('data.id');
+
+        $this->withToken($schoolHeadToken)
+            ->postJson("/api/forms/sf1/{$submissionId}/submit")
+            ->assertOk();
+
+        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+
+        $missingNotes = $this->withToken($monitorToken)->postJson("/api/forms/sf1/{$submissionId}/validate", [
+            'decision' => 'returned',
+        ]);
+        $missingNotes->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['notes']);
+
+        $returned = $this->withToken($monitorToken)->postJson("/api/forms/sf1/{$submissionId}/validate", [
+            'decision' => 'returned',
+            'notes' => 'Please correct learner totals.',
+        ]);
+        $returned->assertOk()
+            ->assertJsonPath('data.status', 'returned')
+            ->assertJsonPath('data.validationNotes', 'Please correct learner totals.')
+            ->assertJsonPath('data.validatedAt', fn (?string $value): bool => $value !== null);
+
+        $resubmitted = $this->withToken($schoolHeadToken)->postJson("/api/forms/sf1/{$submissionId}/submit");
+        $resubmitted->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.validationNotes', null)
+            ->assertJsonPath('data.validatedAt', null);
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $loginResponse = $this->postJson('/api/auth/login', [
