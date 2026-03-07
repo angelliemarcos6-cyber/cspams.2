@@ -45,24 +45,10 @@ class SchoolRecordController extends Controller
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
-        $syncProbe = (clone $baseQuery)
-            ->selectRaw('COUNT(*) as aggregate_count')
-            ->selectRaw('MAX(updated_at) as latest_updated_at')
-            ->selectRaw('MAX(submitted_at) as latest_submitted_at')
-            ->first();
-
-        $recordCount = (int) ($syncProbe?->aggregate_count ?? 0);
-        $latestAt = $this->resolveLatestTimestamp(
-            $syncProbe?->latest_updated_at,
-            $syncProbe?->latest_submitted_at,
-        );
-
-        $etag = sha1(implode('|', [
-            $scope,
-            $scopeKey,
-            (string) $recordCount,
-            $latestAt?->format('U.u') ?? '0',
-        ]));
+        $syncFingerprint = $this->buildSyncFingerprint(clone $baseQuery);
+        $recordCount = $syncFingerprint['recordCount'];
+        $latestAt = $syncFingerprint['latestAt'];
+        $etag = $this->buildSyncEtag($scope, $scopeKey, $syncFingerprint);
 
         $incomingEtag = trim((string) $request->header('If-None-Match'));
         if ($incomingEtag !== '' && trim($incomingEtag, '"') === $etag) {
@@ -236,24 +222,10 @@ class SchoolRecordController extends Controller
             abort(Response::HTTP_FORBIDDEN, 'Forbidden.');
         }
 
-        $syncProbe = (clone $baseQuery)
-            ->selectRaw('COUNT(*) as aggregate_count')
-            ->selectRaw('MAX(updated_at) as latest_updated_at')
-            ->selectRaw('MAX(submitted_at) as latest_submitted_at')
-            ->first();
-
-        $recordCount = (int) ($syncProbe?->aggregate_count ?? 0);
-        $latestAt = $this->resolveLatestTimestamp(
-            $syncProbe?->latest_updated_at,
-            $syncProbe?->latest_submitted_at,
-        );
-
-        $etag = sha1(implode('|', [
-            $scope,
-            $scopeKey,
-            (string) $recordCount,
-            $latestAt?->format('U.u') ?? '0',
-        ]));
+        $syncFingerprint = $this->buildSyncFingerprint(clone $baseQuery);
+        $recordCount = $syncFingerprint['recordCount'];
+        $latestAt = $syncFingerprint['latestAt'];
+        $etag = $this->buildSyncEtag($scope, $scopeKey, $syncFingerprint);
 
         return [
             'scope' => $scope,
@@ -485,14 +457,98 @@ class SchoolRecordController extends Controller
         );
     }
 
-    private function resolveLatestTimestamp(?string $updatedAt, ?string $submittedAt): ?Carbon
+    /**
+     * @return array{
+     *     recordCount: int,
+     *     sectionCount: int,
+     *     studentCount: int,
+     *     latestAt: ?Carbon
+     * }
+     */
+    private function buildSyncFingerprint(Builder $baseQuery): array
+    {
+        $schoolProbe = (clone $baseQuery)
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->selectRaw('MAX(updated_at) as latest_updated_at')
+            ->selectRaw('MAX(submitted_at) as latest_submitted_at')
+            ->first();
+
+        $recordCount = (int) ($schoolProbe?->aggregate_count ?? 0);
+        $schoolIds = (clone $baseQuery)->pluck('id');
+
+        $sectionCount = 0;
+        $studentCount = 0;
+        $latestSectionUpdatedAt = null;
+        $latestStudentUpdatedAt = null;
+        $latestStudentStatusAt = null;
+
+        if ($schoolIds->isNotEmpty()) {
+            $sectionProbe = Section::query()
+                ->whereIn('school_id', $schoolIds)
+                ->selectRaw('COUNT(*) as aggregate_count')
+                ->selectRaw('MAX(updated_at) as latest_updated_at')
+                ->first();
+
+            $sectionCount = (int) ($sectionProbe?->aggregate_count ?? 0);
+            $latestSectionUpdatedAt = $sectionProbe?->latest_updated_at;
+
+            $studentProbe = Student::query()
+                ->whereIn('school_id', $schoolIds)
+                ->selectRaw('COUNT(*) as aggregate_count')
+                ->selectRaw('MAX(updated_at) as latest_updated_at')
+                ->selectRaw('MAX(last_status_at) as latest_status_changed_at')
+                ->first();
+
+            $studentCount = (int) ($studentProbe?->aggregate_count ?? 0);
+            $latestStudentUpdatedAt = $studentProbe?->latest_updated_at;
+            $latestStudentStatusAt = $studentProbe?->latest_status_changed_at;
+        }
+
+        $latestAt = $this->resolveLatestTimestamp(
+            $schoolProbe?->latest_updated_at,
+            $schoolProbe?->latest_submitted_at,
+            $latestSectionUpdatedAt,
+            $latestStudentUpdatedAt,
+            $latestStudentStatusAt,
+        );
+
+        return [
+            'recordCount' => $recordCount,
+            'sectionCount' => $sectionCount,
+            'studentCount' => $studentCount,
+            'latestAt' => $latestAt,
+        ];
+    }
+
+    /**
+     * @param array{
+     *     recordCount: int,
+     *     sectionCount: int,
+     *     studentCount: int,
+     *     latestAt: ?Carbon
+     * } $syncFingerprint
+     */
+    private function buildSyncEtag(string $scope, string $scopeKey, array $syncFingerprint): string
+    {
+        return sha1(implode('|', [
+            $scope,
+            $scopeKey,
+            (string) $syncFingerprint['recordCount'],
+            (string) $syncFingerprint['sectionCount'],
+            (string) $syncFingerprint['studentCount'],
+            $syncFingerprint['latestAt']?->format('U.u') ?? '0',
+        ]));
+    }
+
+    private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon
     {
         $timestamps = [];
-        if ($updatedAt) {
-            $timestamps[] = Carbon::parse($updatedAt);
-        }
-        if ($submittedAt) {
-            $timestamps[] = Carbon::parse($submittedAt);
+        foreach ($rawTimestamps as $rawTimestamp) {
+            if (! $rawTimestamp) {
+                continue;
+            }
+
+            $timestamps[] = Carbon::parse($rawTimestamp);
         }
 
         if ($timestamps === []) {

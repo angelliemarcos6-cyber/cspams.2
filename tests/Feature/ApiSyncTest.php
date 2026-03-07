@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Student;
 use App\Models\User;
+use App\Support\Domain\StudentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
@@ -139,5 +141,51 @@ class ApiSyncTest extends TestCase
             ])
             ->assertJsonPath('data.id', (string) $schoolHead->school_id)
             ->assertJsonPath('data.schoolName', 'School Head 1 Synced');
+    }
+
+    public function test_monitor_sync_etag_changes_when_student_data_changes(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => 'password123',
+        ]);
+
+        $login->assertOk()
+            ->assertJsonPath('user.role', 'monitor');
+
+        $token = (string) $login->json('token');
+
+        $records = $this->withToken($token)->getJson('/api/dashboard/records');
+        $records->assertOk()
+            ->assertJsonPath('meta.scope', 'division');
+
+        $startingDropouts = (int) $records->json('meta.targetsMet.dropoutLearners', 0);
+        $initialEtag = trim((string) $records->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $initialEtag);
+
+        /** @var Student $student */
+        $student = Student::query()
+            ->where('status', '!=', StudentStatus::DROPPED_OUT->value)
+            ->firstOrFail();
+
+        $student->forceFill([
+            'status' => StudentStatus::DROPPED_OUT->value,
+            'last_status_at' => now(),
+        ])->save();
+
+        $resynced = $this->withToken($token)
+            ->withHeaders(['If-None-Match' => $initialEtag])
+            ->getJson('/api/dashboard/records');
+
+        $resynced->assertOk()
+            ->assertJsonPath('meta.scope', 'division');
+
+        $newEtag = trim((string) $resynced->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $newEtag);
+        $this->assertNotSame($initialEtag, $newEtag);
+        $this->assertGreaterThan($startingDropouts, (int) $resynced->json('meta.targetsMet.dropoutLearners', 0));
     }
 }
