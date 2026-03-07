@@ -1,0 +1,52 @@
+`school_code,school_name,password` (current seeded/default)
+
+```csv
+103811,Baptista Village Elementary School,password123
+103812,Batal Elementary School,password123
+103813,Divisoria Elementary School,password123
+103814,Luna Elementary School,password123
+103815,Mabini Elementary School,password123
+103816,Malini Elementary School,password123
+103818,Naggasican Elementary School,password123
+103819,Sagana Elementary School,password123
+103820,San Andres Elementary School,password123
+103821,San Isidro Elementary School,password123
+103822,Santa Rosa Elementary School,password123
+103823,Villasis Elementary School,password123
+103824,Centro East Elementary School,password123
+103825,Centro West Elementary School,password123
+103826,Cabulay Elementary School,password123
+103827,Dubinan Elementary School,password123
+103828,Rosario Elementary School,password123
+103829,Rizal Elementary School,password123
+103830,San Jose Elementary School,password123
+103831,Calaocan Elementary School,password123
+103832,Sinsayon Elementary School,password123
+103833,Balintocatoc Elementary School,password123
+103834,Baluarte Elementary School,password123
+103835,Buenavista Elementary School,password123
+103836,Mabuhay Elementary School,password123
+103837,Santiago East Central School,password123
+103838,Santiago West Central School,password123
+300505,Cabulay High School,password123
+300528,Divisoria High School,password123
+300578,Rizal National High School,password123
+300599,Santiago City National High School,password123
+325201,Santiago City National High School - Sinsayon Extension,password123
+325202,Santiago City National High School - Sagana Extension,password123
+325203,Santiago City National High School - Rosario Extension,password123
+400830,SISTECH College of Santiago City,password123
+402636,Sisters of Mary Immaculate School,password123
+502550,Bannawag Norte Integrated School,password123
+502696,Santiago North Central School - Integrated SPED Center,password123
+PRV-CFSI,Children First School Inc.,password123
+PRV-IJMS,Infant Jesus Montessori School,password123
+PRV-SCBBLC,Santiago Community Baptist Bible Learning Center,password123
+PRV-SCI,Santiago Cultural Institute,password123
+SDO-SC-001,Santiago City National High School,password123
+SDO-SC-002,Santiago South Integrated School,password123
+SDO-SC-003,St. Matthew Academy,password123
+TBD-CABULAY-NHS,Cabulay National High School,password123
+TBD-PATUL-EXT-HS,Patul Extension High School,password123
+TBD-SANTIAGO-WEST-HS,Santiago West High School,password123
+```
