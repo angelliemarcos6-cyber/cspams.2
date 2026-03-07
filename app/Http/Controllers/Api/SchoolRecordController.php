@@ -38,7 +38,16 @@ class SchoolRecordController extends Controller
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
-        return SchoolRecordResource::collection($query->get());
+        $records = $query->get();
+        $scope = UserRoleResolver::has($user, UserRoleResolver::MONITOR) ? 'division' : 'school';
+
+        return SchoolRecordResource::collection($records)->additional([
+            'meta' => [
+                'syncedAt' => now()->toISOString(),
+                'scope' => $scope,
+                'recordCount' => $records->count(),
+            ],
+        ]);
     }
 
     public function store(UpsertSchoolRecordRequest $request): JsonResponse
@@ -63,7 +72,10 @@ class SchoolRecordController extends Controller
         $this->applyPayload($school, $request, $user);
 
         return response()->json([
-            'record' => (new SchoolRecordResource($school->load('submittedBy:id,name')))->resolve(),
+            'data' => (new SchoolRecordResource($school->load('submittedBy:id,name')))->resolve(),
+            'meta' => [
+                'syncedAt' => now()->toISOString(),
+            ],
         ]);
     }
 
@@ -81,7 +93,10 @@ class SchoolRecordController extends Controller
         $this->applyPayload($school, $request, $user);
 
         return response()->json([
-            'record' => (new SchoolRecordResource($school->load('submittedBy:id,name')))->resolve(),
+            'data' => (new SchoolRecordResource($school->load('submittedBy:id,name')))->resolve(),
+            'meta' => [
+                'syncedAt' => now()->toISOString(),
+            ],
         ]);
     }
 

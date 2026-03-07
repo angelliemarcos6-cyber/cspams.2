@@ -71,6 +71,12 @@ The `frontend/` app now authenticates and reads/writes records from Laravel API 
 - `POST /api/dashboard/records`
 - `PUT /api/dashboard/records/{school}`
 
+Synchronization behavior:
+
+- Dashboards auto-refresh every 30 seconds
+- Dashboards auto-refresh when tab focus returns or network reconnects
+- Manual refresh is available in both monitor and school administrator dashboards
+
 Setup:
 
 1. Copy `frontend/.env.example` to `frontend/.env`

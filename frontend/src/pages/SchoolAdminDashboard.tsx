@@ -89,7 +89,7 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 export function SchoolAdminDashboard() {
-  const { records, isLoading, isSaving, error, addRecord, updateRecord, refreshRecords } = useData();
+  const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, addRecord, updateRecord, refreshRecords } = useData();
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -255,6 +255,10 @@ export function SchoolAdminDashboard() {
             {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
             {showForm ? "Close Input Form" : records.length > 0 ? "Update My School" : "Input School Data"}
           </button>
+          <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+            {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
+            {syncScope ? ` (${syncScope})` : ""}
+          </span>
         </>
       }
     >
