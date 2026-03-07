@@ -50,7 +50,9 @@ interface MonitorTopNavigatorItem {
 interface ManualStep {
   id: string;
   title: string;
-  instruction: string;
+  objective: string;
+  actions: string[];
+  doneWhen: string;
 }
 
 interface SchoolRequirementSummary {
@@ -83,28 +85,60 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "first_glance",
     title: "First Glance",
-    instruction: "Review division totals, TARGETS-MET snapshot, and alert cards for immediate action.",
+    objective: "Detect division-level issues at the start of every review session.",
+    actions: [
+      "Check totals, TARGETS-MET snapshot, and synchronized alerts.",
+      "Identify schools or indicators that need immediate follow-up.",
+    ],
+    doneWhen: "You have a clear list of schools/modules needing attention.",
   },
   {
     id: "requirements",
     title: "Requirement Tracker",
-    instruction: "Identify schools with missing packages or pending submissions using the filter controls.",
+    objective: "Track which schools have submitted or are still missing requirements.",
+    actions: [
+      "Use status and requirement filters to isolate missing schools.",
+      "Prioritize rows with high missing count or awaiting review count.",
+    ],
+    doneWhen: "You have filtered target schools for validation or follow-up.",
   },
   {
     id: "forms",
     title: "SF-1 / SF-5 Queue",
-    instruction: "Validate or return submitted SF forms and leave notes for school heads when returning.",
+    objective: "Review and resolve SF-1/SF-5 submissions efficiently.",
+    actions: [
+      "Open each submitted form and verify required values and consistency.",
+      "Validate complete entries or return with clear correction notes.",
+    ],
+    doneWhen: "No pending submitted forms remain without a decision.",
   },
   {
     id: "indicators",
     title: "Indicators Queue",
-    instruction: "Review indicator packages, verify compliance values, then validate or return to school heads.",
+    objective: "Ensure indicator package accuracy before approval.",
+    actions: [
+      "Review indicator values, compliance rates, and remarks.",
+      "Validate correct packages or return with specific action notes.",
+    ],
+    doneWhen: "All reviewed indicator packages are either validated or returned with notes.",
   },
   {
     id: "records",
     title: "School Records",
-    instruction: "Audit synchronized school records and confirm latest updates by status and timestamp.",
+    objective: "Audit final synchronized school-level records.",
+    actions: [
+      "Search/filter records by school, region, and status.",
+      "Confirm timestamps and status align with the latest submissions.",
+    ],
+    doneWhen: "Record table matches expected latest school submissions.",
   },
+];
+
+const MONITOR_MANUAL_STATUS_GUIDE = [
+  "Submitted: Waiting for monitor validation decision.",
+  "Validated: Approved and closed.",
+  "Returned: Sent back to school head for correction.",
+  "Missing: Requirement not yet submitted by school.",
 ];
 
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
@@ -254,6 +288,9 @@ export function MonitorDashboard() {
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("first_glance");
+  const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
+    typeof window === "undefined" ? true : window.innerWidth >= 768,
+  );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const activeNavigatorLabel = useMemo(
     () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "First Glance",
@@ -512,39 +549,53 @@ export function MonitorDashboard() {
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Navigator</h2>
             <p className="mt-1 text-xs text-slate-600">Switch monitor views without page scrolling.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowNavigatorManual((current) => !current)}
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
-              showNavigatorManual
-                ? "border-primary-200 bg-primary-50 text-primary-700"
-                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            <BookOpenText className="h-3.5 w-3.5" />
-            User Manual
-            {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
-          {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => (
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              key={item.id}
               type="button"
-              onClick={() => setActiveTopNavigator(item.id)}
-              className={navigatorButtonClass(activeTopNavigator === item.id)}
+              onClick={() => setIsNavigatorVisible((current) => !current)}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
             >
-              {item.label}
+              {isNavigatorVisible ? "Hide Navigator" : "Show Navigator"}
+              {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setShowNavigatorManual((current) => !current)}
+              className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
+                showNavigatorManual
+                  ? "border-primary-200 bg-primary-50 text-primary-700"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <BookOpenText className="h-3.5 w-3.5" />
+              User Manual
+              {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
-        <p className="mt-3 text-[11px] text-slate-500">
-          Current view:
-          {" "}
-          <span className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-slate-700">
-            {activeNavigatorLabel}
-          </span>
-        </p>
+        {isNavigatorVisible && (
+          <>
+            <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
+              {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTopNavigator(item.id)}
+                  className={navigatorButtonClass(activeTopNavigator === item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Current view:
+              {" "}
+              <span className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-slate-700">
+                {activeNavigatorLabel}
+              </span>
+            </p>
+          </>
+        )}
       </section>
 
       {showNavigatorManual && (
@@ -577,10 +628,28 @@ export function MonitorDashboard() {
                     </span>
                     {step.title}
                   </p>
-                  <p className="mt-1 text-xs text-slate-600">{step.instruction}</p>
+                  <p className="mt-1 text-xs font-medium text-slate-700">Goal: {step.objective}</p>
+                  <ul className="mt-1 space-y-1">
+                    {step.actions.map((action) => (
+                      <li key={`${step.id}-${action}`} className="text-xs text-slate-600">
+                        - {action}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-[11px] text-emerald-700">Done when: {step.doneWhen}</p>
                 </li>
               ))}
             </ol>
+            <article className="dashboard-subtle-panel mt-3 p-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
+              <ul className="mt-1 space-y-1">
+                {MONITOR_MANUAL_STATUS_GUIDE.map((item) => (
+                  <li key={item} className="text-xs text-slate-600">
+                    - {item}
+                  </li>
+                ))}
+              </ul>
+            </article>
           </div>
         </aside>
         </>

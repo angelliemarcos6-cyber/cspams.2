@@ -68,7 +68,9 @@ interface TopNavigatorItem {
 interface ManualStep {
   id: string;
   title: string;
-  instruction: string;
+  objective: string;
+  actions: string[];
+  doneWhen: string;
 }
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
@@ -84,33 +86,70 @@ const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "first_glance",
     title: "First Glance",
-    instruction: "Check missing requirements and sync alerts first before encoding or submitting.",
+    objective: "Identify urgent tasks before encoding new data.",
+    actions: [
+      "Review missing requirements and sync alerts.",
+      "Prioritize any module marked as missing or returned.",
+    ],
+    doneWhen: "No urgent alert remains and you know the next module to open.",
   },
   {
     id: "requirements",
     title: "Requirement Navigator",
-    instruction: "Open each requirement card and complete anything marked as missing.",
+    objective: "Use one screen to track all required submissions.",
+    actions: [
+      "Open each requirement tile and check if status is passed or missing.",
+      "Jump directly to the related module for missing items.",
+    ],
+    doneWhen: "All tiles show passed to monitor, or only pending review items remain.",
   },
   {
     id: "compliance",
     title: "Compliance Record",
-    instruction: "Update school counts and status, then save the record for monitor visibility.",
+    objective: "Keep school profile counts accurate for monitoring.",
+    actions: [
+      "Update student count, teacher count, and school status.",
+      "Save changes and confirm success message appears.",
+    ],
+    doneWhen: "Latest compliance record is saved and reflected in school records.",
   },
   {
     id: "forms",
     title: "SF-1 / SF-5",
-    instruction: "Generate forms, review values, and submit drafts to the monitor for validation.",
+    objective: "Generate and submit official form packages to monitor.",
+    actions: [
+      "Create or update SF-1 and SF-5 drafts for the correct period.",
+      "Submit drafts once values are complete and verified.",
+    ],
+    doneWhen: "Form status is submitted or validated.",
   },
   {
     id: "indicators",
     title: "Compliance Indicators",
-    instruction: "Encode indicator values, create the package draft, then submit for review.",
+    objective: "Report indicator package values for monitor validation.",
+    actions: [
+      "Encode required indicators and remarks for the selected period.",
+      "Create draft then submit package for review.",
+    ],
+    doneWhen: "Indicator package status is submitted or validated.",
   },
   {
     id: "records",
     title: "School Records",
-    instruction: "Review the final record table and confirm the latest updates are correct.",
+    objective: "Confirm final synchronized data before ending session.",
+    actions: [
+      "Search or filter to verify your latest update row.",
+      "Check last updated timestamp and status consistency.",
+    ],
+    doneWhen: "Table reflects latest values and no mismatch is visible.",
   },
+];
+
+const SCHOOL_MANUAL_STATUS_GUIDE = [
+  "Draft: Saved but not yet sent to monitor.",
+  "Submitted: Sent to monitor and waiting for review.",
+  "Validated: Approved by monitor.",
+  "Returned: Needs correction and resubmission.",
 ];
 
 const EMPTY_FORM: FormState = {
@@ -213,6 +252,7 @@ export function SchoolAdminDashboard() {
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("first_glance");
+  const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const activeNavigatorLabel = useMemo(
     () => TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "First Glance",
@@ -459,39 +499,53 @@ export function SchoolAdminDashboard() {
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Navigator</h2>
             <p className="mt-1 text-xs text-slate-600">Select what you need to do now.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowNavigatorManual((current) => !current)}
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
-              showNavigatorManual
-                ? "border-primary-200 bg-primary-50 text-primary-700"
-                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            <BookOpenText className="h-3.5 w-3.5" />
-            User Manual
-            {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-          {TOP_NAVIGATOR_ITEMS.map((item) => (
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              key={item.id}
               type="button"
-              onClick={() => handleTopNavigate(item)}
-              className={navigatorButtonClass(activeTopNavigator === item.id)}
+              onClick={() => setIsNavigatorVisible((current) => !current)}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
             >
-              {item.label}
+              {isNavigatorVisible ? "Hide Navigator" : "Show Navigator"}
+              {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setShowNavigatorManual((current) => !current)}
+              className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
+                showNavigatorManual
+                  ? "border-primary-200 bg-primary-50 text-primary-700"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <BookOpenText className="h-3.5 w-3.5" />
+              User Manual
+              {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
-        <p className="mt-3 text-[11px] text-slate-500">
-          Current view:
-          {" "}
-          <span className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-slate-700">
-            {activeNavigatorLabel}
-          </span>
-        </p>
+        {isNavigatorVisible && (
+          <>
+            <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+              {TOP_NAVIGATOR_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleTopNavigate(item)}
+                  className={navigatorButtonClass(activeTopNavigator === item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Current view:
+              {" "}
+              <span className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-slate-700">
+                {activeNavigatorLabel}
+              </span>
+            </p>
+          </>
+        )}
       </section>
 
       {showNavigatorManual && (
@@ -524,10 +578,28 @@ export function SchoolAdminDashboard() {
                     </span>
                     {step.title}
                   </p>
-                  <p className="mt-1 text-xs text-slate-600">{step.instruction}</p>
+                  <p className="mt-1 text-xs font-medium text-slate-700">Goal: {step.objective}</p>
+                  <ul className="mt-1 space-y-1">
+                    {step.actions.map((action) => (
+                      <li key={`${step.id}-${action}`} className="text-xs text-slate-600">
+                        - {action}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-[11px] text-emerald-700">Done when: {step.doneWhen}</p>
                 </li>
               ))}
             </ol>
+            <article className="dashboard-subtle-panel mt-3 p-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
+              <ul className="mt-1 space-y-1">
+                {SCHOOL_MANUAL_STATUS_GUIDE.map((item) => (
+                  <li key={item} className="text-xs text-slate-600">
+                    - {item}
+                  </li>
+                ))}
+              </ul>
+            </article>
           </div>
         </aside>
         </>
