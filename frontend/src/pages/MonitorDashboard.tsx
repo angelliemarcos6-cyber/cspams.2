@@ -4,7 +4,10 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  BookOpenText,
   Building2,
+  ChevronDown,
+  ChevronUp,
   Eye,
   Filter,
   GraduationCap,
@@ -43,6 +46,12 @@ interface MonitorTopNavigatorItem {
   label: string;
 }
 
+interface ManualStep {
+  id: string;
+  title: string;
+  instruction: string;
+}
+
 interface SchoolRequirementSummary {
   schoolKey: string;
   schoolCode: string;
@@ -67,6 +76,34 @@ const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "forms", label: "SF-1 / SF-5 Queue" },
   { id: "indicators", label: "Indicators Queue" },
   { id: "records", label: "School Records" },
+];
+
+const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
+  {
+    id: "first_glance",
+    title: "First Glance",
+    instruction: "Review division totals, TARGETS-MET snapshot, and alert cards for immediate action.",
+  },
+  {
+    id: "requirements",
+    title: "Requirement Tracker",
+    instruction: "Identify schools with missing packages or pending submissions using the filter controls.",
+  },
+  {
+    id: "forms",
+    title: "SF-1 / SF-5 Queue",
+    instruction: "Validate or return submitted SF forms and leave notes for school heads when returning.",
+  },
+  {
+    id: "indicators",
+    title: "Indicators Queue",
+    instruction: "Review indicator packages, verify compliance values, then validate or return to school heads.",
+  },
+  {
+    id: "records",
+    title: "School Records",
+    instruction: "Audit synchronized school records and confirm latest updates by status and timestamp.",
+  },
 ];
 
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
@@ -126,6 +163,12 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
     return <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />;
   }
   return direction === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
+}
+
+function navigatorButtonClass(active: boolean): string {
+  return `dashboard-nav-button px-3 py-3 text-left text-xs font-semibold uppercase transition ${
+    active ? "dashboard-nav-button-active" : ""
+  }`;
 }
 
 function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
@@ -210,6 +253,7 @@ export function MonitorDashboard() {
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("first_glance");
+  const [showNavigatorManual, setShowNavigatorManual] = useState(false);
 
   const totalStudents = useMemo(() => records.reduce((total, record) => total + record.studentCount, 0), [records]);
   const totalTeachers = useMemo(() => records.reduce((total, record) => total + record.teacherCount, 0), [records]);
@@ -457,28 +501,50 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      <section className="mb-5 border border-slate-200 bg-slate-50 p-3">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Navigator</h2>
-        <p className="mt-1 text-xs text-slate-600">Switch monitor views without page scrolling.</p>
+      <section className="dashboard-nav-shell mb-5 rounded-sm p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Navigator</h2>
+            <p className="mt-1 text-xs text-slate-600">Switch monitor views without page scrolling.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowNavigatorManual((current) => !current)}
+            className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+          >
+            <BookOpenText className="h-3.5 w-3.5" />
+            User Manual
+            {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+        </div>
         <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
           {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setActiveTopNavigator(item.id)}
-              className={`border px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide transition ${
-                activeTopNavigator === item.id
-                  ? "border-primary bg-primary-50 text-primary-800"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
+              className={navigatorButtonClass(activeTopNavigator === item.id)}
             >
               {item.label}
             </button>
           ))}
         </div>
+        {showNavigatorManual && (
+          <article className="mt-3 rounded-sm border border-primary-100 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Monitor Navigator Manual</p>
+            <ol className="mt-2 grid gap-2 md:grid-cols-2">
+              {MONITOR_NAVIGATOR_MANUAL.map((step) => (
+                <li key={step.id} className="dashboard-subtle-panel p-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{step.title}</p>
+                  <p className="mt-1 text-xs text-slate-600">{step.instruction}</p>
+                </li>
+              ))}
+            </ol>
+          </article>
+        )}
       </section>
 
-      <section className="mb-5 border border-slate-200 bg-white p-3">
+      <section className="dashboard-shell mb-5 rounded-sm p-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Filters</h2>
         <p className="mt-1 text-xs text-slate-600">Filter schools by status and by submitted requirements.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
@@ -574,7 +640,7 @@ export function MonitorDashboard() {
           </section>
 
           <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-            <div className="surface-panel border border-slate-200 bg-white p-5">
+            <div className="surface-panel dashboard-shell p-5">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Sync Snapshot</h2>
                 <span className="text-xs text-slate-500">
@@ -609,7 +675,7 @@ export function MonitorDashboard() {
               </div>
             </div>
 
-            <div className="surface-panel border border-slate-200 bg-white p-5">
+            <div className="surface-panel dashboard-shell p-5">
               <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Synchronized Alerts</h2>
               <div className="mt-4 space-y-3">
                 {syncAlerts.slice(0, 4).map((alert) => (
@@ -654,7 +720,7 @@ export function MonitorDashboard() {
       )}
 
       {activeTopNavigator === "requirements" && (
-        <section className="surface-panel mt-5 animate-fade-slide overflow-hidden border border-slate-200">
+        <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Requirement Submission Tracker</h2>
             <p className="mt-0.5 text-xs text-slate-500">
@@ -740,7 +806,7 @@ export function MonitorDashboard() {
       {activeTopNavigator === "indicators" && <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />}
 
       {activeTopNavigator === "records" && (
-        <section className="surface-panel mt-5 animate-fade-slide overflow-hidden border border-slate-200">
+        <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Records</h2>
             <p className="mt-0.5 text-xs text-slate-500">Search, filter, and inspect all records submitted by school heads.</p>
@@ -863,7 +929,7 @@ export function MonitorDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredRecords.map((record) => (
-                    <tr key={record.id} className="hover:bg-slate-50/80">
+                    <tr key={record.id} className="dashboard-table-row">
                       <td className="px-5 py-3.5 align-top">
                         <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
                         <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>

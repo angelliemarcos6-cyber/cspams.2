@@ -51,10 +51,11 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <section className="surface-panel mb-6 rounded-sm p-5">
+        <section className="surface-panel mb-6 overflow-hidden rounded-sm border border-primary-100/50 bg-gradient-to-br from-white via-white to-sky-50/55 p-5">
+          <div className="mb-4 h-1 w-24 bg-gradient-to-r from-primary-500 via-cyan-500 to-sky-300" />
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-sm bg-primary-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-700">
+              <p className="inline-flex items-center gap-2 rounded-sm border border-primary-200/70 bg-primary-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-700">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 {roleLabel} Workspace
               </p>
@@ -62,8 +63,8 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
               <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+              <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {new Date().toLocaleDateString()}
               </span>
