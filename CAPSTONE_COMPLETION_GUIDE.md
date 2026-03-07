@@ -159,11 +159,11 @@ During defense, highlight:
 
 ## 9) Immediate next coding tasks for this repository
 
-1. Add missing resources: `StudentResource`, `AcademicYearResource`, `SchoolResource`.
-2. Create dashboard widgets for key KPIs.
-3. Add seeders for users/roles/schools/sections/students.
-4. Add feature tests for role access and scoped data.
-5. Add tests for `UserRoleResolver` alias/normalization behavior.
+1. Add feature and policy tests for role-based access and scoped data.
+2. Implement production-grade export flows (PDF and Excel) matching division templates.
+3. Add API endpoints for future mobile/reporting integrations.
+4. Add notification rules for at-risk and dropout-status changes.
+5. Prepare deployment profile (env hardening, queue workers, backups, monitoring).
 
 ---
 
@@ -175,3 +175,4 @@ To align this guide exactly with your adviser requirements, add either:
 - screenshots of the main objectives/chapters,
 
 then this guide can be converted into a fully customized implementation checklist.
+

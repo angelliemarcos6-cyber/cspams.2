@@ -14,8 +14,8 @@ class UserRoleResolver
      * @var array<string, array<int, string>>
      */
     private const ROLE_ALIASES = [
-        self::DIVISION_ADMIN => ['division_admin', 'Division Admin', 'division admin'],
-        self::MONITOR => ['monitor', 'Monitor', 'school monitor', 'School Monitor'],
+        self::DIVISION_ADMIN => ['division_admin', 'Division Admin', 'division admin', 'chief', 'Chief'],
+        self::MONITOR => ['monitor', 'Monitor', 'school monitor', 'School Monitor', 'division monitor', 'Division Monitor'],
         self::SCHOOL_HEAD => ['school_head', 'School Head', 'school head', 'school_administrator', 'School Administrator'],
     ];
 
@@ -52,17 +52,23 @@ class UserRoleResolver
     public static function loginTabConfig(): array
     {
         return [
+            self::DIVISION_ADMIN => [
+                'label' => 'Division Chief',
+                'note' => 'Division Chief account: full city-wide analytics and governance access.',
+                'submit' => 'Sign in as Division Chief',
+                'forgot' => 'Please contact the system owner or development team for Division Chief credential reset.',
+            ],
             self::MONITOR => [
-                'label' => 'School Monitor',
-                'note' => 'Monitor account: use your assigned DepEd credentials to access division monitoring tools.',
-                'submit' => 'Sign in as School Monitor',
-                'forgot' => 'Please contact the SMM&E unit for password reset assistance.',
+                'label' => 'Division Monitor',
+                'note' => 'Monitor account: view synchronized district and school performance dashboards.',
+                'submit' => 'Sign in as Division Monitor',
+                'forgot' => 'Please contact the SMM&E unit for monitor password reset assistance.',
             ],
             self::SCHOOL_HEAD => [
                 'label' => 'School Administrator',
-                'note' => 'School Administrator account: sign in with credentials coordinated through your School Monitor.',
+                'note' => 'School Administrator account: encode and manage your school learner records and submissions.',
                 'submit' => 'Sign in as School Administrator',
-                'forgot' => 'For School Administrators: please request your School Monitor to reset your password. School Monitors can manage administrator password resets.',
+                'forgot' => 'For School Administrators: please request your Division Monitor or SMM&E unit to reset your password.',
             ],
         ];
     }
@@ -72,6 +78,6 @@ class UserRoleResolver
      */
     public static function loginRoles(): array
     {
-        return [self::MONITOR, self::SCHOOL_HEAD];
+        return [self::DIVISION_ADMIN, self::MONITOR, self::SCHOOL_HEAD];
     }
 }

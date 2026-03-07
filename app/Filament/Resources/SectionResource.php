@@ -29,12 +29,11 @@ class SectionResource extends Resource
             ->schema([
                 Forms\Components\Select::make('school_id')
                     ->relationship('school', 'name')
-                    ->required(fn (): bool => static::isDivisionLevelUser())
+                    ->required(fn (): bool => static::isDivisionAdminUser())
                     ->searchable()
                     ->preload()
-                    ->visible(fn (): bool => static::isDivisionLevelUser()),
+                    ->visible(fn (): bool => static::isDivisionAdminUser()),
 
-                // For School Heads: server-side mutation enforces this value during save.
                 Forms\Components\Hidden::make('school_id')
                     ->default(fn (): ?int => auth()->user()?->school_id)
                     ->dehydrated(fn (): bool => static::isSchoolHeadUser()),
@@ -143,12 +142,12 @@ class SectionResource extends Resource
 
     public static function canCreate(): bool
     {
-        return static::canViewAny();
+        return static::isDivisionAdminUser() || static::isSchoolHeadUser();
     }
 
     public static function canEdit(Model $record): bool
     {
-        if (static::isDivisionLevelUser()) {
+        if (static::isDivisionAdminUser()) {
             return true;
         }
 
@@ -158,18 +157,23 @@ class SectionResource extends Resource
 
     public static function canDelete(Model $record): bool
     {
-        return static::canEdit($record);
+        if (static::isDivisionAdminUser()) {
+            return true;
+        }
+
+        return static::isSchoolHeadUser()
+            && (int) $record->school_id === (int) auth()->user()?->school_id;
     }
 
     public static function canDeleteAny(): bool
     {
-        return static::isDivisionLevelUser();
+        return static::isDivisionAdminUser();
     }
 
     public static function getRelations(): array
     {
         return [
-            // RelationManagers\StudentsRelationManager::class, // add later if needed
+            // RelationManagers\StudentsRelationManager::class,
         ];
     }
 
@@ -185,6 +189,11 @@ class SectionResource extends Resource
     protected static function isDivisionLevelUser(): bool
     {
         return UserRoleResolver::isDivisionLevel(auth()->user());
+    }
+
+    protected static function isDivisionAdminUser(): bool
+    {
+        return UserRoleResolver::has(auth()->user(), UserRoleResolver::DIVISION_ADMIN);
     }
 
     protected static function isSchoolHeadUser(): bool

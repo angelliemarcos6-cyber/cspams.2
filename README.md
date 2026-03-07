@@ -1,7 +1,69 @@
-# cspams.2
+# CSPAMS
 
-## Capstone planning
+Centralized Student Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
 
-See `CAPSTONE_COMPLETION_GUIDE.md` for a step-by-step completion roadmap.
+## Implemented System Scope
 
-Role conventions source of truth: `app/Support/Auth/UserRoleResolver.php`.
+- Role-based login flow for `division_admin`, `monitor`, and `school_head`.
+- Master data management:
+  - Schools
+  - Academic Years
+  - Sections
+- Learner lifecycle tracking:
+  - Student records via LRN
+  - Status updates (`enrolled`, `at_risk`, `transferee`, `returning`, `dropped_out`, `completer`, `graduated`)
+  - Status history logs
+- TARGETS-MET style analytics foundation:
+  - Performance metrics catalog
+  - Student performance records by period
+- Governance and accountability:
+  - Role normalization via `app/Support/Auth/UserRoleResolver.php`
+  - Audit log storage (`audit_logs`) for create/update/delete model actions
+- Dashboard widgets:
+  - KPI overview
+  - Lifecycle status pie chart
+  - School submission snapshot table
+
+## Database and Seeders
+
+Migrations and seeders are included for:
+
+- users / sessions / password reset tokens
+- schools
+- academic_years
+- sections
+- students
+- performance_metrics
+- student_performance_records
+- student_status_logs
+- audit_logs
+- roles and permissions seeding
+- demo data seeding
+
+## Quick Start
+
+1. Install dependencies:
+   `composer install`
+2. Configure environment:
+   `cp .env.example .env` (or copy manually on Windows)
+3. Generate key:
+   `php artisan key:generate`
+4. Run migrations and seeders:
+   `php artisan migrate --seed`
+5. Serve app:
+   `php artisan serve`
+
+## Demo Accounts (after seeding)
+
+- Division Chief: `chief@cspams.local` / `password123`
+- Division Monitor: `monitor@cspams.local` / `password123`
+- School Heads:
+  - `schoolhead1@cspams.local` / `password123`
+  - `schoolhead2@cspams.local` / `password123`
+  - `schoolhead3@cspams.local` / `password123`
+
+## Role Convention
+
+Source of truth for role aliases and login-tab metadata:
+
+- `app/Support/Auth/UserRoleResolver.php`

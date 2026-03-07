@@ -1,4 +1,4 @@
-<x-filament-panels::layout.base :title="__('Sign in')">
+﻿<x-filament-panels::layout.base :title="__('Sign in')">
     @php
         $loginTabs = method_exists($this, 'getLoginTabs') ? $this->getLoginTabs() : [];
         $defaultLoginRole = method_exists($this, 'getDefaultLoginRole') ? $this->getDefaultLoginRole() : null;
@@ -158,7 +158,7 @@
 
         .csp-role-switch {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 0.4rem;
             padding: 0.32rem;
             border-radius: 0.95rem;
@@ -166,7 +166,7 @@
         }
 
         .csp-role-tab {
-            border: none;
+            min-height: 3rem;
             border-radius: 0.8rem;
             font-size: 0.93rem;
             font-weight: 700;
@@ -375,7 +375,7 @@
                         <div class="csp-brand-mark">CS</div>
                         <div>
                             <p class="csp-heading text-3xl">CSPAMS</p>
-                            <p class="text-sm">SMM&amp;E � Schools Division Office of Santiago City</p>
+                            <p class="text-sm">SMM&amp;E - Schools Division Office of Santiago City</p>
                         </div>
                     </div>
 
@@ -518,3 +518,8 @@
         </div>
     </div>
 </x-filament-panels::layout.base>
+
+
+
+
+

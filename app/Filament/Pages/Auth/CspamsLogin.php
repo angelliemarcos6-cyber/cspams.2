@@ -15,10 +15,6 @@ use Illuminate\Validation\ValidationException;
 
 class CspamsLogin extends BaseLogin
 {
-    /**
-     * Matches your actual folder:
-     * resources/views/filament/pages/auth/cspams-login.blade.php
-     */
     protected static string $view = 'filament.pages.auth.cspams-login';
 
     protected static bool $shouldRegisterNavigation = false;
@@ -34,8 +30,6 @@ class CspamsLogin extends BaseLogin
     }
 
     /**
-     * Exposed for Blade to keep tab labels/messages synced with backend roles.
-     *
      * @return array<string, array<string, string>>
      */
     public function getLoginTabs(): array
@@ -48,9 +42,6 @@ class CspamsLogin extends BaseLogin
         return UserRoleResolver::MONITOR;
     }
 
-    /**
-     * Ensure Blade $wire.set('data.role', ...) works.
-     */
     public function form(Form $form): Form
     {
         return $form
@@ -58,9 +49,6 @@ class CspamsLogin extends BaseLogin
             ->statePath('data');
     }
 
-    /**
-     * Login form schema for CSPAMS.
-     */
     protected function getFormSchema(): array
     {
         return [
@@ -91,9 +79,6 @@ class CspamsLogin extends BaseLogin
         ];
     }
 
-    /**
-     * Redirect after login depending on role.
-     */
     protected function getRedirectUrl(): string
     {
         $user = Filament::auth()->user();
@@ -115,9 +100,6 @@ class CspamsLogin extends BaseLogin
         return url('/admin');
     }
 
-    /**
-     * Enforce that chosen tab matches account role.
-     */
     public function authenticate(): ?LoginResponse
     {
         $response = parent::authenticate();
@@ -126,7 +108,8 @@ class CspamsLogin extends BaseLogin
         $user = Filament::auth()->user();
 
         $roleOk = match ($rolePicked) {
-            UserRoleResolver::MONITOR => UserRoleResolver::isDivisionLevel($user),
+            UserRoleResolver::DIVISION_ADMIN => UserRoleResolver::has($user, UserRoleResolver::DIVISION_ADMIN),
+            UserRoleResolver::MONITOR => UserRoleResolver::has($user, UserRoleResolver::MONITOR),
             UserRoleResolver::SCHOOL_HEAD => UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD),
             default => false,
         };
@@ -138,7 +121,6 @@ class CspamsLogin extends BaseLogin
             request()->session()->regenerateToken();
 
             throw ValidationException::withMessages([
-                // Filament login form is under "data"
                 'data.email' => 'This account does not match the selected role tab.',
             ]);
         }
@@ -148,7 +130,7 @@ class CspamsLogin extends BaseLogin
 
     private function selectedRole(): string
     {
-        $state = $this->form->getState(); // because statePath('data')
+        $state = $this->form->getState();
 
         return UserRoleResolver::normalizeLoginRole($state['role'] ?? null);
     }
