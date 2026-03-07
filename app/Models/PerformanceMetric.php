@@ -39,4 +39,9 @@ class PerformanceMetric extends Model
     {
         return $this->hasMany(StudentPerformanceRecord::class);
     }
+
+    public function indicatorSubmissionItems(): HasMany
+    {
+        return $this->hasMany(IndicatorSubmissionItem::class);
+    }
 }

@@ -17,6 +17,11 @@ This guide aligns the codebase with a finishable, defensible capstone scope.
   - submit for validation
   - monitor validation/return
   - full submission history trail
+- Indicator compliance API workflow:
+  - school-level indicator package encoding
+  - submit to monitor
+  - monitor validation/return
+  - full submission history trail
 
 ## 2) Recommended Defense Scope
 
@@ -26,7 +31,8 @@ Focus on one complete workflow chain:
 2. School/learner encoding and status transitions
 3. KPI computation and dashboard monitoring
 4. SF-1/SF-5 generation, submission, validation, and history
-5. Export/report outputs for decision support
+5. Indicator compliance submission and monitor review
+6. Export/report outputs for decision support
 
 ## 3) Role Matrix (Operational)
 
@@ -56,6 +62,8 @@ New digital forms workflow entities:
 
 - `sf1_submissions`
 - `sf5_submissions`
+- `indicator_submissions`
+- `indicator_submission_items`
 - `form_submission_histories`
 
 ## 5) Suggested Final Sprint Priorities

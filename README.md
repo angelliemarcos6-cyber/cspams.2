@@ -53,6 +53,22 @@ Role flow:
 - `school_head`: generate + submit own-school forms
 - `monitor`: division-wide visibility + validate/return
 
+## Indicator Compliance Workflow (API)
+
+Implemented API workflow for school-level indicator compliance packages:
+
+- `GET /api/indicators/submissions`
+- `POST /api/indicators/submissions`
+- `GET /api/indicators/submissions/{submission}`
+- `POST /api/indicators/submissions/{submission}/submit`
+- `POST /api/indicators/submissions/{submission}/review`
+- `GET /api/indicators/submissions/{submission}/history`
+
+Role flow:
+
+- `school_head`: encode indicators for own school and submit to monitor
+- `monitor`: division-wide visibility and validate/return indicator submissions
+
 ## Database and Seeders
 
 Migrations and seeders include:
@@ -68,6 +84,8 @@ Migrations and seeders include:
 - audit_logs
 - sf1_submissions
 - sf5_submissions
+- indicator_submissions
+- indicator_submission_items
 - form_submission_histories
 - roles/permissions and demo data
 

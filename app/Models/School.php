@@ -62,4 +62,9 @@ class School extends Model
     {
         return $this->hasMany(Student::class);
     }
+
+    public function indicatorSubmissions(): HasMany
+    {
+        return $this->hasMany(IndicatorSubmission::class);
+    }
 }

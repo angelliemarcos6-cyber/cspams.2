@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FormSubmissionController;
+use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\SchoolRecordController;
 use Illuminate\Support\Facades\Route;
 
@@ -33,4 +34,13 @@ Route::middleware('auth:sanctum')->prefix('forms')->group(function (): void {
     Route::post('/sf5/{submission}/submit', [FormSubmissionController::class, 'submitSf5']);
     Route::post('/sf5/{submission}/validate', [FormSubmissionController::class, 'validateSf5']);
     Route::get('/sf5/{submission}/history', [FormSubmissionController::class, 'sf5History']);
+});
+
+Route::middleware('auth:sanctum')->prefix('indicators')->group(function (): void {
+    Route::get('/submissions', [IndicatorSubmissionController::class, 'index']);
+    Route::post('/submissions', [IndicatorSubmissionController::class, 'store']);
+    Route::get('/submissions/{submission}', [IndicatorSubmissionController::class, 'show']);
+    Route::post('/submissions/{submission}/submit', [IndicatorSubmissionController::class, 'submit']);
+    Route::post('/submissions/{submission}/review', [IndicatorSubmissionController::class, 'review']);
+    Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
 });
