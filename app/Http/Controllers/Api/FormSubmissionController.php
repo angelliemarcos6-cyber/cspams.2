@@ -12,6 +12,7 @@ use App\Models\FormSubmissionHistory;
 use App\Models\Sf1Submission;
 use App\Models\Sf5Submission;
 use App\Models\User;
+use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Forms\FormSubmissionHistoryLogger;
@@ -393,8 +394,7 @@ class FormSubmissionController extends Controller
 
     private function requireUser(Request $request): User
     {
-        /** @var User|null $user */
-        $user = $request->user();
+        $user = ApiUserResolver::fromRequest($request);
         abort_if(! $user, Response::HTTP_UNAUTHORIZED, 'Unauthenticated.');
 
         return $user;

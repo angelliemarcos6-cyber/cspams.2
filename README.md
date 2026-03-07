@@ -1,44 +1,63 @@
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-# CSPAMS
+﻿# CSPAMS
 
 Centralized Student Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
 
-## Implemented System Scope
+## Implemented Scope
 
-- Role-based login flow for `monitor` and `school_head`.
-- Master data management:
+- Role-based login (`monitor`, `school_head`) with custom Filament auth page.
+- Master data and learner management:
   - Schools
   - Academic Years
   - Sections
+  - Students (LRN-based tracking)
 - Learner lifecycle tracking:
-  - Student records via LRN
-  - Status updates (`enrolled`, `at_risk`, `transferee`, `returning`, `dropped_out`, `completer`, `graduated`)
-  - Status history logs
-- TARGETS-MET style analytics foundation:
-  - Performance metrics catalog
-  - Student performance records by period
-- Governance and accountability:
-  - Role normalization via `app/Support/Auth/UserRoleResolver.php`
-  - Audit log storage (`audit_logs`) for create/update/delete model actions
-- Dashboard widgets:
+  - Status management (`enrolled`, `at_risk`, `transferee`, `returning`, `dropped_out`, `completer`, `graduated`)
+  - Status timeline logs
+- Performance tracking:
+  - Metric catalog
+  - Learner performance records by period
+- Reports:
+  - Filterable school and performance summary previews
+  - CSV exports (summary and selected records)
+- Governance and security:
+  - Spatie role/permission integration
+  - Scoped access by role and school
+  - Audit logging for create/update/delete model actions
+- Dashboard analytics:
   - KPI overview
-  - Lifecycle status pie chart
-  - School submission snapshot table
-- Capstone reporting support:
-  - Reports Center page with filterable school/performance summary exports (CSV)
-  - Bulk CSV export for selected learner and performance records
-  - Learner-level status timeline and performance-history relation views
-- Expanded monitoring evidence widgets:
-  - At-risk watchlist table
-  - 6-month status transition trend chart
+  - Lifecycle distribution
+  - Submission snapshot
+  - At-risk watchlist
+  - Status transition trend
+- API sync layer:
+  - Sanctum authentication
+  - Dashboard records endpoints with sync metadata and ETag-based conditional refresh
+
+## Digital SF-1 / SF-5 Workflow (API)
+
+Implemented API workflow for auto-generated forms, submission, validation, and history:
+
+- `GET /api/forms/sf1`
+- `POST /api/forms/sf1/generate`
+- `POST /api/forms/sf1/{submission}/submit`
+- `POST /api/forms/sf1/{submission}/validate`
+- `GET /api/forms/sf1/{submission}/history`
+- `GET /api/forms/sf5`
+- `POST /api/forms/sf5/generate`
+- `POST /api/forms/sf5/{submission}/submit`
+- `POST /api/forms/sf5/{submission}/validate`
+- `GET /api/forms/sf5/{submission}/history`
+
+Role flow:
+
+- `school_head`: generate + submit own-school forms
+- `monitor`: division-wide visibility + validate/return
 
 ## Database and Seeders
 
-Migrations and seeders are included for:
+Migrations and seeders include:
 
-- users / sessions / password reset tokens
+- users, auth tokens, sessions, password reset tokens
 - schools
 - academic_years
 - sections
@@ -47,27 +66,29 @@ Migrations and seeders are included for:
 - student_performance_records
 - student_status_logs
 - audit_logs
-- roles and permissions seeding
-- demo data seeding
+- sf1_submissions
+- sf5_submissions
+- form_submission_histories
+- roles/permissions and demo data
 
 ## Quick Start
 
 Prerequisites:
 
-- PHP 8.2+ with extensions: `openssl`, `intl`, `fileinfo`, `zip`, `pdo_sqlite`, `sqlite3`
+- PHP 8.2+
 - Composer 2.x
 - Node.js 18+
 
-1. Install dependencies:
-   `composer install`
-2. Configure environment:
-   `cp .env.example .env` (or copy manually on Windows)
-3. Generate key:
-   `php artisan key:generate`
+1. Install backend dependencies:
+   - `composer install`
+2. Prepare environment:
+   - copy `.env.example` to `.env`
+3. Generate app key:
+   - `php artisan key:generate`
 4. Run migrations and seeders:
-   `php artisan migrate --seed`
-5. Serve app:
-   `php artisan serve`
+   - `php artisan migrate --seed`
+5. Serve backend:
+   - `php artisan serve`
 
 Frontend (new terminal):
 
@@ -75,34 +96,9 @@ Frontend (new terminal):
 2. `npm install`
 3. `npm run dev`
 
-## Frontend API Sync (React Dashboard)
+## Demo Accounts
 
-The `frontend/` app now authenticates and reads/writes records from Laravel API endpoints:
-
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
-- `GET /api/dashboard/records`
-- `POST /api/dashboard/records`
-- `PUT /api/dashboard/records/{school}`
-
-Synchronization behavior:
-
-- Dashboards auto-refresh every 12 seconds
-- Dashboards auto-refresh when tab focus returns or network reconnects
-- Manual refresh is available in both monitor and school administrator dashboards
-- Records sync now uses conditional requests (`If-None-Match` / `ETag`) to avoid full payload downloads when there are no backend changes
-
-Setup:
-
-1. Copy `frontend/.env.example` to `frontend/.env`
-2. Set `VITE_API_BASE_URL` (default: `http://127.0.0.1:8000`)
-3. Run:
-   - `cd frontend`
-   - `npm install`
-   - `npm run dev`
-
-## Demo Accounts (after seeding)
+After seeding:
 
 - Division Monitor: `monitor@cspams.local` / `password123`
 - School Heads:
@@ -110,29 +106,7 @@ Setup:
   - `schoolhead2@cspams.local` / `password123`
   - `schoolhead3@cspams.local` / `password123`
 
-## Role Convention
+## Additional Docs
 
-Source of truth for role aliases and login-tab metadata:
-
-- `app/Support/Auth/UserRoleResolver.php`
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-# cspams.2
-
-## Capstone planning
-
-See `CAPSTONE_COMPLETION_GUIDE.md` for a step-by-step completion roadmap.
-## User manual
-
-See `USER_MANUAL.md` for end-user instructions (login, navigation, section management, and troubleshooting).
-
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
+- [CAPSTONE_COMPLETION_GUIDE.md](C:/Users/Angie/Documents/New%20project/cspams.2/CAPSTONE_COMPLETION_GUIDE.md)
+- [USER_MANUAL.md](C:/Users/Angie/Documents/New%20project/cspams.2/USER_MANUAL.md)

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\LoginRequest;
 use App\Models\User;
+use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,8 +39,7 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        /** @var User|null $user */
-        $user = $request->user();
+        $user = ApiUserResolver::fromRequest($request);
 
         if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
@@ -58,8 +58,7 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        /** @var User|null $user */
-        $user = $request->user();
+        $user = ApiUserResolver::fromRequest($request);
         if ($user) {
             $user->currentAccessToken()?->delete();
         }

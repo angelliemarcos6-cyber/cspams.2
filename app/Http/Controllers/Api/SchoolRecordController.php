@@ -9,6 +9,7 @@ use App\Models\School;
 use App\Models\Section;
 use App\Models\Student;
 use App\Models\User;
+use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,8 +22,7 @@ class SchoolRecordController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection|JsonResponse
     {
-        /** @var User|null $user */
-        $user = $request->user();
+        $user = ApiUserResolver::fromRequest($request);
         if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
         }
@@ -144,8 +144,7 @@ class SchoolRecordController extends Controller
 
     private function requireSchoolHead(Request $request): User
     {
-        /** @var User|null $user */
-        $user = $request->user();
+        $user = ApiUserResolver::fromRequest($request);
         abort_if(! $user, Response::HTTP_UNAUTHORIZED, 'Unauthenticated.');
         abort_if(
             ! UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD),
