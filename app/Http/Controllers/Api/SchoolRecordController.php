@@ -24,18 +24,21 @@ class SchoolRecordController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
         }
 
+        $scope = UserRoleResolver::has($user, UserRoleResolver::MONITOR) ? 'division' : 'school';
+        $scopeKey = $scope === 'division' ? 'division:all' : 'school:unassigned';
         $baseQuery = School::query();
 
         if (UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)) {
-            if (! $user->school_id) {
-                return SchoolRecordResource::collection(collect());
+            if ($user->school_id) {
+                $scopeKey = 'school:' . $user->school_id;
+                $baseQuery->whereKey($user->school_id);
+            } else {
+                $baseQuery->whereRaw('1 = 0');
             }
-            $baseQuery->whereKey($user->school_id);
         } elseif (! UserRoleResolver::has($user, UserRoleResolver::MONITOR)) {
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
-        $scope = UserRoleResolver::has($user, UserRoleResolver::MONITOR) ? 'division' : 'school';
         $syncProbe = (clone $baseQuery)
             ->selectRaw('COUNT(*) as aggregate_count')
             ->selectRaw('MAX(updated_at) as latest_updated_at')
@@ -50,13 +53,14 @@ class SchoolRecordController extends Controller
 
         $etag = sha1(implode('|', [
             $scope,
+            $scopeKey,
             (string) $recordCount,
             $latestAt?->format('U.u') ?? '0',
         ]));
 
         $incomingEtag = trim((string) $request->header('If-None-Match'));
         if ($incomingEtag !== '' && trim($incomingEtag, '"') === $etag) {
-            return $this->buildNotModifiedResponse($etag, $scope, $recordCount, $latestAt);
+            return $this->buildNotModifiedResponse($etag, $scope, $scopeKey, $recordCount, $latestAt);
         }
 
         $records = (clone $baseQuery)
@@ -70,6 +74,7 @@ class SchoolRecordController extends Controller
             'meta' => [
                 'syncedAt' => now()->toISOString(),
                 'scope' => $scope,
+                'scopeKey' => $scopeKey,
                 'recordCount' => $records->count(),
             ],
         ]);
@@ -81,6 +86,7 @@ class SchoolRecordController extends Controller
         }
 
         $response->headers->set('X-Sync-Scope', $scope);
+        $response->headers->set('X-Sync-Scope-Key', $scopeKey);
         $response->headers->set('X-Sync-Record-Count', (string) $recordCount);
         $response->headers->set('X-Sync-Etag', $etag);
 
@@ -174,7 +180,7 @@ class SchoolRecordController extends Controller
         $school->save();
     }
 
-    private function buildNotModifiedResponse(string $etag, string $scope, int $recordCount, ?Carbon $latestAt): JsonResponse
+    private function buildNotModifiedResponse(string $etag, string $scope, string $scopeKey, int $recordCount, ?Carbon $latestAt): JsonResponse
     {
         $response = response()->json(null, Response::HTTP_NOT_MODIFIED);
         $response->setEtag($etag);
@@ -183,6 +189,7 @@ class SchoolRecordController extends Controller
         }
 
         $response->headers->set('X-Sync-Scope', $scope);
+        $response->headers->set('X-Sync-Scope-Key', $scopeKey);
         $response->headers->set('X-Sync-Record-Count', (string) $recordCount);
         $response->headers->set('X-Sync-Etag', $etag);
         $response->headers->set('X-Synced-At', now()->toISOString());

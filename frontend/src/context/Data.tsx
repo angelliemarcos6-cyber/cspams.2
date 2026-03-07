@@ -20,6 +20,7 @@ interface SchoolRecordsResponse {
   meta?: {
     syncedAt?: string;
     scope?: string;
+    scopeKey?: string;
     recordCount?: number;
   };
 }
@@ -57,6 +58,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const syncInFlightRef = useRef(false);
   const etagRef = useRef<string>("");
+  const previousTokenRef = useRef<string>("");
+  const syncGenerationRef = useRef(0);
+
+  useEffect(() => {
+    if (previousTokenRef.current === token) {
+      return;
+    }
+
+    previousTokenRef.current = token;
+    syncGenerationRef.current += 1;
+    syncInFlightRef.current = false;
+    etagRef.current = "";
+    setRecords([]);
+    setError("");
+    setLastSyncedAt(null);
+    setSyncScope(null);
+    setSyncStatus("idle");
+  }, [token]);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
@@ -86,6 +105,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       syncInFlightRef.current = true;
+      const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
         setIsLoading(true);
@@ -103,23 +123,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
           etagRef.current = nextEtag.replace(/^W\//, "").replace(/"/g, "");
         }
 
+        if (requestGeneration !== syncGenerationRef.current) {
+          return;
+        }
+
+        const scopeFromHeaders = normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+
         if (response.status === 304) {
           setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
-          setSyncScope(normalizeScope(response.headers.get("X-Sync-Scope") || undefined));
+          if (scopeFromHeaders) {
+            setSyncScope(scopeFromHeaders);
+          }
           setSyncStatus("up_to_date");
           return;
         }
 
         const payload = response.data;
-        setRecords(payload?.data || []);
+        setRecords(Array.isArray(payload?.data) ? payload.data : []);
         setLastSyncedAt(payload?.meta?.syncedAt ?? new Date().toISOString());
-        setSyncScope(normalizeScope(payload?.meta?.scope));
+        setSyncScope(normalizeScope(payload?.meta?.scope) ?? scopeFromHeaders);
         setSyncStatus("updated");
       } catch (err) {
+        if (requestGeneration !== syncGenerationRef.current) {
+          return;
+        }
         await handleApiError(err);
       } finally {
-        syncInFlightRef.current = false;
-        if (!silent) {
+        if (requestGeneration === syncGenerationRef.current) {
+          syncInFlightRef.current = false;
+        }
+        if (!silent && requestGeneration === syncGenerationRef.current) {
           setIsLoading(false);
         }
       }
@@ -145,6 +178,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           body: record,
         });
         await syncRecords(true);
+        setSyncStatus("updated");
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -169,6 +203,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           body: updates,
         });
         await syncRecords(true);
+        setSyncStatus("updated");
       } catch (err) {
         await handleApiError(err);
         throw err;
