@@ -15,6 +15,7 @@ import {
   Search,
   TrendingUp,
   Users,
+  X,
 } from "lucide-react";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
@@ -529,10 +530,23 @@ export function MonitorDashboard() {
             </button>
           ))}
         </div>
-        {showNavigatorManual && (
-          <article className="mt-3 rounded-sm border border-primary-100 bg-white p-3">
+      </section>
+
+      {showNavigatorManual && (
+        <aside className="fixed right-4 top-24 z-[70] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Monitor Navigator Manual</p>
-            <ol className="mt-2 grid gap-2 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setShowNavigatorManual(false)}
+              className="inline-flex items-center rounded-sm border border-slate-200 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+              aria-label="Close manual"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="max-h-[72vh] overflow-y-auto p-3">
+            <ol className="grid gap-2">
               {MONITOR_NAVIGATOR_MANUAL.map((step) => (
                 <li key={step.id} className="dashboard-subtle-panel p-2.5">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{step.title}</p>
@@ -540,9 +554,9 @@ export function MonitorDashboard() {
                 </li>
               ))}
             </ol>
-          </article>
-        )}
-      </section>
+          </div>
+        </aside>
+      )}
 
       <section className="dashboard-shell mb-5 rounded-sm p-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Filters</h2>
