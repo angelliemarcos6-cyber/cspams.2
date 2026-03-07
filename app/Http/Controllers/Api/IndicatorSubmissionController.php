@@ -7,8 +7,10 @@ use App\Http\Requests\Api\ReviewIndicatorSubmissionRequest;
 use App\Http\Requests\Api\UpsertIndicatorSubmissionRequest;
 use App\Http\Resources\FormSubmissionHistoryResource;
 use App\Http\Resources\IndicatorSubmissionResource;
+use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
+use App\Models\PerformanceMetric;
 use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
@@ -24,6 +26,46 @@ use Symfony\Component\HttpFoundation\Response;
 
 class IndicatorSubmissionController extends Controller
 {
+    public function academicYears(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $years = AcademicYear::query()
+            ->orderByDesc('is_current')
+            ->orderByDesc('start_date')
+            ->get(['id', 'name', 'is_current']);
+
+        return response()->json([
+            'data' => $years->map(static fn (AcademicYear $year): array => [
+                'id' => (string) $year->id,
+                'name' => $year->name,
+                'isCurrent' => (bool) $year->is_current,
+            ])->values(),
+        ]);
+    }
+
+    public function metrics(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $metrics = PerformanceMetric::query()
+            ->where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'category']);
+
+        return response()->json([
+            'data' => $metrics->map(static fn (PerformanceMetric $metric): array => [
+                'id' => (string) $metric->id,
+                'code' => $metric->code,
+                'name' => $metric->name,
+                'category' => is_string($metric->category)
+                    ? $metric->category
+                    : $metric->category->value,
+            ])->values(),
+        ]);
+    }
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $user = $this->requireUser($request);

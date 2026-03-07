@@ -24,6 +24,7 @@ import { RegionCard } from "@/components/RegionCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
+import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
 import { useData } from "@/context/Data";
 import type { SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 import { PH_REGIONS } from "@/constants/regions";
@@ -336,6 +337,8 @@ export function SchoolAdminDashboard() {
           </div>
         </div>
       </section>
+
+      <SchoolIndicatorPanel />
 
       <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
         <StatusPieChart data={statusDistribution} />

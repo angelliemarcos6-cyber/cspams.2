@@ -1,6 +1,8 @@
 export type UserRole = "school_head" | "monitor" | null;
 
 export type SchoolStatus = "active" | "inactive" | "pending";
+export type WorkflowStatus = "draft" | "submitted" | "validated" | "returned";
+export type IndicatorComplianceStatus = "met" | "below_target";
 
 export interface SchoolRecord {
   id: string;
@@ -65,4 +67,72 @@ export interface SyncAlert {
   metric: string | null;
   value: number | null;
   threshold: number | null;
+}
+
+export interface IndicatorMetric {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+}
+
+export interface AcademicYearOption {
+  id: string;
+  name: string;
+  isCurrent: boolean;
+}
+
+export interface IndicatorSubmissionItem {
+  id: string;
+  metric?: IndicatorMetric;
+  targetValue: number;
+  actualValue: number;
+  varianceValue: number;
+  complianceStatus: IndicatorComplianceStatus | string;
+  remarks: string | null;
+}
+
+export interface IndicatorSubmissionSummary {
+  totalIndicators: number;
+  metIndicators: number;
+  belowTargetIndicators: number;
+  complianceRatePercent: number;
+}
+
+export interface IndicatorSubmission {
+  id: string;
+  formType: "indicator" | string;
+  status: WorkflowStatus | string;
+  statusLabel: string;
+  reportingPeriod: string | null;
+  version: number;
+  school?: {
+    id: string;
+    schoolCode: string;
+    name: string;
+  };
+  academicYear?: {
+    id: string;
+    name: string;
+  };
+  notes: string | null;
+  reviewNotes: string | null;
+  summary: IndicatorSubmissionSummary;
+  indicators: IndicatorSubmissionItem[];
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface IndicatorSubmissionPayload {
+  academicYearId: number;
+  reportingPeriod?: string | null;
+  notes?: string | null;
+  indicators: Array<{
+    metricId: number;
+    targetValue: number;
+    actualValue: number;
+    remarks?: string | null;
+  }>;
 }

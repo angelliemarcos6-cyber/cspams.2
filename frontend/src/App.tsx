@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { LoaderCircle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
+import { IndicatorDataProvider } from "@/context/IndicatorData";
 import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
@@ -86,9 +87,11 @@ export function App() {
   return (
     <AuthProvider>
       <DataProvider>
-        <HashRouter>
-          <AppRoutes />
-        </HashRouter>
+        <IndicatorDataProvider>
+          <HashRouter>
+            <AppRoutes />
+          </HashRouter>
+        </IndicatorDataProvider>
       </DataProvider>
     </AuthProvider>
   );

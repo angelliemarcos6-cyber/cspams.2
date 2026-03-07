@@ -37,6 +37,8 @@ Route::middleware('auth:sanctum')->prefix('forms')->group(function (): void {
 });
 
 Route::middleware('auth:sanctum')->prefix('indicators')->group(function (): void {
+    Route::get('/academic-years', [IndicatorSubmissionController::class, 'academicYears']);
+    Route::get('/metrics', [IndicatorSubmissionController::class, 'metrics']);
     Route::get('/submissions', [IndicatorSubmissionController::class, 'index']);
     Route::post('/submissions', [IndicatorSubmissionController::class, 'store']);
     Route::get('/submissions/{submission}', [IndicatorSubmissionController::class, 'show']);
