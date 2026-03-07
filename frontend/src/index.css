@@ -1,0 +1,59 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    "Plus Jakarta Sans", "Segoe UI", "Helvetica Neue", "Arial", ui-sans-serif,
+    system-ui, sans-serif;
+
+  --color-page-bg: #edf3f9;
+  --color-primary: #04508c;
+  --color-primary-50: #e8f1fa;
+  --color-primary-100: #c7ddf2;
+  --color-primary-200: #97bee5;
+  --color-primary-300: #649dd8;
+  --color-primary-400: #2f7dc4;
+  --color-primary-500: #04508c;
+  --color-primary-600: #034477;
+  --color-primary-700: #033a66;
+  --color-primary-800: #022e50;
+  --color-primary-900: #011e34;
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--color-page-bg);
+  background-image:
+    radial-gradient(circle at 15% 12%, rgb(4 80 140 / 0.09), transparent 28%),
+    radial-gradient(circle at 85% 4%, rgb(56 189 248 / 0.13), transparent 30%);
+  color: #0f172a;
+  font-family: var(--font-sans);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@keyframes fadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-slide {
+  animation: fadeSlide 380ms ease-out;
+}
