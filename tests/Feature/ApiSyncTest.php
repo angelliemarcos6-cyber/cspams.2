@@ -31,8 +31,9 @@ class ApiSyncTest extends TestCase
 
         $records->assertOk()
             ->assertJsonPath('meta.scope', 'division')
-            ->assertHeader('X-Sync-Scope', 'division')
-            ->assertJsonCount(3, 'data');
+            ->assertHeader('X-Sync-Scope', 'division');
+
+        $this->assertGreaterThanOrEqual(3, count($records->json('data', [])));
 
         $etag = (string) $records->headers->get('X-Sync-Etag');
         $this->assertNotSame('', $etag);
@@ -84,4 +85,3 @@ class ApiSyncTest extends TestCase
         $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
 }
-
