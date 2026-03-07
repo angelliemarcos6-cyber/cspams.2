@@ -1,0 +1,50 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: cspams-backend
+    working_dir: /var/www/html
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/var/www/html
+      - composer-cache:/tmp/composer-cache
+    environment:
+      COMPOSER_HOME: /tmp/composer-cache
+      APP_ENV: local
+      APP_URL: http://127.0.0.1:8000
+    command: >
+      sh -lc "
+      if [ ! -f .env ]; then cp .env.example .env; fi &&
+      if [ ! -f vendor/autoload.php ]; then composer install --no-interaction --prefer-dist; fi &&
+      if ! grep -q '^APP_KEY=base64:' .env; then php artisan key:generate --force; fi &&
+      mkdir -p database &&
+      touch database/database.sqlite &&
+      php artisan migrate --force &&
+      php artisan serve --host=0.0.0.0 --port=8000
+      "
+
+  frontend:
+    image: node:20-alpine
+    container_name: cspams-frontend
+    working_dir: /app
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    environment:
+      VITE_API_BASE_URL: http://127.0.0.1:8000
+      CHOKIDAR_USEPOLLING: "true"
+    command: >
+      sh -lc "
+      npm install &&
+      npm run dev -- --host 0.0.0.0 --port 5173
+      "
+
+volumes:
+  composer-cache:
+  frontend-node-modules:
