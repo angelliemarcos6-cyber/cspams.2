@@ -145,7 +145,11 @@ class DemoDataSeeder extends Seeder
             StudentStatus::TRANSFEREE,
         ];
 
+        $maxExistingLrn = Student::query()->max('lrn');
         $counter = 100000000000;
+        if (is_string($maxExistingLrn) && ctype_digit($maxExistingLrn)) {
+            $counter = max($counter, ((int) $maxExistingLrn) + 1);
+        }
 
         foreach ($schoolModels as $school) {
             $sections = [];
