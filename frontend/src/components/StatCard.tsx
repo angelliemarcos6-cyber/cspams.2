@@ -31,14 +31,14 @@ export function StatCard({ label, value, icon, tone = "primary" }: StatCardProps
   }[tone];
 
   return (
-    <article className={cn("group relative overflow-hidden rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md", toneMap.wrap)}>
+    <article className={cn("group relative overflow-hidden rounded-sm border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md", toneMap.wrap)}>
       <div className={cn("absolute left-0 top-0 h-full w-1.5", toneMap.accent)} />
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className={cn("pl-2 text-xs font-semibold uppercase tracking-wide", toneMap.label)}>{label}</p>
           <p className="mt-2 text-3xl font-extrabold text-slate-900">{value}</p>
         </div>
-        <span className={cn("grid h-11 w-11 place-items-center rounded-xl shadow-sm", toneMap.icon)}>{icon}</span>
+        <span className={cn("grid h-11 w-11 place-items-center rounded-sm shadow-sm", toneMap.icon)}>{icon}</span>
       </div>
     </article>
   );
