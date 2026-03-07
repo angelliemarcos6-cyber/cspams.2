@@ -14,7 +14,7 @@ class StatusTransitionTrendChart extends ChartWidget
 
     protected static ?string $maxHeight = '280px';
 
-    protected ?string $pollingInterval = '60s';
+    protected static ?string $pollingInterval = '60s';
 
     protected function getType(): string
     {

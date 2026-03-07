@@ -11,7 +11,7 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class CspamsKpiOverview extends StatsOverviewWidget
 {
-    protected ?string $pollingInterval = '30s';
+    protected static ?string $pollingInterval = '30s';
 
     /**
      * @return array<Stat>

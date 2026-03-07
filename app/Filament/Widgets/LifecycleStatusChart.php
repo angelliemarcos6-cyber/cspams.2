@@ -11,7 +11,7 @@ class LifecycleStatusChart extends ChartWidget
 {
     protected static ?string $heading = 'Learner Lifecycle Distribution';
 
-    protected ?string $pollingInterval = '30s';
+    protected static ?string $pollingInterval = '30s';
 
     protected static ?string $maxHeight = '280px';
 

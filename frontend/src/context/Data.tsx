@@ -71,6 +71,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     syncInFlightRef.current = false;
     etagRef.current = "";
     setRecords([]);
+    setIsLoading(false);
+    setIsSaving(false);
     setError("");
     setLastSyncedAt(null);
     setSyncScope(null);
@@ -96,6 +98,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (!token) {
         setRecords([]);
+        setIsLoading(false);
+        setIsSaving(false);
         setError("");
         setLastSyncedAt(null);
         setSyncScope(null);

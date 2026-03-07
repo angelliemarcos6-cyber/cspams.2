@@ -49,6 +49,12 @@ Migrations and seeders are included for:
 
 ## Quick Start
 
+Prerequisites:
+
+- PHP 8.2+ with extensions: `openssl`, `intl`, `fileinfo`, `zip`, `pdo_sqlite`, `sqlite3`
+- Composer 2.x
+- Node.js 18+
+
 1. Install dependencies:
    `composer install`
 2. Configure environment:
@@ -59,6 +65,12 @@ Migrations and seeders are included for:
    `php artisan migrate --seed`
 5. Serve app:
    `php artisan serve`
+
+Frontend (new terminal):
+
+1. `cd frontend`
+2. `npm install`
+3. `npm run dev`
 
 ## Frontend API Sync (React Dashboard)
 
