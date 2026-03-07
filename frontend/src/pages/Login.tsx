@@ -9,9 +9,9 @@ type LoginRole = Exclude<UserRole, null>;
 
 const ROLE_META: Record<LoginRole, { label: string; note: string; submit: string; loginHint: string }> = {
   school_head: {
-    label: "School Administrator",
-    note: "Use your School Code or school-head email account.",
-    submit: "Sign In as School Administrator",
+    label: "School Head",
+    note: "Use your school code or school-head email account.",
+    submit: "Sign In as School Head",
     loginHint: "School code or email",
   },
   monitor: {
@@ -85,7 +85,7 @@ export function Login() {
 
           <div className="mt-10 space-y-3">
             <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">School Administrator</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">School Head</p>
               <p className="mt-1 text-sm font-semibold">Encodes and updates assigned school records</p>
             </div>
             <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3">
@@ -117,7 +117,7 @@ export function Login() {
                 }`}
               >
                 <UserCog className="h-4 w-4" />
-                School Administrator
+                School Head
               </button>
               <button
                 type="button"

@@ -31,7 +31,18 @@ class ApiSyncTest extends TestCase
 
         $records->assertOk()
             ->assertJsonPath('meta.scope', 'division')
-            ->assertHeader('X-Sync-Scope', 'division');
+            ->assertHeader('X-Sync-Scope', 'division')
+            ->assertJsonStructure([
+                'meta' => [
+                    'targetsMet' => [
+                        'schoolsMonitored',
+                        'retentionRatePercent',
+                        'dropoutRatePercent',
+                        'completionRatePercent',
+                    ],
+                    'alerts',
+                ],
+            ]);
 
         $this->assertGreaterThanOrEqual(3, count($records->json('data', [])));
 
@@ -118,6 +129,14 @@ class ApiSyncTest extends TestCase
             ->assertJsonPath('meta.scope', 'school')
             ->assertJsonPath('meta.scopeKey', 'school:' . $schoolHead->school_id)
             ->assertJsonPath('meta.recordCount', 1)
+            ->assertJsonPath('meta.targetsMet.schoolsMonitored', 1)
+            ->assertJsonStructure([
+                'meta' => [
+                    'alerts' => [
+                        ['id', 'level', 'title', 'message'],
+                    ],
+                ],
+            ])
             ->assertJsonPath('data.id', (string) $schoolHead->school_id)
             ->assertJsonPath('data.schoolName', 'School Head 1 Synced');
     }

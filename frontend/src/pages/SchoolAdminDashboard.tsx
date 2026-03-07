@@ -89,7 +89,7 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 export function SchoolAdminDashboard() {
-  const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
+  const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -233,8 +233,8 @@ export function SchoolAdminDashboard() {
 
   return (
     <Shell
-      title="School Administrator Dashboard"
-      subtitle="Manage school records, keep status current, and submit updates for monitor review."
+      title="School Head Dashboard"
+      subtitle="Manage your school record, keep TARGETS-MET values updated, and sync alerts for monitor review."
       actions={
         <>
           <button
@@ -284,6 +284,57 @@ export function SchoolAdminDashboard() {
           icon={<TrendingUp className="h-5 w-5" />}
           tone="success"
         />
+      </section>
+
+      <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+        <div className="surface-panel rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Snapshot</h2>
+            <span className="text-xs text-slate-500">
+              {targetsMet?.generatedAt ? `Generated ${new Date(targetsMet.generatedAt).toLocaleTimeString()}` : "Waiting for data"}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Retention Rate</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.retentionRatePercent.toFixed(2)}%` : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dropout Rate</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.dropoutRatePercent.toFixed(2)}%` : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion Rate</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.completionRatePercent.toFixed(2)}%` : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">At-Risk Learners</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? targetsMet.atRiskLearners.toLocaleString() : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Teacher Ratio</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentTeacherRatio ?? "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Classroom Ratio</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentClassroomRatio ?? "--"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="surface-panel rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Sync Alerts for Action</h2>
+          <div className="mt-4 space-y-3">
+            {syncAlerts.slice(0, 4).map((alert) => (
+              <article key={alert.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{alert.level}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{alert.title}</p>
+                <p className="mt-1 text-xs text-slate-600">{alert.message}</p>
+              </article>
+            ))}
+            {syncAlerts.length === 0 && <p className="text-xs text-slate-500">No synchronized alerts yet.</p>}
+          </div>
+        </div>
       </section>
 
       <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">

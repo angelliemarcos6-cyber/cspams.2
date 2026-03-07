@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpsertSchoolRecordRequest;
 use App\Http\Resources\SchoolRecordResource;
 use App\Models\School;
+use App\Models\Section;
+use App\Models\Student;
 use App\Models\User;
 use App\Support\Auth\UserRoleResolver;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -73,6 +76,8 @@ class SchoolRecordController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
+        $targetsMet = $this->buildTargetsMetSummary(clone $baseQuery);
+        $syncAlerts = $this->buildSyncAlerts($targetsMet);
         $syncedAt = now()->toISOString();
 
         $resource = SchoolRecordResource::collection($records)->additional([
@@ -81,6 +86,8 @@ class SchoolRecordController extends Controller
                 'scope' => $scope,
                 'scopeKey' => $scopeKey,
                 'recordCount' => $records->count(),
+                'targetsMet' => $targetsMet,
+                'alerts' => $syncAlerts,
             ],
         ]);
 
@@ -175,6 +182,7 @@ class SchoolRecordController extends Controller
     private function buildMutationResponse(School $school, User $user): JsonResponse
     {
         $syncMeta = $this->buildSyncMetadataForUser($user);
+        $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);
         $syncedAt = now()->toISOString();
 
         $response = response()->json([
@@ -184,6 +192,8 @@ class SchoolRecordController extends Controller
                 'scope' => $syncMeta['scope'],
                 'scopeKey' => $syncMeta['scopeKey'],
                 'recordCount' => $syncMeta['recordCount'],
+                'targetsMet' => $targetsMetBundle['targetsMet'],
+                'alerts' => $targetsMetBundle['alerts'],
             ],
         ]);
 
@@ -253,6 +263,189 @@ class SchoolRecordController extends Controller
             'latestAt' => $latestAt,
             'etag' => $etag,
         ];
+    }
+
+    /**
+     * @return array{
+     *     targetsMet: array<string, int|float|null|string>,
+     *     alerts: array<int, array<string, int|float|string|null>>
+     * }
+     */
+    private function buildTargetsMetAndAlertsForUser(User $user): array
+    {
+        $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
+        $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
+        $baseQuery = School::query();
+
+        if ($isSchoolHead) {
+            if ($user->school_id) {
+                $baseQuery->whereKey($user->school_id);
+            } else {
+                $baseQuery->whereRaw('1 = 0');
+            }
+        } elseif (! $isMonitor) {
+            abort(Response::HTTP_FORBIDDEN, 'Forbidden.');
+        }
+
+        $targetsMet = $this->buildTargetsMetSummary($baseQuery);
+
+        return [
+            'targetsMet' => $targetsMet,
+            'alerts' => $this->buildSyncAlerts($targetsMet),
+        ];
+    }
+
+    /**
+     * @return array<string, int|float|null|string>
+     */
+    private function buildTargetsMetSummary(Builder $baseQuery): array
+    {
+        $schools = (clone $baseQuery)
+            ->select(['id', 'status', 'reported_student_count', 'reported_teacher_count'])
+            ->get();
+
+        $schoolIds = $schools->pluck('id');
+        $totalSchools = (int) $schools->count();
+        $activeSchools = (int) $schools->where('status', 'active')->count();
+        $pendingSchools = (int) $schools->where('status', 'pending')->count();
+        $inactiveSchools = (int) $schools->where('status', 'inactive')->count();
+
+        $reportedStudents = (int) $schools->sum('reported_student_count');
+        $reportedTeachers = (int) $schools->sum('reported_teacher_count');
+
+        $sectionCount = 0;
+        $statusCounts = collect();
+
+        if ($schoolIds->isNotEmpty()) {
+            $sectionCount = (int) Section::query()
+                ->whereIn('school_id', $schoolIds)
+                ->count();
+
+            $statusCounts = Student::query()
+                ->selectRaw('status, COUNT(*) as aggregate_count')
+                ->whereIn('school_id', $schoolIds)
+                ->groupBy('status')
+                ->pluck('aggregate_count', 'status')
+                ->map(static fn ($value): int => (int) $value);
+        }
+
+        $trackedLearners = (int) $statusCounts->sum();
+        $enrolledLearners = (int) ($statusCounts->get('enrolled', 0) + $statusCounts->get('returning', 0));
+        $atRiskLearners = (int) $statusCounts->get('at_risk', 0);
+        $dropoutLearners = (int) $statusCounts->get('dropped_out', 0);
+        $completerLearners = (int) ($statusCounts->get('completer', 0) + $statusCounts->get('graduated', 0));
+        $transfereeLearners = (int) $statusCounts->get('transferee', 0);
+        $retainedLearners = max($trackedLearners - $dropoutLearners, 0);
+
+        return [
+            'generatedAt' => now()->toISOString(),
+            'schoolsMonitored' => $totalSchools,
+            'activeSchools' => $activeSchools,
+            'pendingSchools' => $pendingSchools,
+            'inactiveSchools' => $inactiveSchools,
+            'reportedStudents' => $reportedStudents,
+            'reportedTeachers' => $reportedTeachers,
+            'trackedLearners' => $trackedLearners,
+            'enrolledLearners' => $enrolledLearners,
+            'atRiskLearners' => $atRiskLearners,
+            'dropoutLearners' => $dropoutLearners,
+            'completerLearners' => $completerLearners,
+            'transfereeLearners' => $transfereeLearners,
+            'studentTeacherRatio' => $reportedTeachers > 0 ? round($reportedStudents / $reportedTeachers, 2) : null,
+            'studentClassroomRatio' => $sectionCount > 0 ? round($reportedStudents / $sectionCount, 2) : null,
+            'enrollmentRatePercent' => $this->calculatePercentage($enrolledLearners, $trackedLearners),
+            'retentionRatePercent' => $this->calculatePercentage($retainedLearners, $trackedLearners),
+            'dropoutRatePercent' => $this->calculatePercentage($dropoutLearners, $trackedLearners),
+            'completionRatePercent' => $this->calculatePercentage($completerLearners, $trackedLearners),
+            'atRiskRatePercent' => $this->calculatePercentage($atRiskLearners, $trackedLearners),
+            'transitionRatePercent' => $this->calculatePercentage($transfereeLearners + $completerLearners, $trackedLearners),
+        ];
+    }
+
+    /**
+     * @param array<string, int|float|null|string> $targetsMet
+     *
+     * @return array<int, array<string, int|float|string|null>>
+     */
+    private function buildSyncAlerts(array $targetsMet): array
+    {
+        $alerts = [];
+
+        $dropoutRate = (float) ($targetsMet['dropoutRatePercent'] ?? 0);
+        if ($dropoutRate >= 4.0) {
+            $alerts[] = [
+                'id' => 'dropout-rate',
+                'level' => $dropoutRate >= 8.0 ? 'critical' : 'warning',
+                'title' => 'Dropout rate exceeds TARGETS-MET watch threshold',
+                'message' => "Current dropout rate is {$dropoutRate}%. Initiate technical assistance for affected schools.",
+                'metric' => 'dropoutRatePercent',
+                'value' => $dropoutRate,
+                'threshold' => 4.0,
+            ];
+        }
+
+        $atRiskRate = (float) ($targetsMet['atRiskRatePercent'] ?? 0);
+        $atRiskLearners = (int) ($targetsMet['atRiskLearners'] ?? 0);
+        if ($atRiskLearners > 0) {
+            $alerts[] = [
+                'id' => 'at-risk-learners',
+                'level' => $atRiskRate >= 10.0 ? 'warning' : 'info',
+                'title' => 'At-risk learners detected',
+                'message' => "{$atRiskLearners} learner(s) are tagged at risk. Prioritize intervention planning.",
+                'metric' => 'atRiskLearners',
+                'value' => $atRiskLearners,
+                'threshold' => 1,
+            ];
+        }
+
+        $studentTeacherRatio = (float) ($targetsMet['studentTeacherRatio'] ?? 0);
+        if ($studentTeacherRatio > 45) {
+            $alerts[] = [
+                'id' => 'student-teacher-ratio',
+                'level' => 'warning',
+                'title' => 'Student-teacher ratio is above recommended range',
+                'message' => "Current ratio is {$studentTeacherRatio}:1. Review staffing and load balancing.",
+                'metric' => 'studentTeacherRatio',
+                'value' => $studentTeacherRatio,
+                'threshold' => 45,
+            ];
+        }
+
+        $pendingSchools = (int) ($targetsMet['pendingSchools'] ?? 0);
+        if ($pendingSchools > 0) {
+            $alerts[] = [
+                'id' => 'pending-school-records',
+                'level' => 'info',
+                'title' => 'Pending school submissions',
+                'message' => "{$pendingSchools} school(s) are still marked pending. Follow up for compliance.",
+                'metric' => 'pendingSchools',
+                'value' => $pendingSchools,
+                'threshold' => 0,
+            ];
+        }
+
+        if ($alerts === []) {
+            $alerts[] = [
+                'id' => 'no-critical-alerts',
+                'level' => 'success',
+                'title' => 'No critical TARGETS-MET alerts',
+                'message' => 'Current synchronized indicators are within watch thresholds.',
+                'metric' => null,
+                'value' => null,
+                'threshold' => null,
+            ];
+        }
+
+        return $alerts;
+    }
+
+    private function calculatePercentage(int $numerator, int $denominator): float
+    {
+        if ($denominator <= 0) {
+            return 0.0;
+        }
+
+        return round(($numerator / $denominator) * 100, 2);
     }
 
     private function applySyncHeaders(

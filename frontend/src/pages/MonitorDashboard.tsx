@@ -67,7 +67,7 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 export function MonitorDashboard() {
-  const { records, isLoading, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
+  const { records, targetsMet, syncAlerts, isLoading, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
@@ -110,7 +110,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="Observe submissions, school status trends, and regional coverage in one view."
+      subtitle="Observe synchronized school submissions, TARGETS-MET indicators, and intervention alerts in one view."
       actions={
         <>
           <button
@@ -164,6 +164,57 @@ export function MonitorDashboard() {
         />
       </section>
 
+      <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+        <div className="surface-panel rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Sync Snapshot</h2>
+            <span className="text-xs text-slate-500">
+              {targetsMet?.generatedAt ? `Generated ${new Date(targetsMet.generatedAt).toLocaleTimeString()}` : "Waiting for data"}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Retention Rate</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.retentionRatePercent.toFixed(2)}%` : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dropout Rate</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.dropoutRatePercent.toFixed(2)}%` : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion Rate</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.completionRatePercent.toFixed(2)}%` : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">At-Risk Learners</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? targetsMet.atRiskLearners.toLocaleString() : "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Teacher Ratio</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentTeacherRatio ?? "--"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Classroom Ratio</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentClassroomRatio ?? "--"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="surface-panel rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Synchronized Alerts</h2>
+          <div className="mt-4 space-y-3">
+            {syncAlerts.slice(0, 4).map((alert) => (
+              <article key={alert.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{alert.level}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{alert.title}</p>
+                <p className="mt-1 text-xs text-slate-600">{alert.message}</p>
+              </article>
+            ))}
+            {syncAlerts.length === 0 && <p className="text-xs text-slate-500">No synchronized alerts yet.</p>}
+          </div>
+        </div>
+      </section>
+
       <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
         <StatusPieChart data={statusDistribution} />
         <RegionBarChart data={regionAggregates} />
@@ -194,7 +245,7 @@ export function MonitorDashboard() {
       <section className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-2xl">
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <h2 className="text-base font-bold text-slate-900">School Records</h2>
-          <p className="mt-0.5 text-xs text-slate-500">Search, filter, and inspect all records submitted by school administrators.</p>
+          <p className="mt-0.5 text-xs text-slate-500">Search, filter, and inspect all records submitted by school heads.</p>
         </div>
 
         <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto]">

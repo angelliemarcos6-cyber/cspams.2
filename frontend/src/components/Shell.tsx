@@ -14,7 +14,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
   const { role, username, logout } = useAuth();
   const navigate = useNavigate();
 
-  const roleLabel = role === "school_head" ? "School Administrator" : "Division Monitor";
+  const roleLabel = role === "school_head" ? "School Head" : "Division Monitor";
 
   const handleSignOut = async () => {
     await logout();

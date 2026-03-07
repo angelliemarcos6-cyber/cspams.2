@@ -30,3 +30,39 @@ export interface SchoolRecordPayload {
   region: string;
   status: SchoolStatus;
 }
+
+export interface TargetsMetSnapshot {
+  generatedAt: string;
+  schoolsMonitored: number;
+  activeSchools: number;
+  pendingSchools: number;
+  inactiveSchools: number;
+  reportedStudents: number;
+  reportedTeachers: number;
+  trackedLearners: number;
+  enrolledLearners: number;
+  atRiskLearners: number;
+  dropoutLearners: number;
+  completerLearners: number;
+  transfereeLearners: number;
+  studentTeacherRatio: number | null;
+  studentClassroomRatio: number | null;
+  enrollmentRatePercent: number;
+  retentionRatePercent: number;
+  dropoutRatePercent: number;
+  completionRatePercent: number;
+  atRiskRatePercent: number;
+  transitionRatePercent: number;
+}
+
+export type SyncAlertLevel = "success" | "info" | "warning" | "critical";
+
+export interface SyncAlert {
+  id: string;
+  level: SyncAlertLevel;
+  title: string;
+  message: string;
+  metric: string | null;
+  value: number | null;
+  threshold: number | null;
+}

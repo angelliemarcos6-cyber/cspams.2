@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
-import type { SchoolRecord, SchoolRecordPayload } from "@/types";
+import type { SchoolRecord, SchoolRecordPayload, SyncAlert, TargetsMetSnapshot } from "@/types";
 
 type SyncScope = "division" | "school" | null;
 type SyncStatus = "idle" | "updated" | "up_to_date" | "error";
@@ -20,6 +20,8 @@ interface SyncMeta {
   scope?: string;
   scopeKey?: string;
   recordCount?: number;
+  targetsMet?: TargetsMetSnapshot;
+  alerts?: SyncAlert[];
 }
 
 interface SchoolRecordsResponse {
@@ -34,6 +36,8 @@ interface SchoolRecordMutationResponse {
 
 interface DataContextType {
   records: SchoolRecord[];
+  targetsMet: TargetsMetSnapshot | null;
+  syncAlerts: SyncAlert[];
   isLoading: boolean;
   isSaving: boolean;
   error: string;
@@ -66,6 +70,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const { token, logout } = useAuth();
 
   const [records, setRecords] = useState<SchoolRecord[]>([]);
+  const [targetsMet, setTargetsMet] = useState<TargetsMetSnapshot | null>(null);
+  const [syncAlerts, setSyncAlerts] = useState<SyncAlert[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -89,6 +95,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     etagRef.current = "";
     syncScopeKeyRef.current = "";
     setRecords([]);
+    setTargetsMet(null);
+    setSyncAlerts([]);
     setIsLoading(false);
     setIsSaving(false);
     setError("");
@@ -116,6 +124,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (!token) {
         setRecords([]);
+        setTargetsMet(null);
+        setSyncAlerts([]);
         setIsLoading(false);
         setIsSaving(false);
         setError("");
@@ -155,6 +165,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (scopeKeyFromHeaders) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== scopeKeyFromHeaders) {
             etagRef.current = "";
+            setTargetsMet(null);
+            setSyncAlerts([]);
           }
           syncScopeKeyRef.current = scopeKeyFromHeaders;
         }
@@ -173,11 +185,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (payloadScopeKey) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== payloadScopeKey) {
             etagRef.current = "";
+            setTargetsMet(null);
+            setSyncAlerts([]);
           }
           syncScopeKeyRef.current = payloadScopeKey;
         }
 
         setRecords(Array.isArray(payload?.data) ? payload.data : []);
+        setTargetsMet(payload?.meta?.targetsMet ?? null);
+        setSyncAlerts(Array.isArray(payload?.meta?.alerts) ? payload.meta.alerts : []);
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? payload?.meta?.syncedAt ?? new Date().toISOString());
         setSyncScope(normalizeScope(payload?.meta?.scope) ?? scopeFromHeaders);
         setSyncStatus("updated");
@@ -251,6 +267,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? response.data?.meta?.syncedAt ?? new Date().toISOString());
+        setTargetsMet(response.data?.meta?.targetsMet ?? null);
+        setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
         setSyncStatus("updated");
 
         etagRef.current = "";
@@ -314,6 +332,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? response.data?.meta?.syncedAt ?? new Date().toISOString());
+        setTargetsMet(response.data?.meta?.targetsMet ?? null);
+        setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
         setSyncStatus("updated");
 
         etagRef.current = "";
@@ -356,6 +376,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DataContextType>(
     () => ({
       records,
+      targetsMet,
+      syncAlerts,
       isLoading,
       isSaving,
       error,
@@ -366,7 +388,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addRecord,
       updateRecord,
     }),
-    [records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord],
+    [records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
