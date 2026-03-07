@@ -16,6 +16,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 
 class StudentPerformanceRecordResource extends Resource
@@ -165,6 +166,49 @@ class StudentPerformanceRecordResource extends Resource
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\BulkAction::make('export_selected_csv')
+                        ->label('Export Selected CSV')
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (EloquentCollection $records) {
+                            $records->loadMissing(['student.school', 'metric', 'academicYear', 'encoder']);
+
+                            return response()->streamDownload(function () use ($records): void {
+                                $handle = fopen('php://output', 'w');
+
+                                fputcsv($handle, [
+                                    'Student LRN',
+                                    'Student Name',
+                                    'School',
+                                    'Metric',
+                                    'Academic Year',
+                                    'Period',
+                                    'Value',
+                                    'Remarks',
+                                    'Encoded By',
+                                    'Submitted At',
+                                ]);
+
+                                foreach ($records as $record) {
+                                    fputcsv($handle, [
+                                        $record->student?->lrn,
+                                        $record->student?->full_name,
+                                        $record->student?->school?->name,
+                                        $record->metric?->name,
+                                        $record->academicYear?->name,
+                                        is_string($record->period) ? $record->period : $record->period?->value,
+                                        $record->value,
+                                        $record->remarks,
+                                        $record->encoder?->name,
+                                        optional($record->submitted_at)?->format('Y-m-d H:i:s'),
+                                    ]);
+                                }
+
+                                fclose($handle);
+                            }, 'performance-records-export-' . now()->format('Ymd-His') . '.csv', [
+                                'Content-Type' => 'text/csv',
+                            ]);
+                        }),
                 ]),
             ]);
     }
@@ -230,4 +274,3 @@ class StudentPerformanceRecordResource extends Resource
         return UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD);
     }
 }
-

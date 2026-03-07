@@ -1,4 +1,4 @@
-﻿# CSPAMS
+# CSPAMS
 
 Centralized Student Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
 
@@ -23,6 +23,9 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - KPI overview
   - Lifecycle status pie chart
   - School submission snapshot table
+- Capstone reporting support:
+  - Bulk CSV export for selected learner and performance records
+  - Learner-level status timeline and performance-history relation views
 
 ## Database and Seeders
 

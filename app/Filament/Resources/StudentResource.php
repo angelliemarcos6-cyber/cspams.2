@@ -3,6 +3,8 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\StudentResource\Pages;
+use App\Filament\Resources\StudentResource\RelationManagers\PerformanceRecordsRelationManager;
+use App\Filament\Resources\StudentResource\RelationManagers\StatusLogsRelationManager;
 use App\Models\AcademicYear;
 use App\Models\School;
 use App\Models\Section;
@@ -16,6 +18,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 
 class StudentResource extends Resource
@@ -71,6 +74,8 @@ class StudentResource extends Resource
                 Forms\Components\TextInput::make('lrn')
                     ->label('Learner Reference Number (LRN)')
                     ->required()
+                    ->rule('digits:12')
+                    ->helperText('DepEd LRN format: exactly 12 digits.')
                     ->maxLength(20)
                     ->minLength(12)
                     ->unique(ignoreRecord: true),
@@ -172,6 +177,49 @@ class StudentResource extends Resource
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\BulkAction::make('export_selected_csv')
+                        ->label('Export Selected CSV')
+                        ->icon('heroicon-o-arrow-down-tray')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (EloquentCollection $records) {
+                            $records->loadMissing(['school', 'section', 'academicYear']);
+
+                            return response()->streamDownload(function () use ($records): void {
+                                $handle = fopen('php://output', 'w');
+
+                                fputcsv($handle, [
+                                    'LRN',
+                                    'First Name',
+                                    'Middle Name',
+                                    'Last Name',
+                                    'School',
+                                    'Academic Year',
+                                    'Section',
+                                    'Status',
+                                    'Risk Level',
+                                    'Updated At',
+                                ]);
+
+                                foreach ($records as $student) {
+                                    fputcsv($handle, [
+                                        $student->lrn,
+                                        $student->first_name,
+                                        $student->middle_name,
+                                        $student->last_name,
+                                        $student->school?->name,
+                                        $student->academicYear?->name,
+                                        $student->section?->name,
+                                        is_string($student->status) ? $student->status : $student->status?->value,
+                                        is_string($student->risk_level) ? $student->risk_level : $student->risk_level?->value,
+                                        optional($student->updated_at)?->format('Y-m-d H:i:s'),
+                                    ]);
+                                }
+
+                                fclose($handle);
+                            }, 'students-export-' . now()->format('Ymd-His') . '.csv', [
+                                'Content-Type' => 'text/csv',
+                            ]);
+                        }),
                 ]),
             ]);
     }
@@ -214,6 +262,14 @@ class StudentResource extends Resource
     public static function canDeleteAny(): bool
     {
         return static::isMonitor();
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            StatusLogsRelationManager::class,
+            PerformanceRecordsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array
