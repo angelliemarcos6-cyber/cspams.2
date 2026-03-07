@@ -1,10 +1,10 @@
-# CSPAMS
+﻿# CSPAMS
 
 Centralized Student Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
 
 ## Implemented System Scope
 
-- Role-based login flow for `division_admin`, `monitor`, and `school_head`.
+- Role-based login flow for `monitor` and `school_head`.
 - Master data management:
   - Schools
   - Academic Years
@@ -55,7 +55,6 @@ Migrations and seeders are included for:
 
 ## Demo Accounts (after seeding)
 
-- Division Chief: `chief@cspams.local` / `password123`
 - Division Monitor: `monitor@cspams.local` / `password123`
 - School Heads:
   - `schoolhead1@cspams.local` / `password123`

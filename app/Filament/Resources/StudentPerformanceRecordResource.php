@@ -35,7 +35,7 @@ class StudentPerformanceRecordResource extends Resource
                 Forms\Components\Select::make('school_id')
                     ->label('School')
                     ->options(fn (): array => School::query()->orderBy('name')->pluck('name', 'id')->all())
-                    ->visible(fn (): bool => static::isDivisionAdmin())
+                    ->visible(fn (): bool => static::isMonitor())
                     ->dehydrated(false)
                     ->live(),
 
@@ -50,7 +50,7 @@ class StudentPerformanceRecordResource extends Resource
                             $query->where('school_id', auth()->user()?->school_id);
                         }
 
-                        if (static::isDivisionAdmin() && $schoolId) {
+                        if (static::isMonitor() && $schoolId) {
                             $query->where('school_id', $schoolId);
                         }
 
@@ -112,7 +112,7 @@ class StudentPerformanceRecordResource extends Resource
 
                 Tables\Columns\TextColumn::make('student.school.name')
                     ->label('School')
-                    ->visible(fn (): bool => static::isDivisionAdmin() || static::isDivisionMonitor())
+                    ->visible(fn (): bool => static::isMonitor())
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('metric.name')
@@ -156,7 +156,7 @@ class StudentPerformanceRecordResource extends Resource
                             });
                         });
                     })
-                    ->visible(fn (): bool => static::isDivisionAdmin() || static::isDivisionMonitor()),
+                    ->visible(fn (): bool => static::isMonitor()),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -184,17 +184,17 @@ class StudentPerformanceRecordResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return static::isDivisionAdmin() || static::isDivisionMonitor() || static::isSchoolHead();
+        return static::isMonitor() || static::isSchoolHead();
     }
 
     public static function canCreate(): bool
     {
-        return static::isDivisionAdmin() || static::isSchoolHead();
+        return static::isMonitor() || static::isSchoolHead();
     }
 
     public static function canEdit(Model $record): bool
     {
-        if (static::isDivisionAdmin()) {
+        if (static::isMonitor()) {
             return true;
         }
 
@@ -203,12 +203,12 @@ class StudentPerformanceRecordResource extends Resource
 
     public static function canDelete(Model $record): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function canDeleteAny(): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function getPages(): array
@@ -220,12 +220,7 @@ class StudentPerformanceRecordResource extends Resource
         ];
     }
 
-    protected static function isDivisionAdmin(): bool
-    {
-        return UserRoleResolver::has(auth()->user(), UserRoleResolver::DIVISION_ADMIN);
-    }
-
-    protected static function isDivisionMonitor(): bool
+    protected static function isMonitor(): bool
     {
         return UserRoleResolver::has(auth()->user(), UserRoleResolver::MONITOR);
     }

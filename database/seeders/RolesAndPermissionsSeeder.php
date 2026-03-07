@@ -33,21 +33,11 @@ class RolesAndPermissionsSeeder extends Seeder
             Permission::query()->firstOrCreate(['name' => $permission]);
         }
 
-        $divisionAdmin = Role::query()->firstOrCreate(['name' => UserRoleResolver::DIVISION_ADMIN]);
         $monitor = Role::query()->firstOrCreate(['name' => UserRoleResolver::MONITOR]);
         $schoolHead = Role::query()->firstOrCreate(['name' => UserRoleResolver::SCHOOL_HEAD]);
 
-        $divisionAdmin->syncPermissions($permissions);
-
-        $monitor->syncPermissions([
-            'view schools',
-            'view students',
-            'view sections',
-            'view metrics',
-            'view performance records',
-            'view analytics',
-            'view audit logs',
-        ]);
+        // Monitor is the single division-level role and inherits full control.
+        $monitor->syncPermissions($permissions);
 
         $schoolHead->syncPermissions([
             'view schools',
@@ -55,9 +45,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'manage students',
             'view sections',
             'manage sections',
+            'view metrics',
             'view performance records',
             'manage performance records',
             'view analytics',
         ]);
+
+        Role::query()->whereNotIn('name', [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD])->delete();
     }
 }
+

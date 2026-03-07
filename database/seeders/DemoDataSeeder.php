@@ -82,15 +82,6 @@ class DemoDataSeeder extends Seeder
             );
         }
 
-        $divisionAdmin = User::query()->updateOrCreate(
-            ['email' => 'chief@cspams.local'],
-            [
-                'name' => 'Division Chief',
-                'password' => Hash::make('password123'),
-            ],
-        );
-        $divisionAdmin->syncRoles([UserRoleResolver::DIVISION_ADMIN]);
-
         $monitor = User::query()->updateOrCreate(
             ['email' => 'monitor@cspams.local'],
             [
@@ -220,3 +211,4 @@ class DemoDataSeeder extends Seeder
         }
     }
 }
+

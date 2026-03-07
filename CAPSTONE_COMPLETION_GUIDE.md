@@ -1,4 +1,4 @@
-# CSPAMS Capstone Completion Guide
+﻿# CSPAMS Capstone Completion Guide
 
 This guide turns the current codebase into a finishable capstone plan.
 
@@ -22,7 +22,7 @@ These are solid foundations for an academic capstone because they demonstrate:
 
 ### Recommended system scope (MVP)
 Focus your defense on a complete, coherent flow:
-1. User authentication (Monitor vs School Head)
+1. User authentication (Division Monitor vs School Head)
 2. Master data setup (School, Academic Year, Sections, Students)
 3. Performance encoding (I-META / TARGETS-MET indicators)
 4. Analytics dashboard (trend + summary)
@@ -38,19 +38,16 @@ The current code supports mixed role labels through aliases in `app/Support/Auth
 For maintainability, keep one canonical naming style in seeders/migrations and map legacy labels using the resolver.
 
 ### Recommended canonical roles
-- `division_admin`
 - `monitor`
 - `school_head`
 
 ### Example permission matrix
-- **division_admin**
-  - manage schools, users, and global reports
 - **monitor**
-  - manage sections/students in assigned school
-  - encode and update performance metrics
+  - manage schools, users, and global reports
+  - validate division-wide analytics
 - **school_head**
-  - view analytics/reports
-  - approve/acknowledge reports
+  - manage sections/students in assigned school
+  - encode performance data and view school analytics
 
 ---
 
@@ -175,4 +172,3 @@ To align this guide exactly with your adviser requirements, add either:
 - screenshots of the main objectives/chapters,
 
 then this guide can be converted into a fully customized implementation checklist.
-

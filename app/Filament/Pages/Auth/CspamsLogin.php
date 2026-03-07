@@ -108,7 +108,6 @@ class CspamsLogin extends BaseLogin
         $user = Filament::auth()->user();
 
         $roleOk = match ($rolePicked) {
-            UserRoleResolver::DIVISION_ADMIN => UserRoleResolver::has($user, UserRoleResolver::DIVISION_ADMIN),
             UserRoleResolver::MONITOR => UserRoleResolver::has($user, UserRoleResolver::MONITOR),
             UserRoleResolver::SCHOOL_HEAD => UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD),
             default => false,

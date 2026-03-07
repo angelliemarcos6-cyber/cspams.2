@@ -93,27 +93,27 @@ class PerformanceMetricResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return static::isDivisionAdmin() || static::isDivisionMonitor() || static::isSchoolHead();
+        return static::isMonitor() || static::isSchoolHead();
     }
 
     public static function canCreate(): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function canEdit(Model $record): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function canDelete(Model $record): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function canDeleteAny(): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function getPages(): array
@@ -125,12 +125,7 @@ class PerformanceMetricResource extends Resource
         ];
     }
 
-    protected static function isDivisionAdmin(): bool
-    {
-        return UserRoleResolver::has(auth()->user(), UserRoleResolver::DIVISION_ADMIN);
-    }
-
-    protected static function isDivisionMonitor(): bool
+    protected static function isMonitor(): bool
     {
         return UserRoleResolver::has(auth()->user(), UserRoleResolver::MONITOR);
     }

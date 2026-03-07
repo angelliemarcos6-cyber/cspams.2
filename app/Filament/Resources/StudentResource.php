@@ -35,8 +35,8 @@ class StudentResource extends Resource
                 Forms\Components\Select::make('school_id')
                     ->label('School')
                     ->options(fn (): array => School::query()->orderBy('name')->pluck('name', 'id')->all())
-                    ->required(fn (): bool => static::isDivisionAdmin())
-                    ->visible(fn (): bool => static::isDivisionAdmin())
+                    ->required(fn (): bool => static::isMonitor())
+                    ->visible(fn (): bool => static::isMonitor())
                     ->live(),
 
                 Forms\Components\Hidden::make('school_id')
@@ -132,7 +132,7 @@ class StudentResource extends Resource
 
                 Tables\Columns\TextColumn::make('school.name')
                     ->label('School')
-                    ->visible(fn (): bool => static::isDivisionAdmin() || static::isDivisionMonitor())
+                    ->visible(fn (): bool => static::isMonitor())
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('section.name')
@@ -163,7 +163,7 @@ class StudentResource extends Resource
 
                 Tables\Filters\SelectFilter::make('school_id')
                     ->relationship('school', 'name')
-                    ->visible(fn (): bool => static::isDivisionAdmin() || static::isDivisionMonitor()),
+                    ->visible(fn (): bool => static::isMonitor()),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -189,17 +189,17 @@ class StudentResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return static::isDivisionAdmin() || static::isDivisionMonitor() || static::isSchoolHead();
+        return static::isMonitor() || static::isSchoolHead();
     }
 
     public static function canCreate(): bool
     {
-        return static::isDivisionAdmin() || static::isSchoolHead();
+        return static::isMonitor() || static::isSchoolHead();
     }
 
     public static function canEdit(Model $record): bool
     {
-        if (static::isDivisionAdmin()) {
+        if (static::isMonitor()) {
             return true;
         }
 
@@ -208,12 +208,12 @@ class StudentResource extends Resource
 
     public static function canDelete(Model $record): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function canDeleteAny(): bool
     {
-        return static::isDivisionAdmin();
+        return static::isMonitor();
     }
 
     public static function getPages(): array
@@ -225,12 +225,7 @@ class StudentResource extends Resource
         ];
     }
 
-    protected static function isDivisionAdmin(): bool
-    {
-        return UserRoleResolver::has(auth()->user(), UserRoleResolver::DIVISION_ADMIN);
-    }
-
-    protected static function isDivisionMonitor(): bool
+    protected static function isMonitor(): bool
     {
         return UserRoleResolver::has(auth()->user(), UserRoleResolver::MONITOR);
     }

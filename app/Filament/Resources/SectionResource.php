@@ -29,10 +29,10 @@ class SectionResource extends Resource
             ->schema([
                 Forms\Components\Select::make('school_id')
                     ->relationship('school', 'name')
-                    ->required(fn (): bool => static::isDivisionAdminUser())
+                    ->required(fn (): bool => static::isDivisionMonitorUser())
                     ->searchable()
                     ->preload()
-                    ->visible(fn (): bool => static::isDivisionAdminUser()),
+                    ->visible(fn (): bool => static::isDivisionMonitorUser()),
 
                 Forms\Components\Hidden::make('school_id')
                     ->default(fn (): ?int => auth()->user()?->school_id)
@@ -142,12 +142,12 @@ class SectionResource extends Resource
 
     public static function canCreate(): bool
     {
-        return static::isDivisionAdminUser() || static::isSchoolHeadUser();
+        return static::isDivisionMonitorUser() || static::isSchoolHeadUser();
     }
 
     public static function canEdit(Model $record): bool
     {
-        if (static::isDivisionAdminUser()) {
+        if (static::isDivisionMonitorUser()) {
             return true;
         }
 
@@ -157,7 +157,7 @@ class SectionResource extends Resource
 
     public static function canDelete(Model $record): bool
     {
-        if (static::isDivisionAdminUser()) {
+        if (static::isDivisionMonitorUser()) {
             return true;
         }
 
@@ -167,7 +167,7 @@ class SectionResource extends Resource
 
     public static function canDeleteAny(): bool
     {
-        return static::isDivisionAdminUser();
+        return static::isDivisionMonitorUser();
     }
 
     public static function getRelations(): array
@@ -191,9 +191,9 @@ class SectionResource extends Resource
         return UserRoleResolver::isDivisionLevel(auth()->user());
     }
 
-    protected static function isDivisionAdminUser(): bool
+    protected static function isDivisionMonitorUser(): bool
     {
-        return UserRoleResolver::has(auth()->user(), UserRoleResolver::DIVISION_ADMIN);
+        return UserRoleResolver::has(auth()->user(), UserRoleResolver::MONITOR);
     }
 
     protected static function isSchoolHeadUser(): bool
@@ -201,3 +201,5 @@ class SectionResource extends Resource
         return UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD);
     }
 }
+
+

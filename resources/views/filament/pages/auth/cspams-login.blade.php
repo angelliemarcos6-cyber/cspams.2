@@ -158,7 +158,7 @@
 
         .csp-role-switch {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 0.4rem;
             padding: 0.32rem;
             border-radius: 0.95rem;
@@ -399,7 +399,7 @@
 
                         <article class="csp-point-card">
                             <p class="csp-point-title">Role-Based Access</p>
-                            <p class="csp-point-copy">Dedicated workflows for School Monitors and School Administrators.</p>
+                            <p class="csp-point-copy">Dedicated workflows for Division Monitors and School Heads.</p>
                         </article>
 
                         <article class="csp-point-card">
@@ -518,6 +518,7 @@
         </div>
     </div>
 </x-filament-panels::layout.base>
+
 
 
 
