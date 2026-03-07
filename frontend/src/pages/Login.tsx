@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { KeyRound, ShieldCheck, UserCog, Radar } from "lucide-react";
+import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { isApiError } from "@/lib/api";
 import type { UserRole } from "@/types";
@@ -29,6 +29,7 @@ export function Login() {
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPasscode, setShowPasscode] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -162,7 +163,7 @@ export function Login() {
                 <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   id="passcode"
-                  type="password"
+                  type={showPasscode ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
                   onChange={(event) => {
@@ -170,8 +171,16 @@ export function Login() {
                     setError("");
                   }}
                   placeholder="Enter passcode"
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-11 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPasscode((current) => !current)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                  aria-label={showPasscode ? "Hide passcode" : "Show passcode"}
+                >
+                  {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 

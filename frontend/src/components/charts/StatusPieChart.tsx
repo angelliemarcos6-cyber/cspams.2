@@ -1,3 +1,4 @@
+import { PieChart as PieChartIcon } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 interface StatusDataItem {
@@ -14,9 +15,16 @@ export function StatusPieChart({ data }: StatusPieChartProps) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold text-slate-900">School Status Distribution</h3>
-      <p className="text-xs text-slate-500">Active, inactive and pending reporting status</p>
+    <div className="surface-chart rounded-2xl p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">School Status Distribution</h3>
+          <p className="text-xs text-slate-500">Active, inactive and pending reporting status</p>
+        </div>
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary-50 text-primary">
+          <PieChartIcon className="h-4 w-4" />
+        </span>
+      </div>
 
       <div className="mt-3 h-56 w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -26,14 +34,17 @@ export function StatusPieChart({ data }: StatusPieChartProps) {
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number) => [value.toLocaleString(), "Schools"]} />
+            <Tooltip
+              formatter={(value: number) => [value.toLocaleString(), "Schools"]}
+              contentStyle={{ borderRadius: "12px", borderColor: "#cbd5e1" }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
 
       <div className="-mt-2 grid grid-cols-3 gap-2 text-xs">
         {data.map((entry) => (
-          <div key={entry.name} className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+          <div key={entry.name} className="rounded-lg border border-slate-200 bg-white/80 px-2 py-1.5">
             <span className="font-semibold text-slate-700">{entry.name}</span>
             <p className="text-slate-500">{entry.value}</p>
           </div>

@@ -257,7 +257,7 @@ export function SchoolAdminDashboard() {
           </button>
           <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
             {syncStatus === "up_to_date" ? "No backend changes" : "Records updated"}
-            {" • "}
+            {" | "}
             {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
             {syncScope ? ` (${syncScope})` : ""}
           </span>
@@ -293,7 +293,7 @@ export function SchoolAdminDashboard() {
       </section>
 
       {showForm && (
-        <section className="mt-5 animate-fade-slide overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-2xl">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">{editingId ? "Edit School Record" : "Add School Record"}</h2>
             <p className="mt-0.5 text-xs text-slate-500">
@@ -473,7 +473,7 @@ export function SchoolAdminDashboard() {
         </section>
       )}
 
-      <section className="mt-5 animate-fade-slide overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-2xl">
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <h2 className="text-base font-bold text-slate-900">School Records</h2>
           <p className="mt-0.5 text-xs text-slate-500">Manage and update synchronized school records.</p>
@@ -511,10 +511,15 @@ export function SchoolAdminDashboard() {
         </div>
 
         {isLoading && records.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
-            <RefreshCw className="h-9 w-9 animate-spin text-slate-400" />
-            <p className="text-sm font-semibold">Loading records</p>
-            <p className="text-xs text-slate-400">Syncing data from the backend.</p>
+          <div className="space-y-3 px-5 py-5">
+            <div className="skeleton-line h-4 w-48" />
+            <div className="grid gap-2">
+              <div className="skeleton-line h-12 w-full" />
+              <div className="skeleton-line h-12 w-full" />
+              <div className="skeleton-line h-12 w-full" />
+              <div className="skeleton-line h-12 w-full" />
+            </div>
+            <p className="text-xs text-slate-500">Syncing data from the backend...</p>
           </div>
         ) : filteredRecords.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
@@ -525,7 +530,7 @@ export function SchoolAdminDashboard() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full">
-              <thead>
+              <thead className="table-head-sticky">
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                   <th className="px-5 py-3 text-left">
                     <button
