@@ -3,6 +3,10 @@ import { CheckCircle2, History, RefreshCw, RotateCcw, XCircle } from "lucide-rea
 import { useFormData } from "@/context/FormData";
 import type { FormSubmission, FormSubmissionHistoryEntry, SubmissionFormType } from "@/types";
 
+interface MonitorFormsPanelProps {
+  schoolFilterKeys?: Set<string> | null;
+}
+
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
   if (status === "submitted") return "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300";
@@ -24,7 +28,17 @@ function formLabel(formType: string): string {
   return formType.toUpperCase();
 }
 
-export function MonitorFormsPanel() {
+function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
+  const code = schoolCode?.trim().toLowerCase();
+  if (code) return `code:${code}`;
+
+  const name = schoolName?.trim().toLowerCase();
+  if (name) return `name:${name}`;
+
+  return "unknown";
+}
+
+export function MonitorFormsPanel({ schoolFilterKeys = null }: MonitorFormsPanelProps) {
   const {
     submissions,
     isLoading,
@@ -42,14 +56,26 @@ export function MonitorFormsPanel() {
   const [historyByRowKey, setHistoryByRowKey] = useState<Record<string, FormSubmissionHistoryEntry[]>>({});
   const [historyLoadingKey, setHistoryLoadingKey] = useState<string | null>(null);
 
+  const visibleSubmissions = useMemo(() => {
+    if (!schoolFilterKeys || schoolFilterKeys.size === 0) {
+      return submissions;
+    }
+
+    return submissions.filter((submission) =>
+      schoolFilterKeys.has(
+        normalizeSchoolKey(submission.school?.schoolCode ?? null, submission.school?.name ?? null),
+      ),
+    );
+  }, [submissions, schoolFilterKeys]);
+
   const summary = useMemo(() => {
-    const total = submissions.length;
-    const submitted = submissions.filter((item) => item.status === "submitted").length;
-    const validated = submissions.filter((item) => item.status === "validated").length;
-    const returned = submissions.filter((item) => item.status === "returned").length;
+    const total = visibleSubmissions.length;
+    const submitted = visibleSubmissions.filter((item) => item.status === "submitted").length;
+    const validated = visibleSubmissions.filter((item) => item.status === "validated").length;
+    const returned = visibleSubmissions.filter((item) => item.status === "returned").length;
 
     return { total, submitted, validated, returned };
-  }, [submissions]);
+  }, [visibleSubmissions]);
 
   const handleReview = async (submission: FormSubmission, decision: "validated" | "returned") => {
     setActionError("");
@@ -132,6 +158,7 @@ export function MonitorFormsPanel() {
         </div>
         <p className="mt-2 text-xs text-slate-500">
           {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
+          {schoolFilterKeys ? " · Filtered school set active" : ""}
         </p>
       </div>
 
@@ -185,7 +212,7 @@ export function MonitorFormsPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {submissions.map((submission) => {
+              {visibleSubmissions.map((submission) => {
                 const key = rowKey(submission);
                 const historyRows = historyByRowKey[key] ?? [];
                 const isExpanded = expandedRowKey === key;
@@ -286,10 +313,12 @@ export function MonitorFormsPanel() {
                   </Fragment>
                 );
               })}
-              {submissions.length === 0 && (
+              {visibleSubmissions.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-2 py-8 text-center text-sm text-slate-500">
-                    No SF-1/SF-5 submissions available yet.
+                    {schoolFilterKeys
+                      ? "No SF-1/SF-5 submissions match the selected school filters."
+                      : "No SF-1/SF-5 submissions available yet."}
                   </td>
                 </tr>
               )}
@@ -300,4 +329,3 @@ export function MonitorFormsPanel() {
     </section>
   );
 }
-

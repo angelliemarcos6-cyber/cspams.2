@@ -3,6 +3,10 @@ import { CheckCircle2, ChevronDown, ChevronUp, History, RefreshCw, RotateCcw, Se
 import { useIndicatorData } from "@/context/IndicatorData";
 import type { FormSubmissionHistoryEntry, IndicatorSubmission } from "@/types";
 
+interface MonitorIndicatorPanelProps {
+  schoolFilterKeys?: Set<string> | null;
+}
+
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
   if (status === "submitted") return "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300";
@@ -22,7 +26,17 @@ function formatDateTime(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
-export function MonitorIndicatorPanel() {
+function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
+  const code = schoolCode?.trim().toLowerCase();
+  if (code) return `code:${code}`;
+
+  const name = schoolName?.trim().toLowerCase();
+  if (name) return `name:${name}`;
+
+  return "unknown";
+}
+
+export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndicatorPanelProps) {
   const {
     submissions,
     isLoading,
@@ -40,23 +54,35 @@ export function MonitorIndicatorPanel() {
   const [historyBySubmissionId, setHistoryBySubmissionId] = useState<Record<string, FormSubmissionHistoryEntry[]>>({});
   const [historyLoadingSubmissionId, setHistoryLoadingSubmissionId] = useState<string | null>(null);
 
+  const visibleSubmissions = useMemo(() => {
+    if (!schoolFilterKeys || schoolFilterKeys.size === 0) {
+      return submissions;
+    }
+
+    return submissions.filter((submission) =>
+      schoolFilterKeys.has(
+        normalizeSchoolKey(submission.school?.schoolCode ?? null, submission.school?.name ?? null),
+      ),
+    );
+  }, [submissions, schoolFilterKeys]);
+
   const summary = useMemo(() => {
-    const total = submissions.length;
-    const submitted = submissions.filter((item) => item.status === "submitted").length;
-    const validated = submissions.filter((item) => item.status === "validated").length;
-    const returned = submissions.filter((item) => item.status === "returned").length;
+    const total = visibleSubmissions.length;
+    const submitted = visibleSubmissions.filter((item) => item.status === "submitted").length;
+    const validated = visibleSubmissions.filter((item) => item.status === "validated").length;
+    const returned = visibleSubmissions.filter((item) => item.status === "returned").length;
 
     return { total, submitted, validated, returned };
-  }, [submissions]);
+  }, [visibleSubmissions]);
 
   const sortedSubmissions = useMemo(
     () =>
-      [...submissions].sort((a, b) => {
+      [...visibleSubmissions].sort((a, b) => {
         const aDate = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
         const bDate = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
         return bDate - aDate;
       }),
-    [submissions],
+    [visibleSubmissions],
   );
 
   const handleReview = async (submission: IndicatorSubmission, decision: "validated" | "returned") => {
@@ -135,6 +161,7 @@ export function MonitorIndicatorPanel() {
         </div>
         <p className="mt-2 text-xs text-slate-500">
           {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
+          {schoolFilterKeys ? " · Filtered school set active" : ""}
         </p>
       </div>
 
@@ -336,7 +363,9 @@ export function MonitorIndicatorPanel() {
               {sortedSubmissions.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-2 py-8 text-center text-sm text-slate-500">
-                    No indicator packages available yet.
+                    {schoolFilterKeys
+                      ? "No indicator packages match the selected school filters."
+                      : "No indicator packages available yet."}
                   </td>
                 </tr>
               )}
@@ -347,4 +376,3 @@ export function MonitorIndicatorPanel() {
     </section>
   );
 }
-
