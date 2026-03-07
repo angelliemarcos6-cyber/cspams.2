@@ -1,4 +1,4 @@
-﻿# CSPAMS Capstone Completion Guide
+# CSPAMS Capstone Completion Guide
 
 This guide turns the current codebase into a finishable capstone plan.
 
@@ -7,6 +7,7 @@ This guide turns the current codebase into a finishable capstone plan.
 - **Laravel 11 + Filament 3 admin foundation**
 - **Custom role-aware login page** for `monitor` and `school_head`
 - **Section management CRUD** with role-based visibility and query scope
+- **Reports Center module** with filter-based CSV exports and dashboard evidence widgets
 
 These are solid foundations for an academic capstone because they demonstrate:
 - authentication and authorization,
@@ -157,7 +158,7 @@ During defense, highlight:
 ## 9) Immediate next coding tasks for this repository
 
 1. Add feature and policy tests for role-based access and scoped data.
-2. Implement production-grade export flows (PDF and Excel) matching division templates.
+2. Extend exports to PDF/Excel formatting matching division templates (CSV exports are now available).
 3. Add API endpoints for future mobile/reporting integrations.
 4. Add notification rules for at-risk and dropout-status changes.
 5. Prepare deployment profile (env hardening, queue workers, backups, monitoring).

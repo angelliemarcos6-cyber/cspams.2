@@ -24,8 +24,12 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - Lifecycle status pie chart
   - School submission snapshot table
 - Capstone reporting support:
+  - Reports Center page with filterable school/performance summary exports (CSV)
   - Bulk CSV export for selected learner and performance records
   - Learner-level status timeline and performance-history relation views
+- Expanded monitoring evidence widgets:
+  - At-risk watchlist table
+  - 6-month status transition trend chart
 
 ## Database and Seeders
 
