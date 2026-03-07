@@ -119,6 +119,7 @@ class DemoDataSeeder extends Seeder
             ['code' => 'RR', 'name' => 'Retention Rate', 'category' => MetricCategory::LEARNER->value],
             ['code' => 'DR', 'name' => 'Dropout Rate', 'category' => MetricCategory::LEARNER->value],
             ['code' => 'CSR', 'name' => 'Cohort Survival Rate', 'category' => MetricCategory::LEARNER->value],
+            ['code' => 'SALO', 'name' => "School's Achievements and Learning Outcomes", 'category' => MetricCategory::COMPLIANCE->value],
             ['code' => 'PCR', 'name' => 'Pupil-Classroom Ratio', 'category' => MetricCategory::INFRASTRUCTURE->value],
             ['code' => 'PSR', 'name' => 'Pupil-Seat Ratio', 'category' => MetricCategory::RESOURCES->value],
         ];
