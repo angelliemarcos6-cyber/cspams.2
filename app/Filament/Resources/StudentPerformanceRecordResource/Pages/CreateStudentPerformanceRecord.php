@@ -6,6 +6,7 @@ use App\Filament\Resources\StudentPerformanceRecordResource;
 use App\Models\Student;
 use App\Support\Auth\UserRoleResolver;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Validation\ValidationException;
 
 class CreateStudentPerformanceRecord extends CreateRecord
 {
@@ -16,16 +17,42 @@ class CreateStudentPerformanceRecord extends CreateRecord
         $data['encoded_by'] = auth()->id();
         $data['submitted_at'] = now();
 
-        if (UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD)) {
-            $studentSchoolId = Student::query()
-                ->whereKey($data['student_id'] ?? null)
-                ->value('school_id');
-
-            if ((int) $studentSchoolId !== (int) auth()->user()?->school_id) {
-                abort(403, 'You can only encode performance for your assigned school learners.');
-            }
-        }
+        $this->assertStudentIsInUserScope($data);
 
         return $data;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function assertStudentIsInUserScope(array $data): void
+    {
+        $studentId = $data['student_id'] ?? null;
+
+        if (! $studentId) {
+            return;
+        }
+
+        $studentSchoolId = Student::query()
+            ->whereKey($studentId)
+            ->value('school_id');
+
+        if (! $studentSchoolId) {
+            throw ValidationException::withMessages([
+                'data.student_id' => 'Selected learner was not found.',
+            ]);
+        }
+
+        if (! UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD)) {
+            return;
+        }
+
+        if ((int) $studentSchoolId === (int) auth()->user()?->school_id) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'data.student_id' => 'You can only encode performance for learners in your assigned school.',
+        ]);
     }
 }

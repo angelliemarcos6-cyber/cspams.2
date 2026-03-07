@@ -3,10 +3,12 @@
 namespace App\Filament\Resources\StudentResource\Pages;
 
 use App\Filament\Resources\StudentResource;
+use App\Models\Section;
 use App\Models\StudentStatusLog;
 use App\Support\Auth\UserRoleResolver;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Validation\ValidationException;
 
 class EditStudent extends EditRecord
 {
@@ -34,6 +36,8 @@ class EditStudent extends EditRecord
             $data['school_id'] = auth()->user()?->school_id;
         }
 
+        $this->assertSectionBelongsToScope($data);
+
         if (($data['status'] ?? null) !== $this->previousStatus) {
             $data['last_status_at'] = now();
         }
@@ -58,5 +62,33 @@ class EditStudent extends EditRecord
             'changed_at' => now(),
         ]);
     }
-}
 
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function assertSectionBelongsToScope(array $data): void
+    {
+        $sectionId = $data['section_id'] ?? null;
+
+        if (! $sectionId) {
+            return;
+        }
+
+        $schoolId = (int) ($data['school_id'] ?? 0);
+        $academicYearId = (int) ($data['academic_year_id'] ?? 0);
+
+        $sectionIsInScope = Section::query()
+            ->whereKey($sectionId)
+            ->where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->exists();
+
+        if ($sectionIsInScope) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'data.section_id' => 'Selected section does not match the learner school and academic year.',
+        ]);
+    }
+}

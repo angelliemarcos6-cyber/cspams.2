@@ -45,7 +45,7 @@ class SectionResource extends Resource
                     ->searchable()
                     ->preload()
                     ->default(fn (): ?int => AcademicYear::where('is_current', true)->value('id')
-                        ?? AcademicYear::query()->latest('year')->value('id')),
+                        ?? AcademicYear::query()->orderByDesc('start_date')->value('id')),
 
                 Forms\Components\TextInput::make('name')
                     ->label('Section Name')

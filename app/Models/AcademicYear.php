@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Audit\AuditsActivity;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -34,6 +35,21 @@ class AcademicYear extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::saved(function (self $academicYear): void {
+            if (! $academicYear->is_current) {
+                return;
+            }
+
+            // Keep exactly one current academic year to avoid scope ambiguity.
+            static::query()
+                ->whereKeyNot($academicYear->getKey())
+                ->where('is_current', true)
+                ->update(['is_current' => false]);
+        });
+    }
+
     public function sections(): HasMany
     {
         return $this->hasMany(Section::class);
@@ -49,7 +65,7 @@ class AcademicYear extends Model
         return $this->hasMany(StudentPerformanceRecord::class);
     }
 
-    public function scopeCurrent($query)
+    public function scopeCurrent(Builder $query): Builder
     {
         return $query->where('is_current', true);
     }
