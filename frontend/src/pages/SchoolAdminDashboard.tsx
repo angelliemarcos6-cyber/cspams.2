@@ -54,22 +54,21 @@ interface RequirementItem {
   summary: string;
   detail: string;
   isComplete: boolean;
-  sectionId: string;
+  navigatorId: TopNavigatorItem["id"];
 }
 
 interface TopNavigatorItem {
   id: "first_glance" | "requirements" | "compliance" | "forms" | "indicators" | "records";
   label: string;
-  sectionId: string;
 }
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
-  { id: "first_glance", label: "First Glance", sectionId: "first-glance" },
-  { id: "requirements", label: "Requirement Navigator", sectionId: "requirement-navigator" },
-  { id: "compliance", label: "Compliance Record", sectionId: "compliance-input" },
-  { id: "forms", label: "SF-1 / SF-5", sectionId: "forms-workflow" },
-  { id: "indicators", label: "Compliance Indicators", sectionId: "indicator-workflow" },
-  { id: "records", label: "School Records", sectionId: "school-records" },
+  { id: "first_glance", label: "First Glance" },
+  { id: "requirements", label: "Requirement Navigator" },
+  { id: "compliance", label: "Compliance Record" },
+  { id: "forms", label: "SF-1 / SF-5" },
+  { id: "indicators", label: "Compliance Indicators" },
+  { id: "records", label: "School Records" },
 ];
 
 const EMPTY_FORM: FormState = {
@@ -148,13 +147,6 @@ function buildWorkflowDetail(label: string, submission: FormSubmission | Indicat
   return `${label} is still draft and not yet submitted.`;
 }
 
-function scrollToSection(sectionId: string): void {
-  const target = document.getElementById(sectionId);
-  if (!target) return;
-
-  target.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
@@ -199,7 +191,7 @@ export function SchoolAdminDashboard() {
           ? `Last updated ${formatDateTime(assignedRecord.lastUpdated)}.`
           : "No compliance record submitted yet.",
         isComplete: Boolean(assignedRecord),
-        sectionId: "compliance-input",
+        navigatorId: "compliance",
       },
       {
         id: "sf1",
@@ -207,7 +199,7 @@ export function SchoolAdminDashboard() {
         summary: "Generate and submit SF-1 to monitor.",
         detail: buildWorkflowDetail("SF-1", latestSf1),
         isComplete: isPassedToMonitor(latestSf1?.status),
-        sectionId: "forms-workflow",
+        navigatorId: "forms",
       },
       {
         id: "sf5",
@@ -215,7 +207,7 @@ export function SchoolAdminDashboard() {
         summary: "Generate and submit SF-5 to monitor.",
         detail: buildWorkflowDetail("SF-5", latestSf5),
         isComplete: isPassedToMonitor(latestSf5?.status),
-        sectionId: "forms-workflow",
+        navigatorId: "forms",
       },
       {
         id: "indicators",
@@ -223,7 +215,7 @@ export function SchoolAdminDashboard() {
         summary: "Encode indicators and submit to monitor.",
         detail: buildWorkflowDetail("Indicator package", latestIndicators),
         isComplete: isPassedToMonitor(latestIndicators?.status),
-        sectionId: "indicator-workflow",
+        navigatorId: "indicators",
       },
     ],
     [assignedRecord, latestIndicators, latestSf1, latestSf5],
@@ -295,21 +287,15 @@ export function SchoolAdminDashboard() {
   };
 
   const handleRequirementNavigate = (item: RequirementItem) => {
+    setActiveTopNavigator(item.navigatorId);
+
     if (item.id === "school_record") {
       openForCreate();
     }
-
-    scrollToSection(item.sectionId);
   };
 
   const handleTopNavigate = (item: TopNavigatorItem) => {
     setActiveTopNavigator(item.id);
-
-    if (item.id === "compliance") {
-      openForCreate();
-    }
-
-    scrollToSection(item.sectionId);
   };
 
   const validateForm = () => {
@@ -360,6 +346,19 @@ export function SchoolAdminDashboard() {
     }, 900);
   };
 
+  const isComplianceView = activeTopNavigator === "compliance";
+  const isComplianceFormVisible = isComplianceView && showForm;
+
+  const handleComplianceAction = () => {
+    if (isComplianceFormVisible) {
+      closeForm();
+      return;
+    }
+
+    setActiveTopNavigator("compliance");
+    openForCreate();
+  };
+
   return (
     <Shell
       title="School Head Dashboard"
@@ -376,13 +375,15 @@ export function SchoolAdminDashboard() {
           </button>
           <button
             type="button"
-            onClick={showForm ? closeForm : openForCreate}
+            onClick={handleComplianceAction}
             className={`inline-flex items-center gap-2 rounded-sm px-3 py-2 text-xs font-semibold transition ${
-              showForm ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "bg-primary text-white hover:bg-primary-600"
+              isComplianceFormVisible
+                ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                : "bg-primary text-white hover:bg-primary-600"
             }`}
           >
-            {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {showForm ? "Close Input Form" : records.length > 0 ? "Update Compliance Data" : "Input Compliance Data"}
+            {isComplianceFormVisible ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {isComplianceFormVisible ? "Close Input Form" : records.length > 0 ? "Update Compliance Data" : "Input Compliance Data"}
           </button>
           <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
             {syncStatus === "up_to_date" ? "No backend changes" : "Records updated"}
@@ -420,6 +421,7 @@ export function SchoolAdminDashboard() {
         </div>
       </section>
 
+      {activeTopNavigator === "first_glance" && (
       <section id="first-glance" className="mb-5 border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -466,7 +468,9 @@ export function SchoolAdminDashboard() {
           ))}
         </div>
       </section>
+      )}
 
+      {activeTopNavigator === "requirements" && (
       <section id="requirement-navigator" className="mb-5 border border-slate-200 bg-slate-50 p-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirement Navigator</h2>
         <p className="mt-1 text-xs text-slate-600">Open each requirement module and submit what is missing.</p>
@@ -491,7 +495,10 @@ export function SchoolAdminDashboard() {
           ))}
         </div>
       </section>
+      )}
 
+      {activeTopNavigator === "first_glance" && (
+      <>
       <section id="school-overview" className="mb-5 animate-fade-slide grid gap-3 md:grid-cols-3">
         <article className="border border-slate-200 bg-white px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
@@ -574,8 +581,38 @@ export function SchoolAdminDashboard() {
         </div>
       </section>
 
+      <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
+        <StatusPieChart data={statusDistribution} />
+        <RegionBarChart data={regionAggregates} />
+        <SubmissionTrendChart data={submissionTrend} />
+      </section>
+
+      {regionAggregates.length > 0 && (
+        <section className="mt-5 animate-fade-slide">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Regional Breakdown</h2>
+            <span className="text-xs text-slate-500">{regionAggregates.length} region entries</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {regionAggregates.map((region) => (
+              <RegionCard
+                key={region.region}
+                region={region.region}
+                schools={region.schools}
+                activeSchools={region.activeSchools}
+                students={region.students}
+                teachers={region.teachers}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+      </>
+      )}
+
+      {activeTopNavigator === "compliance" && (
       <section id="compliance-input">
-        {showForm && (
+        {showForm ? (
         <section className="surface-panel mt-5 animate-fade-slide overflow-hidden border border-slate-200">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">{editingId ? "Edit School Record" : "Add School Record"}</h2>
@@ -684,44 +721,30 @@ export function SchoolAdminDashboard() {
             </div>
           </form>
         </section>
+        ) : (
+          <section className="mt-5 border border-slate-200 bg-slate-50 p-5">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Input</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Use the `Update Compliance Data` button above to encode students, teachers, and status for your school.
+            </p>
+          </section>
         )}
       </section>
+      )}
 
+      {activeTopNavigator === "forms" && (
       <section id="forms-workflow">
         <SchoolFormsPanel />
       </section>
+      )}
 
+      {activeTopNavigator === "indicators" && (
       <section id="indicator-workflow">
         <SchoolIndicatorPanel />
       </section>
-
-      <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
-        <StatusPieChart data={statusDistribution} />
-        <RegionBarChart data={regionAggregates} />
-        <SubmissionTrendChart data={submissionTrend} />
-      </section>
-
-      {regionAggregates.length > 0 && (
-        <section className="mt-5 animate-fade-slide">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Regional Breakdown</h2>
-            <span className="text-xs text-slate-500">{regionAggregates.length} region entries</span>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {regionAggregates.map((region) => (
-              <RegionCard
-                key={region.region}
-                region={region.region}
-                schools={region.schools}
-                activeSchools={region.activeSchools}
-                students={region.students}
-                teachers={region.teachers}
-              />
-            ))}
-          </div>
-        </section>
       )}
 
+      {activeTopNavigator === "records" && (
       <section id="school-records" className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200">
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <h2 className="text-base font-bold text-slate-900">School Records</h2>
@@ -883,6 +906,7 @@ export function SchoolAdminDashboard() {
           </div>
         )}
       </section>
+      )}
     </Shell>
   );
 }
