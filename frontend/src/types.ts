@@ -6,7 +6,10 @@ export type IndicatorComplianceStatus = "met" | "below_target";
 
 export interface SchoolRecord {
   id: string;
+  schoolCode?: string | null;
   schoolName: string;
+  district?: string | null;
+  type?: string | null;
   studentCount: number;
   teacherCount: number;
   region: string;
@@ -26,11 +29,13 @@ export interface SessionUser {
 }
 
 export interface SchoolRecordPayload {
-  schoolName: string;
+  schoolName?: string;
   studentCount: number;
   teacherCount: number;
-  region: string;
+  region?: string;
   status: SchoolStatus;
+  district?: string | null;
+  type?: "public" | "private" | null;
 }
 
 export interface TargetsMetSnapshot {
@@ -135,4 +140,51 @@ export interface IndicatorSubmissionPayload {
     actualValue: number;
     remarks?: string | null;
   }>;
+}
+
+export type SubmissionFormType = "sf1" | "sf5";
+
+export interface FormSubmission {
+  id: string;
+  formType: SubmissionFormType | string;
+  status: WorkflowStatus | string;
+  statusLabel: string | null;
+  reportingPeriod: string | null;
+  version: number;
+  school?: {
+    id: string;
+    schoolCode: string;
+    name: string;
+  };
+  academicYear?: {
+    id: string;
+    name: string;
+  };
+  summary?: Record<string, unknown> | null;
+  payload?: Record<string, unknown> | null;
+  validationNotes: string | null;
+  generatedAt: string | null;
+  submittedAt: string | null;
+  validatedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface FormSubmissionHistoryEntry {
+  id: string;
+  formType: SubmissionFormType | string;
+  submissionId: string;
+  action: string;
+  fromStatus: string | null;
+  fromStatusLabel: string | null;
+  toStatus: string | null;
+  toStatusLabel: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown> | null;
+  actor?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  createdAt: string | null;
 }

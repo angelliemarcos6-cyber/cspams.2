@@ -19,10 +19,10 @@ class UpsertSchoolRecordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'schoolName' => ['required', 'string', 'max:255'],
+            'schoolName' => ['sometimes', 'nullable', 'string', 'max:255'],
             'studentCount' => ['required', 'integer', 'min:0'],
             'teacherCount' => ['required', 'integer', 'min:0'],
-            'region' => ['required', 'string', 'max:255'],
+            'region' => ['sometimes', 'nullable', 'string', 'max:255'],
             'status' => ['required', 'string', Rule::in(array_column(SchoolStatus::cases(), 'value'))],
             'district' => ['sometimes', 'nullable', 'string', 'max:255'],
             'type' => ['sometimes', 'nullable', 'string', Rule::in(['public', 'private'])],

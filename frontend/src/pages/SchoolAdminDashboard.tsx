@@ -9,7 +9,6 @@ import {
   Edit2,
   Filter,
   GraduationCap,
-  MapPin,
   Plus,
   RefreshCw,
   Save,
@@ -24,10 +23,11 @@ import { RegionCard } from "@/components/RegionCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
+import { SchoolFormsPanel } from "@/components/forms/SchoolFormsPanel";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
+import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import type { SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
-import { PH_REGIONS } from "@/constants/regions";
 import {
   buildRegionAggregates,
   buildStatusDistribution,
@@ -40,18 +40,14 @@ type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "s
 type SortDirection = "asc" | "desc";
 
 interface FormState {
-  schoolName: string;
   studentCount: string;
   teacherCount: string;
-  region: string;
   status: SchoolStatus;
 }
 
 const EMPTY_FORM: FormState = {
-  schoolName: "",
   studentCount: "",
   teacherCount: "",
-  region: "",
   status: "active",
 };
 
@@ -90,6 +86,7 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 export function SchoolAdminDashboard() {
+  const { user } = useAuth();
   const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
 
   const [showForm, setShowForm] = useState(false);
@@ -111,6 +108,10 @@ export function SchoolAdminDashboard() {
   const regionAggregates = useMemo(() => buildRegionAggregates(records), [records]);
   const statusDistribution = useMemo(() => buildStatusDistribution(records), [records]);
   const submissionTrend = useMemo(() => buildSubmissionTrend(records), [records]);
+  const assignedRecord = records[0] ?? null;
+  const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
+  const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
+  const schoolRegion = assignedRecord?.region || "N/A";
 
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -153,10 +154,8 @@ export function SchoolAdminDashboard() {
   const openForEdit = (record: SchoolRecord) => {
     setEditingId(record.id);
     setForm({
-      schoolName: record.schoolName,
       studentCount: record.studentCount.toString(),
       teacherCount: record.teacherCount.toString(),
-      region: record.region,
       status: record.status,
     });
     setFormErrors({});
@@ -177,10 +176,6 @@ export function SchoolAdminDashboard() {
   const validateForm = () => {
     const errors: Partial<Record<keyof FormState, string>> = {};
 
-    if (!form.schoolName.trim()) {
-      errors.schoolName = "School name is required.";
-    }
-
     const students = Number(form.studentCount);
     if (!Number.isFinite(students) || students < 0 || !Number.isInteger(students)) {
       errors.studentCount = "Use a valid non-negative whole number.";
@@ -189,10 +184,6 @@ export function SchoolAdminDashboard() {
     const teachers = Number(form.teacherCount);
     if (!Number.isFinite(teachers) || teachers < 0 || !Number.isInteger(teachers)) {
       errors.teacherCount = "Use a valid non-negative whole number.";
-    }
-
-    if (!form.region) {
-      errors.region = "Select a region.";
     }
 
     setFormErrors(errors);
@@ -207,10 +198,8 @@ export function SchoolAdminDashboard() {
     }
 
     const payload: SchoolRecordPayload = {
-      schoolName: form.schoolName.trim(),
       studentCount: Number(form.studentCount),
       teacherCount: Number(form.teacherCount),
-      region: form.region,
       status: form.status,
     };
 
@@ -254,7 +243,7 @@ export function SchoolAdminDashboard() {
             }`}
           >
             {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {showForm ? "Close Input Form" : records.length > 0 ? "Update My School" : "Input School Data"}
+            {showForm ? "Close Input Form" : records.length > 0 ? "Update Compliance Data" : "Input Compliance Data"}
           </button>
           <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
             {syncStatus === "up_to_date" ? "No backend changes" : "Records updated"}
@@ -270,6 +259,21 @@ export function SchoolAdminDashboard() {
           {error}
         </section>
       )}
+
+      <section className="mb-5 animate-fade-slide grid gap-3 md:grid-cols-3">
+        <article className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
+          <p className="mt-1 text-sm font-bold text-slate-900">{schoolName}</p>
+        </article>
+        <article className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">School Code</p>
+          <p className="mt-1 text-sm font-bold text-slate-900">{schoolCode}</p>
+        </article>
+        <article className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Region</p>
+          <p className="mt-1 text-sm font-bold text-slate-900">{schoolRegion}</p>
+        </article>
+      </section>
 
       <section className="animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Total Schools" value={records.length.toLocaleString()} icon={<Building2 className="h-5 w-5" />} />
@@ -338,6 +342,8 @@ export function SchoolAdminDashboard() {
         </div>
       </section>
 
+      <SchoolFormsPanel />
+
       <SchoolIndicatorPanel />
 
       <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
@@ -351,33 +357,11 @@ export function SchoolAdminDashboard() {
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">{editingId ? "Edit School Record" : "Add School Record"}</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              {editingId ? "Update the selected record then save changes." : "Fill in school details and submit the record."}
+              {editingId ? "Update your latest school compliance figures." : "Encode your school compliance figures."}
             </p>
           </div>
 
           <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={handleFormSubmit}>
-            <div className="md:col-span-2">
-              <label htmlFor="schoolName" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                School Name
-              </label>
-              <div className="relative">
-                <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="schoolName"
-                  type="text"
-                  value={form.schoolName}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, schoolName: event.target.value }));
-                    setFormErrors((current) => ({ ...current, schoolName: undefined }));
-                    setSubmitError("");
-                  }}
-                  placeholder="Enter complete school name"
-                  className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-              </div>
-              {formErrors.schoolName && <p className="mt-1 text-xs text-red-600">{formErrors.schoolName}</p>}
-            </div>
-
             <div>
               <label htmlFor="studentCount" className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Student Count
@@ -424,33 +408,6 @@ export function SchoolAdminDashboard() {
                 />
               </div>
               {formErrors.teacherCount && <p className="mt-1 text-xs text-red-600">{formErrors.teacherCount}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="region" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Region
-              </label>
-              <div className="relative">
-                <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select
-                  id="region"
-                  value={form.region}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, region: event.target.value }));
-                    setFormErrors((current) => ({ ...current, region: undefined }));
-                    setSubmitError("");
-                  }}
-                  className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                >
-                  <option value="">Select region</option>
-                  {PH_REGIONS.map((region) => (
-                    <option key={region} value={region}>
-                      {region}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {formErrors.region && <p className="mt-1 text-xs text-red-600">{formErrors.region}</p>}
             </div>
 
             <div>

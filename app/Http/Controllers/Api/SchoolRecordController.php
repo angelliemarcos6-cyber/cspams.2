@@ -144,8 +144,6 @@ class SchoolRecordController extends Controller
     private function applyPayload(School $school, UpsertSchoolRecordRequest $request, User $user): void
     {
         $school->fill([
-            'name' => $request->string('schoolName')->toString(),
-            'region' => $request->string('region')->toString(),
             'status' => $request->string('status')->toString(),
             'reported_student_count' => $request->integer('studentCount'),
             'reported_teacher_count' => $request->integer('teacherCount'),
@@ -153,12 +151,26 @@ class SchoolRecordController extends Controller
             'submitted_at' => now(),
         ]);
 
-        if ($request->filled('district')) {
-            $school->district = $request->string('district')->toString();
-        }
+        $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
 
-        if ($request->filled('type')) {
-            $school->type = $request->string('type')->toString();
+        // School identity fields are division-managed. School Heads can submit
+        // compliance counts/status, but cannot rewrite profile metadata.
+        if (! $isSchoolHead) {
+            if ($request->filled('schoolName')) {
+                $school->name = $request->string('schoolName')->toString();
+            }
+
+            if ($request->filled('region')) {
+                $school->region = $request->string('region')->toString();
+            }
+
+            if ($request->filled('district')) {
+                $school->district = $request->string('district')->toString();
+            }
+
+            if ($request->filled('type')) {
+                $school->type = $request->string('type')->toString();
+            }
         }
 
         $school->save();

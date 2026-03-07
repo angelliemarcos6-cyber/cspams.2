@@ -130,6 +130,8 @@ class ApiSyncTest extends TestCase
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+        $originalSchoolName = (string) $schoolHead->school?->name;
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -141,10 +143,8 @@ class ApiSyncTest extends TestCase
         $token = (string) $login->json('token');
 
         $updated = $this->withToken($token)->putJson('/api/dashboard/records/' . $schoolHead->school_id, [
-            'schoolName' => 'School Head 1 Synced',
             'studentCount' => 1250,
             'teacherCount' => 60,
-            'region' => 'Region II',
             'status' => 'active',
         ]);
 
@@ -166,7 +166,55 @@ class ApiSyncTest extends TestCase
                 ],
             ])
             ->assertJsonPath('data.id', (string) $schoolHead->school_id)
-            ->assertJsonPath('data.schoolName', 'School Head 1 Synced');
+            ->assertJsonPath('data.schoolName', $originalSchoolName);
+    }
+
+    public function test_school_head_cannot_override_school_identity_fields_via_record_update(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+        $school = $schoolHead->school;
+        $this->assertNotNull($school);
+
+        $originalName = (string) $school?->name;
+        $originalRegion = (string) $school?->region;
+        $originalDistrict = (string) $school?->district;
+        $originalType = (string) $school?->type;
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $this->schoolHeadLogin($schoolHead),
+            'password' => 'password123',
+        ]);
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $updated = $this->withToken($token)->putJson('/api/dashboard/records/' . $schoolHead->school_id, [
+            'schoolName' => 'Unauthorized Rename Attempt',
+            'region' => 'Region III',
+            'district' => 'District X',
+            'type' => 'private',
+            'studentCount' => 1500,
+            'teacherCount' => 65,
+            'status' => 'active',
+        ]);
+
+        $updated->assertOk()
+            ->assertJsonPath('data.schoolName', $originalName)
+            ->assertJsonPath('data.region', $originalRegion)
+            ->assertJsonPath('data.studentCount', 1500)
+            ->assertJsonPath('data.teacherCount', 65);
+
+        $school?->refresh();
+        $this->assertSame($originalName, $school?->name);
+        $this->assertSame($originalRegion, $school?->region);
+        $this->assertSame($originalDistrict, $school?->district);
+        $this->assertSame($originalType, $school?->type);
+        $this->assertSame(1500, (int) $school?->reported_student_count);
+        $this->assertSame(65, (int) $school?->reported_teacher_count);
     }
 
     public function test_monitor_sync_etag_changes_when_student_data_changes(): void

@@ -19,6 +19,7 @@ import { RegionCard } from "@/components/RegionCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
+import { MonitorFormsPanel } from "@/components/forms/MonitorFormsPanel";
 import { MonitorIndicatorPanel } from "@/components/indicators/MonitorIndicatorPanel";
 import { useData } from "@/context/Data";
 import type { SchoolRecord, SchoolStatus } from "@/types";
@@ -217,6 +218,8 @@ export function MonitorDashboard() {
       </section>
 
       <MonitorIndicatorPanel />
+
+      <MonitorFormsPanel />
 
       <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
         <StatusPieChart data={statusDistribution} />
