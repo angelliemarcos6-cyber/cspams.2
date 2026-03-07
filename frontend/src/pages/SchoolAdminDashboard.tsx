@@ -61,7 +61,7 @@ interface RequirementItem {
 }
 
 interface TopNavigatorItem {
-  id: "first_glance" | "requirements" | "compliance" | "forms" | "indicators" | "records";
+  id: "first_glance" | "requirements" | "compliance" | "records";
   label: string;
 }
 
@@ -74,18 +74,16 @@ interface ManualStep {
 }
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
-  { id: "first_glance", label: "First Glance" },
-  { id: "requirements", label: "Requirement Navigator" },
+  { id: "first_glance", label: "Overview" },
+  { id: "requirements", label: "Requirements" },
   { id: "compliance", label: "Compliance Record" },
-  { id: "forms", label: "SF-1 / SF-5" },
-  { id: "indicators", label: "Compliance Indicators" },
   { id: "records", label: "School Records" },
 ];
 
 const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "first_glance",
-    title: "First Glance",
+    title: "Overview",
     objective: "Identify urgent tasks before encoding new data.",
     actions: [
       "Review missing requirements and sync alerts.",
@@ -95,7 +93,7 @@ const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   },
   {
     id: "requirements",
-    title: "Requirement Navigator",
+    title: "Requirements",
     objective: "Use one screen to track all required submissions.",
     actions: [
       "Open each requirement tile and check if status is passed or missing.",
@@ -106,32 +104,12 @@ const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "compliance",
     title: "Compliance Record",
-    objective: "Keep school profile counts accurate for monitoring.",
+    objective: "Encode and submit all compliance data from one module.",
     actions: [
-      "Update student count, teacher count, and school status.",
-      "Save changes and confirm success message appears.",
+      "Update school profile counts such as students, teachers, and school status.",
+      "Generate and submit SF-1/SF-5 and encode compliance indicators.",
     ],
-    doneWhen: "Latest compliance record is saved and reflected in school records.",
-  },
-  {
-    id: "forms",
-    title: "SF-1 / SF-5",
-    objective: "Generate and submit official form packages to monitor.",
-    actions: [
-      "Create or update SF-1 and SF-5 drafts for the correct period.",
-      "Submit drafts once values are complete and verified.",
-    ],
-    doneWhen: "Form status is submitted or validated.",
-  },
-  {
-    id: "indicators",
-    title: "Compliance Indicators",
-    objective: "Report indicator package values for monitor validation.",
-    actions: [
-      "Encode required indicators and remarks for the selected period.",
-      "Create draft then submit package for review.",
-    ],
-    doneWhen: "Indicator package status is submitted or validated.",
+    doneWhen: "School profile, SF forms, and indicator package are all submitted or validated.",
   },
   {
     id: "records",
@@ -255,7 +233,7 @@ export function SchoolAdminDashboard() {
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const activeNavigatorLabel = useMemo(
-    () => TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "First Glance",
+    () => TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
     [activeTopNavigator],
   );
 
@@ -292,7 +270,7 @@ export function SchoolAdminDashboard() {
         summary: "Generate and submit SF-1 to monitor.",
         detail: buildWorkflowDetail("SF-1", latestSf1),
         isComplete: isPassedToMonitor(latestSf1?.status),
-        navigatorId: "forms",
+        navigatorId: "compliance",
       },
       {
         id: "sf5",
@@ -300,15 +278,15 @@ export function SchoolAdminDashboard() {
         summary: "Generate and submit SF-5 to monitor.",
         detail: buildWorkflowDetail("SF-5", latestSf5),
         isComplete: isPassedToMonitor(latestSf5?.status),
-        navigatorId: "forms",
+        navigatorId: "compliance",
       },
       {
         id: "indicators",
-        label: "Indicator Package",
-        summary: "Encode indicators and submit to monitor.",
+        label: "Compliance Indicators",
+        summary: "Encode required school indicators and submit to monitor.",
         detail: buildWorkflowDetail("Indicator package", latestIndicators),
         isComplete: isPassedToMonitor(latestIndicators?.status),
-        navigatorId: "indicators",
+        navigatorId: "compliance",
       },
     ],
     [assignedRecord, latestIndicators, latestSf1, latestSf5],
@@ -455,7 +433,7 @@ export function SchoolAdminDashboard() {
   return (
     <Shell
       title="School Head Dashboard"
-      subtitle="Start with missing requirements, then submit SF forms and indicators required by the division monitor."
+      subtitle="Start with overview and requirements, then update your compliance record (school profile, SF forms, and indicators) for monitor review."
       actions={
         <>
           <button
@@ -525,7 +503,7 @@ export function SchoolAdminDashboard() {
         </div>
         {isNavigatorVisible && (
           <>
-            <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
               {TOP_NAVIGATOR_ITEMS.map((item) => (
                 <button
                   key={item.id}
@@ -609,7 +587,7 @@ export function SchoolAdminDashboard() {
       <section id="first-glance" className="dashboard-shell mb-5 rounded-sm p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">First-Glance Alerts</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Overview Alerts</h2>
             <p className="mt-1 text-xs text-slate-600">
               Missing requirements: <span className="font-bold text-slate-900">{missingRequirements.length}</span> of{" "}
               <span className="font-bold text-slate-900">{requirements.length}</span>
@@ -656,7 +634,7 @@ export function SchoolAdminDashboard() {
 
       {activeTopNavigator === "requirements" && (
       <section id="requirement-navigator" className="dashboard-shell mb-5 rounded-sm p-3">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirement Navigator</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirements</h2>
         <p className="mt-1 text-xs text-slate-600">Open each requirement module and submit what is missing.</p>
         <div className="mt-3 grid gap-2 md:grid-cols-4">
           {requirements.map((item) => (
@@ -795,136 +773,141 @@ export function SchoolAdminDashboard() {
       )}
 
       {activeTopNavigator === "compliance" && (
-      <section id="compliance-input">
-        {showForm ? (
-        <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
-          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-            <h2 className="text-base font-bold text-slate-900">{editingId ? "Edit School Record" : "Add School Record"}</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {editingId ? "Update your latest school compliance figures." : "Encode your school compliance figures."}
-            </p>
-          </div>
-
-          <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={handleFormSubmit}>
-            <div>
-              <label htmlFor="studentCount" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Student Count
-              </label>
-              <div className="relative">
-                <GraduationCap className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="studentCount"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={form.studentCount}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, studentCount: event.target.value }));
-                    setFormErrors((current) => ({ ...current, studentCount: undefined }));
-                    setSubmitError("");
-                  }}
-                  placeholder="0"
-                  className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-              </div>
-              {formErrors.studentCount && <p className="mt-1 text-xs text-red-600">{formErrors.studentCount}</p>}
-            </div>
-
-            <div>
-              <label htmlFor="teacherCount" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Teacher Count
-              </label>
-              <div className="relative">
-                <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="teacherCount"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={form.teacherCount}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, teacherCount: event.target.value }));
-                    setFormErrors((current) => ({ ...current, teacherCount: undefined }));
-                    setSubmitError("");
-                  }}
-                  placeholder="0"
-                  className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-              </div>
-              {formErrors.teacherCount && <p className="mt-1 text-xs text-red-600">{formErrors.teacherCount}</p>}
-            </div>
-
-            <div>
-              <p className="mb-1.5 block text-sm font-semibold text-slate-700">Status</p>
-              <div className="inline-flex w-full rounded-sm border border-slate-200 bg-slate-50 p-1">
-                {(["active", "inactive", "pending"] as const).map((statusOption) => (
-                  <button
-                    key={statusOption}
-                    type="button"
-                    onClick={() => setForm((current) => ({ ...current, status: statusOption }))}
-                    className={`flex-1 rounded-sm px-3 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                      form.status === statusOption ? "bg-white text-primary shadow-sm" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {statusLabel(statusOption)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              {saveMessage && (
-                <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                  {saveMessage}
-                </div>
-              )}
-              {submitError && (
-                <div className="mb-3 rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-                  {submitError}
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <Save className="h-4 w-4" />
-                  {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save School Record"}
-                </button>
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <X className="h-4 w-4" />
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </form>
+      <section id="compliance-records" className="grid gap-5">
+        <section className="dashboard-shell rounded-sm p-4">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Record Modules</h2>
+          <p className="mt-1 text-xs text-slate-600">
+            Encode school profile counts, submit SF-1/SF-5, and input compliance indicators in this section.
+          </p>
         </section>
-        ) : (
-          <section className="dashboard-shell mt-5 rounded-sm p-5">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Input</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Use the `Update Compliance Data` button above to encode students, teachers, and status for your school.
-            </p>
+
+        <section id="compliance-input">
+          {showForm ? (
+          <section className="surface-panel dashboard-shell animate-fade-slide overflow-hidden">
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <h2 className="text-base font-bold text-slate-900">{editingId ? "Edit School Record" : "Add School Record"}</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {editingId ? "Update your latest school compliance figures." : "Encode your school compliance figures."}
+              </p>
+            </div>
+
+            <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={handleFormSubmit}>
+              <div>
+                <label htmlFor="studentCount" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Student Count
+                </label>
+                <div className="relative">
+                  <GraduationCap className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="studentCount"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={form.studentCount}
+                    onChange={(event) => {
+                      setForm((current) => ({ ...current, studentCount: event.target.value }));
+                      setFormErrors((current) => ({ ...current, studentCount: undefined }));
+                      setSubmitError("");
+                    }}
+                    placeholder="0"
+                    className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                {formErrors.studentCount && <p className="mt-1 text-xs text-red-600">{formErrors.studentCount}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="teacherCount" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Teacher Count
+                </label>
+                <div className="relative">
+                  <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="teacherCount"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={form.teacherCount}
+                    onChange={(event) => {
+                      setForm((current) => ({ ...current, teacherCount: event.target.value }));
+                      setFormErrors((current) => ({ ...current, teacherCount: undefined }));
+                      setSubmitError("");
+                    }}
+                    placeholder="0"
+                    className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+                {formErrors.teacherCount && <p className="mt-1 text-xs text-red-600">{formErrors.teacherCount}</p>}
+              </div>
+
+              <div>
+                <p className="mb-1.5 block text-sm font-semibold text-slate-700">Status</p>
+                <div className="inline-flex w-full rounded-sm border border-slate-200 bg-slate-50 p-1">
+                  {(["active", "inactive", "pending"] as const).map((statusOption) => (
+                    <button
+                      key={statusOption}
+                      type="button"
+                      onClick={() => setForm((current) => ({ ...current, status: statusOption }))}
+                      className={`flex-1 rounded-sm px-3 py-2 text-xs font-semibold uppercase tracking-wide transition ${
+                        form.status === statusOption ? "bg-white text-primary shadow-sm" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {statusLabel(statusOption)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="md:col-span-2">
+                {saveMessage && (
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {saveMessage}
+                  </div>
+                )}
+                {submitError && (
+                  <div className="mb-3 rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                    {submitError}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save School Record"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeForm}
+                    className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </form>
           </section>
-        )}
-      </section>
-      )}
+          ) : (
+            <section className="dashboard-shell rounded-sm p-5">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">School Profile Input</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Use the `Update Compliance Data` button above to encode students, teachers, and status for your school.
+              </p>
+            </section>
+          )}
+        </section>
 
-      {activeTopNavigator === "forms" && (
-      <section id="forms-workflow">
-        <SchoolFormsPanel />
-      </section>
-      )}
+        <section id="forms-workflow">
+          <SchoolFormsPanel />
+        </section>
 
-      {activeTopNavigator === "indicators" && (
-      <section id="indicator-workflow">
-        <SchoolIndicatorPanel />
+        <section id="indicator-workflow">
+          <SchoolIndicatorPanel />
+        </section>
       </section>
       )}
 

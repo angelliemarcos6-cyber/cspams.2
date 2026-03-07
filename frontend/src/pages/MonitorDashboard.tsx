@@ -74,9 +74,9 @@ interface SchoolRequirementSummary {
 }
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
-  { id: "first_glance", label: "First Glance" },
-  { id: "requirements", label: "Requirement Tracker" },
-  { id: "forms", label: "SF-1 / SF-5 Queue" },
+  { id: "first_glance", label: "Overview" },
+  { id: "requirements", label: "Requirements" },
+  { id: "forms", label: "Forms Queue" },
   { id: "indicators", label: "Indicators Queue" },
   { id: "records", label: "School Records" },
 ];
@@ -84,7 +84,7 @@ const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
 const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "first_glance",
-    title: "First Glance",
+    title: "Overview",
     objective: "Detect division-level issues at the start of every review session.",
     actions: [
       "Check totals, TARGETS-MET snapshot, and synchronized alerts.",
@@ -94,7 +94,7 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   },
   {
     id: "requirements",
-    title: "Requirement Tracker",
+    title: "Requirements",
     objective: "Track which schools have submitted or are still missing requirements.",
     actions: [
       "Use status and requirement filters to isolate missing schools.",
@@ -293,7 +293,7 @@ export function MonitorDashboard() {
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const activeNavigatorLabel = useMemo(
-    () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "First Glance",
+    () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
     [activeTopNavigator],
   );
 
