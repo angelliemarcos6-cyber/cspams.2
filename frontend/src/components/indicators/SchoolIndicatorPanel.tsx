@@ -18,6 +18,88 @@ type MetricEntryState = Record<
   }
 >;
 
+interface ComplianceCategory {
+  id: string;
+  label: string;
+  items: string[];
+}
+
+const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
+  {
+    id: "profile_enrollment",
+    label: "Profile and Enrollment",
+    items: [
+      "Name of School Head",
+      "Total Number of Enrolment",
+      "SBM Level of Practice",
+    ],
+  },
+  {
+    id: "classroom_learning_resources",
+    label: "Classroom, WASH, and Learning Resources",
+    items: [
+      "Pupil/Student Classroom Ratio (Kindergarten)",
+      "Pupil/Student Classroom Ratio (Grades 1 to 3)",
+      "Pupil/Student Classroom Ratio (Grades 4 to 6)",
+      "Pupil/Student Classroom Ratio (Grades 7 to 10)",
+      "Pupil/Student Classroom Ratio (Grades 11 to 12)",
+      "Water and Sanitation Facility to Pupil Ratio",
+      "Number of Comfort Rooms",
+      "Toilet Bowls",
+      "Urinals",
+      "Handwashing Facilities",
+      "Ideal Learning Materials to Learner Ratio",
+      "Pupil/Student Seat Ratio",
+      "Seat Ratio - Kindergarten",
+      "Seat Ratio - Grades 1 to 6",
+      "Seat Ratio - Grades 7 to 10",
+      "Seat Ratio - Grades 11 to 12",
+    ],
+  },
+  {
+    id: "ict_utilities",
+    label: "ICT, Utilities, and School Readiness",
+    items: [
+      "ICT / E-Classroom Package to Sections Ratio",
+      "ICT Laboratory Availability",
+      "Science Laboratory Availability",
+      "Internet Access (Y/N)",
+      "Electricity Availability (Y/N)",
+      "Complete Fence/Gate (Evident/Partially/Not Evident)",
+    ],
+  },
+  {
+    id: "teacher_profile",
+    label: "Teacher Profile and Inclusion",
+    items: [
+      "Number of Teachers",
+      "Teachers - Male",
+      "Teachers - Female",
+      "Teachers with Physical Disability",
+      "Teachers with Physical Disability - Male",
+      "Teachers with Physical Disability - Female",
+      "No. of Teachers Trained on Psychological First Aid (PFA)",
+      "No. of Teachers Trained on Occupational First Aid",
+    ],
+  },
+  {
+    id: "programs_safety",
+    label: "Programs, Governance, and Safety",
+    items: [
+      "Functional SGC",
+      "School-Based Feeding Program Beneficiaries",
+      "School-Managed Canteen (Annual Income)",
+      "Teachers Cooperative Managed Canteen (Annual Income)",
+      "Security and Safety (Contingency Plan)",
+      "Contingency Plan - Earthquake",
+      "Contingency Plan - Typhoon",
+      "Contingency Plan - COVID-19",
+      "Contingency Plan - Power Interruption",
+      "Contingency Plan - In-Person Classes",
+    ],
+  },
+];
+
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
   if (status === "submitted") return "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300";
@@ -76,6 +158,7 @@ export function SchoolIndicatorPanel() {
   const [expandedSubmissionId, setExpandedSubmissionId] = useState<string | null>(null);
   const [historyBySubmissionId, setHistoryBySubmissionId] = useState<Record<string, FormSubmissionHistoryEntry[]>>({});
   const [historyLoadingSubmissionId, setHistoryLoadingSubmissionId] = useState<string | null>(null);
+  const [activeComplianceCategoryId, setActiveComplianceCategoryId] = useState<string>(COMPLIANCE_CATEGORIES[0].id);
 
   useEffect(() => {
     setMetricEntries((current) => buildInitialMetricEntries(metrics, current));
@@ -107,6 +190,11 @@ export function SchoolIndicatorPanel() {
         return bDate - aDate;
       }),
     [submissions],
+  );
+
+  const activeComplianceCategory = useMemo(
+    () => COMPLIANCE_CATEGORIES.find((category) => category.id === activeComplianceCategoryId) ?? COMPLIANCE_CATEGORIES[0],
+    [activeComplianceCategoryId],
   );
 
   const resetForm = () => {
@@ -238,6 +326,44 @@ export function SchoolIndicatorPanel() {
           <p className="mt-1 text-lg font-bold text-amber-800">{summary.returned}</p>
         </article>
       </div>
+
+      <section className="border-b border-slate-100 px-5 py-4">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Indicator Categories</h3>
+        <p className="mt-1 text-xs text-slate-600">
+          Based on your school-year matrix (2022-2023 to 2026-2027). Select a category, then encode values below.
+        </p>
+
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+          {COMPLIANCE_CATEGORIES.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              onClick={() => setActiveComplianceCategoryId(category.id)}
+              className={`border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition ${
+                category.id === activeComplianceCategory.id
+                  ? "border-primary bg-primary-50 text-primary-800"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              {category.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{activeComplianceCategory.label}</p>
+          <ul className="mt-2 grid gap-1 md:grid-cols-2">
+            {activeComplianceCategory.items.map((item) => (
+              <li key={item} className="text-xs text-slate-700">
+                - {item}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[11px] text-slate-500">
+            For Y/N indicators, encode `1` for yes and `0` for no. For evidence-level indicators, use a numeric scale agreed by the division monitor.
+          </p>
+        </div>
+      </section>
 
       <form className="space-y-4 border-b border-slate-100 px-5 py-4" onSubmit={handleCreateSubmission}>
         <div className="grid gap-3 md:grid-cols-3">

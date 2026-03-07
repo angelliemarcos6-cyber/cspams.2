@@ -57,6 +57,21 @@ interface RequirementItem {
   sectionId: string;
 }
 
+interface TopNavigatorItem {
+  id: "first_glance" | "requirements" | "compliance" | "forms" | "indicators" | "records";
+  label: string;
+  sectionId: string;
+}
+
+const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
+  { id: "first_glance", label: "First Glance", sectionId: "first-glance" },
+  { id: "requirements", label: "Requirement Navigator", sectionId: "requirement-navigator" },
+  { id: "compliance", label: "Compliance Record", sectionId: "compliance-input" },
+  { id: "forms", label: "SF-1 / SF-5", sectionId: "forms-workflow" },
+  { id: "indicators", label: "Compliance Indicators", sectionId: "indicator-workflow" },
+  { id: "records", label: "School Records", sectionId: "school-records" },
+];
+
 const EMPTY_FORM: FormState = {
   studentCount: "",
   teacherCount: "",
@@ -157,6 +172,7 @@ export function SchoolAdminDashboard() {
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("first_glance");
 
   const totalStudents = useMemo(() => records.reduce((total, record) => total + record.studentCount, 0), [records]);
   const totalTeachers = useMemo(() => records.reduce((total, record) => total + record.teacherCount, 0), [records]);
@@ -286,6 +302,16 @@ export function SchoolAdminDashboard() {
     scrollToSection(item.sectionId);
   };
 
+  const handleTopNavigate = (item: TopNavigatorItem) => {
+    setActiveTopNavigator(item.id);
+
+    if (item.id === "compliance") {
+      openForCreate();
+    }
+
+    scrollToSection(item.sectionId);
+  };
+
   const validateForm = () => {
     const errors: Partial<Record<keyof FormState, string>> = {};
 
@@ -373,7 +399,28 @@ export function SchoolAdminDashboard() {
         </section>
       )}
 
-      <section className="mb-5 border border-slate-200 bg-white p-4">
+      <section className="mb-5 border border-slate-200 bg-slate-50 p-3">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Navigator</h2>
+        <p className="mt-1 text-xs text-slate-600">Select what you need to do now.</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+          {TOP_NAVIGATOR_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleTopNavigate(item)}
+              className={`border px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide transition ${
+                activeTopNavigator === item.id
+                  ? "border-primary bg-primary-50 text-primary-800"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section id="first-glance" className="mb-5 border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">First-Glance Alerts</h2>
@@ -420,7 +467,7 @@ export function SchoolAdminDashboard() {
         </div>
       </section>
 
-      <section className="mb-5 border border-slate-200 bg-slate-50 p-3">
+      <section id="requirement-navigator" className="mb-5 border border-slate-200 bg-slate-50 p-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirement Navigator</h2>
         <p className="mt-1 text-xs text-slate-600">Open each requirement module and submit what is missing.</p>
         <div className="mt-3 grid gap-2 md:grid-cols-4">
