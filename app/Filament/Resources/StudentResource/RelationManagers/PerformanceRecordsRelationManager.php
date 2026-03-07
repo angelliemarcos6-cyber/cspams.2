@@ -29,7 +29,11 @@ class PerformanceRecordsRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('period')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => ReportingPeriod::options()[$state] ?? $state)
+                    ->formatStateUsing(function (mixed $state): string {
+                        $period = self::normalizePeriod($state);
+
+                        return $period ? (ReportingPeriod::options()[$period] ?? $period) : '-';
+                    })
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('value')
@@ -52,5 +56,14 @@ class PerformanceRecordsRelationManager extends RelationManager
             ->headerActions([])
             ->actions([])
             ->bulkActions([]);
+    }
+
+    private static function normalizePeriod(mixed $state): ?string
+    {
+        if ($state instanceof ReportingPeriod) {
+            return $state->value;
+        }
+
+        return is_string($state) && $state !== '' ? $state : null;
     }
 }

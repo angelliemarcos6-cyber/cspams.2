@@ -4,17 +4,18 @@ namespace App\Filament\Pages;
 
 use App\Models\AcademicYear;
 use App\Models\School;
-use App\Models\Student;
-use App\Models\StudentPerformanceRecord;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\ReportingPeriod;
-use App\Support\Domain\StudentRiskLevel;
-use App\Support\Domain\StudentStatus;
+use App\Support\Reports\PerformanceSummaryReportService;
+use App\Support\Reports\ReportFilters;
+use App\Support\Reports\SchoolSummaryReportService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
+use Carbon\Carbon;
+use Illuminate\Validation\ValidationException;
 
 class ReportsCenter extends Page implements HasForms
 {
@@ -34,6 +35,16 @@ class ReportsCenter extends Page implements HasForms
      * @var array<string, mixed>
      */
     public ?array $data = [];
+
+    /**
+     * @var array<int, array<string, int|float|string>>|null
+     */
+    private ?array $schoolSummaryCache = null;
+
+    /**
+     * @var array<int, array<string, int|float|string>>|null
+     */
+    private ?array $performanceSummaryCache = null;
 
     public function mount(): void
     {
@@ -81,6 +92,11 @@ class ReportsCenter extends Page implements HasForms
             ->columns(3);
     }
 
+    public function updatedData(): void
+    {
+        $this->resetComputedReportCaches();
+    }
+
     public function downloadSchoolSummaryCsv()
     {
         $rows = $this->schoolSummaryRows();
@@ -110,7 +126,7 @@ class ReportsCenter extends Page implements HasForms
                     $row['high_risk'],
                     $row['dropout_rate'],
                     $row['performance_submissions'],
-                    $row['latest_submission'],
+                    $this->formatCsvDatetime($row['latest_submission'] ?? null),
                 ]);
             }
 
@@ -176,60 +192,14 @@ class ReportsCenter extends Page implements HasForms
      */
     private function schoolSummaryRows(): array
     {
-        $academicYearId = (int) ($this->data['academic_year_id'] ?? 0);
-
-        if (! $academicYearId) {
-            return [];
+        if ($this->schoolSummaryCache !== null) {
+            return $this->schoolSummaryCache;
         }
 
-        $period = $this->selectedPeriod();
-        $schoolId = $this->selectedSchoolId();
+        $service = app(SchoolSummaryReportService::class);
+        $this->schoolSummaryCache = $service->generate($this->reportFilters());
 
-        $schools = School::query()
-            ->select(['id', 'name', 'district'])
-            ->when($schoolId, fn ($query, int $value) => $query->whereKey($value))
-            ->orderBy('name')
-            ->get();
-
-        $rows = [];
-
-        foreach ($schools as $school) {
-            $studentsBase = Student::query()
-                ->where('school_id', $school->id)
-                ->where('academic_year_id', $academicYearId);
-
-            $totalLearners = (clone $studentsBase)->count();
-            $atRisk = (clone $studentsBase)->where('status', StudentStatus::AT_RISK->value)->count();
-            $droppedOut = (clone $studentsBase)->where('status', StudentStatus::DROPPED_OUT->value)->count();
-            $highRisk = (clone $studentsBase)->where('risk_level', StudentRiskLevel::HIGH->value)->count();
-
-            $performanceBase = StudentPerformanceRecord::query()
-                ->where('academic_year_id', $academicYearId)
-                ->whereHas('student', function ($studentQuery) use ($school): void {
-                    $studentQuery->where('school_id', $school->id);
-                });
-
-            if ($period) {
-                $performanceBase->where('period', $period);
-            }
-
-            $performanceSubmissions = (clone $performanceBase)->count();
-            $latestSubmission = (clone $performanceBase)->max('submitted_at');
-
-            $rows[] = [
-                'school' => $school->name,
-                'district' => $school->district,
-                'total_learners' => $totalLearners,
-                'at_risk' => $atRisk,
-                'dropped_out' => $droppedOut,
-                'high_risk' => $highRisk,
-                'dropout_rate' => $totalLearners > 0 ? round(($droppedOut / $totalLearners) * 100, 2) : 0,
-                'performance_submissions' => $performanceSubmissions,
-                'latest_submission' => $latestSubmission ? (string) $latestSubmission : '-',
-            ];
-        }
-
-        return $rows;
+        return $this->schoolSummaryCache;
     }
 
     /**
@@ -237,75 +207,65 @@ class ReportsCenter extends Page implements HasForms
      */
     private function performanceSummaryRows(): array
     {
-        $academicYearId = (int) ($this->data['academic_year_id'] ?? 0);
-
-        if (! $academicYearId) {
-            return [];
+        if ($this->performanceSummaryCache !== null) {
+            return $this->performanceSummaryCache;
         }
 
-        $period = $this->selectedPeriod();
-        $schoolId = $this->selectedSchoolId();
+        $service = app(PerformanceSummaryReportService::class);
+        $this->performanceSummaryCache = $service->generate($this->reportFilters());
 
-        $records = StudentPerformanceRecord::query()
-            ->with(['student.school:id,name', 'metric:id,name'])
-            ->where('academic_year_id', $academicYearId)
-            ->when($period, fn ($query, string $value) => $query->where('period', $value))
-            ->when($schoolId, function ($query, int $value): void {
-                $query->whereHas('student', function ($studentQuery) use ($value): void {
-                    $studentQuery->where('school_id', $value);
-                });
-            })
-            ->get();
+        return $this->performanceSummaryCache;
+    }
 
-        $grouped = $records->groupBy(function (StudentPerformanceRecord $record): string {
-            $periodValue = is_string($record->period) ? $record->period : $record->period?->value;
+    private function resetComputedReportCaches(): void
+    {
+        $this->schoolSummaryCache = null;
+        $this->performanceSummaryCache = null;
+    }
 
-            return implode('|', [
-                $record->student?->school?->name ?? 'Unknown School',
-                $record->metric?->name ?? 'Unknown Metric',
-                $periodValue ?? '-',
+    private function reportFilters(): ReportFilters
+    {
+        $forcedSchoolId = UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD)
+            ? auth()->user()?->school_id
+            : null;
+
+        $filters = ReportFilters::fromState($this->data ?? [], $forcedSchoolId);
+        $this->assertValidFilters($filters);
+
+        return $filters;
+    }
+
+    private function assertValidFilters(ReportFilters $filters): void
+    {
+        if (! $filters->academicYearId || ! AcademicYear::query()->whereKey($filters->academicYearId)->exists()) {
+            throw ValidationException::withMessages([
+                'data.academic_year_id' => 'Please select a valid academic year.',
             ]);
-        });
-
-        $rows = [];
-
-        foreach ($grouped as $key => $items) {
-            [$schoolName, $metricName, $periodValue] = explode('|', $key);
-            $values = $items->pluck('value')->map(fn ($value): float => (float) $value);
-
-            $rows[] = [
-                'school' => $schoolName,
-                'metric' => $metricName,
-                'period' => ReportingPeriod::options()[$periodValue] ?? $periodValue,
-                'records' => $items->count(),
-                'average_value' => round($values->avg() ?? 0, 2),
-                'lowest_value' => round($values->min() ?? 0, 2),
-                'highest_value' => round($values->max() ?? 0, 2),
-            ];
         }
 
-        usort($rows, function (array $a, array $b): int {
-            return [$a['school'], $a['metric'], $a['period']] <=> [$b['school'], $b['metric'], $b['period']];
-        });
-
-        return $rows;
-    }
-
-    private function selectedPeriod(): ?string
-    {
-        $period = $this->data['period'] ?? null;
-
-        return is_string($period) && $period !== '' ? $period : null;
-    }
-
-    private function selectedSchoolId(): ?int
-    {
-        if (UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD)) {
-            return auth()->user()?->school_id;
+        if ($filters->period !== null && ReportingPeriod::tryFrom($filters->period) === null) {
+            throw ValidationException::withMessages([
+                'data.period' => 'Selected period is not valid.',
+            ]);
         }
 
-        $schoolId = $this->data['school_id'] ?? null;
+        if ($filters->schoolId !== null && ! School::query()->whereKey($filters->schoolId)->exists()) {
+            throw ValidationException::withMessages([
+                'data.school_id' => 'Selected school is not valid.',
+            ]);
+        }
+    }
 
-        return $schoolId ? (int) $schoolId : null;
+    private function formatCsvDatetime(mixed $value): string
+    {
+        if (! is_string($value) || $value === '-' || $value === '') {
+            return '-';
+        }
+
+        try {
+            return Carbon::parse($value)->format('Y-m-d H:i:s');
+        } catch (\Throwable) {
+            return $value;
+        }
     }
 }

@@ -3,15 +3,17 @@
 namespace App\Filament\Resources\StudentResource\Pages;
 
 use App\Filament\Resources\StudentResource;
-use App\Models\Section;
-use App\Models\StudentStatusLog;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\StudentStatus;
+use App\Support\Students\StudentStatusLogger;
+use App\Support\Validation\EnsuresSectionScope;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
-use Illuminate\Validation\ValidationException;
 
 class EditStudent extends EditRecord
 {
+    use EnsuresSectionScope;
+
     protected static string $resource = StudentResource::class;
 
     protected ?string $previousStatus = null;
@@ -25,7 +27,7 @@ class EditStudent extends EditRecord
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        $this->previousStatus = isset($data['status']) ? (string) $data['status'] : null;
+        $this->previousStatus = $this->statusValue($data['status'] ?? null);
 
         return $data;
     }
@@ -36,9 +38,13 @@ class EditStudent extends EditRecord
             $data['school_id'] = auth()->user()?->school_id;
         }
 
-        $this->assertSectionBelongsToScope($data);
+        $schoolId = (int) ($data['school_id'] ?? 0);
+        $academicYearId = (int) ($data['academic_year_id'] ?? 0);
+        $newStatus = $this->statusValue($data['status'] ?? null);
 
-        if (($data['status'] ?? null) !== $this->previousStatus) {
+        $this->assertSectionBelongsToScope($data['section_id'] ?? null, $schoolId, $academicYearId);
+
+        if ($newStatus !== $this->previousStatus) {
             $data['last_status_at'] = now();
         }
 
@@ -47,48 +53,22 @@ class EditStudent extends EditRecord
 
     protected function afterSave(): void
     {
-        $currentStatus = is_string($this->record->status) ? $this->record->status : $this->record->status->value;
+        $currentStatus = $this->statusValue($this->record->status);
 
-        if ($this->previousStatus === $currentStatus) {
-            return;
-        }
-
-        StudentStatusLog::query()->create([
-            'student_id' => $this->record->id,
-            'from_status' => $this->previousStatus,
-            'to_status' => $currentStatus,
-            'changed_by' => auth()->id(),
-            'notes' => 'Status updated via learner profile edit.',
-            'changed_at' => now(),
-        ]);
+        app(StudentStatusLogger::class)->logTransition(
+            student: $this->record,
+            fromStatus: $this->previousStatus,
+            toStatus: $currentStatus,
+            notes: 'Status updated via learner profile edit.',
+        );
     }
 
-    /**
-     * @param array<string, mixed> $data
-     */
-    private function assertSectionBelongsToScope(array $data): void
+    private function statusValue(mixed $status): ?string
     {
-        $sectionId = $data['section_id'] ?? null;
-
-        if (! $sectionId) {
-            return;
+        if ($status instanceof StudentStatus) {
+            return $status->value;
         }
 
-        $schoolId = (int) ($data['school_id'] ?? 0);
-        $academicYearId = (int) ($data['academic_year_id'] ?? 0);
-
-        $sectionIsInScope = Section::query()
-            ->whereKey($sectionId)
-            ->where('school_id', $schoolId)
-            ->where('academic_year_id', $academicYearId)
-            ->exists();
-
-        if ($sectionIsInScope) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            'data.section_id' => 'Selected section does not match the learner school and academic year.',
-        ]);
+        return is_string($status) && $status !== '' ? $status : null;
     }
 }

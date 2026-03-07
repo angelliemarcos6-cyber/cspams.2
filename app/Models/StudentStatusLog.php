@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Domain\StudentStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,6 +31,8 @@ class StudentStatusLog extends Model
     protected function casts(): array
     {
         return [
+            'from_status' => StudentStatus::class,
+            'to_status' => StudentStatus::class,
             'changed_at' => 'datetime',
         ];
     }

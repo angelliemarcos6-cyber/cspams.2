@@ -126,6 +126,11 @@ class StudentPerformanceRecordResource extends Resource
 
                 Tables\Columns\TextColumn::make('period')
                     ->badge()
+                    ->formatStateUsing(function (mixed $state): string {
+                        $period = self::periodValue($state);
+
+                        return $period ? (ReportingPeriod::options()[$period] ?? $period) : '-';
+                    })
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('value')
@@ -196,7 +201,7 @@ class StudentPerformanceRecordResource extends Resource
                                         $record->student?->school?->name,
                                         $record->metric?->name,
                                         $record->academicYear?->name,
-                                        is_string($record->period) ? $record->period : $record->period?->value,
+                                        self::periodValue($record->period),
                                         $record->value,
                                         $record->remarks,
                                         $record->encoder?->name,
@@ -272,5 +277,14 @@ class StudentPerformanceRecordResource extends Resource
     protected static function isSchoolHead(): bool
     {
         return UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD);
+    }
+
+    private static function periodValue(mixed $period): ?string
+    {
+        if ($period instanceof ReportingPeriod) {
+            return $period->value;
+        }
+
+        return is_string($period) && $period !== '' ? $period : null;
     }
 }

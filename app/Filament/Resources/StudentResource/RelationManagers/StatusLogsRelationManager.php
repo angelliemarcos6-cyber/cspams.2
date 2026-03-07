@@ -26,14 +26,30 @@ class StatusLogsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('from_status')
                     ->label('From')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? (StudentStatus::options()[$state] ?? $state) : 'Initial')
-                    ->color(fn (?string $state): string => $state ? (StudentStatus::tryFrom($state)?->color() ?? 'gray') : 'gray'),
+                    ->formatStateUsing(function (mixed $state): string {
+                        $status = self::normalizeStatus($state);
+
+                        return $status ? (StudentStatus::options()[$status] ?? $status) : 'Initial';
+                    })
+                    ->color(function (mixed $state): string {
+                        $status = self::normalizeStatus($state);
+
+                        return $status ? (StudentStatus::tryFrom($status)?->color() ?? 'gray') : 'gray';
+                    }),
 
                 Tables\Columns\TextColumn::make('to_status')
                     ->label('To')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => StudentStatus::options()[$state] ?? $state)
-                    ->color(fn (string $state): string => StudentStatus::tryFrom($state)?->color() ?? 'gray'),
+                    ->formatStateUsing(function (mixed $state): string {
+                        $status = self::normalizeStatus($state);
+
+                        return $status ? (StudentStatus::options()[$status] ?? $status) : '-';
+                    })
+                    ->color(function (mixed $state): string {
+                        $status = self::normalizeStatus($state);
+
+                        return $status ? (StudentStatus::tryFrom($status)?->color() ?? 'gray') : 'gray';
+                    }),
 
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('Changed By')
@@ -50,5 +66,14 @@ class StatusLogsRelationManager extends RelationManager
             ->headerActions([])
             ->actions([])
             ->bulkActions([]);
+    }
+
+    private static function normalizeStatus(mixed $state): ?string
+    {
+        if ($state instanceof StudentStatus) {
+            return $state->value;
+        }
+
+        return is_string($state) && $state !== '' ? $state : null;
     }
 }
