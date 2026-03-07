@@ -14,32 +14,40 @@ function ProtectedRoute({
   children: ReactNode;
   allowedRole: Exclude<UserRole, null>;
 }) {
-  const { role } = useAuth();
+  const { role, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-page-bg" />;
+  }
 
   if (!role) {
     return <Navigate to="/" replace />;
   }
 
   if (role !== allowedRole) {
-    return <Navigate to={role === "school_admin" ? "/school-admin" : "/monitor"} replace />;
+    return <Navigate to={role === "school_head" ? "/school-admin" : "/monitor"} replace />;
   }
 
   return <>{children}</>;
 }
 
 function AppRoutes() {
-  const { role } = useAuth();
+  const { role, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div className="min-h-screen bg-page-bg" />;
+  }
 
   return (
     <Routes>
       <Route
         path="/"
-        element={role ? <Navigate to={role === "school_admin" ? "/school-admin" : "/monitor"} replace /> : <Login />}
+        element={role ? <Navigate to={role === "school_head" ? "/school-admin" : "/monitor"} replace /> : <Login />}
       />
       <Route
         path="/school-admin"
         element={
-          <ProtectedRoute allowedRole="school_admin">
+          <ProtectedRoute allowedRole="school_head">
             <SchoolAdminDashboard />
           </ProtectedRoute>
         }

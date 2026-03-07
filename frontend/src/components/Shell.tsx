@@ -14,10 +14,10 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
   const { role, username, logout } = useAuth();
   const navigate = useNavigate();
 
-  const roleLabel = role === "school_admin" ? "School Administrator" : "Division Monitor";
+  const roleLabel = role === "school_head" ? "School Administrator" : "Division Monitor";
 
-  const handleSignOut = () => {
-    logout();
+  const handleSignOut = async () => {
+    await logout();
     navigate("/");
   };
 

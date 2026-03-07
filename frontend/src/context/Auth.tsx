@@ -1,85 +1,79 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { UserRole } from "@/types";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { apiRequest } from "@/lib/api";
+import type { SessionUser, UserRole } from "@/types";
 
-interface AuthSession {
+interface LoginInput {
   role: Exclude<UserRole, null>;
-  username: string;
-}
-
-interface StoredAdminCredentials {
-  username: string;
-  salt: string;
-  passwordHash: string;
-  iterations: number;
-}
-
-interface UpdateAdminCredentialsInput {
-  currentPassword: string;
-  nextUsername?: string;
-  nextPassword?: string;
+  login: string;
+  password: string;
 }
 
 interface AuthContextType {
   role: UserRole;
   username: string;
-  hasAdminAccount: boolean;
-  login: (role: Exclude<UserRole, null>, username: string) => void;
-  logout: () => void;
-  registerAdmin: (username: string, password: string) => Promise<void>;
-  authenticateAdmin: (username: string, password: string) => Promise<boolean>;
-  updateAdminCredentials: (input: UpdateAdminCredentialsInput) => Promise<void>;
+  token: string;
+  user: SessionUser | null;
+  isLoading: boolean;
+  login: (input: LoginInput) => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+interface StoredSession {
+  token: string;
+  user: SessionUser;
+}
+
+interface LoginResponse {
+  token: string;
+  user: SessionUser;
+}
+
+interface MeResponse {
+  user: SessionUser;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
 const SESSION_KEY = "cspams.auth.session";
-const ADMIN_CREDENTIALS_KEY = "cspams.auth.school-admin.credentials";
-const HASH_ITERATIONS = 120_000;
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
+function normalizeRole(role: string): Exclude<UserRole, null> {
+  return role === "monitor" ? "monitor" : "school_head";
 }
 
-async function hashPassword(password: string, salt: string, iterations: number): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const hashBuffer = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      hash: "SHA-256",
-      salt: encoder.encode(salt),
-      iterations,
-    },
-    keyMaterial,
-    256,
-  );
-  return bytesToBase64(new Uint8Array(hashBuffer));
+function normalizeUser(user: SessionUser): SessionUser {
+  return {
+    ...user,
+    role: normalizeRole(user.role),
+  };
 }
 
-function readAdminCredentials(): StoredAdminCredentials | null {
+function readStoredSession(): StoredSession | null {
   try {
-    const raw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
+    const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredAdminCredentials;
-    if (
-      typeof parsed.username !== "string" ||
-      typeof parsed.salt !== "string" ||
-      typeof parsed.passwordHash !== "string" ||
-      typeof parsed.iterations !== "number"
-    ) {
+
+    const parsed = JSON.parse(raw) as StoredSession;
+    if (!parsed || typeof parsed.token !== "string" || typeof parsed.user !== "object" || !parsed.user) {
       return null;
     }
-    return parsed;
+
+    return {
+      token: parsed.token,
+      user: normalizeUser(parsed.user),
+    };
   } catch {
     return null;
   }
 }
 
-function writeSession(session: AuthSession | null) {
+function writeStoredSession(session: StoredSession | null) {
   if (!session) {
     localStorage.removeItem(SESSION_KEY);
     return;
@@ -87,112 +81,102 @@ function writeSession(session: AuthSession | null) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
-function readSession(): AuthSession | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as AuthSession;
-    if ((parsed.role !== "school_admin" && parsed.role !== "monitor") || typeof parsed.username !== "string") {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const initialSession = readSession();
-  const [role, setRole] = useState<UserRole>(initialSession?.role ?? null);
-  const [username, setUsername] = useState<string>(initialSession?.username ?? "");
-  const [hasAdminAccount, setHasAdminAccount] = useState<boolean>(() => readAdminCredentials() !== null);
+  const [session, setSession] = useState<StoredSession | null>(() => readStoredSession());
+  const [isLoading, setIsLoading] = useState<boolean>(() => readStoredSession() !== null);
 
-  const login = (nextRole: Exclude<UserRole, null>, nextUsername: string) => {
-    setRole(nextRole);
-    setUsername(nextUsername);
-    writeSession({ role: nextRole, username: nextUsername });
-  };
+  const clearSession = useCallback(() => {
+    setSession(null);
+    writeStoredSession(null);
+  }, []);
 
-  const logout = () => {
-    setRole(null);
-    setUsername("");
-    writeSession(null);
-  };
+  useEffect(() => {
+    const initialSession = readStoredSession();
+    if (!initialSession) {
+      setIsLoading(false);
+      return;
+    }
 
-  const registerAdmin = async (inputUsername: string, password: string) => {
-    const normalizedUsername = inputUsername.trim();
-    const salt = crypto.randomUUID();
-    const passwordHash = await hashPassword(password, salt, HASH_ITERATIONS);
+    const controller = new AbortController();
+    let active = true;
 
-    const payload: StoredAdminCredentials = {
-      username: normalizedUsername,
-      salt,
-      passwordHash,
-      iterations: HASH_ITERATIONS,
+    const restoreSession = async () => {
+      try {
+        const payload = await apiRequest<MeResponse>("/api/auth/me", {
+          token: initialSession.token,
+          signal: controller.signal,
+        });
+
+        if (!active) return;
+
+        const normalizedSession: StoredSession = {
+          token: initialSession.token,
+          user: normalizeUser(payload.user),
+        };
+
+        setSession(normalizedSession);
+        writeStoredSession(normalizedSession);
+      } catch {
+        if (!active) return;
+        clearSession();
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
     };
 
-    localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(payload));
-    setHasAdminAccount(true);
-  };
+    void restoreSession();
 
-  const authenticateAdmin = async (inputUsername: string, password: string): Promise<boolean> => {
-    const stored = readAdminCredentials();
-    if (!stored) return false;
-    if (stored.username !== inputUsername.trim()) return false;
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [clearSession]);
 
-    const computed = await hashPassword(password, stored.salt, stored.iterations);
-    return computed === stored.passwordHash;
-  };
+  const login = useCallback(async ({ role, login: loginValue, password }: LoginInput) => {
+    const payload = await apiRequest<LoginResponse>("/api/auth/login", {
+      method: "POST",
+      body: {
+        role,
+        login: loginValue,
+        password,
+      },
+    });
 
-  const updateAdminCredentials = async ({ currentPassword, nextUsername, nextPassword }: UpdateAdminCredentialsInput) => {
-    const stored = readAdminCredentials();
-    if (!stored) throw new Error("No School Administrator account found.");
-
-    const computed = await hashPassword(currentPassword, stored.salt, stored.iterations);
-    if (computed !== stored.passwordHash) {
-      throw new Error("Current passcode is incorrect.");
-    }
-
-    const normalizedNextUsername = nextUsername?.trim();
-    const shouldChangePassword = Boolean(nextPassword && nextPassword.length > 0);
-
-    if (!normalizedNextUsername && !shouldChangePassword) {
-      throw new Error("Provide a new School ID or new passcode.");
-    }
-
-    const updatedSalt = shouldChangePassword ? crypto.randomUUID() : stored.salt;
-    const updatedHash = shouldChangePassword
-      ? await hashPassword(nextPassword as string, updatedSalt, stored.iterations)
-      : stored.passwordHash;
-
-    const updated: StoredAdminCredentials = {
-      username: normalizedNextUsername || stored.username,
-      salt: updatedSalt,
-      passwordHash: updatedHash,
-      iterations: stored.iterations,
+    const nextSession: StoredSession = {
+      token: payload.token,
+      user: normalizeUser(payload.user),
     };
 
-    localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(updated));
+    setSession(nextSession);
+    writeStoredSession(nextSession);
+  }, []);
 
-    if (role === "school_admin") {
-      const freshUsername = updated.username;
-      setUsername(freshUsername);
-      writeSession({ role: "school_admin", username: freshUsername });
+  const logout = useCallback(async () => {
+    try {
+      if (session?.token) {
+        await apiRequest("/api/auth/logout", {
+          method: "POST",
+          token: session.token,
+        });
+      }
+    } finally {
+      clearSession();
     }
-  };
+  }, [clearSession, session?.token]);
 
   const value = useMemo<AuthContextType>(
     () => ({
-      role,
-      username,
-      hasAdminAccount,
+      role: session?.user.role ?? null,
+      username: session?.user.name ?? "",
+      token: session?.token ?? "",
+      user: session?.user ?? null,
+      isLoading,
       login,
       logout,
-      registerAdmin,
-      authenticateAdmin,
-      updateAdminCredentials,
     }),
-    [role, username, hasAdminAccount],
+    [session, isLoading, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

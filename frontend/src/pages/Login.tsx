@@ -2,32 +2,42 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { KeyRound, ShieldCheck, UserCog, Radar } from "lucide-react";
 import { useAuth } from "@/context/Auth";
+import { isApiError } from "@/lib/api";
+import type { UserRole } from "@/types";
 
-type LoginRole = "school_admin" | "monitor";
+type LoginRole = Exclude<UserRole, null>;
+
+const ROLE_META: Record<LoginRole, { label: string; note: string; submit: string; loginHint: string }> = {
+  school_head: {
+    label: "School Administrator",
+    note: "Use your School Code or school-head email account.",
+    submit: "Sign In as School Administrator",
+    loginHint: "School code or email",
+  },
+  monitor: {
+    label: "Division Monitor",
+    note: "Use your division monitor account for read-only oversight.",
+    submit: "Sign In as Division Monitor",
+    loginHint: "Monitor email or name",
+  },
+};
 
 export function Login() {
   const navigate = useNavigate();
-  const { login, hasAdminAccount, registerAdmin, authenticateAdmin } = useAuth();
+  const { login } = useAuth();
 
-  const [activeRole, setActiveRole] = useState<LoginRole>("school_admin");
-  const [username, setUsername] = useState("");
+  const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedUsername = username.trim();
-    if (!normalizedUsername) {
-      setError("Enter a School ID.");
-      return;
-    }
-
-    if (activeRole === "monitor") {
-      login("monitor", normalizedUsername);
-      navigate("/monitor");
+    const normalizedLoginId = loginId.trim();
+    if (!normalizedLoginId) {
+      setError("Enter your account ID.");
       return;
     }
 
@@ -40,35 +50,24 @@ export function Login() {
     setError("");
 
     try {
-      if (!hasAdminAccount) {
-        if (!confirmPassword) {
-          setError("Confirm your passcode.");
-          return;
-        }
-
-        if (password !== confirmPassword) {
-          setError("Passcodes do not match.");
-          return;
-        }
-
-        await registerAdmin(normalizedUsername, password);
-        login("school_admin", normalizedUsername);
-        navigate("/school-admin");
-        return;
+      await login({
+        role: activeRole,
+        login: normalizedLoginId,
+        password,
+      });
+      navigate(activeRole === "school_head" ? "/school-admin" : "/monitor");
+    } catch (err) {
+      if (isApiError(err)) {
+        setError(err.message);
+      } else {
+        setError("Unable to sign in. Check your network and try again.");
       }
-
-      const valid = await authenticateAdmin(normalizedUsername, password);
-      if (!valid) {
-        setError("Invalid School ID or passcode.");
-        return;
-      }
-
-      login("school_admin", normalizedUsername);
-      navigate("/school-admin");
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const roleMeta = ROLE_META[activeRole];
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page-bg px-4 py-8">
@@ -80,17 +79,17 @@ export function Login() {
           <img src="/depedlogo.png" alt="Department of Education logo" className="h-20 w-auto rounded bg-white px-2 py-1.5" />
           <h1 className="mt-7 text-3xl font-extrabold leading-tight">CSPAMS Dashboard</h1>
           <p className="mt-2 max-w-sm text-sm text-primary-100">
-            School Management, Monitoring and Evaluation for School Administrators and Division Monitors.
+            School Management, Monitoring and Evaluation synced to the central CSPAMS backend.
           </p>
 
           <div className="mt-10 space-y-3">
             <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">Built In</p>
-              <p className="mt-1 text-sm font-semibold">Live analytics cards, chart widgets, and record tables</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">School Administrator</p>
+              <p className="mt-1 text-sm font-semibold">Encodes and updates assigned school records</p>
             </div>
             <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">Role Access</p>
-              <p className="mt-1 text-sm font-semibold">School Administrator input and Division Monitor read-only oversight</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary-100">Division Monitor</p>
+              <p className="mt-1 text-sm font-semibold">Reviews synchronized records and trends across schools</p>
             </div>
           </div>
         </section>
@@ -109,11 +108,11 @@ export function Login() {
               <button
                 type="button"
                 onClick={() => {
-                  setActiveRole("school_admin");
+                  setActiveRole("school_head");
                   setError("");
                 }}
                 className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  activeRole === "school_admin" ? "bg-white text-primary shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  activeRole === "school_head" ? "bg-white text-primary shadow-sm" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 <UserCog className="h-4 w-4" />
@@ -123,8 +122,6 @@ export function Login() {
                 type="button"
                 onClick={() => {
                   setActiveRole("monitor");
-                  setPassword("");
-                  setConfirmPassword("");
                   setError("");
                 }}
                 className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
@@ -139,67 +136,44 @@ export function Login() {
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="school-id" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                School ID
+              <label htmlFor="login-id" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Account ID
               </label>
               <input
-                id="school-id"
+                id="login-id"
                 type="text"
                 autoComplete="username"
-                value={username}
+                value={loginId}
                 onChange={(event) => {
-                  setUsername(event.target.value);
+                  setLoginId(event.target.value);
                   setError("");
                 }}
-                placeholder="Enter School ID"
+                placeholder={roleMeta.loginHint}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               />
+              <p className="mt-1.5 text-xs text-slate-500">{roleMeta.note}</p>
             </div>
 
-            {activeRole === "school_admin" && (
-              <>
-                <div>
-                  <label htmlFor="passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Passcode
-                  </label>
-                  <div className="relative">
-                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      id="passcode"
-                      type="password"
-                      autoComplete={hasAdminAccount ? "current-password" : "new-password"}
-                      value={password}
-                      onChange={(event) => {
-                        setPassword(event.target.value);
-                        setError("");
-                      }}
-                      placeholder="Enter passcode"
-                      className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                    />
-                  </div>
-                </div>
-
-                {!hasAdminAccount && (
-                  <div>
-                    <label htmlFor="confirm-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      Confirm Passcode
-                    </label>
-                    <input
-                      id="confirm-passcode"
-                      type="password"
-                      autoComplete="new-password"
-                      value={confirmPassword}
-                      onChange={(event) => {
-                        setConfirmPassword(event.target.value);
-                        setError("");
-                      }}
-                      placeholder="Re-enter passcode"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                    />
-                  </div>
-                )}
-              </>
-            )}
+            <div>
+              <label htmlFor="passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Passcode
+              </label>
+              <div className="relative">
+                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="passcode"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setError("");
+                  }}
+                  placeholder="Enter passcode"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+              </div>
+            </div>
 
             {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
@@ -209,11 +183,7 @@ export function Login() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <ShieldCheck className="h-4 w-4" />
-              {activeRole === "school_admin"
-                ? hasAdminAccount
-                  ? "Sign In as School Administrator"
-                  : "Create School Administrator Account"
-                : "Open Division Monitor Dashboard"}
+              {isSubmitting ? "Signing In..." : roleMeta.submit}
             </button>
           </form>
         </section>

@@ -55,6 +55,8 @@ class DemoDataSeeder extends Seeder
                 'region' => 'Region II',
                 'type' => 'public',
                 'status' => SchoolStatus::ACTIVE->value,
+                'reported_student_count' => 3280,
+                'reported_teacher_count' => 144,
             ],
             [
                 'school_code' => 'SDO-SC-002',
@@ -63,6 +65,8 @@ class DemoDataSeeder extends Seeder
                 'region' => 'Region II',
                 'type' => 'public',
                 'status' => SchoolStatus::ACTIVE->value,
+                'reported_student_count' => 2124,
+                'reported_teacher_count' => 103,
             ],
             [
                 'school_code' => 'SDO-SC-003',
@@ -71,6 +75,8 @@ class DemoDataSeeder extends Seeder
                 'region' => 'Region II',
                 'type' => 'private',
                 'status' => SchoolStatus::PENDING->value,
+                'reported_student_count' => 886,
+                'reported_teacher_count' => 42,
             ],
         ];
 
@@ -101,6 +107,11 @@ class DemoDataSeeder extends Seeder
                 ],
             );
             $head->syncRoles([UserRoleResolver::SCHOOL_HEAD]);
+
+            $school->update([
+                'submitted_by' => $head->id,
+                'submitted_at' => now()->subHours(rand(1, 72)),
+            ]);
         }
 
         $metrics = [

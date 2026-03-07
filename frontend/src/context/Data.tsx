@@ -1,97 +1,136 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { SchoolRecord } from "@/types";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { useAuth } from "@/context/Auth";
+import { apiRequest, isApiError } from "@/lib/api";
+import type { SchoolRecord, SchoolRecordPayload } from "@/types";
+
+interface SchoolRecordsResponse {
+  data: SchoolRecord[];
+}
 
 interface DataContextType {
   records: SchoolRecord[];
-  addRecord: (record: Omit<SchoolRecord, "id" | "lastUpdated">) => void;
-  updateRecord: (id: string, updates: Omit<SchoolRecord, "id" | "lastUpdated">) => void;
-  deleteRecord: (id: string) => void;
+  isLoading: boolean;
+  isSaving: boolean;
+  error: string;
+  refreshRecords: () => Promise<void>;
+  addRecord: (record: SchoolRecordPayload) => Promise<void>;
+  updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
-const STORAGE_KEY = "cspams.data.records";
-
-function seedData(): SchoolRecord[] {
-  return [
-    {
-      id: crypto.randomUUID(),
-      schoolName: "Santiago City National High School",
-      studentCount: 3280,
-      teacherCount: 144,
-      region: "Cagayan Valley (Region II)",
-      status: "active",
-      submittedBy: "schoolhead1",
-      lastUpdated: new Date().toISOString(),
-    },
-    {
-      id: crypto.randomUUID(),
-      schoolName: "Santiago South Integrated School",
-      studentCount: 2124,
-      teacherCount: 103,
-      region: "Cagayan Valley (Region II)",
-      status: "active",
-      submittedBy: "schoolhead2",
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 70).toISOString(),
-    },
-    {
-      id: crypto.randomUUID(),
-      schoolName: "St. Matthew Academy",
-      studentCount: 886,
-      teacherCount: 42,
-      region: "Cagayan Valley (Region II)",
-      status: "pending",
-      submittedBy: "schoolhead3",
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-    },
-  ];
-}
-
-function readRecords(): SchoolRecord[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return seedData();
-    const parsed = JSON.parse(raw) as SchoolRecord[];
-    if (!Array.isArray(parsed)) return seedData();
-    return parsed;
-  } catch {
-    return seedData();
-  }
-}
-
-function writeRecords(records: SchoolRecord[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-}
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [records, setRecords] = useState<SchoolRecord[]>(() => readRecords());
+  const { token, logout } = useAuth();
 
-  const addRecord = (record: Omit<SchoolRecord, "id" | "lastUpdated">) => {
-    setRecords((prev) => {
-      const next = [{ ...record, id: crypto.randomUUID(), lastUpdated: new Date().toISOString() }, ...prev];
-      writeRecords(next);
-      return next;
-    });
-  };
+  const [records, setRecords] = useState<SchoolRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const updateRecord = (id: string, updates: Omit<SchoolRecord, "id" | "lastUpdated">) => {
-    setRecords((prev) => {
-      const next = prev.map((record) =>
-        record.id === id ? { ...record, ...updates, lastUpdated: new Date().toISOString() } : record,
-      );
-      writeRecords(next);
-      return next;
-    });
-  };
+  const handleApiError = useCallback(
+    async (err: unknown) => {
+      if (isApiError(err) && err.status === 401) {
+        await logout();
+        return;
+      }
 
-  const deleteRecord = (id: string) => {
-    setRecords((prev) => {
-      const next = prev.filter((record) => record.id !== id);
-      writeRecords(next);
-      return next;
-    });
-  };
+      setError(err instanceof Error ? err.message : "Unexpected server error.");
+    },
+    [logout],
+  );
 
-  const value = useMemo<DataContextType>(() => ({ records, addRecord, updateRecord, deleteRecord }), [records]);
+  const refreshRecords = useCallback(async () => {
+    if (!token) {
+      setRecords([]);
+      setError("");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const payload = await apiRequest<SchoolRecordsResponse>("/api/dashboard/records", { token });
+      setRecords(payload.data || []);
+    } catch (err) {
+      await handleApiError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token, handleApiError]);
+
+  const addRecord = useCallback(
+    async (record: SchoolRecordPayload) => {
+      if (!token) return;
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        await apiRequest("/api/dashboard/records", {
+          method: "POST",
+          token,
+          body: record,
+        });
+        await refreshRecords();
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, refreshRecords, handleApiError],
+  );
+
+  const updateRecord = useCallback(
+    async (id: string, updates: SchoolRecordPayload) => {
+      if (!token) return;
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        await apiRequest(`/api/dashboard/records/${id}`, {
+          method: "PUT",
+          token,
+          body: updates,
+        });
+        await refreshRecords();
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, refreshRecords, handleApiError],
+  );
+
+  useEffect(() => {
+    void refreshRecords();
+  }, [refreshRecords]);
+
+  const value = useMemo<DataContextType>(
+    () => ({
+      records,
+      isLoading,
+      isSaving,
+      error,
+      refreshRecords,
+      addRecord,
+      updateRecord,
+    }),
+    [records, isLoading, isSaving, error, refreshRecords, addRecord, updateRecord],
+  );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

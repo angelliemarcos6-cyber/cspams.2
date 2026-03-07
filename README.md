@@ -60,6 +60,26 @@ Migrations and seeders are included for:
 5. Serve app:
    `php artisan serve`
 
+## Frontend API Sync (React Dashboard)
+
+The `frontend/` app now authenticates and reads/writes records from Laravel API endpoints:
+
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
+- `GET /api/dashboard/records`
+- `POST /api/dashboard/records`
+- `PUT /api/dashboard/records/{school}`
+
+Setup:
+
+1. Copy `frontend/.env.example` to `frontend/.env`
+2. Set `VITE_API_BASE_URL` (default: `http://127.0.0.1:8000`)
+3. Run:
+   - `cd frontend`
+   - `npm install`
+   - `npm run dev`
+
 ## Demo Accounts (after seeding)
 
 - Division Monitor: `monitor@cspams.local` / `password123`

@@ -11,9 +11,9 @@ import {
   GraduationCap,
   MapPin,
   Plus,
+  RefreshCw,
   Save,
   Search,
-  Trash2,
   TrendingUp,
   Users,
   X,
@@ -24,9 +24,8 @@ import { RegionCard } from "@/components/RegionCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
-import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
-import type { SchoolRecord, SchoolStatus } from "@/types";
+import type { SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 import { PH_REGIONS } from "@/constants/regions";
 import {
   buildRegionAggregates,
@@ -90,14 +89,14 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 export function SchoolAdminDashboard() {
-  const { records, addRecord, updateRecord, deleteRecord } = useData();
-  const { username } = useAuth();
+  const { records, isLoading, isSaving, error, addRecord, updateRecord, refreshRecords } = useData();
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof FormState, string>>>({});
-  const [saveMessage, setSaveMessage] = useState<string>("");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [submitError, setSubmitError] = useState("");
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
@@ -142,11 +141,7 @@ export function SchoolAdminDashboard() {
     setForm(EMPTY_FORM);
     setFormErrors({});
     setSaveMessage("");
-  };
-
-  const openForCreate = () => {
-    resetForm();
-    setShowForm(true);
+    setSubmitError("");
   };
 
   const closeForm = () => {
@@ -165,6 +160,16 @@ export function SchoolAdminDashboard() {
     });
     setFormErrors({});
     setSaveMessage("");
+    setSubmitError("");
+    setShowForm(true);
+  };
+
+  const openForCreate = () => {
+    if (records.length > 0) {
+      openForEdit(records[0]);
+      return;
+    }
+    resetForm();
     setShowForm(true);
   };
 
@@ -193,28 +198,32 @@ export function SchoolAdminDashboard() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!validateForm()) {
       return;
     }
 
-    const payload = {
+    const payload: SchoolRecordPayload = {
       schoolName: form.schoolName.trim(),
       studentCount: Number(form.studentCount),
       teacherCount: Number(form.teacherCount),
       region: form.region,
       status: form.status,
-      submittedBy: username,
     };
 
-    if (editingId) {
-      updateRecord(editingId, payload);
-      setSaveMessage("Record updated successfully.");
-    } else {
-      addRecord(payload);
-      setSaveMessage("Record added successfully.");
+    try {
+      if (editingId) {
+        await updateRecord(editingId, payload);
+        setSaveMessage("Record updated successfully.");
+      } else {
+        await addRecord(payload);
+        setSaveMessage("Record submitted successfully.");
+      }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to save record.");
+      return;
     }
 
     setTimeout(() => {
@@ -222,45 +231,47 @@ export function SchoolAdminDashboard() {
     }, 900);
   };
 
-  const handleDelete = (recordId: string) => {
-    const confirmDelete = window.confirm("Delete this school record?");
-    if (!confirmDelete) return;
-    deleteRecord(recordId);
-  };
-
   return (
     <Shell
       title="School Administrator Dashboard"
       subtitle="Manage school records, keep status current, and submit updates for monitor review."
       actions={
-        <button
-          type="button"
-          onClick={showForm ? closeForm : openForCreate}
-          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-            showForm ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "bg-primary text-white hover:bg-primary-600"
-          }`}
-        >
-          {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-          {showForm ? "Close Input Form" : "Input School Data"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => void refreshRecords()}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={showForm ? closeForm : openForCreate}
+            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+              showForm ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100" : "bg-primary text-white hover:bg-primary-600"
+            }`}
+          >
+            {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {showForm ? "Close Input Form" : records.length > 0 ? "Update My School" : "Input School Data"}
+          </button>
+        </>
       }
     >
+      {error && (
+        <section className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </section>
+      )}
+
       <section className="animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total Schools"
-          value={records.length.toLocaleString()}
-          icon={<Building2 className="h-5 w-5" />}
-        />
+        <StatCard label="Total Schools" value={records.length.toLocaleString()} icon={<Building2 className="h-5 w-5" />} />
         <StatCard
           label="Total Students"
           value={totalStudents.toLocaleString()}
           icon={<GraduationCap className="h-5 w-5" />}
         />
-        <StatCard
-          label="Total Teachers"
-          value={totalTeachers.toLocaleString()}
-          icon={<Users className="h-5 w-5" />}
-        />
+        <StatCard label="Total Teachers" value={totalTeachers.toLocaleString()} icon={<Users className="h-5 w-5" />} />
         <StatCard
           label="Active Schools"
           value={activeSchools.toLocaleString()}
@@ -298,6 +309,7 @@ export function SchoolAdminDashboard() {
                   onChange={(event) => {
                     setForm((current) => ({ ...current, schoolName: event.target.value }));
                     setFormErrors((current) => ({ ...current, schoolName: undefined }));
+                    setSubmitError("");
                   }}
                   placeholder="Enter complete school name"
                   className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
@@ -321,6 +333,7 @@ export function SchoolAdminDashboard() {
                   onChange={(event) => {
                     setForm((current) => ({ ...current, studentCount: event.target.value }));
                     setFormErrors((current) => ({ ...current, studentCount: undefined }));
+                    setSubmitError("");
                   }}
                   placeholder="0"
                   className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
@@ -344,6 +357,7 @@ export function SchoolAdminDashboard() {
                   onChange={(event) => {
                     setForm((current) => ({ ...current, teacherCount: event.target.value }));
                     setFormErrors((current) => ({ ...current, teacherCount: undefined }));
+                    setSubmitError("");
                   }}
                   placeholder="0"
                   className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
@@ -364,6 +378,7 @@ export function SchoolAdminDashboard() {
                   onChange={(event) => {
                     setForm((current) => ({ ...current, region: event.target.value }));
                     setFormErrors((current) => ({ ...current, region: undefined }));
+                    setSubmitError("");
                   }}
                   className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 >
@@ -403,13 +418,19 @@ export function SchoolAdminDashboard() {
                   {saveMessage}
                 </div>
               )}
+              {submitError && (
+                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {submitError}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600"
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Save className="h-4 w-4" />
-                  {editingId ? "Save Changes" : "Save School Record"}
+                  {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save School Record"}
                 </button>
                 <button
                   type="button"
@@ -449,7 +470,7 @@ export function SchoolAdminDashboard() {
       <section className="mt-5 animate-fade-slide overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <h2 className="text-base font-bold text-slate-900">School Records</h2>
-          <p className="mt-0.5 text-xs text-slate-500">Manage, update, and clean up submitted school records.</p>
+          <p className="mt-0.5 text-xs text-slate-500">Manage and update synchronized school records.</p>
         </div>
 
         <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto]">
@@ -483,11 +504,17 @@ export function SchoolAdminDashboard() {
           </div>
         </div>
 
-        {filteredRecords.length === 0 ? (
+        {isLoading && records.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
+            <RefreshCw className="h-9 w-9 animate-spin text-slate-400" />
+            <p className="text-sm font-semibold">Loading records</p>
+            <p className="text-xs text-slate-400">Syncing data from the backend.</p>
+          </div>
+        ) : filteredRecords.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
             <AlertCircle className="h-9 w-9 text-slate-400" />
             <p className="text-sm font-semibold">No records found</p>
-            <p className="text-xs text-slate-400">Add a new record or clear filters.</p>
+            <p className="text-xs text-slate-400">Update your school profile or clear filters.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -586,14 +613,6 @@ export function SchoolAdminDashboard() {
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                           Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(record.id)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Delete
                         </button>
                       </div>
                     </td>
