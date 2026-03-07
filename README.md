@@ -118,11 +118,12 @@ Frontend (new terminal):
 
 After seeding:
 
-- Division Monitor: `monitor@cspams.local` / `password123`
-- School Heads:
-  - `schoolhead1@cspams.local` / `password123`
-  - `schoolhead2@cspams.local` / `password123`
-  - `schoolhead3@cspams.local` / `password123`
+- Division Monitor login:
+  - Login: `monitor@cspams.local`
+  - Password: `password123`
+- School Head login:
+  - Login: assigned `school_code` (example: `SDO-SC-001`, `SDO-SC-002`, `SDO-SC-003`)
+  - Password: `password123`
 
 ## Additional Docs
 

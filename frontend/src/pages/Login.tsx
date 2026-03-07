@@ -7,18 +7,25 @@ import type { UserRole } from "@/types";
 
 type LoginRole = Exclude<UserRole, null>;
 
-const ROLE_META: Record<LoginRole, { label: string; note: string; submit: string; loginHint: string }> = {
+const ROLE_META: Record<
+  LoginRole,
+  { label: string; note: string; submit: string; loginHint: string; loginLabel: string; emptyError: string }
+> = {
   school_head: {
     label: "School Head",
-    note: "Use your school code or school-head email account.",
+    note: "Use your assigned school code only.",
     submit: "Sign In as School Head",
-    loginHint: "School code or email",
+    loginHint: "School code (e.g. SDO-SC-001)",
+    loginLabel: "School Code",
+    emptyError: "Enter your school code.",
   },
   monitor: {
     label: "Division Monitor",
     note: "Use your division monitor account for read-only oversight.",
     submit: "Sign In as Division Monitor",
     loginHint: "Monitor email or name",
+    loginLabel: "Account ID",
+    emptyError: "Enter your account ID.",
   },
 };
 
@@ -36,9 +43,10 @@ export function Login() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedLoginId = loginId.trim();
+    const normalizedLoginId =
+      activeRole === "school_head" ? loginId.trim().toUpperCase() : loginId.trim();
     if (!normalizedLoginId) {
-      setError("Enter your account ID.");
+      setError(roleMeta.emptyError);
       return;
     }
 
@@ -138,7 +146,7 @@ export function Login() {
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="login-id" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Account ID
+                {roleMeta.loginLabel}
               </label>
               <input
                 id="login-id"

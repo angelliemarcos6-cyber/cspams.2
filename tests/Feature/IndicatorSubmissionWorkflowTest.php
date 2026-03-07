@@ -26,7 +26,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->limit(3)
             ->get();
 
-        $schoolHeadToken = $this->loginToken('school_head', $schoolHead->email);
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
 
         $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
@@ -98,7 +98,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $metricId = (int) PerformanceMetric::query()->where('is_active', true)->value('id');
 
-        $tokenOne = $this->loginToken('school_head', $schoolHeadOne->email);
+        $tokenOne = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadOne));
         $created = $this->withToken($tokenOne)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
             'reporting_period' => 'Q1',
@@ -114,7 +114,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $created->assertStatus(Response::HTTP_CREATED);
         $submissionId = (string) $created->json('data.id');
 
-        $tokenTwo = $this->loginToken('school_head', $schoolHeadTwo->email);
+        $tokenTwo = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadTwo));
         $forbidden = $this->withToken($tokenTwo)->postJson("/api/indicators/submissions/{$submissionId}/submit");
         $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
@@ -130,5 +130,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $loginResponse->assertOk();
 
         return (string) $loginResponse->json('token');
+    }
+
+    private function schoolHeadLogin(User $user): string
+    {
+        $user->loadMissing('school');
+
+        return (string) $user->school?->school_code;
     }
 }

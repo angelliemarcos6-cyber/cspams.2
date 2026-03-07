@@ -20,7 +20,7 @@ class FormSubmissionWorkflowTest extends TestCase
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
 
-        $schoolHeadToken = $this->loginToken('school_head', $schoolHead->email);
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
 
         $generated = $this->withToken($schoolHeadToken)->postJson('/api/forms/sf1/generate', [
             'academic_year_id' => $academicYearId,
@@ -66,7 +66,7 @@ class FormSubmissionWorkflowTest extends TestCase
         $schoolHeadTwo = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
 
-        $tokenOne = $this->loginToken('school_head', $schoolHeadOne->email);
+        $tokenOne = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadOne));
 
         $generated = $this->withToken($tokenOne)->postJson('/api/forms/sf5/generate', [
             'academic_year_id' => $academicYearId,
@@ -79,7 +79,7 @@ class FormSubmissionWorkflowTest extends TestCase
 
         $submissionId = (string) $generated->json('data.id');
 
-        $tokenTwo = $this->loginToken('school_head', $schoolHeadTwo->email);
+        $tokenTwo = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadTwo));
 
         $forbidden = $this->withToken($tokenTwo)->postJson("/api/forms/sf5/{$submissionId}/submit");
 
@@ -97,5 +97,12 @@ class FormSubmissionWorkflowTest extends TestCase
         $loginResponse->assertOk();
 
         return (string) $loginResponse->json('token');
+    }
+
+    private function schoolHeadLogin(User $user): string
+    {
+        $user->loadMissing('school');
+
+        return (string) $user->school?->school_code;
     }
 }

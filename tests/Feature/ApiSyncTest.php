@@ -13,6 +13,32 @@ class ApiSyncTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_school_head_login_requires_school_code(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+
+        $emailLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolHead->email,
+            'password' => 'password123',
+        ]);
+
+        $emailLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid school code or password.');
+
+        $codeLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $this->schoolHeadLogin($schoolHead),
+            'password' => 'password123',
+        ]);
+
+        $codeLogin->assertOk()
+            ->assertJsonPath('user.role', 'school_head');
+    }
+
     public function test_monitor_login_and_conditional_sync_work(): void
     {
         $this->seed();
@@ -70,7 +96,7 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => $schoolHead->email,
+            'login' => $this->schoolHeadLogin($schoolHead),
             'password' => 'password123',
         ]);
 
@@ -107,7 +133,7 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => $schoolHead->email,
+            'login' => $this->schoolHeadLogin($schoolHead),
             'password' => 'password123',
         ]);
 
@@ -187,5 +213,12 @@ class ApiSyncTest extends TestCase
         $this->assertNotSame('', $newEtag);
         $this->assertNotSame($initialEtag, $newEtag);
         $this->assertGreaterThan($startingDropouts, (int) $resynced->json('meta.targetsMet.dropoutLearners', 0));
+    }
+
+    private function schoolHeadLogin(User $user): string
+    {
+        $user->loadMissing('school');
+
+        return (string) $user->school?->school_code;
     }
 }

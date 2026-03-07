@@ -17,14 +17,21 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
-        $login = trim($request->string('login')->toString());
+        $rawLogin = trim($request->string('login')->toString());
+        $login = $role === UserRoleResolver::SCHOOL_HEAD
+            ? strtoupper($rawLogin)
+            : $rawLogin;
         $password = $request->string('password')->toString();
 
         $user = $this->resolveUserForLogin($role, $login);
 
         if (! $user || ! Hash::check($password, $user->password) || ! UserRoleResolver::has($user, $role)) {
+            $message = $role === UserRoleResolver::SCHOOL_HEAD
+                ? 'Invalid school code or password.'
+                : 'Invalid credentials for the selected role.';
+
             return response()->json(
-                ['message' => 'Invalid credentials for the selected role.'],
+                ['message' => $message],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -68,18 +75,24 @@ class AuthController extends Controller
 
     private function resolveUserForLogin(string $role, string $login): ?User
     {
+        if ($role === UserRoleResolver::SCHOOL_HEAD) {
+            return User::query()
+                ->with('school')
+                ->whereHas('school', function ($builder) use ($login): void {
+                    $builder->whereRaw('UPPER(school_code) = ?', [$login]);
+                })
+                ->get()
+                ->first(
+                    fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
+                );
+        }
+
         $query = User::query()
             ->with('school')
             ->where(function ($builder) use ($login): void {
                 $builder->where('email', $login)
                     ->orWhere('name', $login);
             });
-
-        if ($role === UserRoleResolver::SCHOOL_HEAD) {
-            $query->orWhereHas('school', function ($builder) use ($login): void {
-                $builder->where('school_code', $login);
-            });
-        }
 
         /** @var \Illuminate\Support\Collection<int, User> $candidates */
         $candidates = $query->limit(10)->get();
