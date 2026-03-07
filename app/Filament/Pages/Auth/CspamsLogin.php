@@ -50,7 +50,8 @@ class CspamsLogin extends BaseLogin
         return [
             Hidden::make('role')
             ->default('monitor')
-            ->dehydrated(),
+            ->dehydrated(true)
+            ->required(),
 
             TextInput::make('email')
             ->label('DepEd Email')
