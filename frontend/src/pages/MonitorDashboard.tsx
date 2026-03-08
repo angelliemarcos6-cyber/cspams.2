@@ -36,6 +36,7 @@ import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useData } from "@/context/Data";
 import { useFormData } from "@/context/FormData";
 import { useIndicatorData } from "@/context/IndicatorData";
+import { useStudentData } from "@/context/StudentData";
 import type { FormSubmission, IndicatorSubmission, SchoolRecord, SchoolStatus } from "@/types";
 import {
   buildRegionAggregates,
@@ -97,6 +98,12 @@ interface SchoolScopeOption {
   key: string;
   code: string;
   name: string;
+}
+
+interface StudentLookupOption {
+  id: string;
+  lrn: string;
+  fullName: string;
 }
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
@@ -375,6 +382,7 @@ export function MonitorDashboard() {
   const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord, deleteRecord } = useData();
   const { submissions: formSubmissions } = useFormData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
+  const { students } = useStudentData();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
@@ -382,6 +390,10 @@ export function MonitorDashboard() {
   const [selectedSchoolScopeKey, setSelectedSchoolScopeKey] = useState<string>(ALL_SCHOOL_SCOPE);
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
   const [schoolScopeDropdownSlot, setSchoolScopeDropdownSlot] = useState<ScopeDropdownSlot | null>(null);
+  const [studentLookupQuery, setStudentLookupQuery] = useState("");
+  const [teacherLookupQuery, setTeacherLookupQuery] = useState("");
+  const [selectedStudentLookup, setSelectedStudentLookup] = useState<StudentLookupOption | null>(null);
+  const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("first_glance");
@@ -567,6 +579,62 @@ export function MonitorDashboard() {
     if (!selectedSchoolScope) return null;
     return new Set([selectedSchoolScope.key]);
   }, [selectedSchoolScope]);
+
+  const scopedStudentPool = useMemo(() => {
+    if (!scopedSchoolKeys) {
+      return students;
+    }
+
+    return students.filter((student) =>
+      scopedSchoolKeys.has(
+        normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null),
+      ),
+    );
+  }, [students, scopedSchoolKeys]);
+
+  const studentLookupOptions = useMemo<StudentLookupOption[]>(
+    () =>
+      scopedStudentPool
+        .map((student) => ({
+          id: student.id,
+          lrn: student.lrn,
+          fullName: student.fullName,
+        }))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+    [scopedStudentPool],
+  );
+
+  const filteredStudentLookupOptions = useMemo(() => {
+    const query = studentLookupQuery.trim().toLowerCase();
+    if (!query) return studentLookupOptions;
+
+    return studentLookupOptions.filter(
+      (option) =>
+        option.fullName.toLowerCase().includes(query) ||
+        option.lrn.toLowerCase().includes(query),
+    );
+  }, [studentLookupOptions, studentLookupQuery]);
+
+  const teacherLookupOptions = useMemo(
+    () =>
+      [...new Set(
+        scopedStudentPool
+          .map((student) => student.teacher?.trim() ?? "")
+          .filter((value) => value.length > 0),
+      )].sort((a, b) => a.localeCompare(b)),
+    [scopedStudentPool],
+  );
+
+  const filteredTeacherLookupOptions = useMemo(() => {
+    const query = teacherLookupQuery.trim().toLowerCase();
+    if (!query) return teacherLookupOptions;
+    return teacherLookupOptions.filter((name) => name.toLowerCase().includes(query));
+  }, [teacherLookupOptions, teacherLookupQuery]);
+
+  const selectedStudentLabel = selectedStudentLookup
+    ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn}`
+    : "Search student name / LRN";
+  const selectedTeacherLabel = selectedTeacherLookup ?? "Search teacher name";
 
   const scopedRecords = useMemo(() => {
     if (!scopedSchoolKeys) {
@@ -839,14 +907,14 @@ export function MonitorDashboard() {
     setSortDirection("asc");
   };
 
-  const renderSchoolScopeSelector = (slot: ScopeDropdownSlot) => {
-    const isOpen = schoolScopeDropdownSlot === slot;
+  const renderSchoolScopeSelector = () => {
+    const isOpen = schoolScopeDropdownSlot === "schools";
 
     return (
       <div className="relative mt-3">
         <button
           type="button"
-          onClick={() => setSchoolScopeDropdownSlot((current) => (current === slot ? null : slot))}
+          onClick={() => setSchoolScopeDropdownSlot((current) => (current === "schools" ? null : "schools"))}
           className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
         >
           <span className="truncate">
@@ -902,6 +970,145 @@ export function MonitorDashboard() {
               ))}
               {filteredSchoolScopeOptions.length === 0 && (
                 <p className="px-2.5 py-2 text-xs text-slate-500">No matching school.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderStudentLookupSelector = () => {
+    const isOpen = schoolScopeDropdownSlot === "students";
+
+    return (
+      <div className="relative mt-3">
+        <button
+          type="button"
+          onClick={() => setSchoolScopeDropdownSlot((current) => (current === "students" ? null : "students"))}
+          className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+        >
+          <span className="truncate">{selectedStudentLabel}</span>
+          <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+        </button>
+        {isOpen && (
+          <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
+            <div className="border-b border-slate-100 p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={studentLookupQuery}
+                  onChange={(event) => setStudentLookupQuery(event.target.value)}
+                  placeholder="Search student name or LRN"
+                  className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+              </div>
+            </div>
+            <div className="max-h-48 overflow-y-auto p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedStudentLookup(null);
+                  setStudentLookupQuery("");
+                  setSchoolScopeDropdownSlot(null);
+                }}
+                className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                  !selectedStudentLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Clear student selection
+              </button>
+              {filteredStudentLookupOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedStudentLookup(option);
+                    setStudentLookupQuery(option.fullName);
+                    setSchoolScopeDropdownSlot(null);
+                  }}
+                  className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                    selectedStudentLookup?.id === option.id
+                      ? "bg-primary-50 text-primary-800"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="font-semibold">{option.fullName}</span>
+                  <span className="ml-1 text-slate-500">({option.lrn})</span>
+                </button>
+              ))}
+              {filteredStudentLookupOptions.length === 0 && (
+                <p className="px-2.5 py-2 text-xs text-slate-500">No student match.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderTeacherLookupSelector = () => {
+    const isOpen = schoolScopeDropdownSlot === "teachers";
+
+    return (
+      <div className="relative mt-3">
+        <button
+          type="button"
+          onClick={() => setSchoolScopeDropdownSlot((current) => (current === "teachers" ? null : "teachers"))}
+          className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+        >
+          <span className="truncate">{selectedTeacherLabel}</span>
+          <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+        </button>
+        {isOpen && (
+          <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
+            <div className="border-b border-slate-100 p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={teacherLookupQuery}
+                  onChange={(event) => setTeacherLookupQuery(event.target.value)}
+                  placeholder="Search teacher name"
+                  className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+              </div>
+            </div>
+            <div className="max-h-48 overflow-y-auto p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTeacherLookup(null);
+                  setTeacherLookupQuery("");
+                  setSchoolScopeDropdownSlot(null);
+                }}
+                className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                  !selectedTeacherLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Clear teacher selection
+              </button>
+              {filteredTeacherLookupOptions.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTeacherLookup(name);
+                    setTeacherLookupQuery(name);
+                    setSchoolScopeDropdownSlot(null);
+                  }}
+                  className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                    selectedTeacherLookup === name
+                      ? "bg-primary-50 text-primary-800"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="font-semibold">{name}</span>
+                </button>
+              ))}
+              {filteredTeacherLookupOptions.length === 0 && (
+                <p className="px-2.5 py-2 text-xs text-slate-500">No teacher match.</p>
               )}
             </div>
           </div>
@@ -1210,7 +1417,7 @@ export function MonitorDashboard() {
                   <Building2 className="h-5 w-5" />
                 </span>
               </div>
-              {renderSchoolScopeSelector("schools")}
+              {renderSchoolScopeSelector()}
             </article>
             <article className="relative border border-primary-100 bg-primary-50/70 p-4">
               <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
@@ -1223,7 +1430,7 @@ export function MonitorDashboard() {
                   <GraduationCap className="h-5 w-5" />
                 </span>
               </div>
-              {renderSchoolScopeSelector("students")}
+              {renderStudentLookupSelector()}
             </article>
             <article className="relative border border-primary-100 bg-primary-50/70 p-4">
               <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
@@ -1236,7 +1443,7 @@ export function MonitorDashboard() {
                   <Users className="h-5 w-5" />
                 </span>
               </div>
-              {renderSchoolScopeSelector("teachers")}
+              {renderTeacherLookupSelector()}
             </article>
             <StatCard
               label="Active Schools"
