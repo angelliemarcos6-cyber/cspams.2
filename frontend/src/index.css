@@ -183,6 +183,33 @@ body {
   background: linear-gradient(180deg, rgb(248 250 252 / 0.95), rgb(255 255 255 / 0.94));
 }
 
+@keyframes focusPulse {
+  0% {
+    box-shadow:
+      0 0 0 0 rgb(37 99 235 / 0.45),
+      0 10px 22px -18px rgb(29 78 216 / 0.45);
+  }
+  70% {
+    box-shadow:
+      0 0 0 8px rgb(37 99 235 / 0),
+      0 14px 28px -20px rgb(29 78 216 / 0.34);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgb(37 99 235 / 0),
+      0 10px 22px -18px rgb(29 78 216 / 0.28);
+  }
+}
+
+.dashboard-focus-glow {
+  border-color: rgb(59 130 246 / 0.68) !important;
+  box-shadow:
+    0 0 0 2px rgb(59 130 246 / 0.26),
+    0 0 0 6px rgb(147 197 253 / 0.24),
+    0 16px 32px -24px rgb(29 78 216 / 0.52);
+  animation: focusPulse 700ms ease-out 2;
+}
+
 .login-grid-overlay {
   background-image:
     linear-gradient(to right, rgb(148 163 184 / 0.12) 1px, transparent 1px),

@@ -94,6 +94,12 @@ interface MonitorRecordFormState {
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
 
+interface QuickJumpItem {
+  id: string;
+  label: string;
+  targetId: string;
+}
+
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
@@ -178,6 +184,33 @@ const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }
   { id: "awaiting_review", label: "Pending Monitor Review" },
   { id: "missing", label: "Missing SF / Indicators" },
 ];
+
+const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
+  first_glance: [
+    { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics" },
+    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "monitor-targets-snapshot" },
+    { id: "sync_alerts", label: "Sync Alerts", targetId: "monitor-sync-alerts" },
+    { id: "status_chart", label: "Status Distribution", targetId: "monitor-status-chart" },
+    { id: "submission_trend", label: "Submission Trend", targetId: "monitor-trend-chart" },
+  ],
+  requirements: [
+    { id: "filters", label: "Submission Filters", targetId: "monitor-submission-filters" },
+    { id: "tracker_table", label: "Requirement Tracker", targetId: "monitor-requirements-table" },
+  ],
+  forms: [
+    { id: "filters_forms", label: "Submission Filters", targetId: "monitor-submission-filters" },
+    { id: "forms_queue", label: "SF-1 / SF-5 Queue", targetId: "monitor-forms-queue" },
+  ],
+  indicators: [
+    { id: "filters_indicators", label: "Submission Filters", targetId: "monitor-submission-filters" },
+    { id: "indicators_queue", label: "Indicators Queue", targetId: "monitor-indicators-queue" },
+  ],
+  records: [
+    { id: "filters_records", label: "Submission Filters", targetId: "monitor-submission-filters" },
+    { id: "school_records", label: "School Records", targetId: "monitor-school-records" },
+    { id: "student_records", label: "Learner Records", targetId: "monitor-student-records" },
+  ],
+};
 
 const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
   schoolId: "",
@@ -343,6 +376,7 @@ export function MonitorDashboard() {
     typeof window === "undefined" ? true : window.innerWidth >= 768,
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
+  const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [recordForm, setRecordForm] = useState<MonitorRecordFormState>(EMPTY_MONITOR_RECORD_FORM);
@@ -666,6 +700,28 @@ export function MonitorDashboard() {
   const completionPercent = requirementCounts.total === 0 ? 0 : Math.round((requirementCounts.complete / requirementCounts.total) * 100);
   const activeStep = Math.max(1, MONITOR_TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
   const showSubmissionFilters = activeTopNavigator !== "first_glance";
+  const quickJumpItems = useMemo(
+    () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
+    [activeTopNavigator],
+  );
+
+  const clearFocusAfterDelay = (targetId: string) => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      setFocusedSectionId((current) => (current === targetId ? null : current));
+    }, 3000);
+  };
+
+  const focusAndScrollTo = (targetId: string) => {
+    if (typeof document === "undefined") return;
+    const section = document.getElementById(targetId);
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    setFocusedSectionId(targetId);
+    clearFocusAfterDelay(targetId);
+  };
+
+  const sectionFocusClass = (targetId: string) => (focusedSectionId === targetId ? "dashboard-focus-glow" : "");
 
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -885,6 +941,24 @@ export function MonitorDashboard() {
                     );
                   })}
                 </div>
+
+                {quickJumpItems.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {quickJumpItems.map((item) => (
+                      <button
+                        key={`monitor-quick-jump-${item.id}`}
+                        type="button"
+                        onClick={() => focusAndScrollTo(item.targetId)}
+                        className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                )}
               </div>
 
               <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[24rem]">
@@ -906,7 +980,7 @@ export function MonitorDashboard() {
           </section>
 
           {showSubmissionFilters && (
-          <section className="dashboard-shell mb-5 rounded-sm p-3">
+          <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Submission Filters</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
               <div className="relative">
@@ -996,7 +1070,7 @@ export function MonitorDashboard() {
 
       {activeTopNavigator === "first_glance" && (
         <>
-          <section className="animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4 ${sectionFocusClass("monitor-overview-metrics")}`}>
             <StatCard
               label="Total Schools"
               value={records.length.toLocaleString()}
@@ -1020,8 +1094,8 @@ export function MonitorDashboard() {
             />
           </section>
 
-          <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-            <div className="surface-panel dashboard-shell p-5">
+          <section id="monitor-targets-snapshot" className={`mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr] ${sectionFocusClass("monitor-targets-snapshot")}`}>
+            <div id="monitor-sync-alerts" className={`surface-panel dashboard-shell p-5 ${sectionFocusClass("monitor-sync-alerts")}`}>
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Sync Snapshot</h2>
                 <span className="text-xs text-slate-500">
@@ -1072,13 +1146,19 @@ export function MonitorDashboard() {
           </section>
 
           <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
-            <StatusPieChart data={statusDistribution} />
-            <RegionBarChart data={regionAggregates} />
-            <SubmissionTrendChart data={submissionTrend} />
+            <div id="monitor-status-chart" className={sectionFocusClass("monitor-status-chart")}>
+              <StatusPieChart data={statusDistribution} />
+            </div>
+            <div id="monitor-region-chart" className={sectionFocusClass("monitor-region-chart")}>
+              <RegionBarChart data={regionAggregates} />
+            </div>
+            <div id="monitor-trend-chart" className={sectionFocusClass("monitor-trend-chart")}>
+              <SubmissionTrendChart data={submissionTrend} />
+            </div>
           </section>
 
           {regionAggregates.length > 0 && (
-            <section className="mt-5 animate-fade-slide">
+            <section id="monitor-regional-cards" className={`mt-5 animate-fade-slide ${sectionFocusClass("monitor-regional-cards")}`}>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Regional Monitoring Cards</h2>
                 <span className="text-xs text-slate-500">{regionAggregates.length} region entries</span>
@@ -1101,7 +1181,7 @@ export function MonitorDashboard() {
       )}
 
       {activeTopNavigator === "requirements" && (
-        <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
+        <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Requirement Submission Tracker</h2>
           </div>
@@ -1179,13 +1259,21 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      {activeTopNavigator === "forms" && <MonitorFormsPanel schoolFilterKeys={filteredSchoolKeys} />}
+      {activeTopNavigator === "forms" && (
+        <section id="monitor-forms-queue" className={sectionFocusClass("monitor-forms-queue")}>
+          <MonitorFormsPanel schoolFilterKeys={filteredSchoolKeys} />
+        </section>
+      )}
 
-      {activeTopNavigator === "indicators" && <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />}
+      {activeTopNavigator === "indicators" && (
+        <section id="monitor-indicators-queue" className={sectionFocusClass("monitor-indicators-queue")}>
+          <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />
+        </section>
+      )}
 
       {activeTopNavigator === "records" && (
         <>
-        <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
+        <section id="monitor-school-records" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}>
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Records</h2>
           </div>
@@ -1520,12 +1608,14 @@ export function MonitorDashboard() {
             </div>
           )}
         </section>
-        <StudentRecordsPanel
-          editable={false}
-          showSchoolColumn
-          title="Synchronized Student Records"
-          description="Read-only learner records."
-        />
+        <section id="monitor-student-records" className={sectionFocusClass("monitor-student-records")}>
+          <StudentRecordsPanel
+            editable={false}
+            showSchoolColumn
+            title="Synchronized Student Records"
+            description="Read-only learner records."
+          />
+        </section>
         </>
       )}
         </div>

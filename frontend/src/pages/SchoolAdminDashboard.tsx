@@ -80,6 +80,12 @@ interface ManualStep {
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
 
+interface QuickJumpItem {
+  id: string;
+  label: string;
+  targetId: string;
+}
+
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
@@ -144,6 +150,29 @@ const SCHOOL_MANUAL_STATUS_GUIDE = [
   "Validated: Approved by monitor.",
   "Returned: Needs correction and resubmission.",
 ];
+
+const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
+  first_glance: [
+    { id: "overview_alerts", label: "Overview Alerts", targetId: "first-glance" },
+    { id: "school_info", label: "School Info", targetId: "school-overview" },
+    { id: "kpi_cards", label: "KPI Cards", targetId: "overview-metrics" },
+    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "targets-snapshot" },
+    { id: "sync_alerts", label: "Sync Alerts", targetId: "sync-alerts-panel" },
+    { id: "status_chart", label: "Status Distribution", targetId: "status-chart-panel" },
+  ],
+  requirements: [
+    { id: "requirement_cards", label: "Requirement Cards", targetId: "requirement-navigator" },
+  ],
+  compliance: [
+    { id: "compliance_modules", label: "Modules", targetId: "compliance-modules" },
+    { id: "compliance_input", label: "School Profile Input", targetId: "compliance-input" },
+    { id: "forms_queue", label: "SF-1 / SF-5", targetId: "forms-workflow" },
+    { id: "indicators_queue", label: "Indicators", targetId: "indicator-workflow" },
+  ],
+  records: [
+    { id: "student_records", label: "Student Records", targetId: "school-records" },
+  ],
+};
 
 const EMPTY_FORM: FormState = {
   studentCount: "",
@@ -257,6 +286,7 @@ export function SchoolAdminDashboard() {
   const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("first_glance");
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
+  const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const activeNavigatorLabel = useMemo(
     () => TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
     [activeTopNavigator],
@@ -325,6 +355,10 @@ export function SchoolAdminDashboard() {
   const completionPercent = requirements.length === 0 ? 0 : Math.round((completedRequirements / requirements.length) * 100);
   const activeStep = Math.max(1, TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
   const nextRequirement = missingRequirements[0]?.label ?? "All requirements passed";
+  const quickJumpItems = useMemo(
+    () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
+    [activeTopNavigator],
+  );
 
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -401,11 +435,26 @@ export function SchoolAdminDashboard() {
     setActiveTopNavigator(item.id);
   };
 
+  const clearFocusAfterDelay = (targetId: string) => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      setFocusedSectionId((current) => (current === targetId ? null : current));
+    }, 3000);
+  };
+
   const scrollToSection = (sectionId: string) => {
     if (typeof document === "undefined") return;
     const section = document.getElementById(sectionId);
     if (!section) return;
     section.scrollIntoView({ behavior: "smooth", block: "start" });
+    setFocusedSectionId(sectionId);
+    clearFocusAfterDelay(sectionId);
+  };
+
+  const sectionFocusClass = (sectionId: string) => (focusedSectionId === sectionId ? "dashboard-focus-glow" : "");
+
+  const handleQuickJump = (targetId: string) => {
+    scrollToSection(targetId);
   };
 
   const validateForm = () => {
@@ -659,6 +708,24 @@ export function SchoolAdminDashboard() {
                 );
               })}
             </div>
+
+            {quickJumpItems.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {quickJumpItems.map((item) => (
+                  <button
+                    key={`quick-jump-${item.id}`}
+                    type="button"
+                    onClick={() => handleQuickJump(item.targetId)}
+                    className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            )}
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[24rem]">
@@ -710,7 +777,7 @@ export function SchoolAdminDashboard() {
       )}
 
       {activeTopNavigator === "first_glance" && (
-      <section id="first-glance" className="dashboard-shell mb-5 rounded-sm p-4">
+      <section id="first-glance" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("first-glance")}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Overview Alerts</h2>
@@ -759,7 +826,7 @@ export function SchoolAdminDashboard() {
       )}
 
       {activeTopNavigator === "requirements" && (
-      <section id="requirement-navigator" className="dashboard-shell mb-5 rounded-sm p-3">
+      <section id="requirement-navigator" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("requirement-navigator")}`}>
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirements</h2>
         <div className="mt-3 grid gap-2 md:grid-cols-4">
           {requirements.map((item) => (
@@ -786,7 +853,7 @@ export function SchoolAdminDashboard() {
 
       {activeTopNavigator === "first_glance" && (
       <>
-      <section id="school-overview" className="mb-5 animate-fade-slide grid gap-3 md:grid-cols-3">
+      <section id="school-overview" className={`mb-5 animate-fade-slide grid gap-3 md:grid-cols-3 ${sectionFocusClass("school-overview")}`}>
         <article className="dashboard-subtle-panel px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
           <p className="mt-1 text-sm font-bold text-slate-900">{schoolName}</p>
@@ -801,7 +868,7 @@ export function SchoolAdminDashboard() {
         </article>
       </section>
 
-      <section className="animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section id="overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4 ${sectionFocusClass("overview-metrics")}`}>
         <StatCard label="Total Schools" value={records.length.toLocaleString()} icon={<Building2 className="h-5 w-5" />} />
         <StatCard
           label="Total Students"
@@ -817,8 +884,8 @@ export function SchoolAdminDashboard() {
         />
       </section>
 
-      <section id="targets-snapshot" className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <div className="surface-panel dashboard-shell p-5">
+      <section id="targets-snapshot" className={`mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr] ${sectionFocusClass("targets-snapshot")}`}>
+        <div id="sync-alerts-panel" className={`surface-panel dashboard-shell p-5 ${sectionFocusClass("sync-alerts-panel")}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Snapshot</h2>
             <span className="text-xs text-slate-500">
@@ -869,13 +936,19 @@ export function SchoolAdminDashboard() {
       </section>
 
       <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
-        <StatusPieChart data={statusDistribution} />
-        <RegionBarChart data={regionAggregates} />
-        <SubmissionTrendChart data={submissionTrend} />
+        <div id="status-chart-panel" className={sectionFocusClass("status-chart-panel")}>
+          <StatusPieChart data={statusDistribution} />
+        </div>
+        <div id="region-chart-panel" className={sectionFocusClass("region-chart-panel")}>
+          <RegionBarChart data={regionAggregates} />
+        </div>
+        <div id="trend-chart-panel" className={sectionFocusClass("trend-chart-panel")}>
+          <SubmissionTrendChart data={submissionTrend} />
+        </div>
       </section>
 
       {regionAggregates.length > 0 && (
-        <section className="mt-5 animate-fade-slide">
+        <section id="regional-breakdown" className={`mt-5 animate-fade-slide ${sectionFocusClass("regional-breakdown")}`}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Regional Breakdown</h2>
             <span className="text-xs text-slate-500">{regionAggregates.length} region entries</span>
@@ -899,11 +972,11 @@ export function SchoolAdminDashboard() {
 
       {activeTopNavigator === "compliance" && (
       <section id="compliance-records" className="grid gap-5">
-        <section className="dashboard-shell rounded-sm p-4">
+        <section id="compliance-modules" className={`dashboard-shell rounded-sm p-4 ${sectionFocusClass("compliance-modules")}`}>
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Record Modules</h2>
         </section>
 
-        <section id="compliance-input">
+        <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
           {showForm ? (
           <section className="surface-panel dashboard-shell animate-fade-slide overflow-hidden">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -1020,18 +1093,18 @@ export function SchoolAdminDashboard() {
           )}
         </section>
 
-        <section id="forms-workflow">
+        <section id="forms-workflow" className={sectionFocusClass("forms-workflow")}>
           <SchoolFormsPanel />
         </section>
 
-        <section id="indicator-workflow">
+        <section id="indicator-workflow" className={sectionFocusClass("indicator-workflow")}>
           <SchoolIndicatorPanel />
         </section>
       </section>
       )}
 
       {activeTopNavigator === "records" && (
-      <section id="school-records">
+      <section id="school-records" className={sectionFocusClass("school-records")}>
         <StudentRecordsPanel
           editable
           title="Student Records"
