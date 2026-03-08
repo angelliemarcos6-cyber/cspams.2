@@ -172,11 +172,11 @@ const MONITOR_MANUAL_STATUS_GUIDE = [
 ];
 
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
-  { id: "all", label: "All schools" },
-  { id: "submitted_any", label: "With any submission" },
-  { id: "complete", label: "Complete package" },
-  { id: "awaiting_review", label: "Awaiting review" },
-  { id: "missing", label: "Missing requirements" },
+  { id: "all", label: "All Schools" },
+  { id: "submitted_any", label: "With Any CSPAMS Submission" },
+  { id: "complete", label: "Complete CSPAMS Package" },
+  { id: "awaiting_review", label: "Pending Monitor Review" },
+  { id: "missing", label: "Missing SF / Indicators" },
 ];
 
 const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
@@ -907,7 +907,7 @@ export function MonitorDashboard() {
 
           {showSubmissionFilters && (
           <section className="dashboard-shell mb-5 rounded-sm p-3">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Filters</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Submission Filters</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -952,24 +952,43 @@ export function MonitorDashboard() {
 
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
               <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tracked Schools</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Schools in Scope</p>
                 <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.total}</p>
               </article>
               <article className="border border-cyan-200 bg-cyan-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">With Submission</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">Any CSPAMS Submission</p>
                 <p className="mt-1 text-lg font-bold text-cyan-800">{requirementCounts.submittedAny}</p>
               </article>
               <article className="border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Complete Package</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Complete CSPAMS Package</p>
                 <p className="mt-1 text-lg font-bold text-emerald-800">{requirementCounts.complete}</p>
               </article>
               <article className="border border-amber-200 bg-amber-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Awaiting Review</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Pending Monitor Review</p>
                 <p className="mt-1 text-lg font-bold text-amber-800">{requirementCounts.awaitingReview}</p>
               </article>
               <article className="border border-rose-200 bg-rose-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing Requirements</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing SF / Indicators</p>
                 <p className="mt-1 text-lg font-bold text-rose-800">{requirementCounts.missing}</p>
+              </article>
+            </div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              <article className="border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Complete Package</p>
+                <p className="mt-1 text-xs text-slate-700">Compliance record + SF-1 + SF-5 + Indicators submitted/validated.</p>
+              </article>
+              <article className="border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pending Review</p>
+                <p className="mt-1 text-xs text-slate-700">At least one submission is in submitted status.</p>
+              </article>
+              <article className="border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Missing</p>
+                <p className="mt-1 text-xs text-slate-700">One or more required items are not yet submitted.</p>
+              </article>
+              <article className="border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filter Scope</p>
+                <p className="mt-1 text-xs text-slate-700">Applies to requirement table and monitor queues.</p>
               </article>
             </div>
           </section>
