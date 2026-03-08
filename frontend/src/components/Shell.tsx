@@ -48,7 +48,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
             </button>
           </div>
         </div>
-        <div className="h-1 w-full bg-gradient-to-r from-cyan-300/55 via-sky-300/40 to-transparent" />
+        <div className="h-1 w-full bg-gradient-to-r from-primary-300/60 via-primary-200/45 to-transparent" />
         <div className="border-t border-white/12 bg-primary-800/70 backdrop-blur-md">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <div>

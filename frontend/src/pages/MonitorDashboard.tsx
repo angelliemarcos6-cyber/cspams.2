@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
+﻿import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   ArrowDown,
@@ -257,7 +257,7 @@ function schoolTypeLabel(value: string | null | undefined): string {
 
 function workflowTone(status: string | null) {
   if (status === "validated") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
-  if (status === "submitted") return "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300";
+  if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "returned") return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
   if (status === "draft") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
@@ -303,8 +303,8 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 function navigatorButtonClass(active: boolean): string {
   return `flex w-full items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition ${
     active
-      ? "border-cyan-300/90 bg-cyan-400/20 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.55),0_10px_18px_-16px_rgba(34,211,238,0.8)]"
-      : "border-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-cyan-300/45 hover:bg-primary-700/80 hover:text-white"
+      ? "border-primary-300/90 bg-primary-600/35 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
+      : "border-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-primary-200/60 hover:bg-primary-700/80 hover:text-white"
   }`;
 }
 
@@ -1214,7 +1214,7 @@ export function MonitorDashboard() {
                 onClick={() => setShowNavigatorManual((current) => !current)}
                 className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition ${
                   showNavigatorManual
-                    ? "border-cyan-300/80 bg-cyan-400/25"
+                    ? "border-primary-300/80 bg-primary-100/90"
                     : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
                 }`}
               >
@@ -1404,9 +1404,9 @@ export function MonitorDashboard() {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Schools in Scope</p>
                 <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.total}</p>
               </article>
-              <article className="border border-cyan-200 bg-cyan-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">Any CSPAMS Submission</p>
-                <p className="mt-1 text-lg font-bold text-cyan-800">{requirementCounts.submittedAny}</p>
+              <article className="border border-primary-200 bg-primary-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Any CSPAMS Submission</p>
+                <p className="mt-1 text-lg font-bold text-primary-800">{requirementCounts.submittedAny}</p>
               </article>
               <article className="border border-emerald-200 bg-emerald-50 px-3 py-2.5">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Complete CSPAMS Package</p>
@@ -1612,7 +1612,7 @@ export function MonitorDashboard() {
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
                           row.hasComplianceRecord
-                            ? "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300"
+                            ? "bg-primary-100 text-primary-700 ring-1 ring-primary-300"
                             : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
                         }`}
                       >
@@ -2024,5 +2024,7 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
+
 
 

@@ -82,7 +82,7 @@ export function Login() {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page-bg px-4 py-8">
       <div className="login-grid-overlay pointer-events-none absolute inset-0 opacity-35" />
       <div className="pointer-events-none absolute -left-20 top-0 h-80 w-80 bg-primary/20 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 bg-cyan-300/30 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 bg-primary-300/25 blur-3xl" />
 
       <div className="login-glass-card relative grid w-full max-w-6xl overflow-hidden border lg:grid-cols-[1.08fr_1fr]">
         <section className="hidden border-r border-white/15 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-600 p-10 text-white lg:block">

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type ComponentType, type FormEvent } from "react";
+import { useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -226,8 +226,8 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 function navigatorButtonClass(active: boolean): string {
   return `flex w-full items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition ${
     active
-      ? "border-cyan-300/90 bg-cyan-400/20 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.55),0_10px_18px_-16px_rgba(34,211,238,0.8)]"
-      : "border-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-cyan-300/45 hover:bg-primary-700/80 hover:text-white"
+      ? "border-primary-300/90 bg-primary-600/35 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
+      : "border-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-primary-200/60 hover:bg-primary-700/80 hover:text-white"
   }`;
 }
 
@@ -579,7 +579,7 @@ export function SchoolAdminDashboard() {
               onClick={() => setShowNavigatorManual((current) => !current)}
               className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition ${
                 showNavigatorManual
-                  ? "border-cyan-300/80 bg-cyan-400/25"
+                  ? "border-primary-300/80 bg-primary-100/90"
                   : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
               }`}
             >
@@ -1091,6 +1091,7 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
 
 
 

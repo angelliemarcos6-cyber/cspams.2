@@ -67,7 +67,7 @@ function statusTone(status: string): string {
     return "bg-rose-100 text-rose-700 ring-1 ring-rose-300";
   }
   if (status === "transferee") {
-    return "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300";
+    return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   }
   return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
 }
@@ -468,3 +468,4 @@ export function StudentRecordsPanel({
     </section>
   );
 }
+

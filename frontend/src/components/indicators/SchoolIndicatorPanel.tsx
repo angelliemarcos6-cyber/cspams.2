@@ -114,7 +114,7 @@ const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
 
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
-  if (status === "submitted") return "bg-cyan-100 text-cyan-700 ring-1 ring-cyan-300";
+  if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "returned") return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
@@ -446,9 +446,9 @@ export function SchoolIndicatorPanel() {
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total Packages</p>
           <p className="mt-1 text-lg font-bold text-slate-900">{summary.total}</p>
         </article>
-        <article className="rounded-sm border border-cyan-200 bg-cyan-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">Awaiting Review</p>
-          <p className="mt-1 text-lg font-bold text-cyan-800">{summary.submitted}</p>
+        <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Awaiting Review</p>
+          <p className="mt-1 text-lg font-bold text-primary-800">{summary.submitted}</p>
         </article>
         <article className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2.5">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Validated</p>
@@ -592,7 +592,7 @@ export function SchoolIndicatorPanel() {
                       <p className="text-sm font-semibold text-slate-900">{metric.code}</p>
                       <p className="text-xs text-slate-500">{metric.name}</p>
                       <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">
-                        {String(metric.framework || "targets_met").replace("_", " ")} · {type.replace("_", " ")}
+                        {String(metric.framework || "targets_met").replace("_", " ")} - {type.replace("_", " ")}
                       </p>
                     </td>
                     <td className="px-2 py-2">
@@ -883,7 +883,7 @@ export function SchoolIndicatorPanel() {
                               type="button"
                               onClick={() => void handleSubmitToMonitor(submission)}
                               disabled={isSaving}
-                              className="inline-flex items-center gap-1 rounded-sm border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-70"
+                              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               <Send className="h-3.5 w-3.5" />
                               Submit
@@ -959,7 +959,7 @@ export function SchoolIndicatorPanel() {
                                   historyRows.map((entry) => (
                                     <article key={entry.id} className="rounded-sm border border-slate-200 bg-white px-3 py-2">
                                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                                        {entry.action} · {formatDateTime(entry.createdAt)}
+                                        {entry.action} - {formatDateTime(entry.createdAt)}
                                       </p>
                                       <p className="mt-0.5 text-xs text-slate-600">
                                         {entry.actor?.name ? `By ${entry.actor.name}` : "System action"}
@@ -991,5 +991,7 @@ export function SchoolIndicatorPanel() {
     </section>
   );
 }
+
+
 
 
