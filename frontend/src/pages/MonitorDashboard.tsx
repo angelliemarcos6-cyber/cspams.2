@@ -10,6 +10,8 @@ import {
   Building2,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   ClipboardList,
   Database,
@@ -51,6 +53,7 @@ import {
 type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "status" | "lastUpdated";
 type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
+type WorkflowStatus = Exclude<RequirementFilter, "all">;
 type MonitorTopNavigatorId = "action_queue" | "schools" | "compliance_review" | "student_records" | "reports";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
 type FilterChipId = "search" | "status" | "requirement" | "school" | "student" | "teacher";
@@ -143,12 +146,22 @@ interface SchoolDetailSnapshot {
   synchronizedTeachers: number;
 }
 
+interface PersistedMonitorFilters {
+  search?: string;
+  statusFilter?: SchoolStatus | "all";
+  requirementFilter?: RequirementFilter;
+  schoolScopeKey?: string;
+  studentLookupId?: string | null;
+  teacherLookup?: string | null;
+  activeTopNavigator?: MonitorTopNavigatorId;
+}
+
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "action_queue", label: "Action Queue" },
   { id: "schools", label: "Schools" },
-  { id: "compliance_review", label: "Compliance Review" },
-  { id: "student_records", label: "Student Records" },
+  { id: "compliance_review", label: "Review" },
+  { id: "student_records", label: "Students" },
   { id: "reports", label: "Reports" },
 ];
 
@@ -265,6 +278,8 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
 };
 
 const ALL_SCHOOL_SCOPE = "__all_schools__";
+const MONITOR_FILTER_STORAGE_KEY = "cspams.monitor.filters.v1";
+const SEARCH_DEBOUNCE_MS = 320;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
@@ -300,6 +315,38 @@ function workflowLabel(status: string | null): string {
   return status;
 }
 
+function resolveWorkflowStatus(summary: SchoolRequirementSummary): WorkflowStatus {
+  if (summary.missingCount > 0) return "missing";
+  if (summary.indicatorStatus === "returned") return "returned";
+  if (summary.awaitingReviewCount > 0 || summary.indicatorStatus === "submitted") return "waiting";
+  if (summary.indicatorStatus === "validated") return "validated";
+  if (summary.hasAnySubmitted) return "submitted";
+  return "missing";
+}
+
+function isValidRequirementFilter(value: string | null | undefined): value is RequirementFilter {
+  return value === "all" || value === "missing" || value === "waiting" || value === "returned" || value === "submitted" || value === "validated";
+}
+
+function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {
+  return value === "all" || value === "active" || value === "inactive" || value === "pending";
+}
+
+function isValidMonitorTopNavigator(value: string | null | undefined): value is MonitorTopNavigatorId {
+  return value === "action_queue" || value === "schools" || value === "compliance_review" || value === "student_records" || value === "reports";
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => clearTimeout(timeout);
+  }, [value, delayMs]);
+
+  return debouncedValue;
+}
+
 function compareRecords(a: SchoolRecord, b: SchoolRecord, column: SortColumn, direction: SortDirection) {
   const sign = direction === "asc" ? 1 : -1;
 
@@ -328,11 +375,13 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
   return direction === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
 }
 
-function navigatorButtonClass(active: boolean): string {
-  return `flex w-full items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition ${
+function navigatorButtonClass(active: boolean, compact: boolean): string {
+  return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase tracking-wide transition ${
+    compact ? "justify-center px-2.5 py-2.5" : "gap-2.5 px-3 py-2.5"
+  } ${
     active
-      ? "border-primary-300/90 bg-primary-600/35 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
-      : "border-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-primary-200/60 hover:bg-primary-700/80 hover:text-white"
+      ? "border-l-primary-100 border-r-primary-300/90 border-y-primary-300/90 bg-primary-700 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
+      : "border-l-transparent border-r-primary-400/30 border-y-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-r-primary-200/60 hover:border-y-primary-200/60 hover:bg-primary-700/80 hover:text-white"
   }`;
 }
 
@@ -365,20 +414,8 @@ function isAwaitingReview(status: string | null): boolean {
 }
 
 function matchesRequirementFilter(summary: SchoolRequirementSummary, filter: RequirementFilter): boolean {
-  switch (filter) {
-    case "missing":
-      return summary.missingCount > 0;
-    case "waiting":
-      return summary.awaitingReviewCount > 0;
-    case "returned":
-      return summary.indicatorStatus === "returned";
-    case "submitted":
-      return summary.hasAnySubmitted;
-    case "validated":
-      return summary.indicatorStatus === "validated";
-    default:
-      return true;
-  }
+  if (filter === "all") return true;
+  return resolveWorkflowStatus(summary) === filter;
 }
 
 function requirementFilterLabel(value: RequirementFilter): string {
@@ -433,6 +470,7 @@ export function MonitorDashboard() {
   const { students } = useStudentData();
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [requirementFilter, setRequirementFilter] = useState<RequirementFilter>("all");
   const [selectedSchoolScopeKey, setSelectedSchoolScopeKey] = useState<string>(ALL_SCHOOL_SCOPE);
@@ -442,9 +480,12 @@ export function MonitorDashboard() {
   const [teacherLookupQuery, setTeacherLookupQuery] = useState("");
   const [selectedStudentLookup, setSelectedStudentLookup] = useState<StudentLookupOption | null>(null);
   const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<string | null>(null);
+  const [pendingStudentLookupId, setPendingStudentLookupId] = useState<string | null>(null);
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("action_queue");
+  const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= 768,
   );
@@ -466,10 +507,6 @@ export function MonitorDashboard() {
   const [recordFormMessage, setRecordFormMessage] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
-  const activeNavigatorLabel = useMemo(
-    () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Action Queue",
-    [activeTopNavigator],
-  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -484,6 +521,114 @@ export function MonitorDashboard() {
       window.removeEventListener("resize", syncViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const hasQueryFilters = ["q", "status", "workflow", "school", "student", "teacher", "tab"].some((key) =>
+      params.has(key),
+    );
+
+    let persisted: PersistedMonitorFilters | null = null;
+
+    if (hasQueryFilters) {
+      persisted = {
+        search: params.get("q") ?? "",
+        statusFilter: (params.get("status") as SchoolStatus | "all" | null) ?? undefined,
+        requirementFilter: (params.get("workflow") as RequirementFilter | null) ?? undefined,
+        schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
+        studentLookupId: params.get("student"),
+        teacherLookup: params.get("teacher"),
+        activeTopNavigator: (params.get("tab") as MonitorTopNavigatorId | null) ?? undefined,
+      };
+    } else {
+      try {
+        const raw = localStorage.getItem(MONITOR_FILTER_STORAGE_KEY);
+        if (raw) {
+          persisted = JSON.parse(raw) as PersistedMonitorFilters;
+        }
+      } catch {
+        persisted = null;
+      }
+    }
+
+    if (persisted) {
+      setSearch(persisted.search?.trim() ?? "");
+      if (isValidSchoolStatusFilter(persisted.statusFilter)) {
+        setStatusFilter(persisted.statusFilter);
+      }
+      if (isValidRequirementFilter(persisted.requirementFilter)) {
+        setRequirementFilter(persisted.requirementFilter);
+      }
+      if (persisted.schoolScopeKey) {
+        setSelectedSchoolScopeKey(persisted.schoolScopeKey);
+      }
+      if (persisted.teacherLookup) {
+        setSelectedTeacherLookup(persisted.teacherLookup);
+        setTeacherLookupQuery(persisted.teacherLookup);
+      }
+      if (persisted.studentLookupId) {
+        setPendingStudentLookupId(persisted.studentLookupId);
+      }
+      if (isValidMonitorTopNavigator(persisted.activeTopNavigator)) {
+        setActiveTopNavigator(persisted.activeTopNavigator);
+      }
+    }
+
+    setFiltersHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!filtersHydrated || typeof window === "undefined") return;
+
+    const payload: PersistedMonitorFilters = {
+      search,
+      statusFilter,
+      requirementFilter,
+      schoolScopeKey: selectedSchoolScopeKey,
+      studentLookupId: selectedStudentLookup?.id ?? pendingStudentLookupId ?? null,
+      teacherLookup: selectedTeacherLookup,
+      activeTopNavigator,
+    };
+
+    try {
+      localStorage.setItem(MONITOR_FILTER_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Ignore storage failures in restricted browser modes.
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const setOrDelete = (key: string, value: string | null) => {
+      if (!value) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    };
+
+    setOrDelete("q", search.trim() ? search.trim() : null);
+    setOrDelete("status", statusFilter !== "all" ? statusFilter : null);
+    setOrDelete("workflow", requirementFilter !== "all" ? requirementFilter : null);
+    setOrDelete("school", selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
+    setOrDelete("student", selectedStudentLookup?.id ?? pendingStudentLookupId ?? null);
+    setOrDelete("teacher", selectedTeacherLookup ?? null);
+    setOrDelete("tab", activeTopNavigator !== "action_queue" ? activeTopNavigator : null);
+
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  }, [
+    activeTopNavigator,
+    filtersHydrated,
+    pendingStudentLookupId,
+    requirementFilter,
+    search,
+    selectedSchoolScopeKey,
+    selectedStudentLookup?.id,
+    selectedTeacherLookup,
+    statusFilter,
+  ]);
 
   const pushToast = (message: string, tone: ToastTone = "info") => {
     const toastId = Date.now() + Math.floor(Math.random() * 1000);
@@ -730,6 +875,18 @@ export function MonitorDashboard() {
   }, [selectedStudentLookup, studentLookupOptions]);
 
   useEffect(() => {
+    if (!pendingStudentLookupId) return;
+    const restored = studentLookupOptions.find((option) => option.id === pendingStudentLookupId);
+    if (!restored) return;
+
+    setSelectedStudentLookup(restored);
+    if (restored.schoolKey !== "unknown") {
+      setSelectedSchoolScopeKey(restored.schoolKey);
+    }
+    setPendingStudentLookupId(null);
+  }, [pendingStudentLookupId, studentLookupOptions]);
+
+  useEffect(() => {
     if (!selectedTeacherLookup) return;
     if (teacherLookupOptions.includes(selectedTeacherLookup)) return;
     setSelectedTeacherLookup(null);
@@ -865,22 +1022,107 @@ export function MonitorDashboard() {
     [scopedRequirementRows],
   );
 
+  const scopedRecordBySchoolKey = useMemo(() => {
+    const map = new Map<string, SchoolRecord>();
+
+    for (const record of scopedRecords) {
+      const key = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+      if (key === "unknown") continue;
+
+      const existing = map.get(key);
+      const existingUpdatedAt = new Date(existing?.lastUpdated ?? 0).getTime();
+      const candidateUpdatedAt = new Date(record.lastUpdated ?? 0).getTime();
+
+      if (!existing || candidateUpdatedAt >= existingUpdatedAt) {
+        map.set(key, record);
+      }
+    }
+
+    return map;
+  }, [scopedRecords]);
+
+  const workflowStatusCounts = useMemo<Record<RequirementFilter, number>>(() => {
+    const counts: Record<RequirementFilter, number> = {
+      all: scopedRequirementRows.length,
+      missing: 0,
+      waiting: 0,
+      returned: 0,
+      submitted: 0,
+      validated: 0,
+    };
+
+    for (const row of scopedRequirementRows) {
+      counts[resolveWorkflowStatus(row)] += 1;
+    }
+
+    return counts;
+  }, [scopedRequirementRows]);
+
+  const schoolStatusCounts = useMemo<Record<SchoolStatus | "all", number>>(
+    () => ({
+      all: scopedRequirementRows.length,
+      active: scopedRequirementRows.filter((row) => row.schoolStatus === "active").length,
+      inactive: scopedRequirementRows.filter((row) => row.schoolStatus === "inactive").length,
+      pending: scopedRequirementRows.filter((row) => row.schoolStatus === "pending").length,
+    }),
+    [scopedRequirementRows],
+  );
+
+  const visibleRequirementFilterIds = useMemo<RequirementFilter[]>(() => {
+    if (activeTopNavigator === "action_queue") {
+      return ["all", "missing", "waiting", "returned"];
+    }
+
+    if (activeTopNavigator === "compliance_review" || activeTopNavigator === "reports") {
+      return ["all", "waiting", "returned", "submitted", "validated"];
+    }
+
+    return ["all", "missing", "waiting", "returned", "submitted", "validated"];
+  }, [activeTopNavigator]);
+
+  const visibleRequirementFilterOptions = useMemo(
+    () =>
+      REQUIREMENT_FILTER_OPTIONS
+        .filter((option) => visibleRequirementFilterIds.includes(option.id))
+        .map((option) => ({
+          id: option.id,
+          label: `${option.label} (${workflowStatusCounts[option.id]})`,
+        })),
+    [visibleRequirementFilterIds, workflowStatusCounts],
+  );
+
+  useEffect(() => {
+    if (visibleRequirementFilterIds.includes(requirementFilter)) return;
+    setRequirementFilter("all");
+  }, [requirementFilter, visibleRequirementFilterIds]);
+
   const filteredRequirementRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = debouncedSearch.trim().toLowerCase();
 
     return scopedRequirementRows.filter((row) => {
+      const record = scopedRecordBySchoolKey.get(row.schoolKey);
+      const searchableText = [
+        row.schoolName,
+        row.schoolCode,
+        row.region,
+        record?.level ?? "",
+        record?.type ?? "",
+        record?.address ?? record?.district ?? "",
+        record?.submittedBy ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
       const matchesSearch =
         query.length === 0 ||
-        row.schoolName.toLowerCase().includes(query) ||
-        row.schoolCode.toLowerCase().includes(query) ||
-        row.region.toLowerCase().includes(query);
+        searchableText.includes(query);
       const matchesStatus = statusFilter === "all" || row.schoolStatus === statusFilter;
       const matchesRequirement = matchesRequirementFilter(row, requirementFilter);
       return matchesSearch && matchesStatus && matchesRequirement;
     });
-  }, [scopedRequirementRows, search, statusFilter, requirementFilter]);
+  }, [scopedRequirementRows, scopedRecordBySchoolKey, debouncedSearch, statusFilter, requirementFilter]);
 
-  const hasDashboardFilters = search.trim().length > 0 || statusFilter !== "all" || requirementFilter !== "all";
+  const hasDashboardFilters = debouncedSearch.trim().length > 0 || statusFilter !== "all" || requirementFilter !== "all";
   const filteredSchoolKeys = useMemo(() => {
     if (!hasDashboardFilters && !scopedSchoolKeys) {
       return null;
@@ -914,6 +1156,26 @@ export function MonitorDashboard() {
   const showSubmissionFilters = !isMobileViewport || showAdvancedFilters;
   const returnedCount = requirementCounts.returned;
   const submittedCount = requirementCounts.submittedAny;
+  const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
+  const navigatorBadges = useMemo<
+    Record<MonitorTopNavigatorId, { primary?: number; secondary?: number; urgency: "none" | "high" | "medium" }>
+  >(
+    () => ({
+      action_queue: {
+        primary: needsActionCount,
+        urgency: requirementCounts.missing > 0 ? "high" : needsActionCount > 0 ? "medium" : "none",
+      },
+      schools: { urgency: "none" },
+      compliance_review: {
+        primary: requirementCounts.awaitingReview,
+        secondary: requirementCounts.returned,
+        urgency: requirementCounts.returned > 0 ? "high" : requirementCounts.awaitingReview > 0 ? "medium" : "none",
+      },
+      student_records: { urgency: "none" },
+      reports: { urgency: "none" },
+    }),
+    [needsActionCount, requirementCounts.awaitingReview, requirementCounts.missing, requirementCounts.returned],
+  );
   const quickJumpItems = useMemo(
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
@@ -938,28 +1200,14 @@ export function MonitorDashboard() {
   const sectionFocusClass = (targetId: string) => (focusedSectionId === targetId ? "dashboard-focus-glow" : "");
 
   const filteredRecords = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const base = filteredSchoolKeys
+      ? scopedRecords.filter((record) =>
+          filteredSchoolKeys.has(normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName)),
+        )
+      : scopedRecords;
 
-    return scopedRecords
-      .filter((record) => {
-        const matchesSearch =
-          query.length === 0 ||
-          record.schoolName.toLowerCase().includes(query) ||
-          (record.schoolId ?? record.schoolCode ?? "").toLowerCase().includes(query) ||
-          (record.level ?? "").toLowerCase().includes(query) ||
-          (record.address ?? record.district ?? "").toLowerCase().includes(query) ||
-          record.region.toLowerCase().includes(query) ||
-          record.submittedBy.toLowerCase().includes(query);
-        const matchesStatus = statusFilter === "all" || record.status === statusFilter;
-        if (!matchesSearch || !matchesStatus) return false;
-
-        if (requirementFilter === "all") return true;
-        const key = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-        const summary = schoolRequirementByKey.get(key);
-        return summary ? matchesRequirementFilter(summary, requirementFilter) : false;
-      })
-      .sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
-  }, [scopedRecords, search, statusFilter, sortColumn, sortDirection, requirementFilter, schoolRequirementByKey]);
+    return [...base].sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
+  }, [scopedRecords, filteredSchoolKeys, sortColumn, sortDirection]);
 
   const recordBySchoolKey = useMemo(() => {
     const map = new Map<string, SchoolRecord>();
@@ -1097,11 +1345,16 @@ export function MonitorDashboard() {
     setRequirementFilter("all");
     setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
     setSelectedStudentLookup(null);
+    setPendingStudentLookupId(null);
     setSelectedTeacherLookup(null);
     setSchoolScopeQuery("");
     setStudentLookupQuery("");
     setTeacherLookupQuery("");
     setSchoolScopeDropdownSlot(null);
+  };
+
+  const resetQueueFilters = () => {
+    setRequirementFilter("all");
   };
 
   const clearFilterChip = (chipId: FilterChipId) => {
@@ -1120,6 +1373,7 @@ export function MonitorDashboard() {
         break;
       case "student":
         setSelectedStudentLookup(null);
+        setPendingStudentLookupId(null);
         setStudentLookupQuery("");
         break;
       case "teacher":
@@ -1328,6 +1582,7 @@ export function MonitorDashboard() {
                 onClick={() => {
                   setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
                   setSelectedStudentLookup(null);
+                  setPendingStudentLookupId(null);
                   setSelectedTeacherLookup(null);
                   setSchoolScopeQuery("");
                   setSchoolScopeDropdownSlot(null);
@@ -1345,6 +1600,7 @@ export function MonitorDashboard() {
                   onClick={() => {
                     setSelectedSchoolScopeKey(option.key);
                     setSelectedStudentLookup(null);
+                    setPendingStudentLookupId(null);
                     setSelectedTeacherLookup(null);
                     setSchoolScopeQuery("");
                     setSchoolScopeDropdownSlot(null);
@@ -1400,6 +1656,7 @@ export function MonitorDashboard() {
                 type="button"
                 onClick={() => {
                   setSelectedStudentLookup(null);
+                  setPendingStudentLookupId(null);
                   setSelectedTeacherLookup(null);
                   setStudentLookupQuery("");
                   setSchoolScopeDropdownSlot(null);
@@ -1416,6 +1673,7 @@ export function MonitorDashboard() {
                   type="button"
                   onClick={() => {
                     setSelectedStudentLookup(option);
+                    setPendingStudentLookupId(null);
                     setSelectedTeacherLookup(null);
                     if (option.schoolKey !== "unknown") {
                       setSelectedSchoolScopeKey(option.schoolKey);
@@ -1477,6 +1735,7 @@ export function MonitorDashboard() {
                 onClick={() => {
                   setSelectedTeacherLookup(null);
                   setSelectedStudentLookup(null);
+                  setPendingStudentLookupId(null);
                   setTeacherLookupQuery("");
                   setSchoolScopeDropdownSlot(null);
                 }}
@@ -1493,6 +1752,7 @@ export function MonitorDashboard() {
                   onClick={() => {
                     setSelectedTeacherLookup(name);
                     setSelectedStudentLookup(null);
+                    setPendingStudentLookupId(null);
                     setTeacherLookupQuery(name);
                     setSchoolScopeDropdownSlot(null);
                     openStudentRecordsFromCard();
@@ -1525,7 +1785,7 @@ export function MonitorDashboard() {
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Find school by name, code, district, or region"
+            placeholder="Find school by name, code, address, level, or region"
             className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
           />
         </div>
@@ -1537,10 +1797,10 @@ export function MonitorDashboard() {
             onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
             className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
           >
-            <option value="all">Any school status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="pending">Pending</option>
+            <option value="all">All school statuses ({schoolStatusCounts.all})</option>
+            <option value="active">Active ({schoolStatusCounts.active})</option>
+            <option value="inactive">Inactive ({schoolStatusCounts.inactive})</option>
+            <option value="pending">Pending ({schoolStatusCounts.pending})</option>
           </select>
         </label>
 
@@ -1551,7 +1811,7 @@ export function MonitorDashboard() {
             onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
             className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
           >
-            {REQUIREMENT_FILTER_OPTIONS.map((option) => (
+            {visibleRequirementFilterOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
               </option>
@@ -1652,64 +1912,121 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-stretch lg:gap-0">
-        <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
-              <button
-                type="button"
-                onClick={() => setIsNavigatorVisible((current) => !current)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
-                aria-label={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
-                title={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
-              >
-                {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              </button>
+      <div className={`dashboard-left-layout mb-5 lg:grid lg:items-stretch lg:gap-0 ${isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"}`}>
+        <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:rounded-t-none lg:rounded-br-none lg:sticky lg:top-20 lg:h-[calc(100vh-5.25rem)] lg:overflow-y-auto">
+          <div className="flex min-h-full flex-col">
+            <div className="flex items-start justify-between gap-2">
+              <div className={isNavigatorCompact ? "w-full text-center" : ""}>
+                <div className={`flex items-center ${isNavigatorCompact ? "justify-center" : "gap-2"}`}>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isMobileViewport) {
+                        setIsNavigatorVisible((current) => !current);
+                        return;
+                      }
+                      setIsNavigatorCompact((current) => !current);
+                    }}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
+                    aria-label={
+                      isMobileViewport
+                        ? isNavigatorVisible
+                          ? "Hide navigator"
+                          : "Show navigator"
+                        : isNavigatorCompact
+                          ? "Expand navigator"
+                          : "Collapse navigator"
+                    }
+                    title={
+                      isMobileViewport
+                        ? isNavigatorVisible
+                          ? "Hide navigator"
+                          : "Show navigator"
+                        : isNavigatorCompact
+                          ? "Expand navigator"
+                          : "Collapse navigator"
+                    }
+                  >
+                    {isMobileViewport ? (
+                      isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />
+                    ) : isNavigatorCompact ? (
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+                {!isNavigatorCompact && (
+                  <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-primary-100">Division Monitor</p>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowNavigatorManual((current) => !current)}
-                className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition ${
-                  showNavigatorManual
-                    ? "border-primary-300/80 bg-primary-100/90"
-                    : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
-                }`}
-              >
-                <BookOpenText className="h-3.5 w-3.5" />
-                User Manual
-                {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          </div>
-          {isNavigatorVisible && (
-            <>
-              <div className="mt-3 grid gap-2">
+
+            {shouldRenderNavigatorItems && (
+              <div className={`mt-4 grid ${isNavigatorCompact ? "gap-2" : "gap-2.5"}`}>
                 {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => {
                   const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
+                  const isActive = activeTopNavigator === item.id;
+                  const meta = navigatorBadges[item.id];
+                  const hasPrimaryBadge = typeof meta.primary === "number" && meta.primary > 0;
+                  const hasSecondaryBadge = typeof meta.secondary === "number" && meta.secondary > 0;
+                  const urgencyTone =
+                    meta.urgency === "high" ? "bg-rose-500" : meta.urgency === "medium" ? "bg-amber-400" : "bg-transparent";
+
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => setActiveTopNavigator(item.id)}
-                      className={navigatorButtonClass(activeTopNavigator === item.id)}
+                      className={navigatorButtonClass(isActive, isNavigatorCompact)}
+                      title={item.label}
                     >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.label}</span>
+                      <span className="relative inline-flex h-4 w-4 items-center justify-center">
+                        <Icon className="h-4 w-4" />
+                        {meta.urgency !== "none" && <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${urgencyTone}`} />}
+                      </span>
+                      {!isNavigatorCompact && <span className="truncate">{item.label}</span>}
+
+                      {!isNavigatorCompact && hasPrimaryBadge && (
+                        <span className="ml-auto inline-flex items-center gap-1">
+                          <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold text-primary-700">
+                            {meta.primary}
+                          </span>
+                          {item.id === "compliance_review" && hasSecondaryBadge && (
+                            <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                              R{meta.secondary}
+                            </span>
+                          )}
+                        </span>
+                      )}
+
+                      {isNavigatorCompact && hasPrimaryBadge && (
+                        <span className="absolute right-1 top-1 inline-flex min-w-[1rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1 text-[9px] font-bold text-primary-700">
+                          {meta.primary && meta.primary > 99 ? "99+" : meta.primary}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
-              <p className="mt-3 text-[11px] text-primary-100">
-                Current view:
-                {" "}
-                <span className="rounded-sm border border-primary-400/45 bg-primary-700/60 px-2 py-1 font-semibold uppercase tracking-wide text-white">
-                  {activeNavigatorLabel}
-                </span>
-              </p>
-            </>
-          )}
+            )}
+
+            <div className={`mt-auto border-t border-primary-400/30 pt-4 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
+              <button
+                type="button"
+                onClick={() => setShowNavigatorManual((current) => !current)}
+                className={`inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
+                  isNavigatorCompact ? "h-8 w-8 justify-center p-0" : "w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide"
+                }`}
+                title="User Manual"
+                aria-label="Open user manual"
+              >
+                <BookOpenText className="h-3.5 w-3.5" />
+                {!isNavigatorCompact && <span>Help</span>}
+              </button>
+            </div>
+          </div>
         </aside>
         <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
           {showNavigatorManual && (
@@ -1867,6 +2184,34 @@ export function MonitorDashboard() {
             </>
           )}
 
+          {isMobileViewport && !showAdvancedFilters && activeFilterChips.length > 0 && (
+            <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Active Filters</p>
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
+                >
+                  Clear all
+                </button>
+              </div>
+              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                {activeFilterChips.map((chip) => (
+                  <button
+                    key={`mobile-chip-${chip.id}`}
+                    type="button"
+                    onClick={() => clearFilterChip(chip.id)}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                  >
+                    {chip.label}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
       {activeTopNavigator === "reports" && (
         <>
           <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("monitor-overview-metrics")}`}>
@@ -1986,6 +2331,23 @@ export function MonitorDashboard() {
               <div className="flex flex-col items-center justify-center gap-2 px-5 py-14 text-slate-500">
                 <AlertCircle className="h-9 w-9 text-slate-400" />
                 <p className="text-sm font-semibold">No Missing, Returned, or Waiting schools found.</p>
+                <p className="text-xs text-slate-400">Current filters may be hiding results.</p>
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={resetQueueFilters}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700"
+                  >
+                    Reset queue filters
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700"
+                  >
+                    Clear all
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -2342,7 +2704,23 @@ export function MonitorDashboard() {
             <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
               <AlertCircle className="h-9 w-9 text-slate-400" />
               <p className="text-sm font-semibold">No records found</p>
-              <p className="text-xs text-slate-400">Try changing filters or wait for new submissions.</p>
+              <p className="text-xs text-slate-400">Current filters may be hiding school records.</p>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={resetQueueFilters}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Reset queue filters
+                </button>
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700"
+                >
+                  Clear all
+                </button>
+              </div>
             </div>
           ) : (
             <>
