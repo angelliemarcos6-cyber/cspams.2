@@ -5,6 +5,7 @@ import type { FormSubmissionHistoryEntry, IndicatorSubmission } from "@/types";
 
 interface MonitorIndicatorPanelProps {
   schoolFilterKeys?: Set<string> | null;
+  onToast?: (message: string, tone?: "success" | "info" | "warning") => void;
 }
 
 function workflowTone(status: string): string {
@@ -36,7 +37,7 @@ function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: s
   return "unknown";
 }
 
-export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndicatorPanelProps) {
+export function MonitorIndicatorPanel({ schoolFilterKeys = null, onToast }: MonitorIndicatorPanelProps) {
   const {
     submissions,
     isLoading,
@@ -110,13 +111,16 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndica
 
     try {
       await reviewSubmission(submission.id, decision, notes);
-      setActionMessage(
+      const successMessage =
         decision === "validated"
           ? `Package #${submission.id} validated.`
-          : `Package #${submission.id} returned to school head.`,
-      );
+          : `Package #${submission.id} returned to school head.`;
+      setActionMessage(successMessage);
+      onToast?.(successMessage, decision === "validated" ? "success" : "warning");
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Unable to complete review action.");
+      const errorMessage = err instanceof Error ? err.message : "Unable to complete review action.";
+      setActionError(errorMessage);
+      onToast?.(errorMessage, "warning");
     }
   };
 
@@ -175,7 +179,7 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndica
           <p className="mt-1 text-lg font-bold text-slate-900">{summary.total}</p>
         </article>
         <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Awaiting Review</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Waiting for Review</p>
           <p className="mt-1 text-lg font-bold text-primary-800">{summary.submitted}</p>
         </article>
         <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
@@ -207,7 +211,7 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndica
 
         <div className="overflow-x-auto">
           <table className="min-w-full">
-            <thead>
+            <thead className="table-head-sticky">
               <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                 <th className="px-2 py-2 text-left">Package</th>
                 <th className="px-2 py-2 text-left">School</th>
@@ -304,7 +308,7 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndica
                               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Indicator Entries</p>
                               <div className="mt-2 overflow-x-auto rounded-sm border border-slate-200 bg-white">
                                 <table className="min-w-full">
-                                  <thead>
+                                  <thead className="table-head-sticky">
                                     <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                                       <th className="px-2 py-2 text-left">Indicator</th>
                                       <th className="px-2 py-2 text-right">Target</th>

@@ -53,6 +53,8 @@ const EMPTY_FORM: StudentFormState = {
   riskLevel: "low",
 };
 
+const STUDENT_PAGE_SIZE = 10;
+
 function formatDateTime(value: string | null): string {
   if (!value) return "N/A";
   const date = new Date(value);
@@ -100,6 +102,7 @@ export function StudentRecordsPanel({
   const [formError, setFormError] = useState("");
   const [formMessage, setFormMessage] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (externalSearchTerm === null) return;
@@ -140,6 +143,23 @@ export function StudentRecordsPanel({
       })
       .sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime());
   }, [scopedStudents, search, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / STUDENT_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedStudents = useMemo(() => {
+    const start = (safePage - 1) * STUDENT_PAGE_SIZE;
+    return filteredStudents.slice(start, start + STUDENT_PAGE_SIZE);
+  }, [filteredStudents, safePage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, schoolFilterKeys]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -399,71 +419,142 @@ export function StudentRecordsPanel({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto px-5 py-4">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
-                <th className="px-2 py-2 text-left">LRN</th>
-                <th className="px-2 py-2 text-left">Name</th>
-                <th className="px-2 py-2 text-center">Age</th>
-                <th className="px-2 py-2 text-left">Sex</th>
-                <th className="px-2 py-2 text-left">Section</th>
-                <th className="px-2 py-2 text-left">Teacher</th>
-                <th className="px-2 py-2 text-center">Status</th>
-                <th className="px-2 py-2 text-left">Last Updated</th>
-                {editable && <th className="px-2 py-2 text-center">Action</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredStudents.map((student) => (
-                <tr key={student.id}>
-                  {showSchoolColumn && (
-                    <td className="px-2 py-2">
-                      <p className="text-sm font-semibold text-slate-900">{student.school?.name ?? "N/A"}</p>
-                      <p className="text-xs text-slate-500">{student.school?.schoolCode ?? ""}</p>
-                    </td>
-                  )}
-                  <td className="px-2 py-2 text-sm font-semibold text-slate-900">{student.lrn}</td>
-                  <td className="px-2 py-2 text-sm text-slate-700">{student.fullName}</td>
-                  <td className="px-2 py-2 text-center text-sm text-slate-700">{student.age ?? "N/A"}</td>
-                  <td className="px-2 py-2 text-sm text-slate-700">{student.sex ? `${student.sex.charAt(0).toUpperCase()}${student.sex.slice(1)}` : "N/A"}</td>
-                  <td className="px-2 py-2 text-sm text-slate-700">{student.section ?? student.currentLevel ?? "N/A"}</td>
-                  <td className="px-2 py-2 text-sm text-slate-700">{student.teacher ?? "N/A"}</td>
-                  <td className="px-2 py-2 text-center">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(student.status)}`}>
-                      {student.statusLabel}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(student.updatedAt)}</td>
-                  {editable && (
-                    <td className="px-2 py-2">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(student)}
-                          className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(student)}
-                          disabled={deletingId === student.id}
-                          className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          {deletingId === student.id ? "Deleting..." : "Delete"}
-                        </button>
-                      </div>
-                    </td>
-                  )}
+        <>
+          <div className="space-y-3 px-4 py-4 md:hidden">
+            {paginatedStudents.map((student) => (
+              <article key={student.id} className="rounded-sm border border-slate-200 bg-white p-3">
+                {showSchoolColumn && (
+                  <p className="text-xs text-slate-500">
+                    {student.school?.schoolCode ?? "N/A"} - {student.school?.name ?? "N/A"}
+                  </p>
+                )}
+                <p className="text-sm font-semibold text-slate-900">{student.fullName}</p>
+                <p className="text-xs text-slate-600">LRN: {student.lrn}</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Section: {student.section ?? student.currentLevel ?? "N/A"} | Teacher: {student.teacher ?? "N/A"}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusTone(student.status)}`}>
+                    {student.statusLabel}
+                  </span>
+                  <span className="text-xs text-slate-500">Updated {formatDateTime(student.updatedAt)}</span>
+                </div>
+                {editable && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(student)}
+                      className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(student)}
+                      disabled={deletingId === student.id}
+                      className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deletingId === student.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto px-5 py-4 md:block">
+            <table className="min-w-full">
+              <thead className="table-head-sticky">
+                <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
+                  <th className="px-2 py-2 text-left">LRN</th>
+                  <th className="px-2 py-2 text-left">Name</th>
+                  <th className="px-2 py-2 text-center">Age</th>
+                  <th className="px-2 py-2 text-left">Sex</th>
+                  <th className="px-2 py-2 text-left">Section</th>
+                  <th className="px-2 py-2 text-left">Teacher</th>
+                  <th className="px-2 py-2 text-center">Status</th>
+                  <th className="px-2 py-2 text-left">Last Updated</th>
+                  {editable && <th className="px-2 py-2 text-center">Action</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginatedStudents.map((student) => (
+                  <tr key={student.id}>
+                    {showSchoolColumn && (
+                      <td className="px-2 py-2">
+                        <p className="text-sm font-semibold text-slate-900">{student.school?.name ?? "N/A"}</p>
+                        <p className="text-xs text-slate-500">{student.school?.schoolCode ?? ""}</p>
+                      </td>
+                    )}
+                    <td className="px-2 py-2 text-sm font-semibold text-slate-900">{student.lrn}</td>
+                    <td className="px-2 py-2 text-sm text-slate-700">{student.fullName}</td>
+                    <td className="px-2 py-2 text-center text-sm text-slate-700">{student.age ?? "N/A"}</td>
+                    <td className="px-2 py-2 text-sm text-slate-700">{student.sex ? `${student.sex.charAt(0).toUpperCase()}${student.sex.slice(1)}` : "N/A"}</td>
+                    <td className="px-2 py-2 text-sm text-slate-700">{student.section ?? student.currentLevel ?? "N/A"}</td>
+                    <td className="px-2 py-2 text-sm text-slate-700">{student.teacher ?? "N/A"}</td>
+                    <td className="px-2 py-2 text-center">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(student.status)}`}>
+                        {student.statusLabel}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(student.updatedAt)}</td>
+                    {editable && (
+                      <td className="px-2 py-2">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(student)}
+                            className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(student)}
+                            disabled={deletingId === student.id}
+                            className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {deletingId === student.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs text-slate-600">
+              Page <span className="font-semibold text-slate-900">{safePage}</span> of{" "}
+              <span className="font-semibold text-slate-900">{totalPages}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={safePage <= 1}
+                className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={safePage >= totalPages}
+                className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </section>
   );

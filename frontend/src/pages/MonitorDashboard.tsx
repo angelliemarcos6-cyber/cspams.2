@@ -1,9 +1,11 @@
 ﻿import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  BellRing,
   BookOpenText,
   Building2,
   CheckCircle2,
@@ -12,6 +14,7 @@ import {
   ClipboardList,
   Database,
   Edit2,
+  Eye,
   Filter,
   GraduationCap,
   LayoutDashboard,
@@ -50,6 +53,8 @@ type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "submitted_any" | "complete" | "awaiting_review" | "missing";
 type MonitorTopNavigatorId = "first_glance" | "requirements" | "compliance" | "records";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
+type FilterChipId = "search" | "status" | "requirement" | "school" | "student" | "teacher";
+type ToastTone = "success" | "info" | "warning";
 
 interface MonitorTopNavigatorItem {
   id: MonitorTopNavigatorId;
@@ -111,6 +116,31 @@ interface QuickJumpItem {
   label: string;
   targetId: string;
   icon: NavigatorIcon;
+}
+
+interface DashboardToast {
+  id: number;
+  message: string;
+  tone: ToastTone;
+}
+
+interface SchoolDetailSnapshot {
+  schoolKey: string;
+  schoolCode: string;
+  schoolName: string;
+  region: string;
+  level: string;
+  type: string;
+  address: string;
+  hasComplianceRecord: boolean;
+  indicatorStatus: string | null;
+  missingCount: number;
+  awaitingReviewCount: number;
+  lastActivityAt: string | null;
+  reportedStudents: number;
+  reportedTeachers: number;
+  synchronizedStudents: number;
+  synchronizedTeachers: number;
 }
 
 
@@ -218,6 +248,9 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
 };
 
 const ALL_SCHOOL_SCOPE = "__all_schools__";
+const REQUIREMENT_PAGE_SIZE = 10;
+const RECORD_PAGE_SIZE = 10;
+const MOBILE_BREAKPOINT = 768;
 
 function statusTone(status: SchoolStatus) {
   if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
@@ -329,6 +362,24 @@ function matchesRequirementFilter(summary: SchoolRequirementSummary, filter: Req
   }
 }
 
+function requirementFilterLabel(value: RequirementFilter): string {
+  return REQUIREMENT_FILTER_OPTIONS.find((option) => option.id === value)?.label ?? "All Schools";
+}
+
+function isUrgentRequirement(row: SchoolRequirementSummary): boolean {
+  return row.missingCount > 0 || row.indicatorStatus === "returned";
+}
+
+function urgencyRowTone(row: SchoolRequirementSummary): string {
+  if (row.missingCount > 0) {
+    return "bg-rose-50/80";
+  }
+  if (row.indicatorStatus === "returned") {
+    return "bg-amber-50/80";
+  }
+  return "";
+}
+
 function latestBySchool<
   T extends {
     school?: { schoolCode?: string | null; name?: string | null };
@@ -374,14 +425,21 @@ export function MonitorDashboard() {
   const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("first_glance");
+  const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("requirements");
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= 768,
+  );
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
+  const [requirementsPage, setRequirementsPage] = useState(1);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<DashboardToast[]>([]);
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [recordForm, setRecordForm] = useState<MonitorRecordFormState>(EMPTY_MONITOR_RECORD_FORM);
@@ -393,6 +451,32 @@ export function MonitorDashboard() {
     () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
     [activeTopNavigator],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncViewport = () => {
+      setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => {
+      window.removeEventListener("resize", syncViewport);
+    };
+  }, []);
+
+  const pushToast = (message: string, tone: ToastTone = "info") => {
+    const toastId = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts((current) => [...current, { id: toastId, message, tone }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== toastId));
+    }, 3200);
+  };
+
+  const dismissToast = (id: number) => {
+    setToasts((current) => current.filter((item) => item.id !== id));
+  };
 
   const resetRecordForm = () => {
     setEditingRecordId(null);
@@ -797,8 +881,11 @@ export function MonitorDashboard() {
     }),
     [scopedRequirementRows],
   );
+  const needsActionCount = useMemo(
+    () => scopedRequirementRows.filter((row) => row.missingCount > 0 || row.awaitingReviewCount > 0).length,
+    [scopedRequirementRows],
+  );
   const showSubmissionFilters = activeTopNavigator !== "first_glance" && showAdvancedFilters;
-  const pendingCount = requirementCounts.awaitingReview;
   const returnedCount = requirementCounts.returned;
   const submittedCount = requirementCounts.submittedAny;
   const quickJumpItems = useMemo(
@@ -847,6 +934,239 @@ export function MonitorDashboard() {
       })
       .sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
   }, [scopedRecords, search, statusFilter, sortColumn, sortDirection, requirementFilter, schoolRequirementByKey]);
+
+  const recordBySchoolKey = useMemo(() => {
+    const map = new Map<string, SchoolRecord>();
+
+    for (const record of records) {
+      const key = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+      if (key === "unknown") continue;
+
+      const existing = map.get(key);
+      const existingUpdatedAt = new Date(existing?.lastUpdated ?? 0).getTime();
+      const candidateUpdatedAt = new Date(record.lastUpdated ?? 0).getTime();
+
+      if (!existing || candidateUpdatedAt >= existingUpdatedAt) {
+        map.set(key, record);
+      }
+    }
+
+    return map;
+  }, [records]);
+
+  const studentStatsBySchoolKey = useMemo(() => {
+    const map = new Map<string, { students: number; teachers: Set<string> }>();
+
+    for (const student of students) {
+      const key = normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null);
+      if (key === "unknown") continue;
+
+      if (!map.has(key)) {
+        map.set(key, { students: 0, teachers: new Set<string>() });
+      }
+
+      const row = map.get(key);
+      if (!row) continue;
+      row.students += 1;
+
+      const teacherName = student.teacher?.trim();
+      if (teacherName) {
+        row.teachers.add(teacherName);
+      }
+    }
+
+    return map;
+  }, [students]);
+
+  const totalRequirementPages = Math.max(1, Math.ceil(filteredRequirementRows.length / REQUIREMENT_PAGE_SIZE));
+  const safeRequirementsPage = Math.min(requirementsPage, totalRequirementPages);
+  const paginatedRequirementRows = useMemo(() => {
+    const start = (safeRequirementsPage - 1) * REQUIREMENT_PAGE_SIZE;
+    return filteredRequirementRows.slice(start, start + REQUIREMENT_PAGE_SIZE);
+  }, [filteredRequirementRows, safeRequirementsPage]);
+
+  const totalRecordPages = Math.max(1, Math.ceil(filteredRecords.length / RECORD_PAGE_SIZE));
+  const safeRecordsPage = Math.min(recordsPage, totalRecordPages);
+  const paginatedRecords = useMemo(() => {
+    const start = (safeRecordsPage - 1) * RECORD_PAGE_SIZE;
+    return filteredRecords.slice(start, start + RECORD_PAGE_SIZE);
+  }, [filteredRecords, safeRecordsPage]);
+
+  const schoolDetail = useMemo<SchoolDetailSnapshot | null>(() => {
+    if (!schoolDrawerKey) return null;
+
+    const summary = schoolRequirementByKey.get(schoolDrawerKey);
+    const record = recordBySchoolKey.get(schoolDrawerKey);
+    const studentStats = studentStatsBySchoolKey.get(schoolDrawerKey);
+
+    if (!summary && !record) return null;
+
+    return {
+      schoolKey: schoolDrawerKey,
+      schoolCode: summary?.schoolCode ?? (record?.schoolId ?? record?.schoolCode ?? "N/A"),
+      schoolName: summary?.schoolName ?? record?.schoolName ?? "Unknown School",
+      region: summary?.region ?? record?.region ?? "N/A",
+      level: record?.level ?? "N/A",
+      type: schoolTypeLabel(record?.type),
+      address: record?.address ?? record?.district ?? "N/A",
+      hasComplianceRecord: summary?.hasComplianceRecord ?? false,
+      indicatorStatus: summary?.indicatorStatus ?? null,
+      missingCount: summary?.missingCount ?? 0,
+      awaitingReviewCount: summary?.awaitingReviewCount ?? 0,
+      lastActivityAt: summary?.lastActivityAt ?? record?.lastUpdated ?? null,
+      reportedStudents: record?.studentCount ?? 0,
+      reportedTeachers: record?.teacherCount ?? 0,
+      synchronizedStudents: studentStats?.students ?? 0,
+      synchronizedTeachers: studentStats?.teachers.size ?? 0,
+    };
+  }, [schoolDrawerKey, schoolRequirementByKey, recordBySchoolKey, studentStatsBySchoolKey]);
+
+  const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
+    const chips: Array<{ id: FilterChipId; label: string }> = [];
+
+    if (search.trim()) chips.push({ id: "search", label: `Search: ${search.trim()}` });
+    if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
+    if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Requirement: ${requirementFilterLabel(requirementFilter)}` });
+    if (selectedSchoolScope) chips.push({ id: "school", label: `School: ${selectedSchoolScope.code}` });
+    if (selectedStudentLookup) chips.push({ id: "student", label: `Student: ${selectedStudentLookup.fullName}` });
+    if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup}` });
+
+    return chips;
+  }, [
+    requirementFilter,
+    search,
+    selectedSchoolScope,
+    selectedStudentLookup,
+    selectedTeacherLookup,
+    statusFilter,
+  ]);
+
+  useEffect(() => {
+    setRequirementsPage(1);
+    setRecordsPage(1);
+  }, [
+    search,
+    statusFilter,
+    requirementFilter,
+    selectedSchoolScopeKey,
+    selectedStudentLookup?.id,
+    selectedTeacherLookup,
+  ]);
+
+  useEffect(() => {
+    if (requirementsPage > totalRequirementPages) {
+      setRequirementsPage(totalRequirementPages);
+    }
+  }, [requirementsPage, totalRequirementPages]);
+
+  useEffect(() => {
+    if (recordsPage > totalRecordPages) {
+      setRecordsPage(totalRecordPages);
+    }
+  }, [recordsPage, totalRecordPages]);
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setRequirementFilter("all");
+    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+    setSelectedStudentLookup(null);
+    setSelectedTeacherLookup(null);
+    setSchoolScopeQuery("");
+    setStudentLookupQuery("");
+    setTeacherLookupQuery("");
+    setSchoolScopeDropdownSlot(null);
+  };
+
+  const clearFilterChip = (chipId: FilterChipId) => {
+    switch (chipId) {
+      case "search":
+        setSearch("");
+        break;
+      case "status":
+        setStatusFilter("all");
+        break;
+      case "requirement":
+        setRequirementFilter("all");
+        break;
+      case "school":
+        setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+        break;
+      case "student":
+        setSelectedStudentLookup(null);
+        setStudentLookupQuery("");
+        break;
+      case "teacher":
+        setSelectedTeacherLookup(null);
+        setTeacherLookupQuery("");
+        break;
+      default:
+        break;
+    }
+  };
+
+  const openSchoolDrawer = (schoolKey: string) => {
+    setSchoolDrawerKey(schoolKey);
+  };
+
+  const closeSchoolDrawer = () => {
+    setSchoolDrawerKey(null);
+  };
+
+  const handleReviewSchool = (summary: SchoolRequirementSummary) => {
+    setSelectedSchoolScopeKey(summary.schoolKey);
+    setSelectedStudentLookup(null);
+    setSelectedTeacherLookup(null);
+    setSchoolScopeDropdownSlot(null);
+
+    if (summary.missingCount > 0) {
+      setRequirementFilter("missing");
+    } else if (summary.awaitingReviewCount > 0) {
+      setRequirementFilter("awaiting_review");
+    } else {
+      setRequirementFilter("all");
+    }
+
+    setActiveTopNavigator("compliance");
+    pushToast(`Review opened for ${summary.schoolName}.`, "info");
+  };
+
+  const handleOpenSchool = (summary: SchoolRequirementSummary) => {
+    setSelectedSchoolScopeKey(summary.schoolKey);
+    openSchoolDrawer(summary.schoolKey);
+    pushToast(`Opened school details for ${summary.schoolName}.`, "info");
+  };
+
+  const handleSendReminder = (summary: SchoolRequirementSummary) => {
+    pushToast(`Reminder sent to ${summary.schoolName}.`, "success");
+  };
+
+  const handleReviewRecord = (record: SchoolRecord) => {
+    const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+    if (schoolKey === "unknown") return;
+    const summary = schoolRequirementByKey.get(schoolKey);
+
+    if (summary) {
+      handleReviewSchool(summary);
+      return;
+    }
+
+    setSelectedSchoolScopeKey(schoolKey);
+    setActiveTopNavigator("compliance");
+    pushToast(`Review opened for ${record.schoolName}.`, "info");
+  };
+
+  const handleOpenSchoolRecord = (record: SchoolRecord) => {
+    const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+    if (schoolKey === "unknown") return;
+    setSelectedSchoolScopeKey(schoolKey);
+    openSchoolDrawer(schoolKey);
+    pushToast(`Opened school details for ${record.schoolName}.`, "info");
+  };
+
+  const handleSendReminderRecord = (record: SchoolRecord) => {
+    pushToast(`Reminder sent to ${record.schoolName}.`, "success");
+  };
 
   const handleContinuePendingRequirements = () => {
     if (requirementCounts.missing > 0) {
@@ -1168,6 +1488,95 @@ export function MonitorDashboard() {
     );
   };
 
+  const quickFiltersPanelContent = (
+    <>
+      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Find school by name, code, district, or region"
+            className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+          />
+        </div>
+
+        <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+          <Filter className="h-4 w-4 text-slate-400" />
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
+            className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+          >
+            <option value="all">Any school status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="pending">Pending</option>
+          </select>
+        </label>
+
+        <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+          <Filter className="h-4 w-4 text-slate-400" />
+          <select
+            value={requirementFilter}
+            onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
+            className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+          >
+            {REQUIREMENT_FILTER_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <p className="text-xs font-semibold text-slate-700">Which school</p>
+          {renderSchoolScopeSelector()}
+        </article>
+        <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <p className="text-xs font-semibold text-slate-700">Find a student</p>
+          {renderStudentLookupSelector()}
+        </article>
+        <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
+          {renderTeacherLookupSelector()}
+        </article>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {activeFilterChips.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => clearFilterChip(chip.id)}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+          >
+            {chip.label}
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ))}
+        {activeFilterChips.length > 0 && (
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      <p className="mt-3 text-xs text-slate-600">
+        Showing <span className="font-semibold text-slate-900">{filteredRequirementRows.length}</span> of{" "}
+        <span className="font-semibold text-slate-900">{scopedRequirementRows.length}</span> schools in queue.
+      </p>
+    </>
+  );
+
   return (
     <Shell
       title="Division Monitor Dashboard"
@@ -1395,115 +1804,43 @@ export function MonitorDashboard() {
             </div>
           </section>
 
-          {showSubmissionFilters && (
-          <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Quick Filters</h2>
-            <p className="mt-1 text-xs text-slate-600">Use one or two filters to narrow schools quickly.</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Find school by name, code, district, or region"
-                  className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-              </div>
+          {showSubmissionFilters && !isMobileViewport && (
+            <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Quick Filters</h2>
+              <p className="mt-1 text-xs text-slate-600">Use one or two filters to narrow schools quickly.</p>
+              {quickFiltersPanelContent}
+            </section>
+          )}
 
-              <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-                <Filter className="h-4 w-4 text-slate-400" />
-                <select
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
-                  className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-                >
-                  <option value="all">Any school status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </label>
-
-              <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-                <Filter className="h-4 w-4 text-slate-400" />
-                <select
-                  value={requirementFilter}
-                  onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
-                  className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-                >
-                  {REQUIREMENT_FILTER_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-slate-700">Which school</p>
-                {renderSchoolScopeSelector()}
-              </article>
-              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-slate-700">Find a student</p>
-                {renderStudentLookupSelector()}
-              </article>
-              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
-                {renderTeacherLookupSelector()}
-              </article>
-            </div>
-
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-slate-700">Schools shown</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.total}</p>
-              </article>
-              <article className="border border-primary-200 bg-primary-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-primary-700">With submission</p>
-                <p className="mt-1 text-lg font-bold text-primary-800">{requirementCounts.submittedAny}</p>
-              </article>
-              <article className="border border-primary-200 bg-primary-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-primary-700">Fully submitted</p>
-                <p className="mt-1 text-lg font-bold text-primary-800">{requirementCounts.complete}</p>
-              </article>
-              <article className="border border-slate-300 bg-slate-100 px-3 py-2.5">
-                <p className="text-xs font-semibold text-slate-700">Waiting for review</p>
-                <p className="mt-1 text-lg font-bold text-slate-800">{requirementCounts.awaitingReview}</p>
-              </article>
-              <article className="border border-rose-200 bg-rose-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-rose-700">Missing requirements</p>
-                <p className="mt-1 text-lg font-bold text-rose-800">{requirementCounts.missing}</p>
-              </article>
-            </div>
-
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-              <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-xs font-semibold text-slate-700">Fully submitted</p>
-                <p className="mt-1 text-xs text-slate-700">Both compliance record and indicators are submitted or validated.</p>
-              </article>
-              <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-xs font-semibold text-slate-700">Waiting for review</p>
-                <p className="mt-1 text-xs text-slate-700">At least one item is submitted and waiting for monitor action.</p>
-              </article>
-              <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-xs font-semibold text-slate-700">Missing requirements</p>
-                <p className="mt-1 text-xs text-slate-700">One or more required items are still not submitted.</p>
-              </article>
-              <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-xs font-semibold text-slate-700">Where filters apply</p>
-                <p className="mt-1 text-xs text-slate-700">These filters affect the Requirements table and Compliance queue.</p>
-              </article>
-            </div>
-          </section>
+          {showSubmissionFilters && isMobileViewport && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters(false)}
+                className="fixed inset-0 z-[72] bg-slate-900/40"
+                aria-label="Close quick filters"
+              />
+              <section className="fixed inset-x-0 bottom-0 z-[73] max-h-[84vh] overflow-y-auto rounded-t-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Quick Filters</h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedFilters(false)}
+                    className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-slate-600">Use one or two filters to narrow schools quickly.</p>
+                {quickFiltersPanelContent}
+              </section>
+            </>
           )}
 
       {activeTopNavigator === "first_glance" && (
         <>
           <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("monitor-overview-metrics")}`}>
-            <StatCard label="Pending" value={pendingCount.toLocaleString()} icon={<AlertCircle className="h-5 w-5" />} />
+            <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
             <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
             <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
           </section>
@@ -1599,75 +1936,194 @@ export function MonitorDashboard() {
       )}
 
       {activeTopNavigator === "requirements" && (
-        <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
-          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-            <h2 className="text-base font-bold text-slate-900">School Requirement Submission Tracker</h2>
-          </div>
+        <>
+          <section id="monitor-action-queue" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-action-queue")}`}>
+            <h2 className="text-base font-bold text-slate-900">Action Queue</h2>
+            <p className="mt-1 text-xs text-slate-600">Review missing requirements, returned packages, and schools waiting for review.</p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
+              <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
+              <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
+            </div>
+          </section>
 
-          <div className="overflow-x-auto px-5 py-4">
-            <table className="min-w-full">
-              <thead>
-                <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                  <th className="px-2 py-2 text-left">School</th>
-                  <th className="px-2 py-2 text-left">Region</th>
-                  <th className="px-2 py-2 text-center">Compliance</th>
-                  <th className="px-2 py-2 text-center">Indicators</th>
-                  <th className="px-2 py-2 text-center">Missing</th>
-                  <th className="px-2 py-2 text-center">Awaiting Review</th>
-                  <th className="px-2 py-2 text-left">Last Activity</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredRequirementRows.map((row) => (
-                  <tr key={row.schoolKey}>
-                    <td className="px-2 py-2">
-                      <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
-                      <p className="text-xs text-slate-500">{row.schoolCode}</p>
-                    </td>
-                    <td className="px-2 py-2 text-sm text-slate-700">{row.region}</td>
-                    <td className="px-2 py-2 text-center">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                          row.hasComplianceRecord
-                            ? "bg-primary-100 text-primary-700 ring-1 ring-primary-300"
-                            : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
-                        }`}
-                      >
-                        {row.hasComplianceRecord ? "Submitted" : "Missing"}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(
-                          row.indicatorStatus,
-                        )}`}
-                      >
-                        {workflowLabel(row.indicatorStatus)}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-center text-sm font-semibold text-slate-900">{row.missingCount}</td>
-                    <td className="px-2 py-2 text-center text-sm font-semibold text-slate-900">{row.awaitingReviewCount}</td>
-                    <td className="px-2 py-2 text-sm text-slate-600">
-                      {row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A"}
-                    </td>
-                  </tr>
-                ))}
-                {filteredRequirementRows.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-sm text-slate-500">
-                      No schools match the selected filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+          <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <h2 className="text-base font-bold text-slate-900">Requirement Tracker</h2>
+            </div>
+
+            {paginatedRequirementRows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 px-5 py-14 text-slate-500">
+                <AlertCircle className="h-9 w-9 text-slate-400" />
+                <p className="text-sm font-semibold">No schools match the selected filters.</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3 px-4 py-4 md:hidden">
+                  {paginatedRequirementRows.map((row) => (
+                    <article key={row.schoolKey} className={`rounded-sm border border-slate-200 bg-white p-3 ${isUrgentRequirement(row) ? urgencyRowTone(row) : ""}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
+                          <p className="text-xs text-slate-500">{row.schoolCode} - {row.region}</p>
+                        </div>
+                        <span className="text-xs font-semibold text-slate-700">Missing: {row.missingCount}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${row.hasComplianceRecord ? "bg-primary-100 text-primary-700" : "bg-slate-100 text-slate-700"}`}>
+                          {row.hasComplianceRecord ? "Compliance Submitted" : "Compliance Missing"}
+                        </span>
+                        <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${workflowTone(row.indicatorStatus)}`}>
+                          {workflowLabel(row.indicatorStatus)}
+                        </span>
+                        <span className="text-slate-600">Waiting: {row.awaitingReviewCount}</span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleReviewSchool(row)}
+                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1.5 text-[11px] font-semibold text-primary-700"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Review
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSchool(row)}
+                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                        >
+                          <Building2 className="h-3.5 w-3.5" />
+                          Open School
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSendReminder(row)}
+                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700"
+                        >
+                          <BellRing className="h-3.5 w-3.5" />
+                          Send Reminder
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-x-auto px-5 py-4 md:block">
+                  <table className="min-w-full">
+                    <thead className="table-head-sticky">
+                      <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        <th className="px-2 py-2 text-left">School</th>
+                        <th className="px-2 py-2 text-left">Region</th>
+                        <th className="px-2 py-2 text-center">Compliance</th>
+                        <th className="px-2 py-2 text-center">Indicators</th>
+                        <th className="px-2 py-2 text-center">Missing</th>
+                        <th className="px-2 py-2 text-center">Waiting for Review</th>
+                        <th className="px-2 py-2 text-left">Last Activity</th>
+                        <th className="px-2 py-2 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedRequirementRows.map((row) => (
+                        <tr key={row.schoolKey} className={`${isUrgentRequirement(row) ? urgencyRowTone(row) : "dashboard-table-row"}`}>
+                          <td className="px-2 py-2">
+                            <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
+                            <p className="text-xs text-slate-500">{row.schoolCode}</p>
+                          </td>
+                          <td className="px-2 py-2 text-sm text-slate-700">{row.region}</td>
+                          <td className="px-2 py-2 text-center">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                                row.hasComplianceRecord
+                                  ? "bg-primary-100 text-primary-700 ring-1 ring-primary-300"
+                                  : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
+                              }`}
+                            >
+                              {row.hasComplianceRecord ? "Submitted" : "Missing"}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-center">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(
+                                row.indicatorStatus,
+                              )}`}
+                            >
+                              {workflowLabel(row.indicatorStatus)}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-center text-sm font-semibold text-slate-900">{row.missingCount}</td>
+                          <td className="px-2 py-2 text-center text-sm font-semibold text-slate-900">{row.awaitingReviewCount}</td>
+                          <td className="px-2 py-2 text-sm text-slate-600">
+                            {row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A"}
+                          </td>
+                          <td className="px-2 py-2">
+                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleReviewSchool(row)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                Review
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSchool(row)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                              >
+                                <Building2 className="h-3.5 w-3.5" />
+                                Open School
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendReminder(row)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
+                              >
+                                <BellRing className="h-3.5 w-3.5" />
+                                Send Reminder
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {filteredRequirementRows.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-600">
+                  Page <span className="font-semibold text-slate-900">{safeRequirementsPage}</span> of{" "}
+                  <span className="font-semibold text-slate-900">{totalRequirementPages}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRequirementsPage((current) => Math.max(1, current - 1))}
+                    disabled={safeRequirementsPage <= 1}
+                    className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRequirementsPage((current) => Math.min(totalRequirementPages, current + 1))}
+                    disabled={safeRequirementsPage >= totalRequirementPages}
+                    className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        </>
       )}
 
       {activeTopNavigator === "compliance" && (
         <section id="monitor-indicators-queue" className={sectionFocusClass("monitor-indicators-queue")}>
-          <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />
+          <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} onToast={pushToast} />
         </section>
       )}
 
@@ -1697,7 +2153,7 @@ export function MonitorDashboard() {
                 onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
                 className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
               >
-                <option value="all">All status</option>
+                <option value="all">Any school status</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
                 <option value="pending">Pending</option>
@@ -1705,7 +2161,7 @@ export function MonitorDashboard() {
             </label>
 
             <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-              Showing {filteredRecords.length} of {scopedRecords.length}
+              Showing {paginatedRecords.length} of {filteredRecords.length}
             </div>
           </div>
 
@@ -1883,129 +2339,259 @@ export function MonitorDashboard() {
               <p className="text-xs text-slate-400">Try changing filters or wait for new submissions.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="table-head-sticky">
-                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                    <th className="px-5 py-3 text-left">School ID</th>
-                    <th className="px-5 py-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => handleSort("schoolName")}
-                        className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                      >
-                        School
-                        <SortIndicator active={sortColumn === "schoolName"} direction={sortDirection} />
-                      </button>
-                    </th>
-                    <th className="px-5 py-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => handleSort("region")}
-                        className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                      >
-                        Region
-                        <SortIndicator active={sortColumn === "region"} direction={sortDirection} />
-                      </button>
-                    </th>
-                    <th className="px-5 py-3 text-left">Level</th>
-                    <th className="px-5 py-3 text-left">Type</th>
-                    <th className="px-5 py-3 text-left">Address</th>
-                    <th className="px-5 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleSort("studentCount")}
-                        className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                      >
-                        Students
-                        <SortIndicator active={sortColumn === "studentCount"} direction={sortDirection} />
-                      </button>
-                    </th>
-                    <th className="px-5 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleSort("teacherCount")}
-                        className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                      >
-                        Teachers
-                        <SortIndicator active={sortColumn === "teacherCount"} direction={sortDirection} />
-                      </button>
-                    </th>
-                    <th className="px-5 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleSort("status")}
-                        className="mx-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                      >
-                        Status
-                        <SortIndicator active={sortColumn === "status"} direction={sortDirection} />
-                      </button>
-                    </th>
-                    <th className="px-5 py-3 text-left">
-                      <button
-                        type="button"
-                        onClick={() => handleSort("lastUpdated")}
-                        className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                      >
-                        Last Updated
-                        <SortIndicator active={sortColumn === "lastUpdated"} direction={sortDirection} />
-                      </button>
-                    </th>
-                    <th className="px-5 py-3 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredRecords.map((record) => (
-                    <tr key={record.id} className="dashboard-table-row">
-                      <td className="px-5 py-3.5 align-top">
-                        <p className="text-sm font-semibold text-slate-900">{record.schoolId ?? record.schoolCode ?? "N/A"}</p>
-                      </td>
-                      <td className="px-5 py-3.5 align-top">
-                        <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>
-                      </td>
-                      <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.region}</td>
-                      <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.level ?? "N/A"}</td>
-                      <td className="px-5 py-3.5 align-top text-sm text-slate-700">{schoolTypeLabel(record.type)}</td>
-                      <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.address ?? record.district ?? "N/A"}</td>
-                      <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
-                        {record.studentCount.toLocaleString()}
-                      </td>
-                      <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
-                        {record.teacherCount.toLocaleString()}
-                      </td>
-                      <td className="px-5 py-3.5 text-center">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(record.status)}`}>
+            <>
+              <div className="space-y-3 px-4 py-4 md:hidden">
+                {paginatedRecords.map((record) => {
+                  const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+                  const summary = schoolRequirementByKey.get(schoolKey);
+                  const urgent = summary ? isUrgentRequirement(summary) : false;
+
+                  return (
+                    <article key={record.id} className={`rounded-sm border border-slate-200 bg-white p-3 ${urgent && summary ? urgencyRowTone(summary) : ""}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
+                          <p className="text-xs text-slate-500">{record.schoolId ?? record.schoolCode ?? "N/A"} - {record.region}</p>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusTone(record.status)}`}>
                           {statusLabel(record.status)}
                         </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-slate-600">{formatDateTime(record.lastUpdated)}</td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEditRecordForm(record)}
-                            className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteRecord(record)}
-                            disabled={deletingRecordId === record.id}
-                            className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {deletingRecordId === record.id ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
-                      </td>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-600">{record.address ?? record.district ?? "N/A"}</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Students: <span className="font-semibold text-slate-900">{record.studentCount.toLocaleString()}</span> | Teachers:{" "}
+                        <span className="font-semibold text-slate-900">{record.teacherCount.toLocaleString()}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">Updated {formatDateTime(record.lastUpdated)}</p>
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleReviewRecord(record)}
+                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1.5 text-[11px] font-semibold text-primary-700"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Review
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSchoolRecord(record)}
+                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700"
+                        >
+                          <Building2 className="h-3.5 w-3.5" />
+                          Open School
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSendReminderRecord(record)}
+                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700"
+                        >
+                          <BellRing className="h-3.5 w-3.5" />
+                          Reminder
+                        </button>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditRecordForm(record)}
+                          className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteRecord(record)}
+                          disabled={deletingRecordId === record.id}
+                          className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {deletingRecordId === record.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="hidden overflow-x-auto md:block">
+                <table className="min-w-full">
+                  <thead className="table-head-sticky">
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      <th className="px-5 py-3 text-left">School ID</th>
+                      <th className="px-5 py-3 text-left">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("schoolName")}
+                          className="inline-flex items-center gap-1.5 hover:text-slate-900"
+                        >
+                          School
+                          <SortIndicator active={sortColumn === "schoolName"} direction={sortDirection} />
+                        </button>
+                      </th>
+                      <th className="px-5 py-3 text-left">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("region")}
+                          className="inline-flex items-center gap-1.5 hover:text-slate-900"
+                        >
+                          Region
+                          <SortIndicator active={sortColumn === "region"} direction={sortDirection} />
+                        </button>
+                      </th>
+                      <th className="px-5 py-3 text-left">Level</th>
+                      <th className="px-5 py-3 text-left">Type</th>
+                      <th className="px-5 py-3 text-left">Address</th>
+                      <th className="px-5 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("studentCount")}
+                          className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
+                        >
+                          Students
+                          <SortIndicator active={sortColumn === "studentCount"} direction={sortDirection} />
+                        </button>
+                      </th>
+                      <th className="px-5 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("teacherCount")}
+                          className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
+                        >
+                          Teachers
+                          <SortIndicator active={sortColumn === "teacherCount"} direction={sortDirection} />
+                        </button>
+                      </th>
+                      <th className="px-5 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("status")}
+                          className="mx-auto inline-flex items-center gap-1.5 hover:text-slate-900"
+                        >
+                          Status
+                          <SortIndicator active={sortColumn === "status"} direction={sortDirection} />
+                        </button>
+                      </th>
+                      <th className="px-5 py-3 text-left">
+                        <button
+                          type="button"
+                          onClick={() => handleSort("lastUpdated")}
+                          className="inline-flex items-center gap-1.5 hover:text-slate-900"
+                        >
+                          Last Updated
+                          <SortIndicator active={sortColumn === "lastUpdated"} direction={sortDirection} />
+                        </button>
+                      </th>
+                      <th className="px-5 py-3 text-center">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedRecords.map((record) => {
+                      const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+                      const summary = schoolRequirementByKey.get(schoolKey);
+                      const urgent = summary ? isUrgentRequirement(summary) : false;
+
+                      return (
+                        <tr key={record.id} className={urgent && summary ? urgencyRowTone(summary) : "dashboard-table-row"}>
+                          <td className="px-5 py-3.5 align-top">
+                            <p className="text-sm font-semibold text-slate-900">{record.schoolId ?? record.schoolCode ?? "N/A"}</p>
+                          </td>
+                          <td className="px-5 py-3.5 align-top">
+                            <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>
+                          </td>
+                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.region}</td>
+                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.level ?? "N/A"}</td>
+                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{schoolTypeLabel(record.type)}</td>
+                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.address ?? record.district ?? "N/A"}</td>
+                          <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
+                            {record.studentCount.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
+                            {record.teacherCount.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3.5 text-center">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(record.status)}`}>
+                              {statusLabel(record.status)}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-sm text-slate-600">{formatDateTime(record.lastUpdated)}</td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleReviewRecord(record)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                Review
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSchoolRecord(record)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                              >
+                                <Building2 className="h-3.5 w-3.5" />
+                                Open School
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendReminderRecord(record)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
+                              >
+                                <BellRing className="h-3.5 w-3.5" />
+                                Reminder
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openEditRecordForm(record)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteRecord(record)}
+                                disabled={deletingRecordId === record.id}
+                                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {deletingRecordId === record.id ? "Deleting..." : "Delete"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-600">
+                  Page <span className="font-semibold text-slate-900">{safeRecordsPage}</span> of{" "}
+                  <span className="font-semibold text-slate-900">{totalRecordPages}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRecordsPage((current) => Math.max(1, current - 1))}
+                    disabled={safeRecordsPage <= 1}
+                    className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecordsPage((current) => Math.min(totalRecordPages, current + 1))}
+                    disabled={safeRecordsPage >= totalRecordPages}
+                    className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </section>
         <section id="monitor-student-records" className={sectionFocusClass("monitor-student-records")}>
@@ -2020,6 +2606,129 @@ export function MonitorDashboard() {
         </section>
         </>
       )}
+
+      {schoolDrawerKey && (
+        <button
+          type="button"
+          onClick={closeSchoolDrawer}
+          className="fixed inset-0 z-[74] bg-slate-900/25"
+          aria-label="Close school detail panel"
+        />
+      )}
+
+      <aside
+        className={`fixed right-0 top-24 z-[75] h-[calc(100vh-6rem)] w-[min(27rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
+          schoolDrawerKey ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">School Detail</p>
+            <p className="text-sm font-semibold text-slate-900">{schoolDetail?.schoolName ?? "No school selected"}</p>
+          </div>
+          <button
+            type="button"
+            onClick={closeSchoolDrawer}
+            className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="h-[calc(100%-3.5rem)] overflow-y-auto p-4">
+          {schoolDetail ? (
+            <div className="space-y-3">
+              <article className="rounded-sm border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold text-slate-700">School Code</p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-900">{schoolDetail.schoolCode}</p>
+                <p className="mt-2 text-xs text-slate-600">{schoolDetail.level} | {schoolDetail.type}</p>
+                <p className="mt-1 text-xs text-slate-600">{schoolDetail.region}</p>
+                <p className="mt-1 text-xs text-slate-600">{schoolDetail.address}</p>
+              </article>
+
+              <article className="rounded-sm border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold text-slate-700">Requirement Status</p>
+                <div className="mt-2 space-y-2 text-xs text-slate-700">
+                  <p>
+                    Compliance record:{" "}
+                    <span className="font-semibold text-slate-900">
+                      {schoolDetail.hasComplianceRecord ? "Submitted" : "Missing"}
+                    </span>
+                  </p>
+                  <p>
+                    Indicator package:{" "}
+                    <span className="font-semibold text-slate-900">{workflowLabel(schoolDetail.indicatorStatus)}</span>
+                  </p>
+                  <p>
+                    Missing requirements: <span className="font-semibold text-slate-900">{schoolDetail.missingCount}</span>
+                  </p>
+                  <p>
+                    Waiting for review: <span className="font-semibold text-slate-900">{schoolDetail.awaitingReviewCount}</span>
+                  </p>
+                  <p>
+                    Last activity:{" "}
+                    <span className="font-semibold text-slate-900">
+                      {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
+                    </span>
+                  </p>
+                </div>
+              </article>
+
+              <article className="rounded-sm border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold text-slate-700">Counts</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                    <p className="text-slate-600">Reported Students</p>
+                    <p className="font-semibold text-slate-900">{schoolDetail.reportedStudents.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                    <p className="text-slate-600">Reported Teachers</p>
+                    <p className="font-semibold text-slate-900">{schoolDetail.reportedTeachers.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                    <p className="text-slate-600">Synced Students</p>
+                    <p className="font-semibold text-slate-900">{schoolDetail.synchronizedStudents.toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                    <p className="text-slate-600">Synced Teachers</p>
+                    <p className="font-semibold text-slate-900">{schoolDetail.synchronizedTeachers.toLocaleString()}</p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-slate-500">
+              Select a school to view details.
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <div className="pointer-events-none fixed right-4 top-24 z-[85] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
+        {toasts.map((toast) => (
+          <article
+            key={toast.id}
+            className={`pointer-events-auto rounded-sm border px-3 py-2 text-xs font-semibold shadow-lg ${
+              toast.tone === "success"
+                ? "border-primary-200 bg-primary-50 text-primary-700"
+                : toast.tone === "warning"
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : "border-slate-300 bg-white text-slate-700"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p>{toast.message}</p>
+              <button
+                type="button"
+                onClick={() => dismissToast(toast.id)}
+                className="rounded-sm border border-transparent p-0.5 text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
         </div>
       </div>
     </Shell>
