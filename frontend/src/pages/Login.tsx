@@ -94,8 +94,7 @@ export function Login() {
             </div>
           </div>
 
-          <h1 className="mt-8 text-3xl font-extrabold leading-tight">Sign in to CSPAMS</h1>
-          <p className="mt-4 border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-primary-50">
+          <p className="mt-8 border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-primary-50">
             Worked with TARGET'S MET and SMM&E.
           </p>
         </section>
