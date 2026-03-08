@@ -242,8 +242,8 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
 const ALL_SCHOOL_SCOPE = "__all_schools__";
 
 function statusTone(status: SchoolStatus) {
-  if (status === "active") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
-  if (status === "pending") return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
+  if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
+  if (status === "pending") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
@@ -256,9 +256,9 @@ function schoolTypeLabel(value: string | null | undefined): string {
 }
 
 function workflowTone(status: string | null) {
-  if (status === "validated") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
+  if (status === "validated") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "returned") return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
+  if (status === "returned") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   if (status === "draft") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
 }
@@ -1189,7 +1189,7 @@ export function MonitorDashboard() {
       }
     >
       {error && (
-        <section className="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <section className="mb-5 border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700">
           {error}
         </section>
       )}
@@ -1291,7 +1291,7 @@ export function MonitorDashboard() {
                           </li>
                         ))}
                       </ul>
-                      <p className="mt-2 text-[11px] text-emerald-700">Done when: {step.doneWhen}</p>
+                      <p className="mt-2 text-[11px] text-primary-700">Done when: {step.doneWhen}</p>
                     </li>
                   ))}
                 </ol>
@@ -1408,13 +1408,13 @@ export function MonitorDashboard() {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Any CSPAMS Submission</p>
                 <p className="mt-1 text-lg font-bold text-primary-800">{requirementCounts.submittedAny}</p>
               </article>
-              <article className="border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Complete CSPAMS Package</p>
-                <p className="mt-1 text-lg font-bold text-emerald-800">{requirementCounts.complete}</p>
+              <article className="border border-primary-200 bg-primary-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Complete CSPAMS Package</p>
+                <p className="mt-1 text-lg font-bold text-primary-800">{requirementCounts.complete}</p>
               </article>
-              <article className="border border-amber-200 bg-amber-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Pending Monitor Review</p>
-                <p className="mt-1 text-lg font-bold text-amber-800">{requirementCounts.awaitingReview}</p>
+              <article className="border border-slate-300 bg-slate-100 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Pending Monitor Review</p>
+                <p className="mt-1 text-lg font-bold text-slate-800">{requirementCounts.awaitingReview}</p>
               </article>
               <article className="border border-rose-200 bg-rose-50 px-3 py-2.5">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing SF / Indicators</p>
@@ -1709,7 +1709,7 @@ export function MonitorDashboard() {
           </div>
 
           {deleteError && (
-            <div className="mx-5 mt-4 rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+            <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
               {deleteError}
             </div>
           )}
@@ -1849,12 +1849,12 @@ export function MonitorDashboard() {
                 {(recordFormError || recordFormMessage) && (
                   <div className="md:col-span-2 xl:col-span-4">
                     {recordFormError && (
-                      <p className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                      <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
                         {recordFormError}
                       </p>
                     )}
                     {recordFormMessage && (
-                      <p className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                      <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
                         {recordFormMessage}
                       </p>
                     )}
@@ -2024,6 +2024,7 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
 
 
 

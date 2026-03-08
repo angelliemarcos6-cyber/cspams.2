@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+﻿import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useStudentData } from "@/context/StudentData";
 import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload } from "@/types";
@@ -61,7 +61,7 @@ function formatDateTime(value: string | null): string {
 
 function statusTone(status: string): string {
   if (status === "enrolled" || status === "returning" || status === "completer" || status === "graduated") {
-    return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
+    return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   }
   if (status === "dropped_out") {
     return "bg-rose-100 text-rose-700 ring-1 ring-rose-300";
@@ -69,7 +69,7 @@ function statusTone(status: string): string {
   if (status === "transferee") {
     return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   }
-  return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
+  return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
 function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
@@ -317,12 +317,12 @@ export function StudentRecordsPanel({
       </div>
 
       {(error || formError) && (
-        <div className="mx-5 mt-4 rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+        <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
           {formError || error}
         </div>
       )}
       {formMessage && (
-        <div className="mx-5 mt-4 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+        <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
           {formMessage}
         </div>
       )}
@@ -468,4 +468,5 @@ export function StudentRecordsPanel({
     </section>
   );
 }
+
 

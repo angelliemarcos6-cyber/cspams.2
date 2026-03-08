@@ -81,11 +81,9 @@ export function Login() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page-bg px-4 py-8">
       <div className="login-grid-overlay pointer-events-none absolute inset-0 opacity-35" />
-      <div className="pointer-events-none absolute -left-20 top-0 h-80 w-80 bg-primary/20 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 bg-primary-300/25 blur-3xl" />
 
       <div className="login-glass-card relative grid w-full max-w-6xl overflow-hidden border lg:grid-cols-[1.08fr_1fr]">
-        <section className="hidden border-r border-white/15 bg-gradient-to-br from-primary-800 via-primary-700 to-primary-600 p-10 text-white lg:block">
+        <section className="hidden border-r border-white/15 bg-primary-800 p-10 text-white lg:block">
           <div className="flex items-center gap-3">
             <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto bg-white px-2 py-1.5" />
             <div>
@@ -201,7 +199,7 @@ export function Login() {
               </div>
             </div>
 
-            {error && <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+            {error && <p className="border border-primary-200 bg-primary-50 px-3 py-2 text-sm text-primary-700">{error}</p>}
 
             <button
               type="submit"
@@ -218,4 +216,5 @@ export function Login() {
     </div>
   );
 }
+
 

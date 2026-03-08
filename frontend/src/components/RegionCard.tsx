@@ -14,8 +14,8 @@ export function RegionCard({ region, schools, activeSchools, students, teachers 
   const activePercent = schools > 0 ? Math.round((activeSchools / schools) * 100) : 0;
 
   const chartData = [
-    { name: "Active", value: activeSchools, color: "#10b981" },
-    { name: "Inactive", value: inactiveSchools, color: "#e2e8f0" },
+    { name: "Active", value: activeSchools, color: "#04508C" },
+    { name: "Inactive", value: inactiveSchools, color: "#CBD5E1" },
   ];
 
   return (

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType, type FormEvent } from "react";
+﻿import { useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -182,8 +182,8 @@ const EMPTY_FORM: FormState = {
 };
 
 function statusTone(status: SchoolStatus) {
-  if (status === "active") return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300";
-  if (status === "pending") return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
+  if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
+  if (status === "pending") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
@@ -554,7 +554,7 @@ export function SchoolAdminDashboard() {
       }
     >
       {error && (
-        <section className="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <section className="mb-5 border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700">
           {error}
         </section>
       )}
@@ -657,7 +657,7 @@ export function SchoolAdminDashboard() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-2 text-[11px] text-emerald-700">Done when: {step.doneWhen}</p>
+                  <p className="mt-2 text-[11px] text-primary-700">Done when: {step.doneWhen}</p>
                 </li>
               ))}
             </ol>
@@ -761,12 +761,12 @@ export function SchoolAdminDashboard() {
             </p>
           </div>
           {missingRequirements.length === 0 ? (
-            <span className="inline-flex items-center gap-1.5 border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+            <span className="inline-flex items-center gap-1.5 border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
               <CheckCircle2 className="h-3.5 w-3.5" />
               All monitor requirements are passed
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+            <span className="inline-flex items-center gap-1.5 border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
               <AlertTriangle className="h-3.5 w-3.5" />
               Action needed before monitor review
             </span>
@@ -775,13 +775,13 @@ export function SchoolAdminDashboard() {
 
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           {missingRequirements.length === 0 ? (
-            <article className="border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-700">
+            <article className="border border-primary-200 bg-primary-50 px-3 py-3 text-sm text-primary-700">
               No missing submissions. Keep monitoring sync alerts and update compliance counts when needed.
             </article>
           ) : (
             missingRequirements.map((item) => (
-              <article key={item.id} className="border border-amber-200 bg-amber-50 px-3 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">{item.label}</p>
+              <article key={item.id} className="border border-slate-300 bg-slate-100 px-3 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">{item.summary}</p>
                 <p className="mt-1 text-xs text-slate-700">{item.detail}</p>
               </article>
@@ -810,13 +810,13 @@ export function SchoolAdminDashboard() {
               onClick={() => handleRequirementNavigate(item)}
               className={`border px-3 py-3 text-left transition ${
                 item.isComplete
-                  ? "border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
-                  : "border-amber-200 bg-amber-50 hover:bg-amber-100"
+                  ? "border-primary-200 bg-primary-50 hover:bg-primary-100"
+                  : "border-slate-300 bg-slate-100 hover:bg-slate-200"
               }`}
             >
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
               <p className="mt-1 text-[11px] text-slate-600">{item.summary}</p>
-              <p className={`mt-2 text-xs font-bold ${item.isComplete ? "text-emerald-700" : "text-amber-700"}`}>
+              <p className={`mt-2 text-xs font-bold ${item.isComplete ? "text-primary-700" : "text-slate-700"}`}>
                 {item.isComplete ? "Passed to monitor" : "Missing / needs action"}
               </p>
             </button>
@@ -982,7 +982,7 @@ export function SchoolAdminDashboard() {
                     className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                   />
                 </div>
-                {formErrors.studentCount && <p className="mt-1 text-xs text-red-600">{formErrors.studentCount}</p>}
+                {formErrors.studentCount && <p className="mt-1 text-xs text-primary-700">{formErrors.studentCount}</p>}
               </div>
 
               <div>
@@ -1006,7 +1006,7 @@ export function SchoolAdminDashboard() {
                     className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                   />
                 </div>
-                {formErrors.teacherCount && <p className="mt-1 text-xs text-red-600">{formErrors.teacherCount}</p>}
+                {formErrors.teacherCount && <p className="mt-1 text-xs text-primary-700">{formErrors.teacherCount}</p>}
               </div>
 
               <div>
@@ -1029,13 +1029,13 @@ export function SchoolAdminDashboard() {
 
               <div className="md:col-span-2">
                 {saveMessage && (
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
                     <CheckCircle2 className="h-4 w-4" />
                     {saveMessage}
                   </div>
                 )}
                 {submitError && (
-                  <div className="mb-3 rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  <div className="mb-3 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
                     {submitError}
                   </div>
                 )}
@@ -1091,6 +1091,7 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
 
 
 

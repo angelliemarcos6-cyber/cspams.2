@@ -10,12 +10,10 @@
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
 
         :root {
-            --csp-bg-soft: #edf4fb;
-            --csp-bg-deep: #d8e8f8;
+            --csp-bg: #e8eef6;
             --csp-ink: #0f2038;
             --csp-blue: #1d4ed8;
             --csp-blue-deep: #1e3a8a;
-            --csp-teal: #0f766e;
             --csp-line: rgba(148, 163, 184, 0.32);
         }
 
@@ -27,21 +25,13 @@
             position: relative;
             min-height: 100vh;
             overflow: hidden;
-            background:
-                radial-gradient(circle at 18% 18%, rgba(29, 78, 216, 0.24), transparent 42%),
-                radial-gradient(circle at 85% 10%, rgba(20, 184, 166, 0.16), transparent 44%),
-                linear-gradient(165deg, var(--csp-bg-soft) 0%, #f8fbff 45%, var(--csp-bg-deep) 100%);
+            background: var(--csp-bg);
             color: var(--csp-ink);
             font-family: 'Manrope', 'Segoe UI', sans-serif;
         }
 
         .csp-bg-blob {
-            position: absolute;
-            border-radius: 9999px;
-            pointer-events: none;
-            filter: blur(2px);
-            opacity: 0.55;
-            animation: cspFloat 11s ease-in-out infinite;
+            display: none;
         }
 
         .csp-bg-blob-one {
@@ -49,7 +39,7 @@
             height: 22rem;
             top: -7rem;
             right: -4rem;
-            background: radial-gradient(circle, rgba(56, 189, 248, 0.42), rgba(14, 116, 144, 0.06));
+            background: #dbeafe;
         }
 
         .csp-bg-blob-two {
@@ -57,7 +47,7 @@
             height: 24rem;
             bottom: -10rem;
             left: -6rem;
-            background: radial-gradient(circle, rgba(34, 197, 94, 0.34), rgba(5, 150, 105, 0.06));
+            background: #bfdbfe;
             animation-delay: 1.7s;
         }
 
@@ -65,9 +55,7 @@
             position: absolute;
             inset: 0;
             pointer-events: none;
-            background-image: linear-gradient(rgba(15, 32, 56, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(15, 32, 56, 0.03) 1px, transparent 1px);
-            background-size: 34px 34px;
-            mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 85%);
+            background: none;
         }
 
         .csp-heading {
@@ -78,7 +66,7 @@
         .csp-showcase {
             border-radius: 2rem;
             padding: clamp(2rem, 4vw, 3rem);
-            background: linear-gradient(145deg, #0f3357 0%, #14507f 52%, #0f766e 100%);
+            background: #022e50;
             box-shadow: 0 30px 80px rgba(15, 32, 56, 0.26);
             color: #f8fafc;
         }
@@ -216,7 +204,7 @@
             color: #ffffff;
             font-size: 1rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--csp-blue), var(--csp-blue-deep));
+            background: var(--csp-blue);
             box-shadow: 0 14px 26px rgba(29, 78, 216, 0.34);
             transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
         }
@@ -237,9 +225,9 @@
         .csp-forgot-box {
             margin-top: 1rem;
             border-radius: 0.95rem;
-            border: 1px solid rgba(15, 118, 110, 0.28);
-            background: rgba(15, 118, 110, 0.08);
-            color: #115e59;
+            border: 1px solid rgba(29, 78, 216, 0.28);
+            background: rgba(29, 78, 216, 0.08);
+            color: #1e3a8a;
             font-size: 0.9rem;
             line-height: 1.5;
             padding: 0.9rem 1rem;
@@ -252,7 +240,7 @@
             right: 0.55rem;
             border: none;
             background: transparent;
-            color: #0f766e;
+            color: #1d4ed8;
             font-size: 1.25rem;
             line-height: 1;
         }
@@ -319,13 +307,13 @@
         }
 
         .dark .csp-forgot-box {
-            border-color: rgba(45, 212, 191, 0.26);
-            background: rgba(13, 148, 136, 0.2);
-            color: #99f6e4;
+            border-color: rgba(59, 130, 246, 0.34);
+            background: rgba(30, 64, 175, 0.28);
+            color: #bfdbfe;
         }
 
         .dark .csp-forgot-close {
-            color: #5eead4;
+            color: #93c5fd;
         }
 
         @keyframes cspFloat {
@@ -340,10 +328,7 @@
 
         @media (max-width: 1024px) {
             .csp-login-page {
-                background:
-                    radial-gradient(circle at 12% 15%, rgba(29, 78, 216, 0.22), transparent 40%),
-                    radial-gradient(circle at 86% 0%, rgba(20, 184, 166, 0.14), transparent 38%),
-                    linear-gradient(180deg, #eff6ff 0%, #f8fbff 55%, #deedf8 100%);
+                background: var(--csp-bg);
             }
 
             .csp-footer {
@@ -364,10 +349,6 @@
     </style>
 
     <div class="csp-login-page">
-        <div class="csp-bg-blob csp-bg-blob-one" aria-hidden="true"></div>
-        <div class="csp-bg-blob csp-bg-blob-two" aria-hidden="true"></div>
-        <div class="csp-bg-grid" aria-hidden="true"></div>
-
         <div class="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:py-10">
             <section class="csp-showcase hidden lg:flex lg:flex-col lg:justify-between">
                 <div>
@@ -389,7 +370,7 @@
                 </div>
 
                 <div class="space-y-4">
-                    <p class="text-sm uppercase tracking-[0.18em] text-sky-100">What you can do here</p>
+                    <p class="text-sm uppercase tracking-[0.18em] text-blue-100">What you can do here</p>
 
                     <div class="csp-point-grid">
                         <article class="csp-point-card">

@@ -23,7 +23,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
 
   return (
     <div className="min-h-screen bg-page-bg">
-      <header className="sticky top-0 z-50 border-b border-primary-200/25 bg-gradient-to-r from-primary-900 via-primary-800 to-primary-700 shadow-2xl shadow-primary-900/30 backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-primary-200/25 bg-primary-800 shadow-2xl shadow-primary-900/30">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <img src="/depedlogo.png" alt="DepEd logo" className="h-11 w-auto border border-slate-200/90 bg-white px-1.5 py-1 shadow-sm" />
@@ -48,8 +48,8 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
             </button>
           </div>
         </div>
-        <div className="h-1 w-full bg-gradient-to-r from-primary-300/60 via-primary-200/45 to-transparent" />
-        <div className="border-t border-white/12 bg-primary-800/70 backdrop-blur-md">
+        <div className="h-1 w-full bg-primary-300/60" />
+        <div className="border-t border-white/12 bg-primary-800/90">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <div>
               <p className="inline-flex items-center gap-2 border border-white/25 bg-white/12 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-100 shadow-sm">

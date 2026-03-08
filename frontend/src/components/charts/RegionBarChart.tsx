@@ -28,7 +28,7 @@ export function RegionBarChart({ data }: RegionBarChartProps) {
             <Tooltip contentStyle={{ borderRadius: "8px", borderColor: "#cbd5e1" }} />
             <Legend wrapperStyle={{ fontSize: "12px" }} />
             <Bar dataKey="students" fill="#04508C" radius={[6, 6, 0, 0]} />
-            <Bar dataKey="teachers" fill="#10b981" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="teachers" fill="#649DD8" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

@@ -47,9 +47,9 @@ export function buildStatusDistribution(records: SchoolRecord[]) {
   }
 
   return [
-    { name: "Active", key: "active", value: base.active, color: "#10b981" },
-    { name: "Inactive", key: "inactive", value: base.inactive, color: "#94a3b8" },
-    { name: "Pending", key: "pending", value: base.pending, color: "#f59e0b" },
+    { name: "Active", key: "active", value: base.active, color: "#04508C" },
+    { name: "Inactive", key: "inactive", value: base.inactive, color: "#94A3B8" },
+    { name: "Pending", key: "pending", value: base.pending, color: "#649DD8" },
   ];
 }
 

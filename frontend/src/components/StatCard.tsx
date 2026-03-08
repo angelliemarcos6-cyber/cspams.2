@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+﻿import type { ReactNode } from "react";
 import { cn } from "@/utils/cn";
 
 interface StatCardProps {
@@ -17,16 +17,16 @@ export function StatCard({ label, value, icon, tone = "primary" }: StatCardProps
       accent: "bg-primary-400/80",
     },
     success: {
-      wrap: "border-emerald-200 bg-emerald-50/65 shadow-[0_14px_26px_-24px_rgba(5,150,105,0.42)]",
-      icon: "bg-white text-emerald-600 shadow-sm",
-      label: "text-emerald-700",
-      accent: "bg-emerald-400/80",
+      wrap: "border-primary-200 bg-primary-50/65 shadow-[0_14px_26px_-24px_rgba(2,46,80,0.42)]",
+      icon: "bg-white text-primary-600 shadow-sm",
+      label: "text-primary-700",
+      accent: "bg-primary-400/80",
     },
     warning: {
-      wrap: "border-amber-200 bg-amber-50/65 shadow-[0_14px_26px_-24px_rgba(217,119,6,0.4)]",
-      icon: "bg-white text-amber-600 shadow-sm",
-      label: "text-amber-700",
-      accent: "bg-amber-400/80",
+      wrap: "border-slate-300 bg-slate-100/80 shadow-[0_14px_26px_-24px_rgba(51,65,85,0.35)]",
+      icon: "bg-white text-slate-700 shadow-sm",
+      label: "text-slate-700",
+      accent: "bg-slate-400/80",
     },
   }[tone];
 
@@ -49,3 +49,4 @@ export function StatCard({ label, value, icon, tone = "primary" }: StatCardProps
     </article>
   );
 }
+
