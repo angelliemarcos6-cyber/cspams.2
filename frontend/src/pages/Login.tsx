@@ -1,6 +1,6 @@
 ﻿import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight, School, ClipboardCheck, LockKeyhole } from "lucide-react";
+import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight, LockKeyhole } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { isApiError } from "@/lib/api";
 import type { UserRole } from "@/types";
@@ -90,43 +90,14 @@ export function Login() {
             <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto bg-white px-2 py-1.5" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary-100">CSPAMS</p>
-              <p className="text-lg font-extrabold">Unified Education Workspace</p>
+              <p className="text-lg font-extrabold">CSPAMS</p>
             </div>
           </div>
 
-          <h1 className="mt-8 text-3xl font-extrabold leading-tight">
-            Sign in to CSPAMS
-          </h1>
-
-          <div className="mt-8 space-y-3">
-            <article className="border border-white/20 bg-white/10 px-4 py-3">
-              <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary-100">
-                <School className="h-3.5 w-3.5" />
-                School Head Workflow
-              </p>
-            </article>
-            <article className="border border-white/20 bg-white/10 px-4 py-3">
-              <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary-100">
-                <ClipboardCheck className="h-3.5 w-3.5" />
-                Monitor Workflow
-              </p>
-            </article>
-          </div>
-
-          <div className="mt-8 grid grid-cols-3 gap-2">
-            <div className="border border-white/20 bg-white/10 px-3 py-2">
-              <p className="text-xl font-extrabold">1</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-100">Portal</p>
-            </div>
-            <div className="border border-white/20 bg-white/10 px-3 py-2">
-              <p className="text-xl font-extrabold">2</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-100">User Roles</p>
-            </div>
-            <div className="border border-white/20 bg-white/10 px-3 py-2">
-              <p className="text-xl font-extrabold">24/7</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-100">Sync Access</p>
-            </div>
-          </div>
+          <h1 className="mt-8 text-3xl font-extrabold leading-tight">Sign in to CSPAMS</h1>
+          <p className="mt-4 border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-primary-50">
+            Worked with TARGET'S MET and SMM&E.
+          </p>
         </section>
 
         <section className="bg-white/90 p-6 sm:p-8 lg:p-10">
@@ -248,3 +219,4 @@ export function Login() {
     </div>
   );
 }
+
