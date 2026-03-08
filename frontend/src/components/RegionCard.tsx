@@ -19,7 +19,7 @@ export function RegionCard({ region, schools, activeSchools, students, teachers 
   ];
 
   return (
-    <article className="surface-panel rounded-2xl p-4 transition hover:-translate-y-0.5 hover:shadow-md">
+    <article className="surface-panel border p-4 transition hover:-translate-y-0.5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -45,16 +45,16 @@ export function RegionCard({ region, schools, activeSchools, students, teachers 
 
       <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
         <div>
-          <p className="text-lg font-bold text-slate-900">{schools}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Schools</p>
+          <p className="text-lg font-bold leading-none text-slate-900">{schools}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Schools</p>
         </div>
         <div>
-          <p className="text-lg font-bold text-slate-900">{students.toLocaleString()}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Students</p>
+          <p className="text-lg font-bold leading-none text-slate-900">{students.toLocaleString()}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Students</p>
         </div>
         <div>
-          <p className="text-lg font-bold text-slate-900">{teachers.toLocaleString()}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Teachers</p>
+          <p className="text-lg font-bold leading-none text-slate-900">{teachers.toLocaleString()}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Teachers</p>
         </div>
       </div>
     </article>

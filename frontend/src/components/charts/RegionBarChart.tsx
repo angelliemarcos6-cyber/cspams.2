@@ -8,13 +8,13 @@ interface RegionBarChartProps {
 
 export function RegionBarChart({ data }: RegionBarChartProps) {
   return (
-    <div className="surface-chart rounded-2xl p-4">
+    <div className="surface-chart border p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">Regional Capacity Snapshot</h3>
           <p className="text-xs text-slate-500">Students and teachers per region</p>
         </div>
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary-50 text-primary">
+        <span className="grid h-8 w-8 place-items-center border border-primary-100 bg-primary-50 text-primary">
           <BarChart3 className="h-4 w-4" />
         </span>
       </div>
@@ -25,7 +25,7 @@ export function RegionBarChart({ data }: RegionBarChartProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="region" tick={{ fontSize: 11 }} interval={0} angle={-15} textAnchor="end" height={55} />
             <YAxis tick={{ fontSize: 11 }} />
-            <Tooltip contentStyle={{ borderRadius: "12px", borderColor: "#cbd5e1" }} />
+            <Tooltip contentStyle={{ borderRadius: "8px", borderColor: "#cbd5e1" }} />
             <Legend wrapperStyle={{ fontSize: "12px" }} />
             <Bar dataKey="students" fill="#04508C" radius={[6, 6, 0, 0]} />
             <Bar dataKey="teachers" fill="#10b981" radius={[6, 6, 0, 0]} />

@@ -80,10 +80,6 @@ interface ManualStep {
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
 
-interface ViewMeta {
-  summary: string;
-  focus: string;
-}
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
@@ -148,25 +144,6 @@ const SCHOOL_MANUAL_STATUS_GUIDE = [
   "Validated: Approved by monitor.",
   "Returned: Needs correction and resubmission.",
 ];
-
-const SCHOOL_VIEW_META: Record<TopNavigatorItem["id"], ViewMeta> = {
-  first_glance: {
-    summary: "Start here for urgent alerts, missing requirements, and high-level school snapshot.",
-    focus: "Check what needs action before updating records.",
-  },
-  requirements: {
-    summary: "Track all required submissions and jump directly to missing modules.",
-    focus: "Resolve missing items first to avoid delayed monitor review.",
-  },
-  compliance: {
-    summary: "Encode compliance data, submit SF forms, and send indicator package.",
-    focus: "Complete School Profile, SF-1/SF-5, and Indicators in order.",
-  },
-  records: {
-    summary: "Maintain learner records and verify synchronized student details.",
-    focus: "Keep student profile, section, teacher, and status up-to-date.",
-  },
-};
 
 const EMPTY_FORM: FormState = {
   studentCount: "",
@@ -346,7 +323,6 @@ export function SchoolAdminDashboard() {
   );
   const completedRequirements = requirements.length - missingRequirements.length;
   const completionPercent = requirements.length === 0 ? 0 : Math.round((completedRequirements / requirements.length) * 100);
-  const activeViewMeta = SCHOOL_VIEW_META[activeTopNavigator];
   const activeStep = Math.max(1, TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
   const nextRequirement = missingRequirements[0]?.label ?? "All requirements passed";
 
@@ -496,7 +472,7 @@ export function SchoolAdminDashboard() {
   return (
     <Shell
       title="School Head Dashboard"
-      subtitle="Start with overview and requirements, then update your compliance record (school profile, SF forms, and indicators) for monitor review."
+      subtitle="Overview, requirements, compliance, and records."
       actions={
         <>
           <button
@@ -535,11 +511,10 @@ export function SchoolAdminDashboard() {
       )}
 
       <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-0">
-      <aside className="rounded-sm border border-primary-700/80 bg-gradient-to-b from-primary-900 via-primary-800 to-primary-900 p-3 shadow-xl shadow-primary-900/35 lg:rounded-t-none">
+      <aside className="rounded-sm border border-primary-700/80 bg-gradient-to-b from-primary-900 via-primary-800 to-primary-900 p-3 shadow-xl shadow-primary-900/35 lg:sticky lg:top-24 lg:min-h-[calc(100vh-7.5rem)] lg:rounded-t-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
-            <p className="mt-1 text-xs text-primary-100">Select what you need to do now.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -659,8 +634,6 @@ export function SchoolAdminDashboard() {
               Workflow Step {activeStep} of {TOP_NAVIGATOR_ITEMS.length}
             </p>
             <h2 className="mt-2 text-xl font-extrabold text-slate-900">{activeNavigatorLabel}</h2>
-            <p className="mt-1 text-sm text-slate-600">{activeViewMeta.summary}</p>
-            <p className="mt-1 text-xs font-medium text-slate-500">{activeViewMeta.focus}</p>
 
             <div className="mt-3 flex flex-wrap gap-2">
               {TOP_NAVIGATOR_ITEMS.map((item, index) => {
@@ -692,19 +665,16 @@ export function SchoolAdminDashboard() {
             <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion</p>
               <p className="mt-1 text-lg font-bold text-slate-900">{completionPercent}%</p>
-              <p className="text-xs text-slate-600">
-                {completedRequirements}/{requirements.length} requirements passed
-              </p>
+              <p className="text-xs text-slate-600">{completedRequirements}/{requirements.length}</p>
             </article>
             <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Next Action</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">{nextRequirement}</p>
-              <p className="text-xs text-slate-600">{missingRequirements.length === 0 ? "Ready for monitor review." : "Open Requirements to continue."}</p>
             </article>
             <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Sync</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">{syncStatus === "up_to_date" ? "Up to date" : "Pending update"}</p>
-              <p className="text-xs text-slate-600">{lastSyncedAt ? formatDateTime(lastSyncedAt) : "No sync yet"}</p>
+              <p className="text-xs text-slate-600">{lastSyncedAt ? formatDateTime(lastSyncedAt) : "--"}</p>
             </article>
           </div>
         </div>
@@ -791,7 +761,6 @@ export function SchoolAdminDashboard() {
       {activeTopNavigator === "requirements" && (
       <section id="requirement-navigator" className="dashboard-shell mb-5 rounded-sm p-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirements</h2>
-        <p className="mt-1 text-xs text-slate-600">Open each requirement module and submit what is missing.</p>
         <div className="mt-3 grid gap-2 md:grid-cols-4">
           {requirements.map((item) => (
             <button
@@ -932,9 +901,6 @@ export function SchoolAdminDashboard() {
       <section id="compliance-records" className="grid gap-5">
         <section className="dashboard-shell rounded-sm p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Record Modules</h2>
-          <p className="mt-1 text-xs text-slate-600">
-            Encode school profile counts, submit SF-1/SF-5, and input compliance indicators in this section.
-          </p>
         </section>
 
         <section id="compliance-input">
@@ -1050,9 +1016,6 @@ export function SchoolAdminDashboard() {
           ) : (
             <section className="dashboard-shell rounded-sm p-5">
               <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">School Profile Input</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Use the `Update Compliance Data` button above to encode students, teachers, and status for your school.
-              </p>
             </section>
           )}
         </section>
@@ -1072,7 +1035,7 @@ export function SchoolAdminDashboard() {
         <StudentRecordsPanel
           editable
           title="Student Records"
-          description="Enter learner information (LRN, name, age, section, teacher, and enrollment status) for your school."
+          description="Manage learner records."
         />
       </section>
       )}
@@ -1081,6 +1044,7 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
 
 
 

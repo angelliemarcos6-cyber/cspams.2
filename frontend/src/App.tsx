@@ -14,8 +14,8 @@ import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 function FullscreenLoader() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-page-bg px-4">
-      <div className="surface-panel flex w-full max-w-sm items-center gap-3 rounded-2xl p-5">
-        <img src="/depedlogo.png" alt="DepEd logo" className="h-11 w-auto rounded bg-white px-1.5 py-1" />
+      <div className="surface-panel flex w-full max-w-sm items-center gap-3 border p-5">
+        <img src="/depedlogo.png" alt="DepEd logo" className="h-11 w-auto bg-white px-1.5 py-1" />
         <div className="flex-1">
           <p className="text-sm font-bold text-primary-800">CSPAMS</p>
           <p className="text-xs text-slate-600">Loading synchronized records...</p>

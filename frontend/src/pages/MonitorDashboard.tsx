@@ -94,10 +94,6 @@ interface MonitorRecordFormState {
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
 
-interface ViewMeta {
-  summary: string;
-  focus: string;
-}
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
@@ -174,29 +170,6 @@ const MONITOR_MANUAL_STATUS_GUIDE = [
   "Returned: Sent back to school head for correction.",
   "Missing: Requirement not yet submitted by school.",
 ];
-
-const MONITOR_VIEW_META: Record<MonitorTopNavigatorId, ViewMeta> = {
-  first_glance: {
-    summary: "Start with overall submission health and synchronized alerts across all schools.",
-    focus: "Use this view to prioritize where monitor action is needed first.",
-  },
-  requirements: {
-    summary: "Track compliance package status by school and quickly identify missing requirements.",
-    focus: "Filter for missing or awaiting-review schools, then follow up.",
-  },
-  forms: {
-    summary: "Review Digital SF-1 and SF-5 queues submitted by school heads.",
-    focus: "Validate complete forms or return with clear correction notes.",
-  },
-  indicators: {
-    summary: "Review indicator submissions and compliance metrics before approval.",
-    focus: "Confirm data consistency and finalize validation decisions.",
-  },
-  records: {
-    summary: "Maintain master school records and inspect synchronized learner data.",
-    focus: "Use CRUD for school records, while student records remain read-only.",
-  },
-};
 
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
   { id: "all", label: "All schools" },
@@ -691,7 +664,6 @@ export function MonitorDashboard() {
     [schoolRequirementRows],
   );
   const completionPercent = requirementCounts.total === 0 ? 0 : Math.round((requirementCounts.complete / requirementCounts.total) * 100);
-  const activeViewMeta = MONITOR_VIEW_META[activeTopNavigator];
   const activeStep = Math.max(1, MONITOR_TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
   const showSubmissionFilters = activeTopNavigator !== "first_glance";
 
@@ -731,7 +703,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="Observe synchronized school submissions, review requirement compliance, and validate packages from one navigator."
+      subtitle="Overview, requirements, queues, and records."
       actions={
         <>
           <button
@@ -766,11 +738,10 @@ export function MonitorDashboard() {
       )}
 
       <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-0">
-        <aside className="rounded-sm border border-primary-700/80 bg-gradient-to-b from-primary-900 via-primary-800 to-primary-900 p-3 shadow-xl shadow-primary-900/35 lg:rounded-t-none">
+        <aside className="rounded-sm border border-primary-700/80 bg-gradient-to-b from-primary-900 via-primary-800 to-primary-900 p-3 shadow-xl shadow-primary-900/35 lg:sticky lg:top-24 lg:min-h-[calc(100vh-7.5rem)] lg:rounded-t-none">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
-              <p className="mt-1 text-xs text-primary-100">Select what you need to review now.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -889,8 +860,6 @@ export function MonitorDashboard() {
                   Workflow Step {activeStep} of {MONITOR_TOP_NAVIGATOR_ITEMS.length}
                 </p>
                 <h2 className="mt-2 text-xl font-extrabold text-slate-900">{activeNavigatorLabel}</h2>
-                <p className="mt-1 text-sm text-slate-600">{activeViewMeta.summary}</p>
-                <p className="mt-1 text-xs font-medium text-slate-500">{activeViewMeta.focus}</p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {MONITOR_TOP_NAVIGATOR_ITEMS.map((item, index) => {
@@ -922,17 +891,15 @@ export function MonitorDashboard() {
                 <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion</p>
                   <p className="mt-1 text-lg font-bold text-slate-900">{completionPercent}%</p>
-                  <p className="text-xs text-slate-600">{requirementCounts.complete}/{requirementCounts.total} schools complete</p>
+                  <p className="text-xs text-slate-600">{requirementCounts.complete}/{requirementCounts.total}</p>
                 </article>
                 <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Awaiting Review</p>
                   <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.awaitingReview}</p>
-                  <p className="text-xs text-slate-600">Schools with submitted items pending decision</p>
                 </article>
                 <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Missing Requirements</p>
                   <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.missing}</p>
-                  <p className="text-xs text-slate-600">Prioritize these schools for follow-up</p>
                 </article>
               </div>
             </div>
@@ -941,7 +908,6 @@ export function MonitorDashboard() {
           {showSubmissionFilters && (
           <section className="dashboard-shell mb-5 rounded-sm p-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Filters</h2>
-            <p className="mt-1 text-xs text-slate-600">Filter schools by status and by submitted requirements.</p>
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1119,9 +1085,6 @@ export function MonitorDashboard() {
         <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Requirement Submission Tracker</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Track which schools already submitted required packages and which still need follow-up.
-            </p>
           </div>
 
           <div className="overflow-x-auto px-5 py-4">
@@ -1206,7 +1169,6 @@ export function MonitorDashboard() {
         <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Records</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Manage school master records with full details and compliance counts.</p>
           </div>
 
           <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto]">
@@ -1543,7 +1505,7 @@ export function MonitorDashboard() {
           editable={false}
           showSchoolColumn
           title="Synchronized Student Records"
-          description="Read-only learner records submitted by school heads."
+          description="Read-only learner records."
         />
         </>
       )}
@@ -1552,4 +1514,5 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
 
