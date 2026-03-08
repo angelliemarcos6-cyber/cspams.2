@@ -11,7 +11,7 @@ interface MonitorIndicatorPanelProps {
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "returned") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+  if (status === "returned") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
@@ -179,7 +179,7 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null, onToast }: Moni
           <p className="mt-1 text-lg font-bold text-slate-900">{summary.total}</p>
         </article>
         <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Waiting for Review</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Waiting</p>
           <p className="mt-1 text-lg font-bold text-primary-800">{summary.submitted}</p>
         </article>
         <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
@@ -241,7 +241,7 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null, onToast }: Moni
                             submission.status,
                           )}`}
                         >
-                          {submission.statusLabel}
+                          {submission.status === "submitted" ? "Waiting" : submission.statusLabel}
                         </span>
                       </td>
                       <td className="px-2 py-2 text-right text-sm font-semibold text-slate-900">

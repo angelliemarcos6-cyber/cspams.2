@@ -50,8 +50,8 @@ import {
 
 type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "status" | "lastUpdated";
 type SortDirection = "asc" | "desc";
-type RequirementFilter = "all" | "submitted_any" | "complete" | "awaiting_review" | "missing";
-type MonitorTopNavigatorId = "first_glance" | "requirements" | "compliance" | "records";
+type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
+type MonitorTopNavigatorId = "action_queue" | "schools" | "compliance_review" | "student_records" | "reports";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
 type FilterChipId = "search" | "status" | "requirement" | "school" | "student" | "teacher";
 type ToastTone = "success" | "info" | "warning";
@@ -145,94 +145,111 @@ interface SchoolDetailSnapshot {
 
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
-  { id: "first_glance", label: "Overview" },
-  { id: "requirements", label: "Requirements" },
-  { id: "compliance", label: "Compliance Records" },
-  { id: "records", label: "School Records" },
+  { id: "action_queue", label: "Action Queue" },
+  { id: "schools", label: "Schools" },
+  { id: "compliance_review", label: "Compliance Review" },
+  { id: "student_records", label: "Student Records" },
+  { id: "reports", label: "Reports" },
 ];
 
 const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIcon> = {
-  first_glance: LayoutDashboard,
-  requirements: ListChecks,
-  compliance: ClipboardList,
-  records: Database,
+  action_queue: ListChecks,
+  schools: Building2,
+  compliance_review: ClipboardList,
+  student_records: Users,
+  reports: LayoutDashboard,
 };
 
 const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
-    id: "first_glance",
-    title: "Overview",
-    objective: "Detect division-level issues at the start of every review session.",
+    id: "action_queue",
+    title: "Action Queue",
+    objective: "Handle schools that need immediate monitor action.",
     actions: [
-      "Check totals, TARGETS-MET snapshot, and synchronized alerts.",
-      "Identify schools or indicators that need immediate follow-up.",
+      "Check Missing, Returned, and Waiting rows first.",
+      "Use Review, Open School, or Send Reminder on each row.",
     ],
-    doneWhen: "You have a clear list of schools/modules needing attention.",
+    doneWhen: "No urgent rows remain unassigned for action.",
   },
   {
-    id: "requirements",
-    title: "Requirements",
-    objective: "Track which schools have submitted or are still missing requirements.",
+    id: "schools",
+    title: "Schools",
+    objective: "Inspect school profile, status, and latest activity in one place.",
     actions: [
-      "Use status and requirement filters to isolate missing schools.",
-      "Prioritize rows with high missing count or awaiting review count.",
+      "Review school profile and activity updates.",
+      "Use row actions for follow-up without leaving the page.",
     ],
-    doneWhen: "You have filtered target schools for validation or follow-up.",
+    doneWhen: "School details and latest updates are verified.",
   },
   {
-    id: "compliance",
-    title: "Compliance Records",
-    objective: "Review forms and indicators in one validation workspace.",
+    id: "compliance_review",
+    title: "Compliance Review",
+    objective: "Validate or return compliance submissions.",
     actions: [
-      "Review indicator packages and decide validate or return.",
-      "Issue clear validation notes for every returned package.",
+      "Review pending packages and decide validate or return.",
+      "Write clear notes when returning a submission.",
     ],
     doneWhen: "No pending submissions remain without a validation decision.",
   },
   {
-    id: "records",
-    title: "School Records",
-    objective: "Audit final synchronized school-level records.",
+    id: "student_records",
+    title: "Student Records",
+    objective: "Run read-only learner checks with quick search.",
     actions: [
-      "Search/filter records by school, region, and status.",
-      "Confirm timestamps and status align with the latest submissions.",
+      "Search learners by name or LRN.",
+      "Confirm school and teacher assignments are synchronized.",
     ],
-    doneWhen: "Record table matches expected latest school submissions.",
+    doneWhen: "Learner records match expected school submissions.",
+  },
+  {
+    id: "reports",
+    title: "Reports",
+    objective: "Check history and optional analytics only when needed.",
+    actions: [
+      "Review sync history and KPI snapshot.",
+      "Open analytics only when deeper trend checking is required.",
+    ],
+    doneWhen: "History checks are complete and issues are documented.",
   },
 ];
 
 const MONITOR_MANUAL_STATUS_GUIDE = [
-  "Submitted: Waiting for monitor validation decision.",
-  "Validated: Approved and closed.",
-  "Returned: Sent back to school head for correction.",
   "Missing: Requirement not yet submitted by school.",
+  "Waiting: Submitted and waiting for monitor review.",
+  "Returned: Sent back to school head for correction.",
+  "Submitted: School package has been sent to monitor.",
+  "Validated: Approved and closed.",
 ];
 
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
-  { id: "all", label: "All Schools" },
-  { id: "submitted_any", label: "With Submission" },
-  { id: "complete", label: "Fully Submitted" },
-  { id: "awaiting_review", label: "Waiting for Review" },
-  { id: "missing", label: "Missing Requirements" },
+  { id: "all", label: "All statuses" },
+  { id: "missing", label: "Missing" },
+  { id: "waiting", label: "Waiting" },
+  { id: "returned", label: "Returned" },
+  { id: "submitted", label: "Submitted" },
+  { id: "validated", label: "Validated" },
 ];
 
 const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
-  first_glance: [
-    { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
-    { id: "advanced_analytics", label: "Advanced Analytics", targetId: "monitor-analytics-toggle", icon: TrendingUp },
+  action_queue: [
+    { id: "filters_queue", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },
   ],
-  requirements: [
-    { id: "filters", label: "Quick Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
-    { id: "tracker_table", label: "Requirement Tracker", targetId: "monitor-requirements-table", icon: ListChecks },
+  schools: [
+    { id: "filters_schools", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "school_records", label: "School List", targetId: "monitor-school-records", icon: Building2 },
   ],
-  compliance: [
-    { id: "filters_compliance", label: "Quick Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
-    { id: "indicators_queue", label: "Indicators Queue", targetId: "monitor-indicators-queue", icon: TrendingUp },
+  compliance_review: [
+    { id: "filters_review", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "indicators_queue", label: "Review Queue", targetId: "monitor-indicators-queue", icon: ClipboardList },
   ],
-  records: [
-    { id: "filters_records", label: "Quick Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
-    { id: "school_records", label: "School Records", targetId: "monitor-school-records", icon: Database },
-    { id: "student_records", label: "Learner Records", targetId: "monitor-student-records", icon: Users },
+  student_records: [
+    { id: "filters_students", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "student_records", label: "Learner List", targetId: "monitor-student-records", icon: Users },
+  ],
+  reports: [
+    { id: "reports_summary", label: "Reports Summary", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
+    { id: "reports_analytics", label: "Show Analytics", targetId: "monitor-analytics-toggle", icon: TrendingUp },
   ],
 };
 
@@ -269,17 +286,17 @@ function schoolTypeLabel(value: string | null | undefined): string {
 function workflowTone(status: string | null) {
   if (status === "validated") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "returned") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-  if (status === "draft") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+  if (status === "returned") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (status === "draft") return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
   return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
 }
 
 function workflowLabel(status: string | null): string {
   if (!status) return "Missing";
-  if (status === "submitted") return "Submitted";
+  if (status === "submitted") return "Waiting";
   if (status === "validated") return "Validated";
   if (status === "returned") return "Returned";
-  if (status === "draft") return "Draft";
+  if (status === "draft") return "Missing";
   return status;
 }
 
@@ -349,21 +366,23 @@ function isAwaitingReview(status: string | null): boolean {
 
 function matchesRequirementFilter(summary: SchoolRequirementSummary, filter: RequirementFilter): boolean {
   switch (filter) {
-    case "submitted_any":
-      return summary.hasAnySubmitted;
-    case "complete":
-      return summary.isComplete;
-    case "awaiting_review":
-      return summary.awaitingReviewCount > 0;
     case "missing":
       return summary.missingCount > 0;
+    case "waiting":
+      return summary.awaitingReviewCount > 0;
+    case "returned":
+      return summary.indicatorStatus === "returned";
+    case "submitted":
+      return summary.hasAnySubmitted;
+    case "validated":
+      return summary.indicatorStatus === "validated";
     default:
       return true;
   }
 }
 
 function requirementFilterLabel(value: RequirementFilter): string {
-  return REQUIREMENT_FILTER_OPTIONS.find((option) => option.id === value)?.label ?? "All Schools";
+  return REQUIREMENT_FILTER_OPTIONS.find((option) => option.id === value)?.label ?? "All statuses";
 }
 
 function isUrgentRequirement(row: SchoolRequirementSummary): boolean {
@@ -425,7 +444,7 @@ export function MonitorDashboard() {
   const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("requirements");
+  const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("action_queue");
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= 768,
   );
@@ -448,7 +467,7 @@ export function MonitorDashboard() {
   const [deleteError, setDeleteError] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
   const activeNavigatorLabel = useMemo(
-    () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
+    () => MONITOR_TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Action Queue",
     [activeTopNavigator],
   );
 
@@ -487,7 +506,7 @@ export function MonitorDashboard() {
 
   const openCreateRecordForm = () => {
     resetRecordForm();
-    setActiveTopNavigator("records");
+    setActiveTopNavigator("schools");
     setShowRecordForm(true);
   };
 
@@ -512,7 +531,7 @@ export function MonitorDashboard() {
     setRecordFormMessage("");
     setDeleteError("");
     setShowRecordForm(true);
-    setActiveTopNavigator("records");
+    setActiveTopNavigator("schools");
   };
 
   const validateRecordForm = (): boolean => {
@@ -885,7 +904,14 @@ export function MonitorDashboard() {
     () => scopedRequirementRows.filter((row) => row.missingCount > 0 || row.awaitingReviewCount > 0).length,
     [scopedRequirementRows],
   );
-  const showSubmissionFilters = activeTopNavigator !== "first_glance" && showAdvancedFilters;
+  const actionQueueRows = useMemo(
+    () =>
+      filteredRequirementRows.filter(
+        (row) => row.missingCount > 0 || row.awaitingReviewCount > 0 || row.indicatorStatus === "returned",
+      ),
+    [filteredRequirementRows],
+  );
+  const showSubmissionFilters = !isMobileViewport || showAdvancedFilters;
   const returnedCount = requirementCounts.returned;
   const submittedCount = requirementCounts.submittedAny;
   const quickJumpItems = useMemo(
@@ -978,12 +1004,12 @@ export function MonitorDashboard() {
     return map;
   }, [students]);
 
-  const totalRequirementPages = Math.max(1, Math.ceil(filteredRequirementRows.length / REQUIREMENT_PAGE_SIZE));
+  const totalRequirementPages = Math.max(1, Math.ceil(actionQueueRows.length / REQUIREMENT_PAGE_SIZE));
   const safeRequirementsPage = Math.min(requirementsPage, totalRequirementPages);
   const paginatedRequirementRows = useMemo(() => {
     const start = (safeRequirementsPage - 1) * REQUIREMENT_PAGE_SIZE;
-    return filteredRequirementRows.slice(start, start + REQUIREMENT_PAGE_SIZE);
-  }, [filteredRequirementRows, safeRequirementsPage]);
+    return actionQueueRows.slice(start, start + REQUIREMENT_PAGE_SIZE);
+  }, [actionQueueRows, safeRequirementsPage]);
 
   const totalRecordPages = Math.max(1, Math.ceil(filteredRecords.length / RECORD_PAGE_SIZE));
   const safeRecordsPage = Math.min(recordsPage, totalRecordPages);
@@ -1026,7 +1052,7 @@ export function MonitorDashboard() {
 
     if (search.trim()) chips.push({ id: "search", label: `Search: ${search.trim()}` });
     if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
-    if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Requirement: ${requirementFilterLabel(requirementFilter)}` });
+    if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Queue: ${requirementFilterLabel(requirementFilter)}` });
     if (selectedSchoolScope) chips.push({ id: "school", label: `School: ${selectedSchoolScope.code}` });
     if (selectedStudentLookup) chips.push({ id: "student", label: `Student: ${selectedStudentLookup.fullName}` });
     if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup}` });
@@ -1121,13 +1147,15 @@ export function MonitorDashboard() {
 
     if (summary.missingCount > 0) {
       setRequirementFilter("missing");
+    } else if (summary.indicatorStatus === "returned") {
+      setRequirementFilter("returned");
     } else if (summary.awaitingReviewCount > 0) {
-      setRequirementFilter("awaiting_review");
+      setRequirementFilter("waiting");
     } else {
       setRequirementFilter("all");
     }
 
-    setActiveTopNavigator("compliance");
+    setActiveTopNavigator("compliance_review");
     pushToast(`Review opened for ${summary.schoolName}.`, "info");
   };
 
@@ -1152,7 +1180,7 @@ export function MonitorDashboard() {
     }
 
     setSelectedSchoolScopeKey(schoolKey);
-    setActiveTopNavigator("compliance");
+    setActiveTopNavigator("compliance_review");
     pushToast(`Review opened for ${record.schoolName}.`, "info");
   };
 
@@ -1171,38 +1199,38 @@ export function MonitorDashboard() {
   const handleContinuePendingRequirements = () => {
     if (requirementCounts.missing > 0) {
       setRequirementFilter("missing");
-      setActiveTopNavigator("requirements");
+      setActiveTopNavigator("action_queue");
       return;
     }
 
     if (requirementCounts.returned > 0) {
-      setRequirementFilter("all");
-      setActiveTopNavigator("compliance");
+      setRequirementFilter("returned");
+      setActiveTopNavigator("compliance_review");
       return;
     }
 
     if (requirementCounts.awaitingReview > 0) {
-      setRequirementFilter("awaiting_review");
-      setActiveTopNavigator("compliance");
+      setRequirementFilter("waiting");
+      setActiveTopNavigator("compliance_review");
       return;
     }
 
     setRequirementFilter("all");
-    setActiveTopNavigator("records");
+    setActiveTopNavigator("schools");
   };
 
   const nextStep = useMemo(() => {
     if (requirementCounts.missing > 0) {
       return {
-        label: "Open Requirements",
+        label: "Open Action Queue",
         detail: "Review schools with missing submissions and send follow-up.",
-        action: "requirements_missing" as const,
+        action: "action_queue_missing" as const,
       };
     }
 
     if (requirementCounts.returned > 0) {
       return {
-        label: "Open Compliance Records",
+        label: "Open Compliance Review",
         detail: "Review returned submissions and wait for corrected resubmissions.",
         action: "compliance_returned" as const,
       };
@@ -1210,40 +1238,40 @@ export function MonitorDashboard() {
 
     if (requirementCounts.awaitingReview > 0) {
       return {
-        label: "Open Compliance Records",
+        label: "Open Compliance Review",
         detail: "Validate pending indicator packages.",
         action: "compliance_pending" as const,
       };
     }
 
     return {
-      label: "Open School Records",
+      label: "Open Schools",
       detail: "Audit synchronized school and learner records for final checks.",
-      action: "records" as const,
+      action: "schools" as const,
     };
   }, [requirementCounts.awaitingReview, requirementCounts.missing, requirementCounts.returned]);
 
   const handleNextStepAction = () => {
-    if (nextStep.action === "requirements_missing") {
+    if (nextStep.action === "action_queue_missing") {
       setRequirementFilter("missing");
-      setActiveTopNavigator("requirements");
+      setActiveTopNavigator("action_queue");
       return;
     }
 
     if (nextStep.action === "compliance_returned") {
-      setRequirementFilter("all");
-      setActiveTopNavigator("compliance");
+      setRequirementFilter("returned");
+      setActiveTopNavigator("compliance_review");
       return;
     }
 
     if (nextStep.action === "compliance_pending") {
-      setRequirementFilter("awaiting_review");
-      setActiveTopNavigator("compliance");
+      setRequirementFilter("waiting");
+      setActiveTopNavigator("compliance_review");
       return;
     }
 
     setRequirementFilter("all");
-    setActiveTopNavigator("records");
+    setActiveTopNavigator("schools");
   };
 
   const handleSort = (column: SortColumn) => {
@@ -1256,7 +1284,7 @@ export function MonitorDashboard() {
   };
 
   const openStudentRecordsFromCard = () => {
-    setActiveTopNavigator("records");
+    setActiveTopNavigator("student_records");
 
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
@@ -1572,7 +1600,9 @@ export function MonitorDashboard() {
 
       <p className="mt-3 text-xs text-slate-600">
         Showing <span className="font-semibold text-slate-900">{filteredRequirementRows.length}</span> of{" "}
-        <span className="font-semibold text-slate-900">{scopedRequirementRows.length}</span> schools in queue.
+        <span className="font-semibold text-slate-900">{scopedRequirementRows.length}</span> schools in scope.
+        {" "}
+        Queue rows: <span className="font-semibold text-slate-900">{actionQueueRows.length}</span>.
       </p>
     </>
   );
@@ -1580,7 +1610,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="Overview, requirements, compliance records, and school records."
+      subtitle="Action queue, schools, compliance review, student records, and reports."
       actions={
         <>
           <button
@@ -1778,7 +1808,7 @@ export function MonitorDashboard() {
                 )}
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {activeTopNavigator === "first_glance" && (
+                  {activeTopNavigator === "reports" && (
                     <button
                       id="monitor-analytics-toggle"
                       type="button"
@@ -1788,14 +1818,14 @@ export function MonitorDashboard() {
                       {showAdvancedAnalytics ? "Hide Advanced Analytics" : "Show Advanced Analytics"}
                     </button>
                   )}
-                  {activeTopNavigator !== "first_glance" && (
+                  {isMobileViewport && (
                     <button
                       id="monitor-submission-filters-toggle"
                       type="button"
                       onClick={() => setShowAdvancedFilters((current) => !current)}
                       className="dashboard-quick-jump-btn rounded-sm"
                     >
-                      {showAdvancedFilters ? "Hide Quick Filters" : "Show Quick Filters"}
+                      {showAdvancedFilters ? "Hide Filters" : "Show Filters"}
                     </button>
                   )}
                 </div>
@@ -1806,8 +1836,8 @@ export function MonitorDashboard() {
 
           {showSubmissionFilters && !isMobileViewport && (
             <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Quick Filters</h2>
-              <p className="mt-1 text-xs text-slate-600">Use one or two filters to narrow schools quickly.</p>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Global Filter Bar</h2>
+              <p className="mt-1 text-xs text-slate-600">Use one search and filter set across all monitor pages.</p>
               {quickFiltersPanelContent}
             </section>
           )}
@@ -1822,7 +1852,7 @@ export function MonitorDashboard() {
               />
               <section className="fixed inset-x-0 bottom-0 z-[73] max-h-[84vh] overflow-y-auto rounded-t-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Quick Filters</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Global Filter Bar</h2>
                   <button
                     type="button"
                     onClick={() => setShowAdvancedFilters(false)}
@@ -1831,13 +1861,13 @@ export function MonitorDashboard() {
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-slate-600">Use one or two filters to narrow schools quickly.</p>
+                <p className="mt-1 text-xs text-slate-600">Use one search and filter set across all monitor pages.</p>
                 {quickFiltersPanelContent}
               </section>
             </>
           )}
 
-      {activeTopNavigator === "first_glance" && (
+      {activeTopNavigator === "reports" && (
         <>
           <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("monitor-overview-metrics")}`}>
             <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
@@ -1935,11 +1965,11 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {activeTopNavigator === "requirements" && (
+      {activeTopNavigator === "action_queue" && (
         <>
           <section id="monitor-action-queue" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-action-queue")}`}>
             <h2 className="text-base font-bold text-slate-900">Action Queue</h2>
-            <p className="mt-1 text-xs text-slate-600">Review missing requirements, returned packages, and schools waiting for review.</p>
+            <p className="mt-1 text-xs text-slate-600">Missing, Returned, and Waiting schools.</p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
               <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
@@ -1949,13 +1979,13 @@ export function MonitorDashboard() {
 
           <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <h2 className="text-base font-bold text-slate-900">Requirement Tracker</h2>
+              <h2 className="text-base font-bold text-slate-900">Queue List</h2>
             </div>
 
             {paginatedRequirementRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-5 py-14 text-slate-500">
                 <AlertCircle className="h-9 w-9 text-slate-400" />
-                <p className="text-sm font-semibold">No schools match the selected filters.</p>
+                <p className="text-sm font-semibold">No Missing, Returned, or Waiting schools found.</p>
               </div>
             ) : (
               <>
@@ -2017,7 +2047,7 @@ export function MonitorDashboard() {
                         <th className="px-2 py-2 text-center">Compliance</th>
                         <th className="px-2 py-2 text-center">Indicators</th>
                         <th className="px-2 py-2 text-center">Missing</th>
-                        <th className="px-2 py-2 text-center">Waiting for Review</th>
+                        <th className="px-2 py-2 text-center">Waiting</th>
                         <th className="px-2 py-2 text-left">Last Activity</th>
                         <th className="px-2 py-2 text-center">Actions</th>
                       </tr>
@@ -2091,7 +2121,7 @@ export function MonitorDashboard() {
               </>
             )}
 
-            {filteredRequirementRows.length > 0 && (
+            {actionQueueRows.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-xs text-slate-600">
                   Page <span className="font-semibold text-slate-900">{safeRequirementsPage}</span> of{" "}
@@ -2121,48 +2151,24 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {activeTopNavigator === "compliance" && (
+      {activeTopNavigator === "compliance_review" && (
         <section id="monitor-indicators-queue" className={sectionFocusClass("monitor-indicators-queue")}>
           <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} onToast={pushToast} />
         </section>
       )}
 
-      {activeTopNavigator === "records" && (
+      {activeTopNavigator === "schools" && (
         <>
         <section id="monitor-school-records" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}>
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-            <h2 className="text-base font-bold text-slate-900">School Records</h2>
+            <h2 className="text-base font-bold text-slate-900">Schools</h2>
           </div>
 
-          <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search school ID, name, level, type, address, or region"
-                className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-            </div>
-
-            <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-              <Filter className="h-4 w-4 text-slate-400" />
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
-                className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-              >
-                <option value="all">Any school status</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="pending">Pending</option>
-              </select>
-            </label>
-
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
             <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
               Showing {paginatedRecords.length} of {filteredRecords.length}
             </div>
+            <p className="text-xs text-slate-500">Global filters are applied to this list.</p>
           </div>
 
           {deleteError && (
@@ -2386,7 +2392,7 @@ export function MonitorDashboard() {
                           className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700"
                         >
                           <BellRing className="h-3.5 w-3.5" />
-                          Reminder
+                          Send Reminder
                         </button>
                       </div>
                       <div className="mt-2 flex items-center gap-2">
@@ -2539,7 +2545,7 @@ export function MonitorDashboard() {
                                 className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
                               >
                                 <BellRing className="h-3.5 w-3.5" />
-                                Reminder
+                                Send Reminder
                               </button>
                               <button
                                 type="button"
@@ -2594,17 +2600,20 @@ export function MonitorDashboard() {
             </>
           )}
         </section>
+        </>
+      )}
+
+      {activeTopNavigator === "student_records" && (
         <section id="monitor-student-records" className={sectionFocusClass("monitor-student-records")}>
           <StudentRecordsPanel
             editable={false}
             showSchoolColumn
             schoolFilterKeys={filteredSchoolKeys}
             externalSearchTerm={studentRecordsLookupTerm}
-            title="Synchronized Student Records"
-            description="Read-only learner records."
+            title="Student Records"
+            description="Read-only learner checks and search."
           />
         </section>
-        </>
       )}
 
       {schoolDrawerKey && (
@@ -2663,7 +2672,7 @@ export function MonitorDashboard() {
                     Missing requirements: <span className="font-semibold text-slate-900">{schoolDetail.missingCount}</span>
                   </p>
                   <p>
-                    Waiting for review: <span className="font-semibold text-slate-900">{schoolDetail.awaitingReviewCount}</span>
+                    Waiting: <span className="font-semibold text-slate-900">{schoolDetail.awaitingReviewCount}</span>
                   </p>
                   <p>
                     Last activity:{" "}
