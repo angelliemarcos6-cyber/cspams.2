@@ -8,6 +8,7 @@ interface StudentRecordsPanelProps {
   title?: string;
   description?: string;
   showSchoolColumn?: boolean;
+  schoolFilterKeys?: Set<string> | null;
 }
 
 interface StudentFormState {
@@ -70,11 +71,22 @@ function statusTone(status: string): string {
   return "bg-amber-100 text-amber-700 ring-1 ring-amber-300";
 }
 
+function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
+  const code = schoolCode?.trim().toLowerCase();
+  if (code) return `code:${code}`;
+
+  const name = schoolName?.trim().toLowerCase();
+  if (name) return `name:${name}`;
+
+  return "unknown";
+}
+
 export function StudentRecordsPanel({
   editable,
   title = "Student Records",
   description = "Manage learner personal information and school status records.",
   showSchoolColumn = false,
+  schoolFilterKeys = null,
 }: StudentRecordsPanelProps) {
   const { students, isLoading, isSaving, error, lastSyncedAt, refreshStudents, addStudent, updateStudent, deleteStudent } = useStudentData();
 
@@ -87,10 +99,26 @@ export function StudentRecordsPanel({
   const [formMessage, setFormMessage] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const scopedStudents = useMemo(() => {
+    if (!schoolFilterKeys) {
+      return students;
+    }
+
+    if (schoolFilterKeys.size === 0) {
+      return [];
+    }
+
+    return students.filter((student) =>
+      schoolFilterKeys.has(
+        normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null),
+      ),
+    );
+  }, [students, schoolFilterKeys]);
+
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return students
+    return scopedStudents
       .filter((student) => {
         const matchesSearch =
           query.length === 0 ||
@@ -104,7 +132,7 @@ export function StudentRecordsPanel({
         return matchesSearch && matchesStatus;
       })
       .sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime());
-  }, [students, search, statusFilter]);
+  }, [scopedStudents, search, statusFilter]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -277,7 +305,7 @@ export function StudentRecordsPanel({
           </select>
         </label>
         <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-          Showing {filteredStudents.length} of {students.length}
+          Showing {filteredStudents.length} of {scopedStudents.length}
         </div>
       </div>
 
@@ -359,7 +387,9 @@ export function StudentRecordsPanel({
       ) : filteredStudents.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
           <AlertCircle className="h-9 w-9 text-slate-400" />
-          <p className="text-sm font-semibold">No student records found</p>
+          <p className="text-sm font-semibold">
+            {schoolFilterKeys ? "No student records for this school scope" : "No student records found"}
+          </p>
         </div>
       ) : (
         <div className="overflow-x-auto px-5 py-4">

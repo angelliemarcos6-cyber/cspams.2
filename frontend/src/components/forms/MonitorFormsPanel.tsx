@@ -57,8 +57,12 @@ export function MonitorFormsPanel({ schoolFilterKeys = null }: MonitorFormsPanel
   const [historyLoadingKey, setHistoryLoadingKey] = useState<string | null>(null);
 
   const visibleSubmissions = useMemo(() => {
-    if (!schoolFilterKeys || schoolFilterKeys.size === 0) {
+    if (!schoolFilterKeys) {
       return submissions;
+    }
+
+    if (schoolFilterKeys.size === 0) {
+      return [];
     }
 
     return submissions.filter((submission) =>
