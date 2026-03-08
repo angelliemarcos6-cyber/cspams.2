@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type ComponentType, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -13,7 +13,6 @@ import {
   Edit2,
   Filter,
   GraduationCap,
-  Plus,
   RefreshCw,
   Save,
   Search,
@@ -161,9 +160,7 @@ const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
     { id: "requirement_cards", label: "Requirement Cards", targetId: "requirement-navigator", icon: ListChecks },
   ],
   compliance: [
-    { id: "compliance_modules", label: "Modules", targetId: "compliance-modules", icon: ClipboardList },
-    { id: "compliance_input", label: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES", targetId: "compliance-input", icon: Database },
-    { id: "indicators_queue", label: "Indicators", targetId: "indicator-workflow", icon: TrendingUp },
+    { id: "compliance_input", label: "All Compliance Inputs", targetId: "compliance-input", icon: Database },
   ],
   records: [
     { id: "student_records", label: "Student Records", targetId: "school-records", icon: Users },
@@ -267,7 +264,6 @@ export function SchoolAdminDashboard() {
   const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
 
-  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -349,6 +345,30 @@ export function SchoolAdminDashboard() {
     [activeTopNavigator],
   );
 
+  const syncComplianceForm = (record: SchoolRecord | null) => {
+    if (record) {
+      setEditingId(record.id);
+      setForm({
+        studentCount: record.studentCount.toString(),
+        teacherCount: record.teacherCount.toString(),
+        status: record.status,
+      });
+      return;
+    }
+
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+  };
+
+  useEffect(() => {
+    syncComplianceForm(assignedRecord);
+  }, [
+    assignedRecord?.id,
+    assignedRecord?.studentCount,
+    assignedRecord?.teacherCount,
+    assignedRecord?.status,
+  ]);
+
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -378,45 +398,17 @@ export function SchoolAdminDashboard() {
   };
 
   const resetForm = () => {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
+    syncComplianceForm(assignedRecord);
     setFormErrors({});
     setSaveMessage("");
     setSubmitError("");
-  };
-
-  const closeForm = () => {
-    setShowForm(false);
-    resetForm();
-  };
-
-  const openForEdit = (record: SchoolRecord) => {
-    setEditingId(record.id);
-    setForm({
-      studentCount: record.studentCount.toString(),
-      teacherCount: record.teacherCount.toString(),
-      status: record.status,
-    });
-    setFormErrors({});
-    setSaveMessage("");
-    setSubmitError("");
-    setShowForm(true);
-  };
-
-  const openForCreate = () => {
-    if (records.length > 0) {
-      openForEdit(records[0]);
-      return;
-    }
-    resetForm();
-    setShowForm(true);
   };
 
   const handleRequirementNavigate = (item: RequirementItem) => {
     setActiveTopNavigator(item.navigatorId);
-
-    if (item.id === "school_record") {
-      openForCreate();
+    if (typeof window !== "undefined") {
+      const targetId = item.id === "school_record" ? "compliance-input" : "indicator-workflow";
+      window.setTimeout(() => scrollToSection(targetId), 60);
     }
   };
 
@@ -488,23 +480,13 @@ export function SchoolAdminDashboard() {
       setSubmitError(err instanceof Error ? err.message : "Unable to save record.");
       return;
     }
-
-    setTimeout(() => {
-      closeForm();
-    }, 900);
   };
 
-  const isComplianceView = activeTopNavigator === "compliance";
-  const isComplianceFormVisible = isComplianceView && showForm;
-
   const handleComplianceAction = () => {
-    if (isComplianceFormVisible) {
-      closeForm();
-      return;
-    }
-
     setActiveTopNavigator("compliance");
-    openForCreate();
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => scrollToSection("compliance-input"), 60);
+    }
   };
 
   const handleContinuePendingRequirements = () => {
@@ -552,7 +534,6 @@ export function SchoolAdminDashboard() {
   const handleNextStepAction = () => {
     if (nextStep.action === "compliance_record") {
       setActiveTopNavigator("compliance");
-      openForCreate();
       if (typeof window !== "undefined") {
         window.setTimeout(() => scrollToSection("compliance-input"), 60);
       }
@@ -606,8 +587,8 @@ export function SchoolAdminDashboard() {
             onClick={handleComplianceAction}
             className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
           >
-            {isComplianceFormVisible ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {isComplianceFormVisible ? "Close Input Form" : "Open Compliance Records"}
+            <ClipboardList className="h-3.5 w-3.5" />
+            Go to Compliance Inputs
           </button>
           <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
             {syncStatus === "up_to_date" ? "No backend changes" : "Records updated"}
@@ -796,28 +777,6 @@ export function SchoolAdminDashboard() {
 
         </div>
       </section>
-
-      {activeTopNavigator === "compliance" && (
-      <section className="dashboard-shell mb-4 rounded-sm p-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Compliance Workflow Navigator</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => scrollToSection("compliance-input")}
-            className="dashboard-quick-jump-btn rounded-sm"
-          >
-            1. SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES
-          </button>
-          <button
-            type="button"
-            onClick={() => scrollToSection("indicator-workflow")}
-            className="dashboard-quick-jump-btn rounded-sm"
-          >
-            2. Indicators
-          </button>
-        </div>
-      </section>
-      )}
 
       {activeTopNavigator === "first_glance" && (
       <section id="first-glance" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("first-glance")}`}>
@@ -1009,17 +968,12 @@ export function SchoolAdminDashboard() {
 
       {activeTopNavigator === "compliance" && (
       <section id="compliance-records" className="grid gap-5">
-        <section id="compliance-modules" className={`dashboard-shell rounded-sm p-4 ${sectionFocusClass("compliance-modules")}`}>
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Records Modules</h2>
-        </section>
-
         <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
-          {showForm ? (
           <section className="surface-panel dashboard-shell animate-fade-slide overflow-hidden">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <h2 className="text-base font-bold text-slate-900">{editingId ? "Edit School Record" : "Add School Record"}</h2>
+              <h2 className="text-base font-bold text-slate-900">All Compliance Inputs</h2>
               <p className="mt-0.5 text-xs text-slate-500">
-                {editingId ? "Update your latest school compliance figures." : "Encode your school compliance figures."}
+                Keep this section open and update school summary inputs before submitting indicators below.
               </p>
             </div>
 
@@ -1113,25 +1067,20 @@ export function SchoolAdminDashboard() {
                   </button>
                   <button
                     type="button"
-                    onClick={closeForm}
+                    onClick={resetForm}
                     className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                   >
                     <X className="h-4 w-4" />
-                    Cancel
+                    Reset Fields
                   </button>
                 </div>
               </div>
             </form>
-          </section>
-          ) : (
-            <section className="dashboard-shell rounded-sm p-5">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES</h2>
-            </section>
-          )}
-        </section>
 
-        <section id="indicator-workflow" className={sectionFocusClass("indicator-workflow")}>
-          <SchoolIndicatorPanel />
+            <div id="indicator-workflow" className={`border-t border-slate-200 ${sectionFocusClass("indicator-workflow")}`}>
+              <SchoolIndicatorPanel />
+            </div>
+          </section>
         </section>
       </section>
       )}
@@ -1150,9 +1099,3 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
-
-
-
-
-
-

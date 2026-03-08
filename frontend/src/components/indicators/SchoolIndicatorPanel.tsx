@@ -1,4 +1,4 @@
-﻿import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
@@ -170,13 +170,6 @@ function metricYears(metric: IndicatorMetric): string[] {
   return Array.isArray(metric.inputSchema?.years) ? metric.inputSchema?.years ?? [] : [];
 }
 
-function normalizeBooleanInput(value: string): "" | "yes" | "no" {
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "y"].includes(normalized)) return "yes";
-  if (["0", "false", "no", "n"].includes(normalized)) return "no";
-  return "";
-}
-
 function metricDisplayLabel(metric: IndicatorMetric): string {
   return METRIC_LABEL_OVERRIDES[metric.code] ?? metric.name;
 }
@@ -269,6 +262,11 @@ export function SchoolIndicatorPanel() {
         .filter((metric): metric is IndicatorMetric => Boolean(metric)),
     [complianceMetricsByCode],
   );
+  const schoolYears = useMemo(() => {
+    const metricWithYears = orderedComplianceMetrics.find((metric) => metricYears(metric).length > 0);
+    const years = metricWithYears ? metricYears(metricWithYears) : [];
+    return years.length > 0 ? years : ["2022-2023", "2023-2024", "2024-2025", "2025-2026", "2026-2027"];
+  }, [orderedComplianceMetrics]);
 
   useEffect(() => {
     setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
@@ -282,15 +280,6 @@ export function SchoolIndicatorPanel() {
     const currentYear = academicYears.find((year) => year.isCurrent);
     setAcademicYearId(currentYear?.id ?? academicYears[0].id);
   }, [academicYearId, academicYears]);
-
-  const summary = useMemo(() => {
-    const total = submissions.length;
-    const submitted = submissions.filter((item) => item.status === "submitted").length;
-    const validated = submissions.filter((item) => item.status === "validated").length;
-    const returned = submissions.filter((item) => item.status === "returned").length;
-
-    return { total, submitted, validated, returned };
-  }, [submissions]);
 
   const sortedSubmissions = useMemo(
     () =>
@@ -328,25 +317,33 @@ export function SchoolIndicatorPanel() {
         let actualValue: number | undefined;
 
         if (type === "currency" || type === "number") {
-          targetValue = Number(value.targetValue);
-          actualValue = Number(value.actualValue);
+          targetValue = Number(value.actualValue || value.targetValue);
+          actualValue = Number(value.actualValue || value.targetValue);
           targetPayload = type === "currency" ? { amount: targetValue, currency: metric.inputSchema?.currency ?? "PHP" } : undefined;
           actualPayload = type === "currency" ? { amount: actualValue, currency: metric.inputSchema?.currency ?? "PHP" } : undefined;
         } else if (type === "yes_no") {
-          targetPayload = { value: value.targetBoolean === "yes" };
-          actualPayload = { value: value.actualBoolean === "yes" };
+          const boolValue = value.actualBoolean === "yes" || value.targetBoolean === "yes";
+          targetPayload = { value: boolValue };
+          actualPayload = { value: boolValue };
         } else if (type === "enum") {
-          targetPayload = { value: value.targetEnum };
-          actualPayload = { value: value.actualEnum };
+          const enumValue = (value.actualEnum || value.targetEnum || "").trim();
+          targetPayload = { value: enumValue };
+          actualPayload = { value: enumValue };
         } else if (type === "text") {
-          targetPayload = { value: value.targetText.trim() };
-          actualPayload = { value: value.actualText.trim() };
+          const textValue = (value.actualText || value.targetText || "").trim();
+          targetPayload = { value: textValue };
+          actualPayload = { value: textValue };
         } else if (type === "yearly_matrix") {
+          const years = metricYears(metric);
+          const matrixValues = Object.fromEntries(
+            years.map((year) => [year, (value.actualMatrix[year] ?? value.targetMatrix[year] ?? "").trim()]),
+          );
+
           targetPayload = {
-            values: Object.fromEntries(Object.entries(value.targetMatrix).map(([year, currentValue]) => [year, currentValue.trim()])),
+            values: matrixValues,
           };
           actualPayload = {
-            values: Object.fromEntries(Object.entries(value.actualMatrix).map(([year, currentValue]) => [year, currentValue.trim()])),
+            values: matrixValues,
           };
         }
 
@@ -368,28 +365,27 @@ export function SchoolIndicatorPanel() {
 
     const invalidEntry = entries.find((entry) => {
       if (entry.type === "number" || entry.type === "currency") {
-        return Number.isNaN(entry.targetValue ?? Number.NaN) || Number.isNaN(entry.actualValue ?? Number.NaN);
+        return Number.isNaN(entry.actualValue ?? Number.NaN);
       }
 
       if (entry.type === "yes_no") {
-        return entry.target?.value === undefined || entry.actual?.value === undefined;
+        return entry.actual?.value === undefined;
       }
 
       if (entry.type === "enum" || entry.type === "text") {
-        return !String(entry.target?.value ?? "").trim() || !String(entry.actual?.value ?? "").trim();
+        return !String(entry.actual?.value ?? "").trim();
       }
 
       if (entry.type === "yearly_matrix") {
-        const targetValues = Object.values(entry.target?.values ?? {});
         const actualValues = Object.values(entry.actual?.values ?? {});
-        return targetValues.length === 0 || actualValues.length === 0 || targetValues.some((value) => String(value).trim() === "") || actualValues.some((value) => String(value).trim() === "");
+        return actualValues.length === 0 || actualValues.some((value) => String(value).trim() === "");
       }
 
       return false;
     });
 
     if (invalidEntry) {
-      setSubmitError("Complete all required target and actual fields before saving.");
+      setSubmitError("Complete all required indicator cells before saving.");
       return;
     }
 
@@ -453,13 +449,13 @@ export function SchoolIndicatorPanel() {
   };
 
   return (
-    <section className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-sm">
+    <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Indicator Compliance Workflow</h2>
+            <h2 className="text-base font-bold text-slate-900">SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Encode indicators, save a draft package, submit to monitor, and track review history.
+              Fill all required indicators per school year, save draft, then submit to monitor.
             </p>
           </div>
           <button
@@ -475,43 +471,6 @@ export function SchoolIndicatorPanel() {
           {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
         </p>
       </div>
-
-      <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-4">
-        <article className="rounded-sm border border-slate-200 bg-white px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total Packages</p>
-          <p className="mt-1 text-lg font-bold text-slate-900">{summary.total}</p>
-        </article>
-        <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Awaiting Review</p>
-          <p className="mt-1 text-lg font-bold text-primary-800">{summary.submitted}</p>
-        </article>
-        <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Validated</p>
-          <p className="mt-1 text-lg font-bold text-primary-800">{summary.validated}</p>
-        </article>
-        <article className="rounded-sm border border-slate-300 bg-slate-100 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Returned</p>
-          <p className="mt-1 text-lg font-bold text-slate-800">{summary.returned}</p>
-        </article>
-      </div>
-
-      <section className="border-b border-slate-100 px-5 py-4">
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES</h3>
-        <p className="mt-1 text-xs text-slate-600">
-          Fill in all required annual indicators below, save as draft, then submit to the monitor. No file attachments are required in this section.
-        </p>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {COMPLIANCE_CATEGORIES.map((category) => (
-            <article key={category.id} className="border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{category.label}</p>
-              <p className="mt-1 text-xs text-slate-600">
-                {category.metricCodes.length} required indicators
-              </p>
-            </article>
-          ))}
-        </div>
-      </section>
 
       <form className="space-y-4 border-b border-slate-100 px-5 py-4" onSubmit={handleCreateSubmission}>
         <div className="grid gap-3 md:grid-cols-2">
@@ -562,391 +521,86 @@ export function SchoolIndicatorPanel() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
+        <div className="overflow-x-auto rounded-sm border border-slate-200">
+          <table className="min-w-[980px] w-full border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                <th className="px-2 py-2 text-left">Indicator</th>
-                <th className="px-2 py-2 text-right">Target</th>
-                <th className="px-2 py-2 text-right">Actual</th>
-                <th className="px-2 py-2 text-left">Remarks</th>
+              <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                <th rowSpan={2} className="border border-slate-300 px-3 py-2 text-left">
+                  Indicators
+                </th>
+                <th colSpan={schoolYears.length} className="border border-slate-300 px-3 py-2 text-center">
+                  School Year
+                </th>
+              </tr>
+              <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                {schoolYears.map((year) => (
+                  <th key={`year-${year}`} className="border border-slate-300 px-2 py-2 text-center">
+                    {year}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {orderedComplianceMetrics.map((metric) => {
-                const type = metricDataType(metric);
                 const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
-                const enumOptions = Array.isArray(metric.inputSchema?.options) ? metric.inputSchema?.options ?? [] : [];
-                const years = metricYears(metric);
+                const valueType = String(metric.inputSchema?.valueType ?? "number").toLowerCase();
+                const enumOptions = Array.isArray(metric.inputSchema?.options) ? metric.inputSchema.options : [];
+                const numericInput = ["number", "integer", "percentage", "currency"].includes(valueType);
+                const rowTone =
+                  metric.code === "IMETA_HEAD_NAME"
+                    ? "bg-primary text-white"
+                    : metric.code === "IMETA_ENROLL_TOTAL"
+                      ? "bg-red-600 text-white"
+                      : "";
 
                 return (
-                  <tr key={metric.id}>
-                    <td className="px-2 py-2">
-                      <p className="text-sm font-semibold text-slate-900">{metricDisplayLabel(metric)}</p>
-                      <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">{metric.code}</p>
+                  <tr key={metric.id} className={rowTone}>
+                    <td className="border border-slate-300 px-3 py-2">
+                      <p className="text-sm font-semibold">{metricDisplayLabel(metric)}</p>
                     </td>
-                    <td className="px-2 py-2">
-                      {type === "yearly_matrix" ? (
-                        <div className="grid gap-1.5">
-                          {years.map((year) => (
-                            <label key={`${metric.id}-target-${year}`} className="grid grid-cols-[82px_1fr] items-center gap-2">
-                              <span className="text-[11px] font-semibold text-slate-500">{year}</span>
-                              {metric.inputSchema?.valueType === "yes_no" ? (
-                                <div className="inline-flex w-full rounded-sm border border-slate-200 bg-white p-0.5">
-                                  {(["yes", "no"] as const).map((option) => (
-                                    <button
-                                      key={`${metric.id}-target-${year}-${option}`}
-                                      type="button"
-                                      onClick={() =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            targetMatrix: {
-                                              ...current.targetMatrix,
-                                              [year]: option,
-                                            },
-                                          },
-                                        }))
-                                      }
-                                      className={`flex-1 rounded-sm px-2 py-1 text-[11px] font-semibold uppercase transition ${
-                                        (current.targetMatrix[year] ?? "") === option
-                                          ? "bg-primary-50 text-primary-800"
-                                          : "text-slate-600 hover:bg-slate-100"
-                                      }`}
-                                    >
-                                      {option}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : metric.inputSchema?.valueType === "enum" ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {enumOptions.map((option) => (
-                                    <button
-                                      key={`${metric.id}-target-matrix-opt-${year}-${option}`}
-                                      type="button"
-                                      onClick={() =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            targetMatrix: {
-                                              ...current.targetMatrix,
-                                              [year]: option,
-                                            },
-                                          },
-                                        }))
-                                      }
-                                      className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                                        (current.targetMatrix[year] ?? "") === option
-                                          ? "border-primary bg-primary-50 text-primary-800"
-                                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                                      }`}
-                                    >
-                                      {option}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <input
-                                  type={metric.inputSchema?.valueType === "text" ? "text" : "number"}
-                                  step={metric.inputSchema?.valueType === "integer" ? "1" : "0.01"}
-                                  min={metric.inputSchema?.valueType === "text" ? undefined : 0}
-                                  value={current.targetMatrix[year] ?? ""}
-                                  onChange={(event) =>
-                                    setMetricEntries((entries) => ({
-                                      ...entries,
-                                      [metric.id]: {
-                                        ...current,
-                                        targetMatrix: {
-                                          ...current.targetMatrix,
-                                          [year]: event.target.value,
-                                        },
-                                      },
-                                    }))
-                                  }
-                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                                />
-                              )}
-                            </label>
-                          ))}
-                        </div>
-                      ) : type === "yes_no" ? (
-                        <div className="inline-flex w-full rounded-sm border border-slate-200 bg-white p-0.5">
-                          {(["yes", "no"] as const).map((option) => (
-                            <button
-                              key={`${metric.id}-target-bool-${option}`}
-                              type="button"
-                              onClick={() =>
-                                setMetricEntries((entries) => ({
-                                  ...entries,
-                                  [metric.id]: {
-                                    ...current,
-                                    targetBoolean: normalizeBooleanInput(option),
+                    {schoolYears.map((year) => {
+                      const placeholder =
+                        valueType === "yes_no"
+                          ? "Yes/No"
+                          : valueType === "enum"
+                            ? enumOptions.join(" / ")
+                            : "";
+
+                      return (
+                        <td key={`${metric.id}-${year}`} className="border border-slate-300 p-1.5 align-middle">
+                          <input
+                            type={numericInput ? "number" : "text"}
+                            step={valueType === "integer" ? "1" : "0.01"}
+                            min={numericInput ? 0 : undefined}
+                            placeholder={placeholder}
+                            value={current.actualMatrix[year] ?? ""}
+                            onChange={(event) =>
+                              setMetricEntries((entries) => ({
+                                ...entries,
+                                [metric.id]: {
+                                  ...current,
+                                  actualMatrix: {
+                                    ...current.actualMatrix,
+                                    [year]: event.target.value,
                                   },
-                                }))
-                              }
-                              className={`flex-1 rounded-sm px-2 py-1 text-xs font-semibold uppercase transition ${
-                                current.targetBoolean === option
-                                  ? "bg-primary-50 text-primary-800"
-                                  : "text-slate-600 hover:bg-slate-100"
-                              }`}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      ) : type === "enum" ? (
-                        <div className="flex flex-wrap gap-1">
-                          {enumOptions.map((option) => (
-                            <button
-                              key={`${metric.id}-target-opt-${option}`}
-                              type="button"
-                              onClick={() =>
-                                setMetricEntries((entries) => ({
-                                  ...entries,
-                                  [metric.id]: {
-                                    ...current,
-                                    targetEnum: option,
+                                  targetMatrix: {
+                                    ...current.targetMatrix,
+                                    [year]: event.target.value,
                                   },
-                                }))
-                              }
-                              className={`rounded-sm border px-2 py-1 text-xs font-semibold transition ${
-                                current.targetEnum === option
-                                  ? "border-primary bg-primary-50 text-primary-800"
-                                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                              }`}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      ) : type === "text" ? (
-                        <input
-                          type="text"
-                          value={current.targetText}
-                          onChange={(event) =>
-                            setMetricEntries((entries) => ({
-                              ...entries,
-                              [metric.id]: {
-                                ...current,
-                                targetText: event.target.value,
-                              },
-                            }))
-                          }
-                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          value={current.targetValue}
-                          onChange={(event) =>
-                            setMetricEntries((entries) => ({
-                              ...entries,
-                              [metric.id]: {
-                                ...current,
-                                targetValue: event.target.value,
-                              },
-                            }))
-                          }
-                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-right text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                        />
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      {type === "yearly_matrix" ? (
-                        <div className="grid gap-1.5">
-                          {years.map((year) => (
-                            <label key={`${metric.id}-actual-${year}`} className="grid grid-cols-[82px_1fr] items-center gap-2">
-                              <span className="text-[11px] font-semibold text-slate-500">{year}</span>
-                              {metric.inputSchema?.valueType === "yes_no" ? (
-                                <div className="inline-flex w-full rounded-sm border border-slate-200 bg-white p-0.5">
-                                  {(["yes", "no"] as const).map((option) => (
-                                    <button
-                                      key={`${metric.id}-actual-${year}-${option}`}
-                                      type="button"
-                                      onClick={() =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            actualMatrix: {
-                                              ...current.actualMatrix,
-                                              [year]: option,
-                                            },
-                                          },
-                                        }))
-                                      }
-                                      className={`flex-1 rounded-sm px-2 py-1 text-[11px] font-semibold uppercase transition ${
-                                        (current.actualMatrix[year] ?? "") === option
-                                          ? "bg-primary-50 text-primary-800"
-                                          : "text-slate-600 hover:bg-slate-100"
-                                      }`}
-                                    >
-                                      {option}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : metric.inputSchema?.valueType === "enum" ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {enumOptions.map((option) => (
-                                    <button
-                                      key={`${metric.id}-actual-matrix-opt-${year}-${option}`}
-                                      type="button"
-                                      onClick={() =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            actualMatrix: {
-                                              ...current.actualMatrix,
-                                              [year]: option,
-                                            },
-                                          },
-                                        }))
-                                      }
-                                      className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                                        (current.actualMatrix[year] ?? "") === option
-                                          ? "border-primary bg-primary-50 text-primary-800"
-                                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                                      }`}
-                                    >
-                                      {option}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <input
-                                  type={metric.inputSchema?.valueType === "text" ? "text" : "number"}
-                                  step={metric.inputSchema?.valueType === "integer" ? "1" : "0.01"}
-                                  min={metric.inputSchema?.valueType === "text" ? undefined : 0}
-                                  value={current.actualMatrix[year] ?? ""}
-                                  onChange={(event) =>
-                                    setMetricEntries((entries) => ({
-                                      ...entries,
-                                      [metric.id]: {
-                                        ...current,
-                                        actualMatrix: {
-                                          ...current.actualMatrix,
-                                          [year]: event.target.value,
-                                        },
-                                      },
-                                    }))
-                                  }
-                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                                />
-                              )}
-                            </label>
-                          ))}
-                        </div>
-                      ) : type === "yes_no" ? (
-                        <div className="inline-flex w-full rounded-sm border border-slate-200 bg-white p-0.5">
-                          {(["yes", "no"] as const).map((option) => (
-                            <button
-                              key={`${metric.id}-actual-bool-${option}`}
-                              type="button"
-                              onClick={() =>
-                                setMetricEntries((entries) => ({
-                                  ...entries,
-                                  [metric.id]: {
-                                    ...current,
-                                    actualBoolean: normalizeBooleanInput(option),
-                                  },
-                                }))
-                              }
-                              className={`flex-1 rounded-sm px-2 py-1 text-xs font-semibold uppercase transition ${
-                                current.actualBoolean === option
-                                  ? "bg-primary-50 text-primary-800"
-                                  : "text-slate-600 hover:bg-slate-100"
-                              }`}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      ) : type === "enum" ? (
-                        <div className="flex flex-wrap gap-1">
-                          {enumOptions.map((option) => (
-                            <button
-                              key={`${metric.id}-actual-opt-${option}`}
-                              type="button"
-                              onClick={() =>
-                                setMetricEntries((entries) => ({
-                                  ...entries,
-                                  [metric.id]: {
-                                    ...current,
-                                    actualEnum: option,
-                                  },
-                                }))
-                              }
-                              className={`rounded-sm border px-2 py-1 text-xs font-semibold transition ${
-                                current.actualEnum === option
-                                  ? "border-primary bg-primary-50 text-primary-800"
-                                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                              }`}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      ) : type === "text" ? (
-                        <input
-                          type="text"
-                          value={current.actualText}
-                          onChange={(event) =>
-                            setMetricEntries((entries) => ({
-                              ...entries,
-                              [metric.id]: {
-                                ...current,
-                                actualText: event.target.value,
-                              },
-                            }))
-                          }
-                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          value={current.actualValue}
-                          onChange={(event) =>
-                            setMetricEntries((entries) => ({
-                              ...entries,
-                              [metric.id]: {
-                                ...current,
-                                actualValue: event.target.value,
-                              },
-                            }))
-                          }
-                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-right text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                        />
-                      )}
-                    </td>
-                    <td className="px-2 py-2">
-                      <input
-                        type="text"
-                        value={current.remarks}
-                        onChange={(event) =>
-                          setMetricEntries((entries) => ({
-                            ...entries,
-                            [metric.id]: {
-                              ...current,
-                              remarks: event.target.value,
-                            },
-                          }))
-                        }
-                        className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                      />
-                    </td>
+                                },
+                              }))
+                            }
+                            className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                          />
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
               {orderedComplianceMetrics.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-2 py-6 text-center text-sm text-slate-500">
+                  <td colSpan={schoolYears.length + 1} className="border border-slate-300 px-2 py-6 text-center text-sm text-slate-500">
                     No required compliance indicators found.
                   </td>
                 </tr>
@@ -1130,8 +784,3 @@ export function SchoolIndicatorPanel() {
     </section>
   );
 }
-
-
-
-
-
