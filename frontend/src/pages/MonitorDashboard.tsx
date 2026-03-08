@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   BookOpenText,
   Building2,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   ClipboardList,
@@ -49,7 +50,7 @@ import {
 type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "status" | "lastUpdated";
 type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "submitted_any" | "complete" | "awaiting_review" | "missing";
-type MonitorTopNavigatorId = "first_glance" | "requirements" | "forms" | "indicators" | "records";
+type MonitorTopNavigatorId = "first_glance" | "requirements" | "compliance" | "records";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
 
 interface MonitorTopNavigatorItem {
@@ -120,16 +121,14 @@ interface QuickJumpItem {
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
   { id: "requirements", label: "Requirements" },
-  { id: "forms", label: "Forms Queue" },
-  { id: "indicators", label: "Indicators Queue" },
+  { id: "compliance", label: "Compliance Records" },
   { id: "records", label: "School Records" },
 ];
 
 const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIcon> = {
   first_glance: LayoutDashboard,
   requirements: ListChecks,
-  forms: ClipboardList,
-  indicators: TrendingUp,
+  compliance: ClipboardList,
   records: Database,
 };
 
@@ -155,24 +154,14 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
     doneWhen: "You have filtered target schools for validation or follow-up.",
   },
   {
-    id: "forms",
-    title: "SF-1 / SF-5 Queue",
-    objective: "Review and resolve SF-1/SF-5 submissions efficiently.",
+    id: "compliance",
+    title: "Compliance Records",
+    objective: "Review forms and indicators in one validation workspace.",
     actions: [
-      "Open each submitted form and verify required values and consistency.",
-      "Validate complete entries or return with clear correction notes.",
+      "Review submitted SF-1 and SF-5 packages and decide validate or return.",
+      "Review indicator packages and issue clear validation notes.",
     ],
-    doneWhen: "No pending submitted forms remain without a decision.",
-  },
-  {
-    id: "indicators",
-    title: "Indicators Queue",
-    objective: "Ensure indicator package accuracy before approval.",
-    actions: [
-      "Review indicator values, compliance rates, and remarks.",
-      "Validate correct packages or return with specific action notes.",
-    ],
-    doneWhen: "All reviewed indicator packages are either validated or returned with notes.",
+    doneWhen: "No pending submissions remain without a validation decision.",
   },
   {
     id: "records",
@@ -204,25 +193,19 @@ const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }
 const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   first_glance: [
     { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
-    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "monitor-targets-snapshot", icon: TrendingUp },
-    { id: "sync_alerts", label: "Sync Alerts", targetId: "monitor-sync-alerts", icon: AlertCircle },
-    { id: "status_chart", label: "Status Distribution", targetId: "monitor-status-chart", icon: ListChecks },
-    { id: "submission_trend", label: "Submission Trend", targetId: "monitor-trend-chart", icon: TrendingUp },
+    { id: "advanced_analytics", label: "Advanced Analytics", targetId: "monitor-analytics-toggle", icon: TrendingUp },
   ],
   requirements: [
-    { id: "filters", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "filters", label: "Advanced Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
     { id: "tracker_table", label: "Requirement Tracker", targetId: "monitor-requirements-table", icon: ListChecks },
   ],
-  forms: [
-    { id: "filters_forms", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
+  compliance: [
+    { id: "filters_compliance", label: "Advanced Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
     { id: "forms_queue", label: "SF-1 / SF-5 Queue", targetId: "monitor-forms-queue", icon: ClipboardList },
-  ],
-  indicators: [
-    { id: "filters_indicators", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
     { id: "indicators_queue", label: "Indicators Queue", targetId: "monitor-indicators-queue", icon: TrendingUp },
   ],
   records: [
-    { id: "filters_records", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "filters_records", label: "Advanced Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
     { id: "school_records", label: "School Records", targetId: "monitor-school-records", icon: Database },
     { id: "student_records", label: "Learner Records", targetId: "monitor-student-records", icon: Users },
   ],
@@ -387,7 +370,7 @@ export function MonitorDashboard() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
-  const [requirementFilter, setRequirementFilter] = useState<RequirementFilter>("submitted_any");
+  const [requirementFilter, setRequirementFilter] = useState<RequirementFilter>("all");
   const [selectedSchoolScopeKey, setSelectedSchoolScopeKey] = useState<string>(ALL_SCHOOL_SCOPE);
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
   const [schoolScopeDropdownSlot, setSchoolScopeDropdownSlot] = useState<ScopeDropdownSlot | null>(null);
@@ -402,6 +385,8 @@ export function MonitorDashboard() {
     typeof window === "undefined" ? true : window.innerWidth >= 768,
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -665,19 +650,6 @@ export function MonitorDashboard() {
     );
   }, [records, scopedSchoolKeys]);
 
-  const totalStudents = useMemo(
-    () => scopedRecords.reduce((total, record) => total + record.studentCount, 0),
-    [scopedRecords],
-  );
-  const totalTeachers = useMemo(
-    () => scopedRecords.reduce((total, record) => total + record.teacherCount, 0),
-    [scopedRecords],
-  );
-  const activeSchools = useMemo(
-    () => scopedRecords.filter((record) => record.status === "active").length,
-    [scopedRecords],
-  );
-
   const regionAggregates = useMemo(() => buildRegionAggregates(scopedRecords), [scopedRecords]);
   const statusDistribution = useMemo(() => buildStatusDistribution(scopedRecords), [scopedRecords]);
   const submissionTrend = useMemo(() => buildSubmissionTrend(scopedRecords), [scopedRecords]);
@@ -863,11 +835,16 @@ export function MonitorDashboard() {
       complete: scopedRequirementRows.filter((row) => row.isComplete).length,
       awaitingReview: scopedRequirementRows.filter((row) => row.awaitingReviewCount > 0).length,
       missing: scopedRequirementRows.filter((row) => row.missingCount > 0).length,
+      returned: scopedRequirementRows.filter(
+        (row) => row.sf1Status === "returned" || row.sf5Status === "returned" || row.indicatorStatus === "returned",
+      ).length,
     }),
     [scopedRequirementRows],
   );
-  const completionPercent = requirementCounts.total === 0 ? 0 : Math.round((requirementCounts.complete / requirementCounts.total) * 100);
-  const showSubmissionFilters = activeTopNavigator !== "first_glance";
+  const showSubmissionFilters = activeTopNavigator !== "first_glance" && showAdvancedFilters;
+  const pendingCount = requirementCounts.awaitingReview;
+  const returnedCount = requirementCounts.returned;
+  const submittedCount = requirementCounts.submittedAny;
   const quickJumpItems = useMemo(
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
@@ -914,6 +891,84 @@ export function MonitorDashboard() {
       })
       .sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
   }, [scopedRecords, search, statusFilter, sortColumn, sortDirection, requirementFilter, schoolRequirementByKey]);
+
+  const handleContinuePendingRequirements = () => {
+    if (requirementCounts.missing > 0) {
+      setRequirementFilter("missing");
+      setActiveTopNavigator("requirements");
+      return;
+    }
+
+    if (requirementCounts.returned > 0) {
+      setRequirementFilter("all");
+      setActiveTopNavigator("compliance");
+      return;
+    }
+
+    if (requirementCounts.awaitingReview > 0) {
+      setRequirementFilter("awaiting_review");
+      setActiveTopNavigator("compliance");
+      return;
+    }
+
+    setRequirementFilter("all");
+    setActiveTopNavigator("records");
+  };
+
+  const nextStep = useMemo(() => {
+    if (requirementCounts.missing > 0) {
+      return {
+        label: "Open Requirements",
+        detail: "Review schools with missing submissions and send follow-up.",
+        action: "requirements_missing" as const,
+      };
+    }
+
+    if (requirementCounts.returned > 0) {
+      return {
+        label: "Open Compliance Records",
+        detail: "Review returned submissions and wait for corrected resubmissions.",
+        action: "compliance_returned" as const,
+      };
+    }
+
+    if (requirementCounts.awaitingReview > 0) {
+      return {
+        label: "Open Compliance Records",
+        detail: "Validate pending SF-1/SF-5 forms and indicator packages.",
+        action: "compliance_pending" as const,
+      };
+    }
+
+    return {
+      label: "Open School Records",
+      detail: "Audit synchronized school and learner records for final checks.",
+      action: "records" as const,
+    };
+  }, [requirementCounts.awaitingReview, requirementCounts.missing, requirementCounts.returned]);
+
+  const handleNextStepAction = () => {
+    if (nextStep.action === "requirements_missing") {
+      setRequirementFilter("missing");
+      setActiveTopNavigator("requirements");
+      return;
+    }
+
+    if (nextStep.action === "compliance_returned") {
+      setRequirementFilter("all");
+      setActiveTopNavigator("compliance");
+      return;
+    }
+
+    if (nextStep.action === "compliance_pending") {
+      setRequirementFilter("awaiting_review");
+      setActiveTopNavigator("compliance");
+      return;
+    }
+
+    setRequirementFilter("all");
+    setActiveTopNavigator("records");
+  };
 
   const handleSort = (column: SortColumn) => {
     if (column === sortColumn) {
@@ -1160,7 +1215,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="Overview, requirements, queues, and records."
+      subtitle="Overview, requirements, compliance records, and school records."
       actions={
         <>
           <button
@@ -1173,10 +1228,18 @@ export function MonitorDashboard() {
           </button>
           <button
             type="button"
-            onClick={openCreateRecordForm}
+            onClick={handleContinuePendingRequirements}
             className="inline-flex items-center gap-2 rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-600"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <ListChecks className="h-3.5 w-3.5" />
+            Continue Pending Requirements
+          </button>
+          <button
+            type="button"
+            onClick={openCreateRecordForm}
+            className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            <Database className="h-3.5 w-3.5" />
             Add School Record
           </button>
           <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
@@ -1311,53 +1374,74 @@ export function MonitorDashboard() {
             </>
           )}
 
+          <aside className="fixed bottom-4 right-4 z-[60] w-[min(24rem,calc(100vw-1rem))] border border-primary-200 bg-white p-3 shadow-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Next Step</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">{nextStep.label}</p>
+            <p className="mt-1 text-xs text-slate-600">{nextStep.detail}</p>
+            <button
+              type="button"
+              onClick={handleNextStepAction}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
+            >
+              Continue
+            </button>
+          </aside>
+
           <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0">
                 {quickJumpItems.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {quickJumpItems.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={`monitor-quick-jump-${item.id}`}
-                          type="button"
-                          onClick={() => focusAndScrollTo(item.targetId)}
-                          className="dashboard-quick-jump-btn rounded-sm"
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                          {item.label}
-                        </button>
-                      );
-                    })}
+                  <div className="mt-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {quickJumpItems.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={`monitor-quick-jump-${item.id}`}
+                            type="button"
+                            onClick={() => focusAndScrollTo(item.targetId)}
+                            className="dashboard-quick-jump-btn rounded-sm"
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
                 )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {activeTopNavigator === "first_glance" && (
+                    <button
+                      id="monitor-analytics-toggle"
+                      type="button"
+                      onClick={() => setShowAdvancedAnalytics((current) => !current)}
+                      className="dashboard-quick-jump-btn rounded-sm"
+                    >
+                      {showAdvancedAnalytics ? "Hide Advanced Analytics" : "Show Advanced Analytics"}
+                    </button>
+                  )}
+                  {activeTopNavigator !== "first_glance" && (
+                    <button
+                      id="monitor-submission-filters-toggle"
+                      type="button"
+                      onClick={() => setShowAdvancedFilters((current) => !current)}
+                      className="dashboard-quick-jump-btn rounded-sm"
+                    >
+                      {showAdvancedFilters ? "Hide Advanced Filters" : "Show Advanced Filters"}
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[24rem]">
-                <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{completionPercent}%</p>
-                  <p className="text-xs text-slate-600">{requirementCounts.complete}/{requirementCounts.total}</p>
-                </article>
-                <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Awaiting Review</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.awaitingReview}</p>
-                </article>
-                <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Missing Requirements</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.missing}</p>
-                </article>
-              </div>
             </div>
           </section>
 
           {showSubmissionFilters && (
           <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Submission Filters</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Advanced Filters</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1398,6 +1482,21 @@ export function MonitorDashboard() {
                   ))}
                 </select>
               </label>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">School Scope</p>
+                {renderSchoolScopeSelector()}
+              </article>
+              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Student Lookup</p>
+                {renderStudentLookupSelector()}
+              </article>
+              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Teacher Lookup</p>
+                {renderTeacherLookupSelector()}
+              </article>
             </div>
 
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
@@ -1446,54 +1545,14 @@ export function MonitorDashboard() {
 
       {activeTopNavigator === "first_glance" && (
         <>
-          <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4 ${sectionFocusClass("monitor-overview-metrics")}`}>
-            <article className="relative border border-primary-100 bg-primary-50/70 p-4">
-              <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
-              <div className="flex items-start justify-between gap-3 pt-1">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-700">Total Schools</p>
-                  <p className="mt-2 text-3xl font-extrabold leading-none text-slate-900">{scopedRecords.length.toLocaleString()}</p>
-                </div>
-                <span className="grid h-11 w-11 place-items-center border border-slate-100 bg-white text-primary">
-                  <Building2 className="h-5 w-5" />
-                </span>
-              </div>
-              {renderSchoolScopeSelector()}
-            </article>
-            <article className="relative border border-primary-100 bg-primary-50/70 p-4">
-              <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
-              <div className="flex items-start justify-between gap-3 pt-1">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-700">Total Students</p>
-                  <p className="mt-2 text-3xl font-extrabold leading-none text-slate-900">{totalStudents.toLocaleString()}</p>
-                </div>
-                <span className="grid h-11 w-11 place-items-center border border-slate-100 bg-white text-primary">
-                  <GraduationCap className="h-5 w-5" />
-                </span>
-              </div>
-              {renderStudentLookupSelector()}
-            </article>
-            <article className="relative border border-primary-100 bg-primary-50/70 p-4">
-              <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
-              <div className="flex items-start justify-between gap-3 pt-1">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-700">Total Teachers</p>
-                  <p className="mt-2 text-3xl font-extrabold leading-none text-slate-900">{totalTeachers.toLocaleString()}</p>
-                </div>
-                <span className="grid h-11 w-11 place-items-center border border-slate-100 bg-white text-primary">
-                  <Users className="h-5 w-5" />
-                </span>
-              </div>
-              {renderTeacherLookupSelector()}
-            </article>
-            <StatCard
-              label="Active Schools"
-              value={activeSchools.toLocaleString()}
-              icon={<TrendingUp className="h-5 w-5" />}
-              tone="success"
-            />
+          <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("monitor-overview-metrics")}`}>
+            <StatCard label="Pending" value={pendingCount.toLocaleString()} icon={<AlertCircle className="h-5 w-5" />} />
+            <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
+            <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
           </section>
 
+          {showAdvancedAnalytics && (
+            <>
           <section id="monitor-targets-snapshot" className={`mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr] ${sectionFocusClass("monitor-targets-snapshot")}`}>
             <div id="monitor-sync-alerts" className={`surface-panel dashboard-shell p-5 ${sectionFocusClass("monitor-sync-alerts")}`}>
               <div className="flex items-center justify-between">
@@ -1577,6 +1636,8 @@ export function MonitorDashboard() {
               </div>
             </section>
           )}
+            </>
+          )}
         </>
       )}
 
@@ -1659,15 +1720,12 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      {activeTopNavigator === "forms" && (
+      {activeTopNavigator === "compliance" && (
         <section id="monitor-forms-queue" className={sectionFocusClass("monitor-forms-queue")}>
           <MonitorFormsPanel schoolFilterKeys={filteredSchoolKeys} />
-        </section>
-      )}
-
-      {activeTopNavigator === "indicators" && (
-        <section id="monitor-indicators-queue" className={sectionFocusClass("monitor-indicators-queue")}>
-          <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />
+          <div id="monitor-indicators-queue" className={`mt-5 ${sectionFocusClass("monitor-indicators-queue")}`}>
+            <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />
+          </div>
         </section>
       )}
 

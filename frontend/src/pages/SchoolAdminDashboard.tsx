@@ -91,7 +91,7 @@ interface QuickJumpItem {
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
   { id: "requirements", label: "Requirements" },
-  { id: "compliance", label: "Compliance Record" },
+  { id: "compliance", label: "Compliance Records" },
   { id: "records", label: "School Records" },
 ];
 
@@ -125,7 +125,7 @@ const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   },
   {
     id: "compliance",
-    title: "Compliance Record",
+    title: "Compliance Records",
     objective: "Encode and submit all compliance data from one module.",
     actions: [
       "Update school profile counts such as students, teachers, and school status.",
@@ -156,10 +156,8 @@ const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
   first_glance: [
     { id: "overview_alerts", label: "Overview Alerts", targetId: "first-glance", icon: AlertTriangle },
     { id: "school_info", label: "School Info", targetId: "school-overview", icon: Building2 },
-    { id: "kpi_cards", label: "KPI Cards", targetId: "overview-metrics", icon: LayoutDashboard },
-    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "targets-snapshot", icon: TrendingUp },
-    { id: "sync_alerts", label: "Sync Alerts", targetId: "sync-alerts-panel", icon: AlertCircle },
-    { id: "status_chart", label: "Status Distribution", targetId: "status-chart-panel", icon: ListChecks },
+    { id: "kpi_cards", label: "Overview Status", targetId: "overview-metrics", icon: LayoutDashboard },
+    { id: "advanced_analytics", label: "Advanced Analytics", targetId: "school-analytics-toggle", icon: TrendingUp },
   ],
   requirements: [
     { id: "requirement_cards", label: "Requirement Cards", targetId: "requirement-navigator", icon: ListChecks },
@@ -287,15 +285,12 @@ export function SchoolAdminDashboard() {
   const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("first_glance");
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
+  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const activeNavigatorLabel = useMemo(
     () => TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
     [activeTopNavigator],
   );
-
-  const totalStudents = useMemo(() => records.reduce((total, record) => total + record.studentCount, 0), [records]);
-  const totalTeachers = useMemo(() => records.reduce((total, record) => total + record.teacherCount, 0), [records]);
-  const activeSchools = useMemo(() => records.filter((record) => record.status === "active").length, [records]);
 
   const regionAggregates = useMemo(() => buildRegionAggregates(records), [records]);
   const statusDistribution = useMemo(() => buildStatusDistribution(records), [records]);
@@ -352,9 +347,27 @@ export function SchoolAdminDashboard() {
     () => requirements.filter((item) => !item.isComplete),
     [requirements],
   );
-  const completedRequirements = requirements.length - missingRequirements.length;
-  const completionPercent = requirements.length === 0 ? 0 : Math.round((completedRequirements / requirements.length) * 100);
-  const nextRequirement = missingRequirements[0]?.label ?? "All requirements passed";
+  const submissionStatuses = useMemo(
+    () => [
+      assignedRecord ? "submitted" : "missing",
+      latestSf1?.status ?? "missing",
+      latestSf5?.status ?? "missing",
+      latestIndicators?.status ?? "missing",
+    ],
+    [assignedRecord, latestIndicators?.status, latestSf1?.status, latestSf5?.status],
+  );
+  const pendingCount = useMemo(
+    () => submissionStatuses.filter((status) => status === "submitted").length,
+    [submissionStatuses],
+  );
+  const returnedCount = useMemo(
+    () => submissionStatuses.filter((status) => status === "returned").length,
+    [submissionStatuses],
+  );
+  const submittedCount = useMemo(
+    () => submissionStatuses.filter((status) => status === "submitted" || status === "validated").length,
+    [submissionStatuses],
+  );
   const quickJumpItems = useMemo(
     () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
@@ -518,10 +531,98 @@ export function SchoolAdminDashboard() {
     openForCreate();
   };
 
+  const handleContinuePendingRequirements = () => {
+    if (missingRequirements.length > 0) {
+      setActiveTopNavigator("requirements");
+      return;
+    }
+
+    setActiveTopNavigator("records");
+  };
+
+  const nextStep = useMemo(() => {
+    const nextMissing = missingRequirements[0];
+    if (nextMissing) {
+      if (nextMissing.id === "school_record") {
+        return {
+          label: "Open Compliance Records",
+          detail: "Encode and save School Compliance Record counts first.",
+          action: "compliance_record" as const,
+        };
+      }
+
+      if (nextMissing.id === "sf1" || nextMissing.id === "sf5") {
+        return {
+          label: "Open Compliance Records",
+          detail: "Update and submit SF-1 / SF-5 requirements.",
+          action: "compliance_forms" as const,
+        };
+      }
+
+      return {
+        label: "Open Compliance Records",
+        detail: "Encode and submit the Compliance Indicators package.",
+        action: "compliance_indicators" as const,
+      };
+    }
+
+    if (syncAlerts.length > 0) {
+      return {
+        label: "Open Overview",
+        detail: "Review synchronization alerts and verify current status.",
+        action: "overview_alerts" as const,
+      };
+    }
+
+    return {
+      label: "Open School Records",
+      detail: "Verify learner records and latest synchronized entries.",
+      action: "school_records" as const,
+    };
+  }, [missingRequirements, syncAlerts.length]);
+
+  const handleNextStepAction = () => {
+    if (nextStep.action === "compliance_record") {
+      setActiveTopNavigator("compliance");
+      openForCreate();
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => scrollToSection("compliance-input"), 60);
+      }
+      return;
+    }
+
+    if (nextStep.action === "compliance_forms") {
+      setActiveTopNavigator("compliance");
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => scrollToSection("forms-workflow"), 60);
+      }
+      return;
+    }
+
+    if (nextStep.action === "compliance_indicators") {
+      setActiveTopNavigator("compliance");
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => scrollToSection("indicator-workflow"), 60);
+      }
+      return;
+    }
+
+    if (nextStep.action === "overview_alerts") {
+      setActiveTopNavigator("first_glance");
+      setShowAdvancedAnalytics(true);
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => scrollToSection("sync-alerts-panel"), 60);
+      }
+      return;
+    }
+
+    setActiveTopNavigator("records");
+  };
+
   return (
     <Shell
       title="School Head Dashboard"
-      subtitle="Overview, requirements, compliance, and records."
+      subtitle="Overview, requirements, compliance records, and school records."
       actions={
         <>
           <button
@@ -534,15 +635,19 @@ export function SchoolAdminDashboard() {
           </button>
           <button
             type="button"
+            onClick={handleContinuePendingRequirements}
+            className="inline-flex items-center gap-2 rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-600"
+          >
+            <ListChecks className="h-3.5 w-3.5" />
+            Continue Pending Requirements
+          </button>
+          <button
+            type="button"
             onClick={handleComplianceAction}
-            className={`inline-flex items-center gap-2 rounded-sm px-3 py-2 text-xs font-semibold transition ${
-              isComplianceFormVisible
-                ? "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                : "bg-primary text-white hover:bg-primary-600"
-            }`}
+            className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
           >
             {isComplianceFormVisible ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            {isComplianceFormVisible ? "Close Input Form" : records.length > 0 ? "Update Compliance Data" : "Input Compliance Data"}
+            {isComplianceFormVisible ? "Close Input Form" : "Open Compliance Records"}
           </button>
           <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
             {syncStatus === "up_to_date" ? "No backend changes" : "Records updated"}
@@ -677,11 +782,24 @@ export function SchoolAdminDashboard() {
         </>
       )}
 
+      <aside className="fixed bottom-4 right-4 z-[60] w-[min(24rem,calc(100vw-1rem))] border border-primary-200 bg-white p-3 shadow-2xl">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Next Step</p>
+        <p className="mt-1 text-sm font-semibold text-slate-900">{nextStep.label}</p>
+        <p className="mt-1 text-xs text-slate-600">{nextStep.detail}</p>
+        <button
+          type="button"
+          onClick={handleNextStepAction}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
+        >
+          Continue
+        </button>
+      </aside>
+
       <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             {quickJumpItems.length > 0 && (
-            <div className="mt-3">
+            <div className="mt-1">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {quickJumpItems.map((item) => {
@@ -701,24 +819,21 @@ export function SchoolAdminDashboard() {
               </div>
             </div>
             )}
+
+            {activeTopNavigator === "first_glance" && (
+              <div className="mt-3">
+                <button
+                  id="school-analytics-toggle"
+                  type="button"
+                  onClick={() => setShowAdvancedAnalytics((current) => !current)}
+                  className="dashboard-quick-jump-btn rounded-sm"
+                >
+                  {showAdvancedAnalytics ? "Hide Advanced Analytics" : "Show Advanced Analytics"}
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[24rem]">
-            <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion</p>
-              <p className="mt-1 text-lg font-bold text-slate-900">{completionPercent}%</p>
-              <p className="text-xs text-slate-600">{completedRequirements}/{requirements.length}</p>
-            </article>
-            <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Next Action</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{nextRequirement}</p>
-            </article>
-            <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Sync</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{syncStatus === "up_to_date" ? "Up to date" : "Pending update"}</p>
-              <p className="text-xs text-slate-600">{lastSyncedAt ? formatDateTime(lastSyncedAt) : "--"}</p>
-            </article>
-          </div>
         </div>
       </section>
 
@@ -843,22 +958,14 @@ export function SchoolAdminDashboard() {
         </article>
       </section>
 
-      <section id="overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4 ${sectionFocusClass("overview-metrics")}`}>
-        <StatCard label="Total Schools" value={records.length.toLocaleString()} icon={<Building2 className="h-5 w-5" />} />
-        <StatCard
-          label="Total Students"
-          value={totalStudents.toLocaleString()}
-          icon={<GraduationCap className="h-5 w-5" />}
-        />
-        <StatCard label="Total Teachers" value={totalTeachers.toLocaleString()} icon={<Users className="h-5 w-5" />} />
-        <StatCard
-          label="Active Schools"
-          value={activeSchools.toLocaleString()}
-          icon={<TrendingUp className="h-5 w-5" />}
-          tone="success"
-        />
+      <section id="overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("overview-metrics")}`}>
+        <StatCard label="Pending" value={pendingCount.toLocaleString()} icon={<AlertCircle className="h-5 w-5" />} />
+        <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
+        <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
       </section>
 
+      {showAdvancedAnalytics && (
+      <>
       <section id="targets-snapshot" className={`mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr] ${sectionFocusClass("targets-snapshot")}`}>
         <div id="sync-alerts-panel" className={`surface-panel dashboard-shell p-5 ${sectionFocusClass("sync-alerts-panel")}`}>
           <div className="flex items-center justify-between">
@@ -944,11 +1051,13 @@ export function SchoolAdminDashboard() {
       )}
       </>
       )}
+      </>
+      )}
 
       {activeTopNavigator === "compliance" && (
       <section id="compliance-records" className="grid gap-5">
         <section id="compliance-modules" className={`dashboard-shell rounded-sm p-4 ${sectionFocusClass("compliance-modules")}`}>
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Record Modules</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Compliance Records Modules</h2>
         </section>
 
         <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
