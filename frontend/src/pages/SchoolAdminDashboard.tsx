@@ -126,10 +126,10 @@ const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
     title: "Compliance Records",
     objective: "Encode and submit all compliance data from one module.",
     actions: [
-      "Update school profile counts such as students, teachers, and school status.",
+      "Update SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES entries for each school year.",
       "Encode and submit compliance indicators.",
     ],
-    doneWhen: "School profile and indicator package are submitted or validated.",
+    doneWhen: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES entries and indicator package are submitted or validated.",
   },
   {
     id: "records",
@@ -162,7 +162,7 @@ const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
   ],
   compliance: [
     { id: "compliance_modules", label: "Modules", targetId: "compliance-modules", icon: ClipboardList },
-    { id: "compliance_input", label: "School Profile Input", targetId: "compliance-input", icon: Database },
+    { id: "compliance_input", label: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES", targetId: "compliance-input", icon: Database },
     { id: "indicators_queue", label: "Indicators", targetId: "indicator-workflow", icon: TrendingUp },
   ],
   records: [
@@ -806,7 +806,7 @@ export function SchoolAdminDashboard() {
             onClick={() => scrollToSection("compliance-input")}
             className="dashboard-quick-jump-btn rounded-sm"
           >
-            1. School Profile Input
+            1. SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES
           </button>
           <button
             type="button"
@@ -1125,7 +1125,7 @@ export function SchoolAdminDashboard() {
           </section>
           ) : (
             <section className="dashboard-shell rounded-sm p-5">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">School Profile Input</h2>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES</h2>
             </section>
           )}
         </section>
