@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type FormEvent } from "react";
+﻿import { useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -17,6 +17,10 @@ import {
   RefreshCw,
   Save,
   Search,
+  LayoutDashboard,
+  ListChecks,
+  ClipboardList,
+  Database,
   TrendingUp,
   Users,
   X,
@@ -74,12 +78,21 @@ interface ManualStep {
   doneWhen: string;
 }
 
+type NavigatorIcon = ComponentType<{ className?: string }>;
+
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
   { id: "requirements", label: "Requirements" },
   { id: "compliance", label: "Compliance Record" },
   { id: "records", label: "School Records" },
 ];
+
+const SCHOOL_NAVIGATOR_ICONS: Record<TopNavigatorItem["id"], NavigatorIcon> = {
+  first_glance: LayoutDashboard,
+  requirements: ListChecks,
+  compliance: ClipboardList,
+  records: Database,
+};
 
 const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   {
@@ -180,8 +193,10 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 function navigatorButtonClass(active: boolean): string {
-  return `dashboard-nav-button px-3 py-3 text-left text-xs font-semibold uppercase transition ${
-    active ? "dashboard-nav-button-active" : ""
+  return `flex w-full items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition ${
+    active
+      ? "border-cyan-300/80 bg-cyan-400/20 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.6)]"
+      : "border-primary-700/80 bg-primary-900/35 text-primary-100 hover:bg-primary-700/70 hover:text-white"
   }`;
 }
 
@@ -483,17 +498,18 @@ export function SchoolAdminDashboard() {
         </section>
       )}
 
-      <section className="dashboard-nav-shell mb-5 rounded-sm p-3">
+      <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-0">
+      <aside className="rounded-sm border border-primary-700/80 bg-gradient-to-b from-primary-900 via-primary-800 to-primary-900 p-3 shadow-xl shadow-primary-900/35 lg:rounded-t-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Navigator</h2>
-            <p className="mt-1 text-xs text-slate-600">Select what you need to do now.</p>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
+            <p className="mt-1 text-xs text-primary-100">Select what you need to do now.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setIsNavigatorVisible((current) => !current)}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-primary-700"
             >
               {isNavigatorVisible ? "Hide Navigator" : "Show Navigator"}
               {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -501,10 +517,10 @@ export function SchoolAdminDashboard() {
             <button
               type="button"
               onClick={() => setShowNavigatorManual((current) => !current)}
-              className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
+              className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition ${
                 showNavigatorManual
-                  ? "border-primary-200 bg-primary-50 text-primary-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  ? "border-cyan-300/80 bg-cyan-400/25"
+                  : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
               }`}
             >
               <BookOpenText className="h-3.5 w-3.5" />
@@ -515,28 +531,33 @@ export function SchoolAdminDashboard() {
         </div>
         {isNavigatorVisible && (
           <>
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-              {TOP_NAVIGATOR_ITEMS.map((item) => (
+            <div className="mt-3 grid gap-2">
+              {TOP_NAVIGATOR_ITEMS.map((item) => {
+                const Icon = SCHOOL_NAVIGATOR_ICONS[item.id];
+                return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => handleTopNavigate(item)}
                   className={navigatorButtonClass(activeTopNavigator === item.id)}
                 >
-                  {item.label}
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
-            <p className="mt-3 text-[11px] text-slate-500">
+            <p className="mt-3 text-[11px] text-primary-100">
               Current view:
               {" "}
-              <span className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-slate-700">
+              <span className="rounded-sm border border-primary-400/45 bg-primary-700/60 px-2 py-1 font-semibold uppercase tracking-wide text-white">
                 {activeNavigatorLabel}
               </span>
             </p>
           </>
         )}
-      </section>
+      </aside>
+      <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
 
       {showNavigatorManual && (
         <>
@@ -932,8 +953,11 @@ export function SchoolAdminDashboard() {
         />
       </section>
       )}
+      </div>
+      </div>
     </Shell>
   );
 }
+
 
 

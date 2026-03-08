@@ -48,31 +48,29 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
             </button>
           </div>
         </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <section className="surface-panel mb-6 overflow-hidden rounded-sm border border-primary-100/50 bg-gradient-to-br from-white via-white to-sky-50/55 p-5">
-          <div className="mb-4 h-1 w-24 bg-gradient-to-r from-primary-500 via-cyan-500 to-sky-300" />
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="border-t border-white/12 bg-primary-800/70 backdrop-blur-sm">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-sm border border-primary-200/70 bg-primary-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-700">
+              <p className="inline-flex items-center gap-2 rounded-sm border border-white/25 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-100">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 {roleLabel} Workspace
               </p>
-              <h1 className="mt-2 text-2xl font-extrabold text-slate-900">{title}</h1>
-              <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+              <h1 className="mt-2 text-2xl font-extrabold text-white">{title}</h1>
+              <p className="mt-1 text-sm text-primary-100">{subtitle}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-              <span className="inline-flex items-center gap-2 rounded-sm border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm">
+              <span className="inline-flex items-center gap-2 rounded-sm border border-white/20 bg-white/10 px-3 py-2 text-xs font-medium text-white">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {new Date().toLocaleDateString()}
               </span>
               {actions}
             </div>
           </div>
-        </section>
+        </div>
+      </header>
 
+      <main className="mx-auto w-full max-w-7xl px-4 pb-6 pt-0 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>

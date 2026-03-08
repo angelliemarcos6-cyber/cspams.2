@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+﻿import { useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   ArrowDown,
@@ -8,9 +8,13 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
+  ClipboardList,
+  Database,
   Edit2,
   Filter,
   GraduationCap,
+  LayoutDashboard,
+  ListChecks,
   Plus,
   RefreshCw,
   Save,
@@ -88,6 +92,8 @@ interface MonitorRecordFormState {
   status: SchoolStatus;
 }
 
+type NavigatorIcon = ComponentType<{ className?: string }>;
+
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
   { id: "requirements", label: "Requirements" },
@@ -95,6 +101,14 @@ const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "indicators", label: "Indicators Queue" },
   { id: "records", label: "School Records" },
 ];
+
+const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIcon> = {
+  first_glance: LayoutDashboard,
+  requirements: ListChecks,
+  forms: ClipboardList,
+  indicators: TrendingUp,
+  records: Database,
+};
 
 const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
@@ -235,8 +249,10 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 function navigatorButtonClass(active: boolean): string {
-  return `dashboard-nav-button px-3 py-3 text-left text-xs font-semibold uppercase transition ${
-    active ? "dashboard-nav-button-active" : ""
+  return `flex w-full items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition ${
+    active
+      ? "border-cyan-300/80 bg-cyan-400/20 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.6)]"
+      : "border-primary-700/80 bg-primary-900/35 text-primary-100 hover:bg-primary-700/70 hover:text-white"
   }`;
 }
 
@@ -717,186 +733,191 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      <section className="dashboard-nav-shell mb-5 rounded-sm p-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Navigator</h2>
-            <p className="mt-1 text-xs text-slate-600">Switch monitor views without page scrolling.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsNavigatorVisible((current) => !current)}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-50"
-            >
-              {isNavigatorVisible ? "Hide Navigator" : "Show Navigator"}
-              {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowNavigatorManual((current) => !current)}
-              className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
-                showNavigatorManual
-                  ? "border-primary-200 bg-primary-50 text-primary-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <BookOpenText className="h-3.5 w-3.5" />
-              User Manual
-              {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-        </div>
-        {isNavigatorVisible && (
-          <>
-            <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
-              {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveTopNavigator(item.id)}
-                  className={navigatorButtonClass(activeTopNavigator === item.id)}
-                >
-                  {item.label}
-                </button>
-              ))}
+      <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-0">
+        <aside className="rounded-sm border border-primary-700/80 bg-gradient-to-b from-primary-900 via-primary-800 to-primary-900 p-3 shadow-xl shadow-primary-900/35 lg:rounded-t-none">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
+              <p className="mt-1 text-xs text-primary-100">Select what you need to review now.</p>
             </div>
-            <p className="mt-3 text-[11px] text-slate-500">
-              Current view:
-              {" "}
-              <span className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-semibold uppercase tracking-wide text-slate-700">
-                {activeNavigatorLabel}
-              </span>
-            </p>
-          </>
-        )}
-      </section>
-
-      {showNavigatorManual && (
-        <>
-        <button
-          type="button"
-          onClick={() => setShowNavigatorManual(false)}
-          className="fixed inset-0 z-[65] bg-slate-900/20"
-          aria-label="Close manual overlay"
-        />
-        <aside className="fixed right-4 top-24 z-[70] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl animate-fade-slide">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Monitor Navigator Manual</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsNavigatorVisible((current) => !current)}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-primary-700"
+              >
+                {isNavigatorVisible ? "Hide Navigator" : "Show Navigator"}
+                {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowNavigatorManual((current) => !current)}
+                className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition ${
+                  showNavigatorManual
+                    ? "border-cyan-300/80 bg-cyan-400/25"
+                    : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
+                }`}
+              >
+                <BookOpenText className="h-3.5 w-3.5" />
+                User Manual
+                {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+          {isNavigatorVisible && (
+            <>
+              <div className="mt-3 grid gap-2">
+                {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => {
+                  const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveTopNavigator(item.id)}
+                      className={navigatorButtonClass(activeTopNavigator === item.id)}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-[11px] text-primary-100">
+                Current view:
+                {" "}
+                <span className="rounded-sm border border-primary-400/45 bg-primary-700/60 px-2 py-1 font-semibold uppercase tracking-wide text-white">
+                  {activeNavigatorLabel}
+                </span>
+              </p>
+            </>
+          )}
+        </aside>
+        <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
+          {showNavigatorManual && (
+            <>
             <button
               type="button"
               onClick={() => setShowNavigatorManual(false)}
-              className="inline-flex items-center rounded-sm border border-slate-200 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-              aria-label="Close manual"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="max-h-[72vh] overflow-y-auto p-3">
-            <ol className="grid gap-2">
-              {MONITOR_NAVIGATOR_MANUAL.map((step, index) => (
-                <li key={step.id} className="dashboard-subtle-panel p-2.5">
-                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-primary-100 text-[10px] text-primary-700">
-                      {index + 1}
-                    </span>
-                    {step.title}
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-slate-700">Goal: {step.objective}</p>
+              className="fixed inset-0 z-[65] bg-slate-900/20"
+              aria-label="Close manual overlay"
+            />
+            <aside className="fixed right-4 top-24 z-[70] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl animate-fade-slide">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Monitor Navigator Manual</p>
+                <button
+                  type="button"
+                  onClick={() => setShowNavigatorManual(false)}
+                  className="inline-flex items-center rounded-sm border border-slate-200 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+                  aria-label="Close manual"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="max-h-[72vh] overflow-y-auto p-3">
+                <ol className="grid gap-2">
+                  {MONITOR_NAVIGATOR_MANUAL.map((step, index) => (
+                    <li key={step.id} className="dashboard-subtle-panel p-2.5">
+                      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-primary-100 text-[10px] text-primary-700">
+                          {index + 1}
+                        </span>
+                        {step.title}
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-slate-700">Goal: {step.objective}</p>
+                      <ul className="mt-1 space-y-1">
+                        {step.actions.map((action) => (
+                          <li key={`${step.id}-${action}`} className="text-xs text-slate-600">
+                            - {action}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-2 text-[11px] text-emerald-700">Done when: {step.doneWhen}</p>
+                    </li>
+                  ))}
+                </ol>
+                <article className="dashboard-subtle-panel mt-3 p-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
                   <ul className="mt-1 space-y-1">
-                    {step.actions.map((action) => (
-                      <li key={`${step.id}-${action}`} className="text-xs text-slate-600">
-                        - {action}
+                    {MONITOR_MANUAL_STATUS_GUIDE.map((item) => (
+                      <li key={item} className="text-xs text-slate-600">
+                        - {item}
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-2 text-[11px] text-emerald-700">Done when: {step.doneWhen}</p>
-                </li>
-              ))}
-            </ol>
-            <article className="dashboard-subtle-panel mt-3 p-2.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
-              <ul className="mt-1 space-y-1">
-                {MONITOR_MANUAL_STATUS_GUIDE.map((item) => (
-                  <li key={item} className="text-xs text-slate-600">
-                    - {item}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          </div>
-        </aside>
-        </>
-      )}
+                </article>
+              </div>
+            </aside>
+            </>
+          )}
 
-      <section className="dashboard-shell mb-5 rounded-sm p-3">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Filters</h2>
-        <p className="mt-1 text-xs text-slate-600">Filter schools by status and by submitted requirements.</p>
-        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search school, region, code, or submitted by"
-              className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            />
-          </div>
+          <section className="dashboard-shell mb-5 rounded-sm p-3">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Filters</h2>
+            <p className="mt-1 text-xs text-slate-600">Filter schools by status and by submitted requirements.</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search school, region, code, or submitted by"
+                  className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+              </div>
 
-          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
-              className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-            >
-              <option value="all">All status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="pending">Pending</option>
-            </select>
-          </label>
+              <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+                <Filter className="h-4 w-4 text-slate-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
+                  className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+                >
+                  <option value="all">All status</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
 
-          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <select
-              value={requirementFilter}
-              onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
-              className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-            >
-              {REQUIREMENT_FILTER_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+              <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+                <Filter className="h-4 w-4 text-slate-400" />
+                <select
+                  value={requirementFilter}
+                  onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
+                  className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+                >
+                  {REQUIREMENT_FILTER_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tracked Schools</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.total}</p>
-          </article>
-          <article className="border border-cyan-200 bg-cyan-50 px-3 py-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">With Submission</p>
-            <p className="mt-1 text-lg font-bold text-cyan-800">{requirementCounts.submittedAny}</p>
-          </article>
-          <article className="border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Complete Package</p>
-            <p className="mt-1 text-lg font-bold text-emerald-800">{requirementCounts.complete}</p>
-          </article>
-          <article className="border border-amber-200 bg-amber-50 px-3 py-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Awaiting Review</p>
-            <p className="mt-1 text-lg font-bold text-amber-800">{requirementCounts.awaitingReview}</p>
-          </article>
-          <article className="border border-rose-200 bg-rose-50 px-3 py-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing Requirements</p>
-            <p className="mt-1 text-lg font-bold text-rose-800">{requirementCounts.missing}</p>
-          </article>
-        </div>
-      </section>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tracked Schools</p>
+                <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.total}</p>
+              </article>
+              <article className="border border-cyan-200 bg-cyan-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">With Submission</p>
+                <p className="mt-1 text-lg font-bold text-cyan-800">{requirementCounts.submittedAny}</p>
+              </article>
+              <article className="border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Complete Package</p>
+                <p className="mt-1 text-lg font-bold text-emerald-800">{requirementCounts.complete}</p>
+              </article>
+              <article className="border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Awaiting Review</p>
+                <p className="mt-1 text-lg font-bold text-amber-800">{requirementCounts.awaitingReview}</p>
+              </article>
+              <article className="border border-rose-200 bg-rose-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing Requirements</p>
+                <p className="mt-1 text-lg font-bold text-rose-800">{requirementCounts.missing}</p>
+              </article>
+            </div>
+          </section>
 
       {activeTopNavigator === "first_glance" && (
         <>
@@ -1436,6 +1457,9 @@ export function MonitorDashboard() {
         />
         </>
       )}
+        </div>
+      </div>
     </Shell>
   );
 }
+
