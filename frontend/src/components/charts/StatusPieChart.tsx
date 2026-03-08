@@ -15,13 +15,13 @@ export function StatusPieChart({ data }: StatusPieChartProps) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <div className="surface-chart border p-4">
+    <div className="surface-chart border p-4 transition duration-200 hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.52)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">School Status Distribution</h3>
           <p className="text-xs text-slate-500">Active, inactive and pending reporting status</p>
         </div>
-        <span className="grid h-8 w-8 place-items-center border border-primary-100 bg-primary-50 text-primary">
+        <span className="grid h-8 w-8 place-items-center border border-primary-100 bg-primary-50 text-primary shadow-sm">
           <PieChartIcon className="h-4 w-4" />
         </span>
       </div>

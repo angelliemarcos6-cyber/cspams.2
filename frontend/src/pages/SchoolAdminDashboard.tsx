@@ -226,8 +226,8 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 function navigatorButtonClass(active: boolean): string {
   return `flex w-full items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition ${
     active
-      ? "border-cyan-300/80 bg-cyan-400/20 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.6)]"
-      : "border-primary-700/80 bg-primary-900/35 text-primary-100 hover:bg-primary-700/70 hover:text-white"
+      ? "border-cyan-300/90 bg-cyan-400/20 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.55),0_10px_18px_-16px_rgba(34,211,238,0.8)]"
+      : "border-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-cyan-300/45 hover:bg-primary-700/80 hover:text-white"
   }`;
 }
 
@@ -560,7 +560,7 @@ export function SchoolAdminDashboard() {
       )}
 
       <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-0">
-      <aside className="rounded-sm border border-primary-700/80 bg-gradient-to-b from-primary-900 via-primary-800 to-primary-900 p-3 shadow-xl shadow-primary-900/35 lg:sticky lg:top-24 lg:min-h-[calc(100vh-7.5rem)] lg:rounded-t-none">
+      <aside className="dashboard-side-rail rounded-sm p-3 lg:sticky lg:top-24 lg:min-h-[calc(100vh-7.5rem)] lg:rounded-t-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
@@ -690,7 +690,7 @@ export function SchoolAdminDashboard() {
                       key={`quick-jump-${item.id}`}
                       type="button"
                       onClick={() => handleQuickJump(item.targetId)}
-                      className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+                      className="dashboard-quick-jump-btn rounded-sm"
                     >
                       <Icon className="h-3.5 w-3.5" />
                       {item.label}
@@ -728,21 +728,21 @@ export function SchoolAdminDashboard() {
           <button
             type="button"
             onClick={() => scrollToSection("compliance-input")}
-            className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+            className="dashboard-quick-jump-btn rounded-sm"
           >
             1. School Profile Input
           </button>
           <button
             type="button"
             onClick={() => scrollToSection("forms-workflow")}
-            className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+            className="dashboard-quick-jump-btn rounded-sm"
           >
             2. SF-1 / SF-5 Forms
           </button>
           <button
             type="button"
             onClick={() => scrollToSection("indicator-workflow")}
-            className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+            className="dashboard-quick-jump-btn rounded-sm"
           >
             3. Indicators
           </button>

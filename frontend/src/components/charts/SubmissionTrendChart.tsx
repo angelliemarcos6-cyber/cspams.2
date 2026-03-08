@@ -12,13 +12,13 @@ interface SubmissionTrendChartProps {
 
 export function SubmissionTrendChart({ data }: SubmissionTrendChartProps) {
   return (
-    <div className="surface-chart border p-4">
+    <div className="surface-chart border p-4 transition duration-200 hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.52)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">Recent Submissions</h3>
           <p className="text-xs text-slate-500">Record updates in the last 7 days</p>
         </div>
-        <span className="grid h-8 w-8 place-items-center border border-primary-100 bg-primary-50 text-primary">
+        <span className="grid h-8 w-8 place-items-center border border-primary-100 bg-primary-50 text-primary shadow-sm">
           <Activity className="h-4 w-4" />
         </span>
       </div>
