@@ -94,6 +94,11 @@ interface MonitorRecordFormState {
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
 
+interface ViewMeta {
+  summary: string;
+  focus: string;
+}
+
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
   { id: "requirements", label: "Requirements" },
@@ -169,6 +174,29 @@ const MONITOR_MANUAL_STATUS_GUIDE = [
   "Returned: Sent back to school head for correction.",
   "Missing: Requirement not yet submitted by school.",
 ];
+
+const MONITOR_VIEW_META: Record<MonitorTopNavigatorId, ViewMeta> = {
+  first_glance: {
+    summary: "Start with overall submission health and synchronized alerts across all schools.",
+    focus: "Use this view to prioritize where monitor action is needed first.",
+  },
+  requirements: {
+    summary: "Track compliance package status by school and quickly identify missing requirements.",
+    focus: "Filter for missing or awaiting-review schools, then follow up.",
+  },
+  forms: {
+    summary: "Review Digital SF-1 and SF-5 queues submitted by school heads.",
+    focus: "Validate complete forms or return with clear correction notes.",
+  },
+  indicators: {
+    summary: "Review indicator submissions and compliance metrics before approval.",
+    focus: "Confirm data consistency and finalize validation decisions.",
+  },
+  records: {
+    summary: "Maintain master school records and inspect synchronized learner data.",
+    focus: "Use CRUD for school records, while student records remain read-only.",
+  },
+};
 
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
   { id: "all", label: "All schools" },
@@ -662,6 +690,10 @@ export function MonitorDashboard() {
     }),
     [schoolRequirementRows],
   );
+  const completionPercent = requirementCounts.total === 0 ? 0 : Math.round((requirementCounts.complete / requirementCounts.total) * 100);
+  const activeViewMeta = MONITOR_VIEW_META[activeTopNavigator];
+  const activeStep = Math.max(1, MONITOR_TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
+  const showSubmissionFilters = activeTopNavigator !== "first_glance";
 
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -850,6 +882,63 @@ export function MonitorDashboard() {
             </>
           )}
 
+          <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0">
+                <p className="dashboard-workflow-step inline-flex items-center gap-2 rounded-sm px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-700">
+                  Workflow Step {activeStep} of {MONITOR_TOP_NAVIGATOR_ITEMS.length}
+                </p>
+                <h2 className="mt-2 text-xl font-extrabold text-slate-900">{activeNavigatorLabel}</h2>
+                <p className="mt-1 text-sm text-slate-600">{activeViewMeta.summary}</p>
+                <p className="mt-1 text-xs font-medium text-slate-500">{activeViewMeta.focus}</p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {MONITOR_TOP_NAVIGATOR_ITEMS.map((item, index) => {
+                    const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
+                    const isActive = activeTopNavigator === item.id;
+                    return (
+                      <button
+                        key={`monitor-workflow-chip-${item.id}`}
+                        type="button"
+                        onClick={() => setActiveTopNavigator(item.id)}
+                        className={`dashboard-workflow-chip inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold transition ${
+                          isActive
+                            ? "border-primary-300 bg-primary-50 text-primary-800"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-primary-200 hover:text-primary-700"
+                        }`}
+                      >
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-slate-100 text-[10px] font-bold text-slate-600">
+                          {index + 1}
+                        </span>
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[24rem]">
+                <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{completionPercent}%</p>
+                  <p className="text-xs text-slate-600">{requirementCounts.complete}/{requirementCounts.total} schools complete</p>
+                </article>
+                <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Awaiting Review</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.awaitingReview}</p>
+                  <p className="text-xs text-slate-600">Schools with submitted items pending decision</p>
+                </article>
+                <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Missing Requirements</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.missing}</p>
+                  <p className="text-xs text-slate-600">Prioritize these schools for follow-up</p>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          {showSubmissionFilters && (
           <section className="dashboard-shell mb-5 rounded-sm p-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Filters</h2>
             <p className="mt-1 text-xs text-slate-600">Filter schools by status and by submitted requirements.</p>
@@ -918,6 +1007,7 @@ export function MonitorDashboard() {
               </article>
             </div>
           </section>
+          )}
 
       {activeTopNavigator === "first_glance" && (
         <>

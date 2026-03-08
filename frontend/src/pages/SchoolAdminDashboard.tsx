@@ -80,6 +80,11 @@ interface ManualStep {
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
 
+interface ViewMeta {
+  summary: string;
+  focus: string;
+}
+
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
   { id: "first_glance", label: "Overview" },
   { id: "requirements", label: "Requirements" },
@@ -143,6 +148,25 @@ const SCHOOL_MANUAL_STATUS_GUIDE = [
   "Validated: Approved by monitor.",
   "Returned: Needs correction and resubmission.",
 ];
+
+const SCHOOL_VIEW_META: Record<TopNavigatorItem["id"], ViewMeta> = {
+  first_glance: {
+    summary: "Start here for urgent alerts, missing requirements, and high-level school snapshot.",
+    focus: "Check what needs action before updating records.",
+  },
+  requirements: {
+    summary: "Track all required submissions and jump directly to missing modules.",
+    focus: "Resolve missing items first to avoid delayed monitor review.",
+  },
+  compliance: {
+    summary: "Encode compliance data, submit SF forms, and send indicator package.",
+    focus: "Complete School Profile, SF-1/SF-5, and Indicators in order.",
+  },
+  records: {
+    summary: "Maintain learner records and verify synchronized student details.",
+    focus: "Keep student profile, section, teacher, and status up-to-date.",
+  },
+};
 
 const EMPTY_FORM: FormState = {
   studentCount: "",
@@ -320,6 +344,11 @@ export function SchoolAdminDashboard() {
     () => requirements.filter((item) => !item.isComplete),
     [requirements],
   );
+  const completedRequirements = requirements.length - missingRequirements.length;
+  const completionPercent = requirements.length === 0 ? 0 : Math.round((completedRequirements / requirements.length) * 100);
+  const activeViewMeta = SCHOOL_VIEW_META[activeTopNavigator];
+  const activeStep = Math.max(1, TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
+  const nextRequirement = missingRequirements[0]?.label ?? "All requirements passed";
 
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -394,6 +423,13 @@ export function SchoolAdminDashboard() {
 
   const handleTopNavigate = (item: TopNavigatorItem) => {
     setActiveTopNavigator(item.id);
+  };
+
+  const scrollToSection = (sectionId: string) => {
+    if (typeof document === "undefined") return;
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const validateForm = () => {
@@ -614,6 +650,93 @@ export function SchoolAdminDashboard() {
           </div>
         </aside>
         </>
+      )}
+
+      <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <p className="dashboard-workflow-step inline-flex items-center gap-2 rounded-sm px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-700">
+              Workflow Step {activeStep} of {TOP_NAVIGATOR_ITEMS.length}
+            </p>
+            <h2 className="mt-2 text-xl font-extrabold text-slate-900">{activeNavigatorLabel}</h2>
+            <p className="mt-1 text-sm text-slate-600">{activeViewMeta.summary}</p>
+            <p className="mt-1 text-xs font-medium text-slate-500">{activeViewMeta.focus}</p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {TOP_NAVIGATOR_ITEMS.map((item, index) => {
+                const Icon = SCHOOL_NAVIGATOR_ICONS[item.id];
+                const isActive = activeTopNavigator === item.id;
+                return (
+                  <button
+                    key={`workflow-chip-${item.id}`}
+                    type="button"
+                    onClick={() => handleTopNavigate(item)}
+                    className={`dashboard-workflow-chip inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold transition ${
+                      isActive
+                        ? "border-primary-300 bg-primary-50 text-primary-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-primary-200 hover:text-primary-700"
+                    }`}
+                  >
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-slate-100 text-[10px] font-bold text-slate-600">
+                      {index + 1}
+                    </span>
+                    <Icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[24rem]">
+            <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">{completionPercent}%</p>
+              <p className="text-xs text-slate-600">
+                {completedRequirements}/{requirements.length} requirements passed
+              </p>
+            </article>
+            <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Next Action</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{nextRequirement}</p>
+              <p className="text-xs text-slate-600">{missingRequirements.length === 0 ? "Ready for monitor review." : "Open Requirements to continue."}</p>
+            </article>
+            <article className="dashboard-workflow-tile rounded-sm px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Sync</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{syncStatus === "up_to_date" ? "Up to date" : "Pending update"}</p>
+              <p className="text-xs text-slate-600">{lastSyncedAt ? formatDateTime(lastSyncedAt) : "No sync yet"}</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {activeTopNavigator === "compliance" && (
+      <section className="dashboard-shell mb-4 rounded-sm p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Compliance Workflow Navigator</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => scrollToSection("compliance-input")}
+            className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+          >
+            1. School Profile Input
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToSection("forms-workflow")}
+            className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+          >
+            2. SF-1 / SF-5 Forms
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToSection("indicator-workflow")}
+            className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+          >
+            3. Indicators
+          </button>
+        </div>
+      </section>
       )}
 
       {activeTopNavigator === "first_glance" && (
