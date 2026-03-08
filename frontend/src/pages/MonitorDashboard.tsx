@@ -875,8 +875,8 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-0">
-        <aside className="dashboard-side-rail rounded-sm p-3 lg:sticky lg:top-24 lg:min-h-[calc(100vh-7.5rem)] lg:rounded-t-none">
+      <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-stretch lg:gap-0">
+        <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>

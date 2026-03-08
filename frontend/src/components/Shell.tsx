@@ -71,7 +71,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-8 pt-3 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl px-4 pb-8 pt-0 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>
