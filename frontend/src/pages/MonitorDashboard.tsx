@@ -1913,7 +1913,7 @@ export function MonitorDashboard() {
       )}
 
       <div className={`dashboard-left-layout mb-5 lg:grid lg:items-stretch lg:gap-0 ${isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"}`}>
-        <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:rounded-t-none lg:rounded-br-none lg:sticky lg:top-20 lg:h-[calc(100vh-5.25rem)] lg:overflow-y-auto">
+        <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:min-h-full lg:rounded-none">
           <div className="flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={isNavigatorCompact ? "w-full text-center" : ""}>
