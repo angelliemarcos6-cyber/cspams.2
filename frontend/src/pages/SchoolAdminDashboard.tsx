@@ -84,6 +84,7 @@ interface QuickJumpItem {
   id: string;
   label: string;
   targetId: string;
+  icon: NavigatorIcon;
 }
 
 
@@ -153,24 +154,24 @@ const SCHOOL_MANUAL_STATUS_GUIDE = [
 
 const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
   first_glance: [
-    { id: "overview_alerts", label: "Overview Alerts", targetId: "first-glance" },
-    { id: "school_info", label: "School Info", targetId: "school-overview" },
-    { id: "kpi_cards", label: "KPI Cards", targetId: "overview-metrics" },
-    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "targets-snapshot" },
-    { id: "sync_alerts", label: "Sync Alerts", targetId: "sync-alerts-panel" },
-    { id: "status_chart", label: "Status Distribution", targetId: "status-chart-panel" },
+    { id: "overview_alerts", label: "Overview Alerts", targetId: "first-glance", icon: AlertTriangle },
+    { id: "school_info", label: "School Info", targetId: "school-overview", icon: Building2 },
+    { id: "kpi_cards", label: "KPI Cards", targetId: "overview-metrics", icon: LayoutDashboard },
+    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "targets-snapshot", icon: TrendingUp },
+    { id: "sync_alerts", label: "Sync Alerts", targetId: "sync-alerts-panel", icon: AlertCircle },
+    { id: "status_chart", label: "Status Distribution", targetId: "status-chart-panel", icon: ListChecks },
   ],
   requirements: [
-    { id: "requirement_cards", label: "Requirement Cards", targetId: "requirement-navigator" },
+    { id: "requirement_cards", label: "Requirement Cards", targetId: "requirement-navigator", icon: ListChecks },
   ],
   compliance: [
-    { id: "compliance_modules", label: "Modules", targetId: "compliance-modules" },
-    { id: "compliance_input", label: "School Profile Input", targetId: "compliance-input" },
-    { id: "forms_queue", label: "SF-1 / SF-5", targetId: "forms-workflow" },
-    { id: "indicators_queue", label: "Indicators", targetId: "indicator-workflow" },
+    { id: "compliance_modules", label: "Modules", targetId: "compliance-modules", icon: ClipboardList },
+    { id: "compliance_input", label: "School Profile Input", targetId: "compliance-input", icon: Database },
+    { id: "forms_queue", label: "SF-1 / SF-5", targetId: "forms-workflow", icon: ClipboardList },
+    { id: "indicators_queue", label: "Indicators", targetId: "indicator-workflow", icon: TrendingUp },
   ],
   records: [
-    { id: "student_records", label: "Student Records", targetId: "school-records" },
+    { id: "student_records", label: "Student Records", targetId: "school-records", icon: Users },
   ],
 };
 
@@ -353,7 +354,6 @@ export function SchoolAdminDashboard() {
   );
   const completedRequirements = requirements.length - missingRequirements.length;
   const completionPercent = requirements.length === 0 ? 0 : Math.round((completedRequirements / requirements.length) * 100);
-  const activeStep = Math.max(1, TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
   const nextRequirement = missingRequirements[0]?.label ?? "All requirements passed";
   const quickJumpItems = useMemo(
     () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
@@ -679,50 +679,24 @@ export function SchoolAdminDashboard() {
       <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
-            <p className="dashboard-workflow-step inline-flex items-center gap-2 rounded-sm px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-700">
-              Workflow Step {activeStep} of {TOP_NAVIGATOR_ITEMS.length}
-            </p>
-            <h2 className="mt-2 text-xl font-extrabold text-slate-900">{activeNavigatorLabel}</h2>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {TOP_NAVIGATOR_ITEMS.map((item, index) => {
-                const Icon = SCHOOL_NAVIGATOR_ICONS[item.id];
-                const isActive = activeTopNavigator === item.id;
-                return (
-                  <button
-                    key={`workflow-chip-${item.id}`}
-                    type="button"
-                    onClick={() => handleTopNavigate(item)}
-                    className={`dashboard-workflow-chip inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold transition ${
-                      isActive
-                        ? "border-primary-300 bg-primary-50 text-primary-800"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-primary-200 hover:text-primary-700"
-                    }`}
-                  >
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-slate-100 text-[10px] font-bold text-slate-600">
-                      {index + 1}
-                    </span>
-                    <Icon className="h-3.5 w-3.5" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-
             {quickJumpItems.length > 0 && (
             <div className="mt-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {quickJumpItems.map((item) => (
-                  <button
-                    key={`quick-jump-${item.id}`}
-                    type="button"
-                    onClick={() => handleQuickJump(item.targetId)}
-                    className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                {quickJumpItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={`quick-jump-${item.id}`}
+                      type="button"
+                      onClick={() => handleQuickJump(item.targetId)}
+                      className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             )}

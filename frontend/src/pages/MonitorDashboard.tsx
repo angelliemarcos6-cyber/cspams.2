@@ -98,6 +98,7 @@ interface QuickJumpItem {
   id: string;
   label: string;
   targetId: string;
+  icon: NavigatorIcon;
 }
 
 
@@ -187,28 +188,28 @@ const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }
 
 const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   first_glance: [
-    { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics" },
-    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "monitor-targets-snapshot" },
-    { id: "sync_alerts", label: "Sync Alerts", targetId: "monitor-sync-alerts" },
-    { id: "status_chart", label: "Status Distribution", targetId: "monitor-status-chart" },
-    { id: "submission_trend", label: "Submission Trend", targetId: "monitor-trend-chart" },
+    { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
+    { id: "targets_snapshot", label: "TARGETS-MET", targetId: "monitor-targets-snapshot", icon: TrendingUp },
+    { id: "sync_alerts", label: "Sync Alerts", targetId: "monitor-sync-alerts", icon: AlertCircle },
+    { id: "status_chart", label: "Status Distribution", targetId: "monitor-status-chart", icon: ListChecks },
+    { id: "submission_trend", label: "Submission Trend", targetId: "monitor-trend-chart", icon: TrendingUp },
   ],
   requirements: [
-    { id: "filters", label: "Submission Filters", targetId: "monitor-submission-filters" },
-    { id: "tracker_table", label: "Requirement Tracker", targetId: "monitor-requirements-table" },
+    { id: "filters", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "tracker_table", label: "Requirement Tracker", targetId: "monitor-requirements-table", icon: ListChecks },
   ],
   forms: [
-    { id: "filters_forms", label: "Submission Filters", targetId: "monitor-submission-filters" },
-    { id: "forms_queue", label: "SF-1 / SF-5 Queue", targetId: "monitor-forms-queue" },
+    { id: "filters_forms", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "forms_queue", label: "SF-1 / SF-5 Queue", targetId: "monitor-forms-queue", icon: ClipboardList },
   ],
   indicators: [
-    { id: "filters_indicators", label: "Submission Filters", targetId: "monitor-submission-filters" },
-    { id: "indicators_queue", label: "Indicators Queue", targetId: "monitor-indicators-queue" },
+    { id: "filters_indicators", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "indicators_queue", label: "Indicators Queue", targetId: "monitor-indicators-queue", icon: TrendingUp },
   ],
   records: [
-    { id: "filters_records", label: "Submission Filters", targetId: "monitor-submission-filters" },
-    { id: "school_records", label: "School Records", targetId: "monitor-school-records" },
-    { id: "student_records", label: "Learner Records", targetId: "monitor-student-records" },
+    { id: "filters_records", label: "Submission Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "school_records", label: "School Records", targetId: "monitor-school-records", icon: Database },
+    { id: "student_records", label: "Learner Records", targetId: "monitor-student-records", icon: Users },
   ],
 };
 
@@ -698,7 +699,6 @@ export function MonitorDashboard() {
     [schoolRequirementRows],
   );
   const completionPercent = requirementCounts.total === 0 ? 0 : Math.round((requirementCounts.complete / requirementCounts.total) * 100);
-  const activeStep = Math.max(1, MONITOR_TOP_NAVIGATOR_ITEMS.findIndex((item) => item.id === activeTopNavigator) + 1);
   const showSubmissionFilters = activeTopNavigator !== "first_glance";
   const quickJumpItems = useMemo(
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
@@ -912,50 +912,24 @@ export function MonitorDashboard() {
           <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="min-w-0">
-                <p className="dashboard-workflow-step inline-flex items-center gap-2 rounded-sm px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-700">
-                  Workflow Step {activeStep} of {MONITOR_TOP_NAVIGATOR_ITEMS.length}
-                </p>
-                <h2 className="mt-2 text-xl font-extrabold text-slate-900">{activeNavigatorLabel}</h2>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {MONITOR_TOP_NAVIGATOR_ITEMS.map((item, index) => {
-                    const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
-                    const isActive = activeTopNavigator === item.id;
-                    return (
-                      <button
-                        key={`monitor-workflow-chip-${item.id}`}
-                        type="button"
-                        onClick={() => setActiveTopNavigator(item.id)}
-                        className={`dashboard-workflow-chip inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold transition ${
-                          isActive
-                            ? "border-primary-300 bg-primary-50 text-primary-800"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-primary-200 hover:text-primary-700"
-                        }`}
-                      >
-                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-slate-100 text-[10px] font-bold text-slate-600">
-                          {index + 1}
-                        </span>
-                        <Icon className="h-3.5 w-3.5" />
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
                 {quickJumpItems.length > 0 && (
                 <div className="mt-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {quickJumpItems.map((item) => (
-                      <button
-                        key={`monitor-quick-jump-${item.id}`}
-                        type="button"
-                        onClick={() => focusAndScrollTo(item.targetId)}
-                        className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-                      >
-                        {item.label}
-                      </button>
-                    ))}
+                    {quickJumpItems.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={`monitor-quick-jump-${item.id}`}
+                          type="button"
+                          onClick={() => focusAndScrollTo(item.targetId)}
+                          className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {item.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 )}
