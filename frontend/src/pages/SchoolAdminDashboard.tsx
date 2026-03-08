@@ -29,6 +29,7 @@ import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
 import { SchoolFormsPanel } from "@/components/forms/SchoolFormsPanel";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
+import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useFormData } from "@/context/FormData";
@@ -923,176 +924,12 @@ export function SchoolAdminDashboard() {
       )}
 
       {activeTopNavigator === "records" && (
-      <section id="school-records" className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm">
-        <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-          <h2 className="text-base font-bold text-slate-900">School Records</h2>
-          <p className="mt-0.5 text-xs text-slate-500">Manage and update synchronized school records.</p>
-        </div>
-
-        <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search school ID, name, level, type, address, or region"
-              className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            />
-          </div>
-
-          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
-              className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-            >
-              <option value="all">All status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="pending">Pending</option>
-            </select>
-          </label>
-
-          <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-            Showing {filteredRecords.length} of {records.length}
-          </div>
-        </div>
-
-        {isLoading && records.length === 0 ? (
-          <div className="space-y-3 px-5 py-5">
-            <div className="skeleton-line h-4 w-48" />
-            <div className="grid gap-2">
-              <div className="skeleton-line h-12 w-full" />
-              <div className="skeleton-line h-12 w-full" />
-              <div className="skeleton-line h-12 w-full" />
-              <div className="skeleton-line h-12 w-full" />
-            </div>
-            <p className="text-xs text-slate-500">Syncing data from the backend...</p>
-          </div>
-        ) : filteredRecords.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
-            <AlertCircle className="h-9 w-9 text-slate-400" />
-            <p className="text-sm font-semibold">No records found</p>
-            <p className="text-xs text-slate-400">Update your school profile or clear filters.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="table-head-sticky">
-                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                  <th className="px-5 py-3 text-left">School ID</th>
-                  <th className="px-5 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("schoolName")}
-                      className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                    >
-                      School
-                      <SortIndicator active={sortColumn === "schoolName"} direction={sortDirection} />
-                    </button>
-                  </th>
-                  <th className="px-5 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("region")}
-                      className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                    >
-                      Region
-                      <SortIndicator active={sortColumn === "region"} direction={sortDirection} />
-                    </button>
-                  </th>
-                  <th className="px-5 py-3 text-left">Level</th>
-                  <th className="px-5 py-3 text-left">Type</th>
-                  <th className="px-5 py-3 text-left">Address</th>
-                  <th className="px-5 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("studentCount")}
-                      className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                    >
-                      Students
-                      <SortIndicator active={sortColumn === "studentCount"} direction={sortDirection} />
-                    </button>
-                  </th>
-                  <th className="px-5 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("teacherCount")}
-                      className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                    >
-                      Teachers
-                      <SortIndicator active={sortColumn === "teacherCount"} direction={sortDirection} />
-                    </button>
-                  </th>
-                  <th className="px-5 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("status")}
-                      className="mx-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                    >
-                      Status
-                      <SortIndicator active={sortColumn === "status"} direction={sortDirection} />
-                    </button>
-                  </th>
-                  <th className="px-5 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("lastUpdated")}
-                      className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                    >
-                      Last Updated
-                      <SortIndicator active={sortColumn === "lastUpdated"} direction={sortDirection} />
-                    </button>
-                  </th>
-                  <th className="px-5 py-3 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredRecords.map((record) => (
-                  <tr key={record.id} className="dashboard-table-row">
-                    <td className="px-5 py-3.5 align-top">
-                      <p className="text-sm font-semibold text-slate-900">{record.schoolId ?? record.schoolCode ?? "N/A"}</p>
-                    </td>
-                    <td className="px-5 py-3.5 align-top">
-                      <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
-                      <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>
-                    </td>
-                    <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.region}</td>
-                    <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.level ?? "N/A"}</td>
-                    <td className="px-5 py-3.5 align-top text-sm text-slate-700">{schoolTypeLabel(record.type)}</td>
-                    <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.address ?? record.district ?? "N/A"}</td>
-                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
-                      {record.studentCount.toLocaleString()}
-                    </td>
-                    <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
-                      {record.teacherCount.toLocaleString()}
-                    </td>
-                    <td className="px-5 py-3.5 text-center">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(record.status)}`}>
-                        {statusLabel(record.status)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-slate-600">{formatDateTime(record.lastUpdated)}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openForEdit(record)}
-                          className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <section id="school-records">
+        <StudentRecordsPanel
+          editable
+          title="Student Records"
+          description="Enter learner information (LRN, name, age, section, teacher, and enrollment status) for your school."
+        />
       </section>
       )}
     </Shell>

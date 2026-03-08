@@ -28,6 +28,7 @@ import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
 import { MonitorFormsPanel } from "@/components/forms/MonitorFormsPanel";
 import { MonitorIndicatorPanel } from "@/components/indicators/MonitorIndicatorPanel";
+import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useData } from "@/context/Data";
 import { useFormData } from "@/context/FormData";
 import { useIndicatorData } from "@/context/IndicatorData";
@@ -1090,6 +1091,7 @@ export function MonitorDashboard() {
       {activeTopNavigator === "indicators" && <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />}
 
       {activeTopNavigator === "records" && (
+        <>
         <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <h2 className="text-base font-bold text-slate-900">School Records</h2>
@@ -1426,6 +1428,13 @@ export function MonitorDashboard() {
             </div>
           )}
         </section>
+        <StudentRecordsPanel
+          editable={false}
+          showSchoolColumn
+          title="Synchronized Student Records"
+          description="Read-only learner records submitted by school heads."
+        />
+        </>
       )}
     </Shell>
   );

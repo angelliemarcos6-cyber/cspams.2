@@ -34,6 +34,8 @@ class Student extends Model
         'risk_level',
         'tracked_from_level',
         'current_level',
+        'section_name',
+        'teacher_name',
         'last_status_at',
     ];
 

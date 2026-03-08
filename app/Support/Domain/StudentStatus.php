@@ -9,6 +9,7 @@ enum StudentStatus: string
     case TRANSFEREE = 'transferee';
     case RETURNING = 'returning';
     case DROPPED_OUT = 'dropped_out';
+    case ON_HOLD = 'on_hold';
     case COMPLETER = 'completer';
     case GRADUATED = 'graduated';
 
@@ -23,6 +24,7 @@ enum StudentStatus: string
             self::TRANSFEREE->value => 'Transferee',
             self::RETURNING->value => 'Returning',
             self::DROPPED_OUT->value => 'Dropped Out',
+            self::ON_HOLD->value => 'On Hold',
             self::COMPLETER->value => 'Completer',
             self::GRADUATED->value => 'Graduated',
         ];
@@ -32,7 +34,7 @@ enum StudentStatus: string
     {
         return match ($this) {
             self::ENROLLED, self::RETURNING, self::COMPLETER, self::GRADUATED => 'success',
-            self::AT_RISK => 'warning',
+            self::AT_RISK, self::ON_HOLD => 'warning',
             self::TRANSFEREE => 'info',
             self::DROPPED_OUT => 'danger',
         };

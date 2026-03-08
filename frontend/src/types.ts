@@ -44,6 +44,58 @@ export interface SchoolRecordPayload {
   type?: "public" | "private" | null;
 }
 
+export type StudentEnrollmentStatus =
+  | "enrolled"
+  | "at_risk"
+  | "transferee"
+  | "returning"
+  | "dropped_out"
+  | "on_hold"
+  | "completer"
+  | "graduated";
+
+export interface StudentRecord {
+  id: string;
+  school?: {
+    id: string;
+    schoolCode: string | null;
+    name: string | null;
+  };
+  lrn: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+  fullName: string;
+  sex: "male" | "female" | null;
+  birthDate: string | null;
+  age: number | null;
+  status: StudentEnrollmentStatus | string;
+  statusLabel: string;
+  riskLevel: "none" | "low" | "medium" | "high" | string;
+  section: string | null;
+  teacher: string | null;
+  currentLevel: string | null;
+  trackedFromLevel: string | null;
+  lastStatusAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface StudentRecordPayload {
+  lrn: string;
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  sex?: "male" | "female" | null;
+  birthDate?: string | null;
+  status: StudentEnrollmentStatus;
+  riskLevel?: "none" | "low" | "medium" | "high" | null;
+  section?: string | null;
+  teacher?: string | null;
+  currentLevel?: string | null;
+  trackedFromLevel?: string | null;
+}
+
 export interface TargetsMetSnapshot {
   generatedAt: string;
   schoolsMonitored: number;
