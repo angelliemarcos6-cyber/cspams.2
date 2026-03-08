@@ -7,11 +7,13 @@ use App\Models\User;
 use App\Support\Domain\StudentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
+use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
 
 class ApiSyncTest extends TestCase
 {
     use RefreshDatabase;
+    use InteractsWithSeededCredentials;
 
     public function test_school_head_login_requires_school_code(): void
     {
@@ -23,7 +25,7 @@ class ApiSyncTest extends TestCase
         $emailLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => $schoolHead->email,
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin('school_head', $schoolHead->email),
         ]);
 
         $emailLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
@@ -32,7 +34,7 @@ class ApiSyncTest extends TestCase
         $codeLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => $this->schoolHeadLogin($schoolHead),
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHead)),
         ]);
 
         $codeLogin->assertOk()
@@ -46,7 +48,7 @@ class ApiSyncTest extends TestCase
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
             'login' => 'monitor@cspams.local',
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
         ]);
 
         $login->assertOk()
@@ -97,7 +99,7 @@ class ApiSyncTest extends TestCase
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => $this->schoolHeadLogin($schoolHead),
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHead)),
         ]);
 
         $login->assertOk()
@@ -136,7 +138,7 @@ class ApiSyncTest extends TestCase
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => $this->schoolHeadLogin($schoolHead),
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHead)),
         ]);
 
         $login->assertOk();
@@ -187,7 +189,7 @@ class ApiSyncTest extends TestCase
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => $this->schoolHeadLogin($schoolHead),
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHead)),
         ]);
         $login->assertOk();
         $token = (string) $login->json('token');
@@ -224,7 +226,7 @@ class ApiSyncTest extends TestCase
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
             'login' => 'monitor@cspams.local',
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
         ]);
 
         $login->assertOk()

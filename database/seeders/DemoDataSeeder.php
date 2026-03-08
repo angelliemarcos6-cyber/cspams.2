@@ -19,6 +19,7 @@ use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class DemoDataSeeder extends Seeder
 {
@@ -93,7 +94,9 @@ class DemoDataSeeder extends Seeder
             ['email' => 'monitor@cspams.local'],
             [
                 'name' => 'Division Monitor',
-                'password' => Hash::make('password123'),
+                'password' => Hash::make($this->demoPasswordForKey('monitor')),
+                'must_reset_password' => false,
+                'password_changed_at' => now(),
             ],
         );
         $monitor->syncRoles([UserRoleResolver::MONITOR]);
@@ -103,7 +106,9 @@ class DemoDataSeeder extends Seeder
                 ['email' => 'schoolhead' . ($index + 1) . '@cspams.local'],
                 [
                     'name' => 'School Head ' . ($index + 1),
-                    'password' => Hash::make('password123'),
+                    'password' => Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code))),
+                    'must_reset_password' => false,
+                    'password_changed_at' => now(),
                     'school_id' => $school->id,
                 ],
             );
@@ -138,9 +143,13 @@ class DemoDataSeeder extends Seeder
             StudentStatus::TRANSFEREE,
         ];
 
-        $maxExistingLrn = Student::query()->max('lrn');
+        $maxExistingLrn = Student::query()
+            ->pluck('lrn')
+            ->filter(static fn (mixed $lrn): bool => is_numeric($lrn))
+            ->map(static fn (mixed $lrn): int => (int) $lrn)
+            ->max();
         $counter = 100000000000;
-        if (is_numeric($maxExistingLrn)) {
+        if ($maxExistingLrn !== null) {
             $counter = max($counter, ((int) $maxExistingLrn) + 1);
         }
 
@@ -339,6 +348,23 @@ class DemoDataSeeder extends Seeder
             'unit' => $unit,
             'sort_order' => $sortOrder,
         ];
+    }
+
+    private function demoPasswordForKey(string $key): string
+    {
+        $configured = trim((string) env('CSPAMS_DEMO_PASSWORD'));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $appKey = (string) config('app.key');
+        if ($appKey === '') {
+            return 'Demo@' . Str::upper(Str::random(10)) . '!';
+        }
+
+        $fingerprint = strtoupper(substr(hash_hmac('sha256', $key, $appKey), 0, 10));
+
+        return 'Demo@' . $fingerprint . '!';
     }
 }
 

@@ -120,10 +120,12 @@ After seeding:
 
 - Division Monitor login:
   - Login: `monitor@cspams.local`
-  - Password: `password123`
+  - Password: set `CSPAMS_DEMO_PASSWORD` in `.env` before seeding, or use the deterministic password policy from `DemoDataSeeder`
 - School Head login:
   - Login: assigned `school_code` (example: `SDO-SC-001`, `SDO-SC-002`, `SDO-SC-003`)
-  - Password: `password123`
+  - Password: set `CSPAMS_DEMO_PASSWORD` in `.env` before seeding, or use the deterministic password policy from `DemoDataSeeder`
+
+For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and must complete `/api/auth/reset-required-password` before dashboard access.
 
 ## Additional Docs
 

@@ -8,11 +8,10 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\SchoolStatus;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class SantiagoCitySchoolAccountsSeeder extends Seeder
 {
-    private const DEFAULT_PASSWORD = 'password123';
-
     public function run(): void
     {
         foreach ($this->schools() as $entry) {
@@ -35,7 +34,9 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
                 ['email' => $this->schoolHeadEmail($entry['school_code'])],
                 [
                     'name' => 'School Head - ' . $entry['name'],
-                    'password' => Hash::make(self::DEFAULT_PASSWORD),
+                    'password' => Hash::make($this->temporaryPasswordForSchoolCode($entry['school_code'])),
+                    'must_reset_password' => true,
+                    'password_changed_at' => null,
                     'school_id' => $school->id,
                 ],
             );
@@ -47,6 +48,23 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
                 'submitted_at' => now(),
             ]);
         }
+    }
+
+    private function temporaryPasswordForSchoolCode(string $schoolCode): string
+    {
+        $configured = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD'));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $appKey = (string) config('app.key');
+        if ($appKey === '') {
+            return 'Csp@' . Str::upper(Str::random(10)) . '!';
+        }
+
+        $fingerprint = strtoupper(substr(hash_hmac('sha256', $schoolCode, $appKey), 0, 10));
+
+        return 'Csp@' . $fingerprint . '!';
     }
 
     private function schoolHeadEmail(string $schoolCode): string

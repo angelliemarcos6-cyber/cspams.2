@@ -93,8 +93,11 @@ class IndicatorSubmissionController extends Controller
 
         $this->applyVisibilityScope($query, $user);
         $this->applyCommonFilters($query, $request);
+        $perPage = $this->resolvePerPage($request);
 
-        return IndicatorSubmissionResource::collection($query->limit(200)->get());
+        return IndicatorSubmissionResource::collection(
+            $query->paginate($perPage)->appends($request->query()),
+        );
     }
 
     public function show(Request $request, IndicatorSubmission $submission): JsonResponse
@@ -880,5 +883,16 @@ class IndicatorSubmissionController extends Controller
         }
 
         return is_string($status) && $status !== '' ? $status : null;
+    }
+
+    private function resolvePerPage(Request $request, int $default = 25, int $max = 100): int
+    {
+        $perPage = $request->integer('per_page');
+
+        if ($perPage <= 0) {
+            return $default;
+        }
+
+        return min($perPage, $max);
     }
 }

@@ -7,11 +7,13 @@ use App\Models\PerformanceMetric;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
+use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
 
 class IndicatorSubmissionWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+    use InteractsWithSeededCredentials;
 
     public function test_metrics_endpoint_includes_salo_indicator(): void
     {
@@ -199,7 +201,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $loginResponse = $this->postJson('/api/auth/login', [
             'role' => $role,
             'login' => $login,
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin($role, $login),
         ]);
 
         $loginResponse->assertOk();

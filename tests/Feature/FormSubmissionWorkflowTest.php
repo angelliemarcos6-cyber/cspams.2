@@ -6,11 +6,13 @@ use App\Models\AcademicYear;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
+use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
 
 class FormSubmissionWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+    use InteractsWithSeededCredentials;
 
     public function test_sf1_generation_submission_validation_and_history_workflow(): void
     {
@@ -135,7 +137,7 @@ class FormSubmissionWorkflowTest extends TestCase
         $loginResponse = $this->postJson('/api/auth/login', [
             'role' => $role,
             'login' => $login,
-            'password' => 'password123',
+            'password' => $this->demoPasswordForLogin($role, $login),
         ]);
 
         $loginResponse->assertOk();

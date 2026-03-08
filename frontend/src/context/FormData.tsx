@@ -133,8 +133,8 @@ export function FormDataProvider({ children }: { children: ReactNode }) {
 
       try {
         const [sf1Payload, sf5Payload, yearPayload] = await Promise.all([
-          apiRequest<FormSubmissionsResponse>(formRoute("sf1"), { token }),
-          apiRequest<FormSubmissionsResponse>(formRoute("sf5"), { token }),
+          apiRequest<FormSubmissionsResponse>(`${formRoute("sf1")}?per_page=100`, { token }),
+          apiRequest<FormSubmissionsResponse>(`${formRoute("sf5")}?per_page=100`, { token }),
           apiRequest<AcademicYearsResponse>("/api/indicators/academic-years", { token }),
         ]);
 

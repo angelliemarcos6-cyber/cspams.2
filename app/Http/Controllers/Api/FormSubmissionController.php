@@ -44,8 +44,11 @@ class FormSubmissionController extends Controller
 
         $this->applyVisibilityScope($query, $user);
         $this->applyCommonFilters($query, $request);
+        $perPage = $this->resolvePerPage($request);
 
-        return Sf1SubmissionResource::collection($query->limit(200)->get());
+        return Sf1SubmissionResource::collection(
+            $query->paginate($perPage)->appends($request->query()),
+        );
     }
 
     public function indexSf5(Request $request): AnonymousResourceCollection
@@ -64,8 +67,11 @@ class FormSubmissionController extends Controller
 
         $this->applyVisibilityScope($query, $user);
         $this->applyCommonFilters($query, $request);
+        $perPage = $this->resolvePerPage($request);
 
-        return Sf5SubmissionResource::collection($query->limit(200)->get());
+        return Sf5SubmissionResource::collection(
+            $query->paginate($perPage)->appends($request->query()),
+        );
     }
 
     public function generateSf1(GenerateFormSubmissionRequest $request): JsonResponse
@@ -597,5 +603,16 @@ class FormSubmissionController extends Controller
         }
 
         return is_string($status) && $status !== '' ? $status : null;
+    }
+
+    private function resolvePerPage(Request $request, int $default = 25, int $max = 100): int
+    {
+        $perPage = $request->integer('per_page');
+
+        if ($perPage <= 0) {
+            return $default;
+        }
+
+        return min($perPage, $max);
     }
 }

@@ -127,7 +127,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       try {
         const [submissionPayload, metricPayload, yearPayload] = await Promise.all([
-          apiRequest<IndicatorSubmissionsResponse>("/api/indicators/submissions", { token }),
+          apiRequest<IndicatorSubmissionsResponse>("/api/indicators/submissions?per_page=100", { token }),
           apiRequest<IndicatorMetricsResponse>("/api/indicators/metrics", { token }),
           apiRequest<IndicatorAcademicYearsResponse>("/api/indicators/academic-years", { token }),
         ]);

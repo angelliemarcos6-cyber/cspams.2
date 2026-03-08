@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\LoginRequest;
+use App\Http\Requests\Api\ResetRequiredPasswordRequest;
 use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
@@ -36,11 +37,73 @@ class AuthController extends Controller
             );
         }
 
+        if ($user->must_reset_password) {
+            return response()->json(
+                [
+                    'message' => 'Password reset is required before dashboard access.',
+                    'requiresPasswordReset' => true,
+                ],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
         $token = $user->createToken('cspams-dashboard-' . now()->timestamp)->plainTextToken;
 
         return response()->json([
             'token' => $token,
             'user' => $this->serializeUser($user, $role),
+        ]);
+    }
+
+    public function resetRequiredPassword(ResetRequiredPasswordRequest $request): JsonResponse
+    {
+        $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
+        $rawLogin = trim($request->string('login')->toString());
+        $login = $role === UserRoleResolver::SCHOOL_HEAD
+            ? strtoupper($rawLogin)
+            : $rawLogin;
+        $currentPassword = $request->string('current_password')->toString();
+        $newPassword = $request->string('new_password')->toString();
+
+        $user = $this->resolveUserForLogin($role, $login);
+
+        if (! $user || ! Hash::check($currentPassword, $user->password) || ! UserRoleResolver::has($user, $role)) {
+            $message = $role === UserRoleResolver::SCHOOL_HEAD
+                ? 'Invalid school code or password.'
+                : 'Invalid credentials for the selected role.';
+
+            return response()->json(
+                ['message' => $message],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (! $user->must_reset_password) {
+            return response()->json(
+                ['message' => 'Password reset is not required for this account.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (Hash::check($newPassword, $user->password)) {
+            return response()->json(
+                ['message' => 'New password must be different from your current password.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $user->forceFill([
+            'password' => Hash::make($newPassword),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+        ])->save();
+
+        $user->tokens()->delete();
+        $token = $user->createToken('cspams-dashboard-' . now()->timestamp)->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user' => $this->serializeUser($user->fresh('school'), $role),
         ]);
     }
 
@@ -115,6 +178,7 @@ class AuthController extends Controller
             'schoolId' => $user->school_id,
             'schoolCode' => $user->school?->school_code,
             'schoolName' => $user->school?->name,
+            'mustResetPassword' => (bool) $user->must_reset_password,
         ];
     }
 }
