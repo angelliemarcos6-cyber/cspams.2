@@ -90,7 +90,7 @@ export function Login() {
             <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto bg-white px-2 py-1.5" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary-100">CSPAMS</p>
-              <p className="text-lg font-extrabold">CSPAMS</p>
+              <p className="text-lg font-extrabold leading-tight">Centralized Student Performance Analytics and Monitoring System</p>
             </div>
           </div>
 
