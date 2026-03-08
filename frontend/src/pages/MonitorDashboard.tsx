@@ -49,6 +49,7 @@ type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "s
 type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "submitted_any" | "complete" | "awaiting_review" | "missing";
 type MonitorTopNavigatorId = "first_glance" | "requirements" | "forms" | "indicators" | "records";
+type ScopeDropdownSlot = "schools" | "students" | "teachers";
 
 interface MonitorTopNavigatorItem {
   id: MonitorTopNavigatorId;
@@ -380,7 +381,7 @@ export function MonitorDashboard() {
   const [requirementFilter, setRequirementFilter] = useState<RequirementFilter>("submitted_any");
   const [selectedSchoolScopeKey, setSelectedSchoolScopeKey] = useState<string>(ALL_SCHOOL_SCOPE);
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
-  const [isSchoolScopeOpen, setIsSchoolScopeOpen] = useState(false);
+  const [schoolScopeDropdownSlot, setSchoolScopeDropdownSlot] = useState<ScopeDropdownSlot | null>(null);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("first_glance");
@@ -838,6 +839,77 @@ export function MonitorDashboard() {
     setSortDirection("asc");
   };
 
+  const renderSchoolScopeSelector = (slot: ScopeDropdownSlot) => {
+    const isOpen = schoolScopeDropdownSlot === slot;
+
+    return (
+      <div className="relative mt-3">
+        <button
+          type="button"
+          onClick={() => setSchoolScopeDropdownSlot((current) => (current === slot ? null : slot))}
+          className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+        >
+          <span className="truncate">
+            {selectedSchoolScope ? `${selectedSchoolScope.code} - ${selectedSchoolScope.name}` : "All schools"}
+          </span>
+          <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+        </button>
+        {isOpen && (
+          <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
+            <div className="border-b border-slate-100 p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={schoolScopeQuery}
+                  onChange={(event) => setSchoolScopeQuery(event.target.value)}
+                  placeholder="Search school code or name"
+                  className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+              </div>
+            </div>
+            <div className="max-h-48 overflow-y-auto p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+                  setSchoolScopeQuery("");
+                  setSchoolScopeDropdownSlot(null);
+                }}
+                className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                  !selectedSchoolScope ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                All schools
+              </button>
+              {filteredSchoolScopeOptions.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => {
+                    setSelectedSchoolScopeKey(option.key);
+                    setSchoolScopeQuery("");
+                    setSchoolScopeDropdownSlot(null);
+                  }}
+                  className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                    selectedSchoolScope?.key === option.key
+                      ? "bg-primary-50 text-primary-800"
+                      : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="font-semibold">{option.code}</span> - {option.name}
+                </button>
+              ))}
+              {filteredSchoolScopeOptions.length === 0 && (
+                <p className="px-2.5 py-2 text-xs text-slate-500">No matching school.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Shell
       title="Division Monitor Dashboard"
@@ -1127,11 +1199,19 @@ export function MonitorDashboard() {
       {activeTopNavigator === "first_glance" && (
         <>
           <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-4 ${sectionFocusClass("monitor-overview-metrics")}`}>
-            <StatCard
-              label="Total Schools"
-              value={scopedRecords.length.toLocaleString()}
-              icon={<Building2 className="h-5 w-5" />}
-            />
+            <article className="relative border border-primary-100 bg-primary-50/70 p-4">
+              <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
+              <div className="flex items-start justify-between gap-3 pt-1">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-700">Total Schools</p>
+                  <p className="mt-2 text-3xl font-extrabold leading-none text-slate-900">{scopedRecords.length.toLocaleString()}</p>
+                </div>
+                <span className="grid h-11 w-11 place-items-center border border-slate-100 bg-white text-primary">
+                  <Building2 className="h-5 w-5" />
+                </span>
+              </div>
+              {renderSchoolScopeSelector("schools")}
+            </article>
             <article className="relative border border-primary-100 bg-primary-50/70 p-4">
               <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
               <div className="flex items-start justify-between gap-3 pt-1">
@@ -1143,76 +1223,21 @@ export function MonitorDashboard() {
                   <GraduationCap className="h-5 w-5" />
                 </span>
               </div>
-              <div className="relative mt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsSchoolScopeOpen((current) => !current)}
-                  className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-                >
-                  <span className="truncate">
-                    {selectedSchoolScope ? `${selectedSchoolScope.code} - ${selectedSchoolScope.name}` : "All schools"}
-                  </span>
-                  <ChevronDown className={`h-3.5 w-3.5 transition ${isSchoolScopeOpen ? "rotate-180" : ""}`} />
-                </button>
-                {isSchoolScopeOpen && (
-                  <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
-                    <div className="border-b border-slate-100 p-2">
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                        <input
-                          type="text"
-                          value={schoolScopeQuery}
-                          onChange={(event) => setSchoolScopeQuery(event.target.value)}
-                          placeholder="Search school code or name"
-                          className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-48 overflow-y-auto p-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-                          setSchoolScopeQuery("");
-                          setIsSchoolScopeOpen(false);
-                        }}
-                        className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                          !selectedSchoolScope ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        All schools
-                      </button>
-                      {filteredSchoolScopeOptions.map((option) => (
-                        <button
-                          key={option.key}
-                          type="button"
-                          onClick={() => {
-                            setSelectedSchoolScopeKey(option.key);
-                            setSchoolScopeQuery("");
-                            setIsSchoolScopeOpen(false);
-                          }}
-                          className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                            selectedSchoolScope?.key === option.key
-                              ? "bg-primary-50 text-primary-800"
-                              : "text-slate-700 hover:bg-slate-50"
-                          }`}
-                        >
-                          <span className="font-semibold">{option.code}</span> - {option.name}
-                        </button>
-                      ))}
-                      {filteredSchoolScopeOptions.length === 0 && (
-                        <p className="px-2.5 py-2 text-xs text-slate-500">No matching school.</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              {renderSchoolScopeSelector("students")}
             </article>
-            <StatCard
-              label="Total Teachers"
-              value={totalTeachers.toLocaleString()}
-              icon={<Users className="h-5 w-5" />}
-            />
+            <article className="relative border border-primary-100 bg-primary-50/70 p-4">
+              <div className="absolute left-0 top-0 h-1.5 w-full bg-primary-400/80" />
+              <div className="flex items-start justify-between gap-3 pt-1">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary-700">Total Teachers</p>
+                  <p className="mt-2 text-3xl font-extrabold leading-none text-slate-900">{totalTeachers.toLocaleString()}</p>
+                </div>
+                <span className="grid h-11 w-11 place-items-center border border-slate-100 bg-white text-primary">
+                  <Users className="h-5 w-5" />
+                </span>
+              </div>
+              {renderSchoolScopeSelector("teachers")}
+            </article>
             <StatCard
               label="Active Schools"
               value={activeSchools.toLocaleString()}
