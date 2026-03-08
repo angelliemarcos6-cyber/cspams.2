@@ -4,7 +4,6 @@ import { LoaderCircle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
 import { IndicatorDataProvider } from "@/context/IndicatorData";
-import { FormDataProvider } from "@/context/FormData";
 import { StudentDataProvider } from "@/context/StudentData";
 import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
@@ -98,13 +97,11 @@ export function App() {
     <AuthProvider>
       <DataProvider>
         <IndicatorDataProvider>
-          <FormDataProvider>
-            <StudentDataProvider>
-              <HashRouter>
-                <AppRoutes />
-              </HashRouter>
-            </StudentDataProvider>
-          </FormDataProvider>
+          <StudentDataProvider>
+            <HashRouter>
+              <AppRoutes />
+            </HashRouter>
+          </StudentDataProvider>
         </IndicatorDataProvider>
       </DataProvider>
     </AuthProvider>

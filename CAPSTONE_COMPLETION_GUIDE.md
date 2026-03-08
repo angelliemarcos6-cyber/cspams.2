@@ -12,11 +12,6 @@ This guide aligns the codebase with a finishable, defensible capstone scope.
 - Dashboard widgets for monitoring and intervention visibility
 - Reports Center with CSV exports and summary previews
 - API sync endpoints for dashboard records
-- Digital SF-1/SF-5 API workflow:
-  - auto-generation from current records
-  - submit for validation
-  - monitor validation/return
-  - full submission history trail
 - Indicator compliance API workflow:
   - school-level indicator package encoding
   - submit to monitor
@@ -30,19 +25,18 @@ Focus on one complete workflow chain:
 1. Role-based login and scoped access
 2. School/learner encoding and status transitions
 3. KPI computation and dashboard monitoring
-4. SF-1/SF-5 generation, submission, validation, and history
-5. Indicator compliance submission and monitor review
-6. Export/report outputs for decision support
+4. Indicator compliance submission and monitor review
+5. Export/report outputs for decision support
 
 ## 3) Role Matrix (Operational)
 
 - `monitor`
   - Division-wide visibility
-  - Validate/return SF submissions
+  - Validate/return indicator submissions
   - Manage global master-data modules
 - `school_head`
   - Encode own-school records
-  - Generate and submit SF-1/SF-5
+  - Submit indicator compliance packages
   - View own-school dashboards and reports
 
 ## 4) Data Model Checklist
@@ -58,10 +52,8 @@ Core entities:
 - `student_status_logs`
 - `audit_logs`
 
-New digital forms workflow entities:
+Compliance workflow entities:
 
-- `sf1_submissions`
-- `sf5_submissions`
 - `indicator_submissions`
 - `indicator_submission_items`
 - `form_submission_histories`
@@ -71,12 +63,9 @@ New digital forms workflow entities:
 1. Stabilization
    - Resolve all merge conflicts
    - Ensure all migrations and tests pass
-2. Form completion
-   - Add Filament UI pages/resources for SF-1/SF-5 (currently API-complete)
-   - Add printable templates if required by panel reviewers
-3. Reporting polish
+2. Reporting polish
    - Add PDF/Excel export if required by adviser rubric
-4. QA and evidence
+3. QA and evidence
    - Record end-to-end demo scripts
    - Capture before/after workflow metrics
 
@@ -90,13 +79,12 @@ Prepare:
 - Role-permission matrix
 - Test evidence (feature tests and manual UAT)
 - Demo script for:
-  - school head submits SF form
+  - school head submits indicator package
   - monitor validates/returns
   - history and audit proof
 
 ## 7) Practical Next Build Targets
 
-- Filament SF-1/SF-5 resources with status badges and history relation tables
-- Notification channel for returned/validated forms
+- Notification channel for returned/validated indicator submissions
 - PDF/Excel outputs aligned to division templates
 - Additional feature tests for edge cases and authorization

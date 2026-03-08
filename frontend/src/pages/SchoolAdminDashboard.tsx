@@ -31,14 +31,12 @@ import { RegionCard } from "@/components/RegionCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
-import { SchoolFormsPanel } from "@/components/forms/SchoolFormsPanel";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
 import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
-import { useFormData } from "@/context/FormData";
 import { useIndicatorData } from "@/context/IndicatorData";
-import type { FormSubmission, IndicatorSubmission, SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
+import type { IndicatorSubmission, SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 import {
   buildRegionAggregates,
   buildStatusDistribution,
@@ -57,7 +55,7 @@ interface FormState {
 }
 
 interface RequirementItem {
-  id: "school_record" | "sf1" | "sf5" | "indicators";
+  id: "school_record" | "indicators";
   label: string;
   summary: string;
   detail: string;
@@ -129,9 +127,9 @@ const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
     objective: "Encode and submit all compliance data from one module.",
     actions: [
       "Update school profile counts such as students, teachers, and school status.",
-      "Generate and submit SF-1/SF-5 and encode compliance indicators.",
+      "Encode and submit compliance indicators.",
     ],
-    doneWhen: "School profile, SF forms, and indicator package are all submitted or validated.",
+    doneWhen: "School profile and indicator package are submitted or validated.",
   },
   {
     id: "records",
@@ -165,7 +163,6 @@ const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
   compliance: [
     { id: "compliance_modules", label: "Modules", targetId: "compliance-modules", icon: ClipboardList },
     { id: "compliance_input", label: "School Profile Input", targetId: "compliance-input", icon: Database },
-    { id: "forms_queue", label: "SF-1 / SF-5", targetId: "forms-workflow", icon: ClipboardList },
     { id: "indicators_queue", label: "Indicators", targetId: "indicator-workflow", icon: TrendingUp },
   ],
   records: [
@@ -245,7 +242,7 @@ function isPassedToMonitor(status: string | null | undefined): boolean {
   return status === "submitted" || status === "validated";
 }
 
-function buildWorkflowDetail(label: string, submission: FormSubmission | IndicatorSubmission | null): string {
+function buildWorkflowDetail(label: string, submission: IndicatorSubmission | null): string {
   if (!submission) {
     return `No ${label} package yet.`;
   }
@@ -268,7 +265,6 @@ function buildWorkflowDetail(label: string, submission: FormSubmission | Indicat
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
-  const { sf1Submissions, sf5Submissions } = useFormData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
 
   const [showForm, setShowForm] = useState(false);
@@ -299,8 +295,6 @@ export function SchoolAdminDashboard() {
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
-  const latestSf1 = useMemo(() => latestSubmission(sf1Submissions), [sf1Submissions]);
-  const latestSf5 = useMemo(() => latestSubmission(sf5Submissions), [sf5Submissions]);
   const latestIndicators = useMemo(() => latestSubmission(indicatorSubmissions), [indicatorSubmissions]);
 
   const requirements = useMemo<RequirementItem[]>(
@@ -316,22 +310,6 @@ export function SchoolAdminDashboard() {
         navigatorId: "compliance",
       },
       {
-        id: "sf1",
-        label: "Digital SF-1",
-        summary: "Generate and submit SF-1 to monitor.",
-        detail: buildWorkflowDetail("SF-1", latestSf1),
-        isComplete: isPassedToMonitor(latestSf1?.status),
-        navigatorId: "compliance",
-      },
-      {
-        id: "sf5",
-        label: "Digital SF-5",
-        summary: "Generate and submit SF-5 to monitor.",
-        detail: buildWorkflowDetail("SF-5", latestSf5),
-        isComplete: isPassedToMonitor(latestSf5?.status),
-        navigatorId: "compliance",
-      },
-      {
         id: "indicators",
         label: "Compliance Indicators",
         summary: "Encode required school indicators and submit to monitor.",
@@ -340,7 +318,7 @@ export function SchoolAdminDashboard() {
         navigatorId: "compliance",
       },
     ],
-    [assignedRecord, latestIndicators, latestSf1, latestSf5],
+    [assignedRecord, latestIndicators],
   );
 
   const missingRequirements = useMemo(
@@ -350,11 +328,9 @@ export function SchoolAdminDashboard() {
   const submissionStatuses = useMemo(
     () => [
       assignedRecord ? "submitted" : "missing",
-      latestSf1?.status ?? "missing",
-      latestSf5?.status ?? "missing",
       latestIndicators?.status ?? "missing",
     ],
-    [assignedRecord, latestIndicators?.status, latestSf1?.status, latestSf5?.status],
+    [assignedRecord, latestIndicators?.status],
   );
   const pendingCount = useMemo(
     () => submissionStatuses.filter((status) => status === "submitted").length,
@@ -551,14 +527,6 @@ export function SchoolAdminDashboard() {
         };
       }
 
-      if (nextMissing.id === "sf1" || nextMissing.id === "sf5") {
-        return {
-          label: "Open Compliance Records",
-          detail: "Update and submit SF-1 / SF-5 requirements.",
-          action: "compliance_forms" as const,
-        };
-      }
-
       return {
         label: "Open Compliance Records",
         detail: "Encode and submit the Compliance Indicators package.",
@@ -587,14 +555,6 @@ export function SchoolAdminDashboard() {
       openForCreate();
       if (typeof window !== "undefined") {
         window.setTimeout(() => scrollToSection("compliance-input"), 60);
-      }
-      return;
-    }
-
-    if (nextStep.action === "compliance_forms") {
-      setActiveTopNavigator("compliance");
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => scrollToSection("forms-workflow"), 60);
       }
       return;
     }
@@ -850,17 +810,10 @@ export function SchoolAdminDashboard() {
           </button>
           <button
             type="button"
-            onClick={() => scrollToSection("forms-workflow")}
-            className="dashboard-quick-jump-btn rounded-sm"
-          >
-            2. SF-1 / SF-5 Forms
-          </button>
-          <button
-            type="button"
             onClick={() => scrollToSection("indicator-workflow")}
             className="dashboard-quick-jump-btn rounded-sm"
           >
-            3. Indicators
+            2. Indicators
           </button>
         </div>
       </section>
@@ -1175,10 +1128,6 @@ export function SchoolAdminDashboard() {
               <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">School Profile Input</h2>
             </section>
           )}
-        </section>
-
-        <section id="forms-workflow" className={sectionFocusClass("forms-workflow")}>
-          <SchoolFormsPanel />
         </section>
 
         <section id="indicator-workflow" className={sectionFocusClass("indicator-workflow")}>

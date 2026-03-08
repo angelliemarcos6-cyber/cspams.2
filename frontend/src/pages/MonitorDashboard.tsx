@@ -31,14 +31,12 @@ import { RegionCard } from "@/components/RegionCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
-import { MonitorFormsPanel } from "@/components/forms/MonitorFormsPanel";
 import { MonitorIndicatorPanel } from "@/components/indicators/MonitorIndicatorPanel";
 import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useData } from "@/context/Data";
-import { useFormData } from "@/context/FormData";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
-import type { FormSubmission, IndicatorSubmission, SchoolRecord, SchoolStatus } from "@/types";
+import type { IndicatorSubmission, SchoolRecord, SchoolStatus } from "@/types";
 import {
   buildRegionAggregates,
   buildStatusDistribution,
@@ -73,8 +71,6 @@ interface SchoolRequirementSummary {
   region: string;
   schoolStatus: SchoolStatus | null;
   hasComplianceRecord: boolean;
-  sf1Status: string | null;
-  sf5Status: string | null;
   indicatorStatus: string | null;
   hasAnySubmitted: boolean;
   isComplete: boolean;
@@ -158,8 +154,8 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
     title: "Compliance Records",
     objective: "Review forms and indicators in one validation workspace.",
     actions: [
-      "Review submitted SF-1 and SF-5 packages and decide validate or return.",
-      "Review indicator packages and issue clear validation notes.",
+      "Review indicator packages and decide validate or return.",
+      "Issue clear validation notes for every returned package.",
     ],
     doneWhen: "No pending submissions remain without a validation decision.",
   },
@@ -187,7 +183,7 @@ const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }
   { id: "submitted_any", label: "With Any CSPAMS Submission" },
   { id: "complete", label: "Complete CSPAMS Package" },
   { id: "awaiting_review", label: "Pending Monitor Review" },
-  { id: "missing", label: "Missing SF / Indicators" },
+  { id: "missing", label: "Missing Records / Indicators" },
 ];
 
 const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
@@ -201,7 +197,6 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   ],
   compliance: [
     { id: "filters_compliance", label: "Advanced Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
-    { id: "forms_queue", label: "SF-1 / SF-5 Queue", targetId: "monitor-forms-queue", icon: ClipboardList },
     { id: "indicators_queue", label: "Indicators Queue", targetId: "monitor-indicators-queue", icon: TrendingUp },
   ],
   records: [
@@ -364,7 +359,6 @@ function latestBySchool<
 
 export function MonitorDashboard() {
   const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord, deleteRecord } = useData();
-  const { submissions: formSubmissions } = useFormData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
   const { students } = useStudentData();
 
@@ -653,18 +647,6 @@ export function MonitorDashboard() {
   const regionAggregates = useMemo(() => buildRegionAggregates(scopedRecords), [scopedRecords]);
   const statusDistribution = useMemo(() => buildStatusDistribution(scopedRecords), [scopedRecords]);
   const submissionTrend = useMemo(() => buildSubmissionTrend(scopedRecords), [scopedRecords]);
-
-  const sf1Submissions = useMemo(
-    () => formSubmissions.filter((submission) => String(submission.formType).toLowerCase() === "sf1"),
-    [formSubmissions],
-  );
-  const sf5Submissions = useMemo(
-    () => formSubmissions.filter((submission) => String(submission.formType).toLowerCase() === "sf5"),
-    [formSubmissions],
-  );
-
-  const latestSf1BySchool = useMemo(() => latestBySchool<FormSubmission>(sf1Submissions), [sf1Submissions]);
-  const latestSf5BySchool = useMemo(() => latestBySchool<FormSubmission>(sf5Submissions), [sf5Submissions]);
   const latestIndicatorBySchool = useMemo(
     () => latestBySchool<IndicatorSubmission>(indicatorSubmissions),
     [indicatorSubmissions],
@@ -695,13 +677,11 @@ export function MonitorDashboard() {
           region: normalizedRegion,
           schoolStatus,
           hasComplianceRecord: false,
-          sf1Status: null,
-          sf5Status: null,
           indicatorStatus: null,
           hasAnySubmitted: false,
           isComplete: false,
           awaitingReviewCount: 0,
-          missingCount: 4,
+          missingCount: 2,
           lastActivityAt: null,
           lastActivityTime: 0,
         };
@@ -741,22 +721,6 @@ export function MonitorDashboard() {
       setLastActivity(row, record.lastUpdated);
     }
 
-    for (const submission of latestSf1BySchool.values()) {
-      const row = ensureRow(submission.school?.schoolCode, submission.school?.name, null);
-      if (!row) continue;
-
-      row.sf1Status = submission.status ?? null;
-      setLastActivity(row, submission.updatedAt, submission.submittedAt, submission.createdAt);
-    }
-
-    for (const submission of latestSf5BySchool.values()) {
-      const row = ensureRow(submission.school?.schoolCode, submission.school?.name, null);
-      if (!row) continue;
-
-      row.sf5Status = submission.status ?? null;
-      setLastActivity(row, submission.updatedAt, submission.submittedAt, submission.createdAt);
-    }
-
     for (const submission of latestIndicatorBySchool.values()) {
       const row = ensureRow(submission.school?.schoolCode, submission.school?.name, null);
       if (!row) continue;
@@ -767,29 +731,23 @@ export function MonitorDashboard() {
 
     return [...rows.values()]
       .map((row) => {
-        const sf1Submitted = isPassedToMonitor(row.sf1Status);
-        const sf5Submitted = isPassedToMonitor(row.sf5Status);
         const indicatorSubmitted = isPassedToMonitor(row.indicatorStatus);
         const missingCount =
           (row.hasComplianceRecord ? 0 : 1) +
-          (sf1Submitted ? 0 : 1) +
-          (sf5Submitted ? 0 : 1) +
           (indicatorSubmitted ? 0 : 1);
         const awaitingReviewCount =
-          (isAwaitingReview(row.sf1Status) ? 1 : 0) +
-          (isAwaitingReview(row.sf5Status) ? 1 : 0) +
           (isAwaitingReview(row.indicatorStatus) ? 1 : 0);
 
         return {
           ...row,
-          hasAnySubmitted: row.hasComplianceRecord || sf1Submitted || sf5Submitted || indicatorSubmitted,
+          hasAnySubmitted: row.hasComplianceRecord || indicatorSubmitted,
           isComplete: missingCount === 0,
           missingCount,
           awaitingReviewCount,
         };
       })
       .sort((a, b) => a.schoolName.localeCompare(b.schoolName));
-  }, [records, latestSf1BySchool, latestSf5BySchool, latestIndicatorBySchool]);
+  }, [records, latestIndicatorBySchool]);
 
   const scopedRequirementRows = useMemo(() => {
     if (!scopedSchoolKeys) {
@@ -835,9 +793,7 @@ export function MonitorDashboard() {
       complete: scopedRequirementRows.filter((row) => row.isComplete).length,
       awaitingReview: scopedRequirementRows.filter((row) => row.awaitingReviewCount > 0).length,
       missing: scopedRequirementRows.filter((row) => row.missingCount > 0).length,
-      returned: scopedRequirementRows.filter(
-        (row) => row.sf1Status === "returned" || row.sf5Status === "returned" || row.indicatorStatus === "returned",
-      ).length,
+      returned: scopedRequirementRows.filter((row) => row.indicatorStatus === "returned").length,
     }),
     [scopedRequirementRows],
   );
@@ -935,7 +891,7 @@ export function MonitorDashboard() {
     if (requirementCounts.awaitingReview > 0) {
       return {
         label: "Open Compliance Records",
-        detail: "Validate pending SF-1/SF-5 forms and indicator packages.",
+        detail: "Validate pending indicator packages.",
         action: "compliance_pending" as const,
       };
     }
@@ -1517,7 +1473,7 @@ export function MonitorDashboard() {
                 <p className="mt-1 text-lg font-bold text-slate-800">{requirementCounts.awaitingReview}</p>
               </article>
               <article className="border border-rose-200 bg-rose-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing SF / Indicators</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing Records / Indicators</p>
                 <p className="mt-1 text-lg font-bold text-rose-800">{requirementCounts.missing}</p>
               </article>
             </div>
@@ -1525,7 +1481,7 @@ export function MonitorDashboard() {
             <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
               <article className="border border-slate-200 bg-white px-3 py-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Complete Package</p>
-                <p className="mt-1 text-xs text-slate-700">Compliance record + SF-1 + SF-5 + Indicators submitted/validated.</p>
+                <p className="mt-1 text-xs text-slate-700">Compliance record + indicators submitted/validated.</p>
               </article>
               <article className="border border-slate-200 bg-white px-3 py-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pending Review</p>
@@ -1654,8 +1610,6 @@ export function MonitorDashboard() {
                   <th className="px-2 py-2 text-left">School</th>
                   <th className="px-2 py-2 text-left">Region</th>
                   <th className="px-2 py-2 text-center">Compliance</th>
-                  <th className="px-2 py-2 text-center">SF-1</th>
-                  <th className="px-2 py-2 text-center">SF-5</th>
                   <th className="px-2 py-2 text-center">Indicators</th>
                   <th className="px-2 py-2 text-center">Missing</th>
                   <th className="px-2 py-2 text-center">Awaiting Review</th>
@@ -1682,16 +1636,6 @@ export function MonitorDashboard() {
                       </span>
                     </td>
                     <td className="px-2 py-2 text-center">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(row.sf1Status)}`}>
-                        {workflowLabel(row.sf1Status)}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(row.sf5Status)}`}>
-                        {workflowLabel(row.sf5Status)}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-center">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(
                           row.indicatorStatus,
@@ -1709,7 +1653,7 @@ export function MonitorDashboard() {
                 ))}
                 {filteredRequirementRows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-2 py-8 text-center text-sm text-slate-500">
+                    <td colSpan={7} className="px-2 py-8 text-center text-sm text-slate-500">
                       No schools match the selected filters.
                     </td>
                   </tr>
@@ -1721,11 +1665,8 @@ export function MonitorDashboard() {
       )}
 
       {activeTopNavigator === "compliance" && (
-        <section id="monitor-forms-queue" className={sectionFocusClass("monitor-forms-queue")}>
-          <MonitorFormsPanel schoolFilterKeys={filteredSchoolKeys} />
-          <div id="monitor-indicators-queue" className={`mt-5 ${sectionFocusClass("monitor-indicators-queue")}`}>
-            <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />
-          </div>
+        <section id="monitor-indicators-queue" className={sectionFocusClass("monitor-indicators-queue")}>
+          <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} />
         </section>
       )}
 

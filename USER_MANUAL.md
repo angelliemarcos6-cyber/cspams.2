@@ -2,7 +2,7 @@
 
 **System:** Centralized Student Performance Analytics and Monitoring System (CSPAMS)  
 **Audience:** Division Monitor and School Head users  
-**Coverage:** Login, dashboards, school records, student records, SF-1/SF-5 workflow, and indicator compliance workflow
+**Coverage:** Login, dashboards, school records, student records, and indicator compliance workflow
 
 ---
 
@@ -12,7 +12,6 @@ CSPAMS is the division-school workspace for:
 
 - School profile and compliance monitoring
 - Student data management (LRN, status movement, section/teacher tags)
-- Digital SF-1 and SF-5 generation/submission/validation
 - TARGETS-MET / I-META indicator submission and review
 - Unified monitor and school-head workflow history
 
@@ -66,14 +65,12 @@ If your account is marked for reset, complete required password reset through th
 
 - Can view and edit only their assigned school data
 - Can create/update/delete student records for their school
-- Can generate and submit SF-1/SF-5
 - Can create and submit indicator compliance packages
 - Can see review notes/history from monitor actions
 
 ### Division Monitor scope
 
-- Can view division-wide school, student, forms, and indicator data
-- Can review/validate/return SF-1/SF-5 submissions
+- Can view division-wide school, student, and indicator data
 - Can review/validate/return indicator submissions
 - Can maintain division school records (CRUD)
 
@@ -91,7 +88,6 @@ Key workspace sections:
 Inside Compliance Records:
 
 - Student Records
-- SF-1 / SF-5 Queue
 - Indicator Compliance Queue
 
 Use top/side navigators to switch sections directly.
@@ -117,27 +113,7 @@ Operations:
 
 ---
 
-## 8) Digital SF-1 / SF-5 workflow
-
-School Head:
-
-1. Generate draft
-2. Review generated values
-3. Submit to monitor
-
-Division Monitor:
-
-1. Open submission queue
-2. Validate or return with notes
-
-Both roles:
-
-- See status history (generated, submitted, validated/returned)
-- See latest state in synchronized dashboard
-
----
-
-## 9) Indicator compliance workflow
+## 8) Indicator compliance workflow
 
 School Head:
 
@@ -160,7 +136,7 @@ Division Monitor:
 
 ---
 
-## 10) Reports and exports
+## 9) Reports and exports
 
 Reports Center supports:
 
@@ -171,7 +147,7 @@ Apply filters first (academic year, period, school), then export.
 
 ---
 
-## 11) Security reminders
+## 10) Security reminders
 
 - Do not share passwords.
 - Change temporary passwords immediately.
@@ -181,7 +157,7 @@ Apply filters first (academic year, period, school), then export.
 
 ---
 
-## 12) Support request format
+## 11) Support request format
 
 When escalating issues, include:
 

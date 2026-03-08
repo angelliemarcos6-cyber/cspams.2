@@ -33,26 +33,6 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - Sanctum authentication
   - Dashboard records endpoints with sync metadata and ETag-based conditional refresh
 
-## Digital SF-1 / SF-5 Workflow (API)
-
-Implemented API workflow for auto-generated forms, submission, validation, and history:
-
-- `GET /api/forms/sf1`
-- `POST /api/forms/sf1/generate`
-- `POST /api/forms/sf1/{submission}/submit`
-- `POST /api/forms/sf1/{submission}/validate`
-- `GET /api/forms/sf1/{submission}/history`
-- `GET /api/forms/sf5`
-- `POST /api/forms/sf5/generate`
-- `POST /api/forms/sf5/{submission}/submit`
-- `POST /api/forms/sf5/{submission}/validate`
-- `GET /api/forms/sf5/{submission}/history`
-
-Role flow:
-
-- `school_head`: generate + submit own-school forms
-- `monitor`: division-wide visibility + validate/return
-
 ## Indicator Compliance Workflow (API)
 
 Implemented API workflow for school-level indicator compliance packages:
@@ -82,8 +62,6 @@ Migrations and seeders include:
 - student_performance_records
 - student_status_logs
 - audit_logs
-- sf1_submissions
-- sf5_submissions
 - indicator_submissions
 - indicator_submission_items
 - form_submission_histories

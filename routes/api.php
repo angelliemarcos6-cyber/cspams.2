@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\FormSubmissionController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\StudentRecordController;
@@ -29,20 +28,6 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::put('/students/{student}', [StudentRecordController::class, 'update']);
     Route::patch('/students/{student}', [StudentRecordController::class, 'update']);
     Route::delete('/students/{student}', [StudentRecordController::class, 'destroy']);
-});
-
-Route::middleware('auth:sanctum')->prefix('forms')->group(function (): void {
-    Route::get('/sf1', [FormSubmissionController::class, 'indexSf1']);
-    Route::post('/sf1/generate', [FormSubmissionController::class, 'generateSf1']);
-    Route::post('/sf1/{submission}/submit', [FormSubmissionController::class, 'submitSf1']);
-    Route::post('/sf1/{submission}/validate', [FormSubmissionController::class, 'validateSf1']);
-    Route::get('/sf1/{submission}/history', [FormSubmissionController::class, 'sf1History']);
-
-    Route::get('/sf5', [FormSubmissionController::class, 'indexSf5']);
-    Route::post('/sf5/generate', [FormSubmissionController::class, 'generateSf5']);
-    Route::post('/sf5/{submission}/submit', [FormSubmissionController::class, 'submitSf5']);
-    Route::post('/sf5/{submission}/validate', [FormSubmissionController::class, 'validateSf5']);
-    Route::get('/sf5/{submission}/history', [FormSubmissionController::class, 'sf5History']);
 });
 
 Route::middleware('auth:sanctum')->prefix('indicators')->group(function (): void {

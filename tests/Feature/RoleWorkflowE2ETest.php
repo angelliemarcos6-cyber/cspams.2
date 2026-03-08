@@ -43,18 +43,6 @@ class RoleWorkflowE2ETest extends TestCase
             ->postJson('/api/dashboard/students', $studentPayload)
             ->assertStatus(Response::HTTP_CREATED);
 
-        $sf1Generated = $this->withToken($schoolHeadToken)->postJson('/api/forms/sf1/generate', [
-            'academic_year_id' => $academicYearId,
-            'reporting_period' => 'Q1',
-        ]);
-        $sf1Generated->assertStatus(Response::HTTP_CREATED);
-        $sf1SubmissionId = (string) $sf1Generated->json('data.id');
-
-        $this->withToken($schoolHeadToken)
-            ->postJson("/api/forms/sf1/{$sf1SubmissionId}/submit")
-            ->assertOk()
-            ->assertJsonPath('data.status', 'submitted');
-
         $metricResponse = $this->withToken($schoolHeadToken)->getJson('/api/indicators/metrics');
         $metricResponse->assertOk();
         $metricId = (int) $metricResponse->json('data.0.id');
@@ -83,16 +71,6 @@ class RoleWorkflowE2ETest extends TestCase
 
         $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
 
-        $monitorSf1Queue = $this->withToken($monitorToken)->getJson('/api/forms/sf1?status=submitted&per_page=1');
-        $monitorSf1Queue->assertOk()
-            ->assertJsonPath('meta.per_page', 1);
-
-        $this->withToken($monitorToken)->postJson("/api/forms/sf1/{$sf1SubmissionId}/validate", [
-            'decision' => 'validated',
-            'notes' => 'Validated during end-to-end workflow test.',
-        ])->assertOk()
-            ->assertJsonPath('data.status', 'validated');
-
         $monitorIndicatorQueue = $this->withToken($monitorToken)->getJson('/api/indicators/submissions?status=submitted&per_page=1');
         $monitorIndicatorQueue->assertOk()
             ->assertJsonPath('meta.per_page', 1);
@@ -102,11 +80,6 @@ class RoleWorkflowE2ETest extends TestCase
             'notes' => 'Validated during end-to-end workflow test.',
         ])->assertOk()
             ->assertJsonPath('data.status', 'validated');
-
-        $schoolHeadSf1Validated = $this->withToken($schoolHeadToken)->getJson('/api/forms/sf1?status=validated');
-        $schoolHeadSf1Validated->assertOk();
-        $validatedSf1Ids = collect($schoolHeadSf1Validated->json('data', []))->pluck('id')->all();
-        $this->assertContains($sf1SubmissionId, $validatedSf1Ids);
 
         $schoolHeadIndicator = $this->withToken($schoolHeadToken)->getJson("/api/indicators/submissions/{$indicatorSubmissionId}");
         $schoolHeadIndicator->assertOk()
@@ -121,15 +94,6 @@ class RoleWorkflowE2ETest extends TestCase
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
-
-        $this->withToken($schoolHeadToken)->postJson('/api/forms/sf1/generate', [
-            'academic_year_id' => $academicYearId,
-            'reporting_period' => 'Q1',
-        ])->assertStatus(Response::HTTP_CREATED);
-
-        $formsCapped = $this->withToken($schoolHeadToken)->getJson('/api/forms/sf1?per_page=500');
-        $formsCapped->assertOk()
-            ->assertJsonPath('meta.per_page', 100);
 
         $metricResponse = $this->withToken($schoolHeadToken)->getJson('/api/indicators/metrics');
         $metricResponse->assertOk();

@@ -227,37 +227,9 @@ export interface IndicatorSubmissionPayload {
   }>;
 }
 
-export type SubmissionFormType = "sf1" | "sf5";
-
-export interface FormSubmission {
-  id: string;
-  formType: SubmissionFormType | string;
-  status: WorkflowStatus | string;
-  statusLabel: string | null;
-  reportingPeriod: string | null;
-  version: number;
-  school?: {
-    id: string;
-    schoolCode: string;
-    name: string;
-  };
-  academicYear?: {
-    id: string;
-    name: string;
-  };
-  summary?: Record<string, unknown> | null;
-  payload?: Record<string, unknown> | null;
-  validationNotes: string | null;
-  generatedAt: string | null;
-  submittedAt: string | null;
-  validatedAt: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-}
-
 export interface FormSubmissionHistoryEntry {
   id: string;
-  formType: SubmissionFormType | string;
+  formType: string;
   submissionId: string;
   action: string;
   fromStatus: string | null;
