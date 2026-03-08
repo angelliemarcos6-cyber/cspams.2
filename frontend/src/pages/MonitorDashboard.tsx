@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type ComponentType, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   ArrowDown,
@@ -104,6 +104,7 @@ interface StudentLookupOption {
   id: string;
   lrn: string;
   fullName: string;
+  schoolKey: string;
 }
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
@@ -599,6 +600,7 @@ export function MonitorDashboard() {
           id: student.id,
           lrn: student.lrn,
           fullName: student.fullName,
+          schoolKey: normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null),
         }))
         .sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [scopedStudentPool],
@@ -635,6 +637,21 @@ export function MonitorDashboard() {
     ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn}`
     : "Search student name / LRN";
   const selectedTeacherLabel = selectedTeacherLookup ?? "Search teacher name";
+  const studentRecordsLookupTerm = selectedStudentLookup
+    ? selectedStudentLookup.lrn
+    : selectedTeacherLookup ?? "";
+
+  useEffect(() => {
+    if (!selectedStudentLookup) return;
+    if (studentLookupOptions.some((option) => option.id === selectedStudentLookup.id)) return;
+    setSelectedStudentLookup(null);
+  }, [selectedStudentLookup, studentLookupOptions]);
+
+  useEffect(() => {
+    if (!selectedTeacherLookup) return;
+    if (teacherLookupOptions.includes(selectedTeacherLookup)) return;
+    setSelectedTeacherLookup(null);
+  }, [selectedTeacherLookup, teacherLookupOptions]);
 
   const scopedRecords = useMemo(() => {
     if (!scopedSchoolKeys) {
@@ -907,6 +924,16 @@ export function MonitorDashboard() {
     setSortDirection("asc");
   };
 
+  const openStudentRecordsFromCard = () => {
+    setActiveTopNavigator("records");
+
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        focusAndScrollTo("monitor-student-records");
+      }, 50);
+    }
+  };
+
   const renderSchoolScopeSelector = () => {
     const isOpen = schoolScopeDropdownSlot === "schools";
 
@@ -941,6 +968,8 @@ export function MonitorDashboard() {
                 type="button"
                 onClick={() => {
                   setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+                  setSelectedStudentLookup(null);
+                  setSelectedTeacherLookup(null);
                   setSchoolScopeQuery("");
                   setSchoolScopeDropdownSlot(null);
                 }}
@@ -956,6 +985,8 @@ export function MonitorDashboard() {
                   type="button"
                   onClick={() => {
                     setSelectedSchoolScopeKey(option.key);
+                    setSelectedStudentLookup(null);
+                    setSelectedTeacherLookup(null);
                     setSchoolScopeQuery("");
                     setSchoolScopeDropdownSlot(null);
                   }}
@@ -1010,6 +1041,7 @@ export function MonitorDashboard() {
                 type="button"
                 onClick={() => {
                   setSelectedStudentLookup(null);
+                  setSelectedTeacherLookup(null);
                   setStudentLookupQuery("");
                   setSchoolScopeDropdownSlot(null);
                 }}
@@ -1025,8 +1057,13 @@ export function MonitorDashboard() {
                   type="button"
                   onClick={() => {
                     setSelectedStudentLookup(option);
+                    setSelectedTeacherLookup(null);
+                    if (option.schoolKey !== "unknown") {
+                      setSelectedSchoolScopeKey(option.schoolKey);
+                    }
                     setStudentLookupQuery(option.fullName);
                     setSchoolScopeDropdownSlot(null);
+                    openStudentRecordsFromCard();
                   }}
                   className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
                     selectedStudentLookup?.id === option.id
@@ -1080,6 +1117,7 @@ export function MonitorDashboard() {
                 type="button"
                 onClick={() => {
                   setSelectedTeacherLookup(null);
+                  setSelectedStudentLookup(null);
                   setTeacherLookupQuery("");
                   setSchoolScopeDropdownSlot(null);
                 }}
@@ -1095,8 +1133,10 @@ export function MonitorDashboard() {
                   type="button"
                   onClick={() => {
                     setSelectedTeacherLookup(name);
+                    setSelectedStudentLookup(null);
                     setTeacherLookupQuery(name);
                     setSchoolScopeDropdownSlot(null);
+                    openStudentRecordsFromCard();
                   }}
                   className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
                     selectedTeacherLookup === name
@@ -1972,6 +2012,7 @@ export function MonitorDashboard() {
             editable={false}
             showSchoolColumn
             schoolFilterKeys={filteredSchoolKeys}
+            externalSearchTerm={studentRecordsLookupTerm}
             title="Synchronized Student Records"
             description="Read-only learner records."
           />

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useStudentData } from "@/context/StudentData";
 import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload } from "@/types";
@@ -9,6 +9,7 @@ interface StudentRecordsPanelProps {
   description?: string;
   showSchoolColumn?: boolean;
   schoolFilterKeys?: Set<string> | null;
+  externalSearchTerm?: string | null;
 }
 
 interface StudentFormState {
@@ -87,6 +88,7 @@ export function StudentRecordsPanel({
   description = "Manage learner personal information and school status records.",
   showSchoolColumn = false,
   schoolFilterKeys = null,
+  externalSearchTerm = null,
 }: StudentRecordsPanelProps) {
   const { students, isLoading, isSaving, error, lastSyncedAt, refreshStudents, addStudent, updateStudent, deleteStudent } = useStudentData();
 
@@ -98,6 +100,11 @@ export function StudentRecordsPanel({
   const [formError, setFormError] = useState("");
   const [formMessage, setFormMessage] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (externalSearchTerm === null) return;
+    setSearch(externalSearchTerm);
+  }, [externalSearchTerm]);
 
   const scopedStudents = useMemo(() => {
     if (!schoolFilterKeys) {
