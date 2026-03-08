@@ -562,18 +562,19 @@ export function SchoolAdminDashboard() {
       <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-stretch lg:gap-0">
       <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setIsNavigatorVisible((current) => !current)}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-primary-700"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
+              aria-label={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
+              title={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
             >
-              {isNavigatorVisible ? "Hide Navigator" : "Show Navigator"}
               {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setShowNavigatorManual((current) => !current)}
