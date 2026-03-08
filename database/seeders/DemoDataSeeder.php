@@ -238,15 +238,20 @@ class DemoDataSeeder extends Seeder
         $yearlyNumber = ['years' => $years, 'valueType' => 'number', 'comparison' => 'greater_or_equal'];
         $yearlyInteger = ['years' => $years, 'valueType' => 'integer', 'comparison' => 'greater_or_equal'];
         $yearlyPercentage = ['years' => $years, 'valueType' => 'percentage', 'comparison' => 'greater_or_equal'];
+        $yearlyYesNo = ['years' => $years, 'valueType' => 'yes_no', 'comparison' => 'equal'];
+        $yearlyText = ['years' => $years, 'valueType' => 'text', 'comparison' => 'info_only'];
+        $yearlyCurrency = ['years' => $years, 'valueType' => 'currency', 'comparison' => 'greater_or_equal', 'currency' => 'PHP'];
 
         return [
             // SALO / I-META compliance indicators
-            $this->metric('SALO', "School's Achievements and Learning Outcomes", MetricCategory::COMPLIANCE->value, 'targets_met', MetricDataType::NUMBER->value, 'score', 1, ['comparison' => 'greater_or_equal']),
+            $this->metric('SALO', "School's Achievements and Learning Outcomes", MetricCategory::COMPLIANCE->value, 'targets_met', MetricDataType::YEARLY_MATRIX->value, 'score', 1, $yearlyNumber),
             $this->metric('NER', 'Net Enrollment Rate', MetricCategory::LEARNER->value, 'targets_met', MetricDataType::YEARLY_MATRIX->value, 'percent', 45, $yearlyPercentage),
             $this->metric('RR', 'Retention Rate', MetricCategory::LEARNER->value, 'targets_met', MetricDataType::YEARLY_MATRIX->value, 'percent', 46, $yearlyPercentage),
-            $this->metric('IMETA_HEAD_NAME', 'Name of School Head', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::TEXT->value, null, 2, ['comparison' => 'info_only']),
+            $this->metric('IMETA_HEAD_NAME', 'Name of School Head', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 2, $yearlyText),
             $this->metric('IMETA_ENROLL_TOTAL', 'Total Number of Enrolment', MetricCategory::LEARNER->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'learners', 3, $yearlyInteger),
-            $this->metric('IMETA_SBM_LEVEL', 'SBM Level of Practice', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::ENUM->value, null, 4, [
+            $this->metric('IMETA_SBM_LEVEL', 'SBM Level of Practice', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 4, [
+                'years' => $years,
+                'valueType' => 'enum',
                 'comparison' => 'equal',
                 'options' => ['Level 1', 'Level 2', 'Level 3'],
             ]),
@@ -266,33 +271,35 @@ class DemoDataSeeder extends Seeder
             $this->metric('PSR_G1_6', 'Seat Ratio - Grades 1 to 6', MetricCategory::RESOURCES->value, 'targets_met', MetricDataType::YEARLY_MATRIX->value, 'ratio', 18, $yearlyNumber),
             $this->metric('PSR_G7_10', 'Seat Ratio - Grades 7 to 10', MetricCategory::RESOURCES->value, 'targets_met', MetricDataType::YEARLY_MATRIX->value, 'ratio', 19, $yearlyNumber),
             $this->metric('PSR_G11_12', 'Seat Ratio - Grades 11 to 12', MetricCategory::RESOURCES->value, 'targets_met', MetricDataType::YEARLY_MATRIX->value, 'ratio', 20, $yearlyNumber),
-            $this->metric('ICT_RATIO', 'ICT / E-Classroom Package to Sections Ratio', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'ratio', 21, $yearlyNumber),
-            $this->metric('ICT_LAB', 'ICT Laboratory Availability (Y/N)', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YES_NO->value, null, 22, ['comparison' => 'equal']),
-            $this->metric('SCIENCE_LAB', 'Science Laboratory Availability (Y/N)', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YES_NO->value, null, 23, ['comparison' => 'equal']),
-            $this->metric('INTERNET_ACCESS', 'Internet Access (Y/N)', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YES_NO->value, null, 24, ['comparison' => 'equal']),
-            $this->metric('ELECTRICITY', 'Electricity Availability (Y/N)', MetricCategory::INFRASTRUCTURE->value, 'i_meta', MetricDataType::YES_NO->value, null, 25, ['comparison' => 'equal']),
-            $this->metric('FENCE_STATUS', 'Complete Fence/Gate Status', MetricCategory::INFRASTRUCTURE->value, 'i_meta', MetricDataType::ENUM->value, null, 26, [
+            $this->metric('ICT_RATIO', 'ICT Package/E-classroom package to sections ratio', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'ratio', 21, $yearlyNumber),
+            $this->metric('ICT_LAB', 'ICT Laboratory', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 22, $yearlyYesNo),
+            $this->metric('SCIENCE_LAB', 'Science Laboratory', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 23, $yearlyYesNo),
+            $this->metric('INTERNET_ACCESS', 'Do you have internet access? (Y/N)', MetricCategory::RESOURCES->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 24, $yearlyYesNo),
+            $this->metric('ELECTRICITY', 'Do you have electricity? (Y/N)', MetricCategory::INFRASTRUCTURE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 25, $yearlyYesNo),
+            $this->metric('FENCE_STATUS', 'Do you have a complete fence/gate? (Evident/Partially/Not Evident)', MetricCategory::INFRASTRUCTURE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 26, [
+                'years' => $years,
+                'valueType' => 'enum',
                 'comparison' => 'equal',
                 'options' => ['Evident', 'Partially Evident', 'Not Evident'],
             ]),
-            $this->metric('TEACHERS_TOTAL', 'Number of Teachers', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 27, $yearlyInteger),
-            $this->metric('TEACHERS_MALE', 'Teachers - Male', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 28, $yearlyInteger),
-            $this->metric('TEACHERS_FEMALE', 'Teachers - Female', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 29, $yearlyInteger),
+            $this->metric('TEACHERS_TOTAL', 'No. of Teachers', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 27, $yearlyInteger),
+            $this->metric('TEACHERS_MALE', 'No. of Teachers - Male', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 28, $yearlyInteger),
+            $this->metric('TEACHERS_FEMALE', 'No. of Teachers - Female', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 29, $yearlyInteger),
             $this->metric('TEACHERS_PWD_TOTAL', 'Teachers with Physical Disability', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 30, $yearlyInteger),
             $this->metric('TEACHERS_PWD_MALE', 'Teachers with Physical Disability - Male', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 31, $yearlyInteger),
             $this->metric('TEACHERS_PWD_FEMALE', 'Teachers with Physical Disability - Female', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 32, $yearlyInteger),
-            $this->metric('FUNCTIONAL_SGC', 'Functional SGC (Y/N)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YES_NO->value, null, 33, ['comparison' => 'equal']),
+            $this->metric('FUNCTIONAL_SGC', 'Functional SGC', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 33, $yearlyYesNo),
             $this->metric('FEEDING_BENEFICIARIES', 'School-Based Feeding Program Beneficiaries', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'learners', 34, $yearlyInteger),
-            $this->metric('CANTEEN_INCOME', 'School-Managed Canteen (Annual Income)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::CURRENCY->value, 'PHP', 35, ['comparison' => 'greater_or_equal', 'currency' => 'PHP']),
-            $this->metric('TEACHER_COOP_INCOME', 'Teachers Cooperative Managed Canteen (Annual Income)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::CURRENCY->value, 'PHP', 36, ['comparison' => 'greater_or_equal', 'currency' => 'PHP']),
-            $this->metric('SAFETY_PLAN', 'Security and Safety Contingency Plan (Y/N)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YES_NO->value, null, 37, ['comparison' => 'equal']),
-            $this->metric('SAFETY_EARTHQUAKE', 'Contingency Plan - Earthquake (Y/N)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YES_NO->value, null, 38, ['comparison' => 'equal']),
-            $this->metric('SAFETY_TYPHOON', 'Contingency Plan - Typhoon (Y/N)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YES_NO->value, null, 39, ['comparison' => 'equal']),
-            $this->metric('SAFETY_COVID', 'Contingency Plan - COVID-19 (Y/N)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YES_NO->value, null, 40, ['comparison' => 'equal']),
-            $this->metric('SAFETY_POWER', 'Contingency Plan - Power Interruption (Y/N)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YES_NO->value, null, 41, ['comparison' => 'equal']),
-            $this->metric('SAFETY_IN_PERSON', 'Contingency Plan - In-Person Classes (Y/N)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YES_NO->value, null, 42, ['comparison' => 'equal']),
-            $this->metric('TEACHERS_PFA', 'Teachers Trained on Psychological First Aid', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 43, $yearlyInteger),
-            $this->metric('TEACHERS_OCC_FIRST_AID', 'Teachers Trained on Occupational First Aid', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 44, $yearlyInteger),
+            $this->metric('CANTEEN_INCOME', 'School-Managed Canteen (Annual Income)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'PHP', 35, $yearlyCurrency),
+            $this->metric('TEACHER_COOP_INCOME', 'Teachers Cooperative Managed Canteen - if there is (Annual Income)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'PHP', 36, $yearlyCurrency),
+            $this->metric('SAFETY_PLAN', 'Security and Safety (Contingency Plan)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 37, $yearlyYesNo),
+            $this->metric('SAFETY_EARTHQUAKE', 'Earthquake', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 38, $yearlyYesNo),
+            $this->metric('SAFETY_TYPHOON', 'Typhoon', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 39, $yearlyYesNo),
+            $this->metric('SAFETY_COVID', 'COVID-19', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 40, $yearlyYesNo),
+            $this->metric('SAFETY_POWER', 'Power interruption', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 41, $yearlyYesNo),
+            $this->metric('SAFETY_IN_PERSON', 'In-person classes', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, null, 42, $yearlyYesNo),
+            $this->metric('TEACHERS_PFA', 'No. of Teachers trained on Psychological First Aid (PFA)', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 43, $yearlyInteger),
+            $this->metric('TEACHERS_OCC_FIRST_AID', 'No. of Teachers trained on Occupational First Aid', MetricCategory::COMPLIANCE->value, 'i_meta', MetricDataType::YEARLY_MATRIX->value, 'teachers', 44, $yearlyInteger),
 
             // Core learner KPI / TARGETS-MET indicators
             $this->metric('DR', 'Dropout Rate', MetricCategory::LEARNER->value, 'targets_met', MetricDataType::YEARLY_MATRIX->value, 'percent', 47, [

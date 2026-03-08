@@ -33,84 +33,87 @@ type MetricEntryValue = MetricEntryState[string];
 interface ComplianceCategory {
   id: string;
   label: string;
-  items: string[];
+  metricCodes: string[];
 }
 
 const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
   {
     id: "profile_enrollment",
     label: "Profile and Enrollment",
-    items: [
-      "Name of School Head",
-      "Total Number of Enrolment",
-      "SBM Level of Practice",
+    metricCodes: [
+      "SALO",
+      "IMETA_HEAD_NAME",
+      "IMETA_ENROLL_TOTAL",
+      "IMETA_SBM_LEVEL",
     ],
   },
   {
     id: "classroom_learning_resources",
     label: "Classroom, WASH, and Learning Resources",
-    items: [
-      "Pupil/Student Classroom Ratio (Kindergarten)",
-      "Pupil/Student Classroom Ratio (Grades 1 to 3)",
-      "Pupil/Student Classroom Ratio (Grades 4 to 6)",
-      "Pupil/Student Classroom Ratio (Grades 7 to 10)",
-      "Pupil/Student Classroom Ratio (Grades 11 to 12)",
-      "Water and Sanitation Facility to Pupil Ratio",
-      "Number of Comfort Rooms",
-      "Toilet Bowls",
-      "Urinals",
-      "Handwashing Facilities",
-      "Ideal Learning Materials to Learner Ratio",
-      "Pupil/Student Seat Ratio",
-      "Seat Ratio - Kindergarten",
-      "Seat Ratio - Grades 1 to 6",
-      "Seat Ratio - Grades 7 to 10",
-      "Seat Ratio - Grades 11 to 12",
+    metricCodes: [
+      "PCR_K",
+      "PCR_G1_3",
+      "PCR_G4_6",
+      "PCR_G7_10",
+      "PCR_G11_12",
+      "WASH_RATIO",
+      "COMFORT_ROOMS",
+      "TOILET_BOWLS",
+      "URINALS",
+      "HANDWASH_FAC",
+      "LEARNING_MAT_RATIO",
+      "PSR_OVERALL",
+      "PSR_K",
+      "PSR_G1_6",
+      "PSR_G7_10",
+      "PSR_G11_12",
     ],
   },
   {
     id: "ict_utilities",
     label: "ICT, Utilities, and School Readiness",
-    items: [
-      "ICT / E-Classroom Package to Sections Ratio",
-      "ICT Laboratory Availability",
-      "Science Laboratory Availability",
-      "Internet Access (Y/N)",
-      "Electricity Availability (Y/N)",
-      "Complete Fence/Gate (Evident/Partially/Not Evident)",
+    metricCodes: [
+      "ICT_RATIO",
+      "ICT_LAB",
+      "SCIENCE_LAB",
+      "INTERNET_ACCESS",
+      "ELECTRICITY",
+      "FENCE_STATUS",
     ],
   },
   {
     id: "teacher_profile",
     label: "Teacher Profile and Inclusion",
-    items: [
-      "Number of Teachers",
-      "Teachers - Male",
-      "Teachers - Female",
-      "Teachers with Physical Disability",
-      "Teachers with Physical Disability - Male",
-      "Teachers with Physical Disability - Female",
-      "No. of Teachers Trained on Psychological First Aid (PFA)",
-      "No. of Teachers Trained on Occupational First Aid",
+    metricCodes: [
+      "TEACHERS_TOTAL",
+      "TEACHERS_MALE",
+      "TEACHERS_FEMALE",
+      "TEACHERS_PWD_TOTAL",
+      "TEACHERS_PWD_MALE",
+      "TEACHERS_PWD_FEMALE",
+      "TEACHERS_PFA",
+      "TEACHERS_OCC_FIRST_AID",
     ],
   },
   {
     id: "programs_safety",
     label: "Programs, Governance, and Safety",
-    items: [
-      "Functional SGC",
-      "School-Based Feeding Program Beneficiaries",
-      "School-Managed Canteen (Annual Income)",
-      "Teachers Cooperative Managed Canteen (Annual Income)",
-      "Security and Safety (Contingency Plan)",
-      "Contingency Plan - Earthquake",
-      "Contingency Plan - Typhoon",
-      "Contingency Plan - COVID-19",
-      "Contingency Plan - Power Interruption",
-      "Contingency Plan - In-Person Classes",
+    metricCodes: [
+      "FUNCTIONAL_SGC",
+      "FEEDING_BENEFICIARIES",
+      "CANTEEN_INCOME",
+      "TEACHER_COOP_INCOME",
+      "SAFETY_PLAN",
+      "SAFETY_EARTHQUAKE",
+      "SAFETY_TYPHOON",
+      "SAFETY_COVID",
+      "SAFETY_POWER",
+      "SAFETY_IN_PERSON",
     ],
   },
 ];
+
+const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
@@ -216,7 +219,7 @@ export function SchoolIndicatorPanel() {
   } = useIndicatorData();
 
   const [academicYearId, setAcademicYearId] = useState("");
-  const [reportingPeriod, setReportingPeriod] = useState("Q1");
+  const [reportingPeriod, setReportingPeriod] = useState("ANNUAL");
   const [notes, setNotes] = useState("");
   const [metricEntries, setMetricEntries] = useState<MetricEntryState>({});
   const [submitError, setSubmitError] = useState("");
@@ -226,9 +229,18 @@ export function SchoolIndicatorPanel() {
   const [historyLoadingSubmissionId, setHistoryLoadingSubmissionId] = useState<string | null>(null);
   const [activeComplianceCategoryId, setActiveComplianceCategoryId] = useState<string>(COMPLIANCE_CATEGORIES[0].id);
 
+  const complianceMetrics = useMemo(
+    () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
+    [metrics],
+  );
+  const complianceMetricsByCode = useMemo(
+    () => new Map(complianceMetrics.map((metric) => [metric.code, metric])),
+    [complianceMetrics],
+  );
+
   useEffect(() => {
-    setMetricEntries((current) => buildInitialMetricEntries(metrics, current));
-  }, [metrics]);
+    setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
+  }, [complianceMetrics]);
 
   useEffect(() => {
     if (academicYearId || academicYears.length === 0) {
@@ -262,11 +274,18 @@ export function SchoolIndicatorPanel() {
     () => COMPLIANCE_CATEGORIES.find((category) => category.id === activeComplianceCategoryId) ?? COMPLIANCE_CATEGORIES[0],
     [activeComplianceCategoryId],
   );
+  const activeCategoryMetrics = useMemo(
+    () =>
+      activeComplianceCategory.metricCodes
+        .map((code) => complianceMetricsByCode.get(code))
+        .filter((metric): metric is IndicatorMetric => Boolean(metric)),
+    [activeComplianceCategory, complianceMetricsByCode],
+  );
 
   const resetForm = () => {
     setNotes("");
-    setReportingPeriod("Q1");
-    setMetricEntries(() => buildInitialMetricEntries(metrics, {}));
+    setReportingPeriod("ANNUAL");
+    setMetricEntries(() => buildInitialMetricEntries(complianceMetrics, {}));
   };
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
@@ -282,7 +301,7 @@ export function SchoolIndicatorPanel() {
     const entries = Object.entries(metricEntries)
       .filter(([, value]) => value.enabled)
       .map(([metricId, value]) => {
-        const metric = metrics.find((item) => item.id === metricId);
+        const metric = complianceMetrics.find((item) => item.id === metricId);
         if (!metric) return null;
 
         const type = metricDataType(metric);
@@ -417,6 +436,21 @@ export function SchoolIndicatorPanel() {
     }
   };
 
+  const handleEnableCategoryRows = () => {
+    setMetricEntries((entries) => {
+      const next: MetricEntryState = { ...entries };
+      for (const metric of activeCategoryMetrics) {
+        const current = next[metric.id] ?? buildDefaultEntry(metric);
+        next[metric.id] = {
+          ...current,
+          enabled: true,
+        };
+      }
+
+      return next;
+    });
+  };
+
   return (
     <section className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -486,12 +520,19 @@ export function SchoolIndicatorPanel() {
         <div className="mt-3 border border-slate-200 bg-slate-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{activeComplianceCategory.label}</p>
           <ul className="mt-2 grid gap-1 md:grid-cols-2">
-            {activeComplianceCategory.items.map((item) => (
-              <li key={item} className="text-xs text-slate-700">
-                - {item}
+            {activeComplianceCategory.metricCodes.map((code) => (
+              <li key={code} className="text-xs text-slate-700">
+                - {complianceMetricsByCode.get(code)?.name ?? code}
               </li>
             ))}
           </ul>
+          <button
+            type="button"
+            onClick={handleEnableCategoryRows}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Enable All Rows In This Category
+          </button>
           <p className="mt-3 text-[11px] text-slate-500">
             Typed inputs are enabled per indicator: yes/no, enum, currency, text, numeric, and school-year matrix values.
           </p>
@@ -530,11 +571,11 @@ export function SchoolIndicatorPanel() {
               onChange={(event) => setReportingPeriod(event.target.value)}
               className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             >
+              <option value="ANNUAL">Annual</option>
               <option value="Q1">Q1</option>
               <option value="Q2">Q2</option>
               <option value="Q3">Q3</option>
               <option value="Q4">Q4</option>
-              <option value="ANNUAL">Annual</option>
             </select>
           </div>
 
@@ -565,7 +606,7 @@ export function SchoolIndicatorPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {metrics.map((metric) => {
+              {activeCategoryMetrics.map((metric) => {
                 const type = metricDataType(metric);
                 const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
                 const enumOptions = Array.isArray(metric.inputSchema?.options) ? metric.inputSchema?.options ?? [] : [];
@@ -601,23 +642,72 @@ export function SchoolIndicatorPanel() {
                           {years.map((year) => (
                             <label key={`${metric.id}-target-${year}`} className="grid grid-cols-[82px_1fr] items-center gap-2">
                               <span className="text-[11px] font-semibold text-slate-500">{year}</span>
-                              <input
-                                type="text"
-                                value={current.targetMatrix[year] ?? ""}
-                                onChange={(event) =>
-                                  setMetricEntries((entries) => ({
-                                    ...entries,
-                                    [metric.id]: {
-                                      ...current,
-                                      targetMatrix: {
-                                        ...current.targetMatrix,
-                                        [year]: event.target.value,
+                              {metric.inputSchema?.valueType === "yes_no" ? (
+                                <select
+                                  value={current.targetMatrix[year] ?? ""}
+                                  onChange={(event) =>
+                                    setMetricEntries((entries) => ({
+                                      ...entries,
+                                      [metric.id]: {
+                                        ...current,
+                                        targetMatrix: {
+                                          ...current.targetMatrix,
+                                          [year]: event.target.value,
+                                        },
                                       },
-                                    },
-                                  }))
-                                }
-                                className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                              />
+                                    }))
+                                  }
+                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                >
+                                  <option value="">Select</option>
+                                  <option value="yes">Yes</option>
+                                  <option value="no">No</option>
+                                </select>
+                              ) : metric.inputSchema?.valueType === "enum" ? (
+                                <select
+                                  value={current.targetMatrix[year] ?? ""}
+                                  onChange={(event) =>
+                                    setMetricEntries((entries) => ({
+                                      ...entries,
+                                      [metric.id]: {
+                                        ...current,
+                                        targetMatrix: {
+                                          ...current.targetMatrix,
+                                          [year]: event.target.value,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                >
+                                  <option value="">Select</option>
+                                  {enumOptions.map((option) => (
+                                    <option key={`${metric.id}-target-matrix-opt-${year}-${option}`} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type={metric.inputSchema?.valueType === "text" ? "text" : "number"}
+                                  step={metric.inputSchema?.valueType === "integer" ? "1" : "0.01"}
+                                  min={metric.inputSchema?.valueType === "text" ? undefined : 0}
+                                  value={current.targetMatrix[year] ?? ""}
+                                  onChange={(event) =>
+                                    setMetricEntries((entries) => ({
+                                      ...entries,
+                                      [metric.id]: {
+                                        ...current,
+                                        targetMatrix: {
+                                          ...current.targetMatrix,
+                                          [year]: event.target.value,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                />
+                              )}
                             </label>
                           ))}
                         </div>
@@ -700,23 +790,72 @@ export function SchoolIndicatorPanel() {
                           {years.map((year) => (
                             <label key={`${metric.id}-actual-${year}`} className="grid grid-cols-[82px_1fr] items-center gap-2">
                               <span className="text-[11px] font-semibold text-slate-500">{year}</span>
-                              <input
-                                type="text"
-                                value={current.actualMatrix[year] ?? ""}
-                                onChange={(event) =>
-                                  setMetricEntries((entries) => ({
-                                    ...entries,
-                                    [metric.id]: {
-                                      ...current,
-                                      actualMatrix: {
-                                        ...current.actualMatrix,
-                                        [year]: event.target.value,
+                              {metric.inputSchema?.valueType === "yes_no" ? (
+                                <select
+                                  value={current.actualMatrix[year] ?? ""}
+                                  onChange={(event) =>
+                                    setMetricEntries((entries) => ({
+                                      ...entries,
+                                      [metric.id]: {
+                                        ...current,
+                                        actualMatrix: {
+                                          ...current.actualMatrix,
+                                          [year]: event.target.value,
+                                        },
                                       },
-                                    },
-                                  }))
-                                }
-                                className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                              />
+                                    }))
+                                  }
+                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                >
+                                  <option value="">Select</option>
+                                  <option value="yes">Yes</option>
+                                  <option value="no">No</option>
+                                </select>
+                              ) : metric.inputSchema?.valueType === "enum" ? (
+                                <select
+                                  value={current.actualMatrix[year] ?? ""}
+                                  onChange={(event) =>
+                                    setMetricEntries((entries) => ({
+                                      ...entries,
+                                      [metric.id]: {
+                                        ...current,
+                                        actualMatrix: {
+                                          ...current.actualMatrix,
+                                          [year]: event.target.value,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                >
+                                  <option value="">Select</option>
+                                  {enumOptions.map((option) => (
+                                    <option key={`${metric.id}-actual-matrix-opt-${year}-${option}`} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type={metric.inputSchema?.valueType === "text" ? "text" : "number"}
+                                  step={metric.inputSchema?.valueType === "integer" ? "1" : "0.01"}
+                                  min={metric.inputSchema?.valueType === "text" ? undefined : 0}
+                                  value={current.actualMatrix[year] ?? ""}
+                                  onChange={(event) =>
+                                    setMetricEntries((entries) => ({
+                                      ...entries,
+                                      [metric.id]: {
+                                        ...current,
+                                        actualMatrix: {
+                                          ...current.actualMatrix,
+                                          [year]: event.target.value,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                  className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                />
+                              )}
                             </label>
                           ))}
                         </div>
@@ -812,6 +951,13 @@ export function SchoolIndicatorPanel() {
                   </tr>
                 );
               })}
+              {activeCategoryMetrics.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-2 py-6 text-center text-sm text-slate-500">
+                    No indicators found in this category.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -828,7 +974,7 @@ export function SchoolIndicatorPanel() {
 
         <button
           type="submit"
-          disabled={isSaving || isLoading || metrics.length === 0}
+          disabled={isSaving || isLoading || complianceMetrics.length === 0}
           className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
         >
           <Target className="h-4 w-4" />

@@ -196,6 +196,88 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.reviewedAt', null);
     }
 
+    public function test_school_head_can_submit_annual_compliance_matrix_values(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $headNameMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->value('id');
+        $sbmMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_SBM_LEVEL')->value('id');
+        $internetMetricId = (int) PerformanceMetric::query()->where('code', 'INTERNET_ACCESS')->value('id');
+        $incomeMetricId = (int) PerformanceMetric::query()->where('code', 'CANTEEN_INCOME')->value('id');
+
+        $response = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'notes' => 'Annual I-META compliance update.',
+            'indicators' => [
+                [
+                    'metric_id' => $headNameMetricId,
+                    'target' => [
+                        'values' => [
+                            '2025-2026' => 'Ma. Teresa Dela Cruz',
+                        ],
+                    ],
+                    'actual' => [
+                        'values' => [
+                            '2025-2026' => 'Ma. Teresa Dela Cruz',
+                        ],
+                    ],
+                ],
+                [
+                    'metric_id' => $sbmMetricId,
+                    'target' => [
+                        'values' => [
+                            '2025-2026' => 'Level 2',
+                        ],
+                    ],
+                    'actual' => [
+                        'values' => [
+                            '2025-2026' => 'Level 2',
+                        ],
+                    ],
+                ],
+                [
+                    'metric_id' => $internetMetricId,
+                    'target' => [
+                        'values' => [
+                            '2025-2026' => true,
+                        ],
+                    ],
+                    'actual' => [
+                        'values' => [
+                            '2025-2026' => true,
+                        ],
+                    ],
+                ],
+                [
+                    'metric_id' => $incomeMetricId,
+                    'target' => [
+                        'values' => [
+                            '2025-2026' => 100000,
+                        ],
+                    ],
+                    'actual' => [
+                        'values' => [
+                            '2025-2026' => 125000,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.reportingPeriod', 'ANNUAL')
+            ->assertJsonPath('data.summary.totalIndicators', 4)
+            ->assertJsonPath('data.summary.metIndicators', 4)
+            ->assertJsonPath('data.summary.belowTargetIndicators', 0)
+            ->assertJsonPath('data.indicators.0.targetDisplay', fn (?string $value): bool => is_string($value) && $value !== '');
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $loginResponse = $this->postJson('/api/auth/login', [

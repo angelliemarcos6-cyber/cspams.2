@@ -698,6 +698,11 @@ class IndicatorSubmissionController extends Controller
             ->filter(static fn (string $year): bool => $year !== '')
             ->values();
         $valueType = (string) ($schema['valueType'] ?? 'number');
+        $enumOptions = collect($schema['options'] ?? [])
+            ->map(static fn (mixed $option): string => trim((string) $option))
+            ->filter(static fn (string $option): bool => $option !== '')
+            ->values();
+        $currency = (string) ($schema['currency'] ?? 'PHP');
 
         if ($allowedYears->isNotEmpty()) {
             $invalidYear = $providedYears->first(
@@ -739,6 +744,30 @@ class IndicatorSubmissionController extends Controller
                 continue;
             }
 
+            if ($valueType === 'enum') {
+                $enumValue = trim((string) $yearValue);
+                if ($enumValue === '' || $enumOptions->isEmpty() || ! $enumOptions->contains($enumValue)) {
+                    throw ValidationException::withMessages([
+                        $errorPath => "Invalid option for {$year}.",
+                    ]);
+                }
+
+                $normalized[$year] = $enumValue;
+                continue;
+            }
+
+            if ($valueType === 'text') {
+                $textValue = trim((string) $yearValue);
+                if ($textValue === '') {
+                    throw ValidationException::withMessages([
+                        $errorPath => "Text value is required for {$year}.",
+                    ]);
+                }
+
+                $normalized[$year] = $textValue;
+                continue;
+            }
+
             if (! is_numeric($yearValue)) {
                 throw ValidationException::withMessages([
                     $errorPath => "Numeric value is required for {$year}.",
@@ -755,17 +784,43 @@ class IndicatorSubmissionController extends Controller
             $normalized[$year] = $numericValue;
         }
 
-        $numeric = round(collect($normalized)->sum(static function (mixed $value): float {
-            return is_bool($value) ? ($value ? 1.0 : 0.0) : (float) $value;
+        $numeric = round(collect($normalized)->sum(function (mixed $value) use ($valueType, $enumOptions): float {
+            if (is_bool($value)) {
+                return $value ? 1.0 : 0.0;
+            }
+
+            if (is_numeric($value)) {
+                return (float) $value;
+            }
+
+            if ($valueType === 'enum') {
+                $index = $enumOptions->search((string) $value);
+                return $index === false ? 0.0 : ((float) $index + 1);
+            }
+
+            return 1.0;
         }), 2);
 
         $display = collect($normalized)
-            ->map(static function (mixed $value, string $year): string {
+            ->map(function (mixed $value, string $year) use ($valueType, $currency): string {
                 if (is_bool($value)) {
                     return "{$year}: " . ($value ? 'Yes' : 'No');
                 }
 
-                return "{$year}: " . number_format((float) $value, 2);
+                if (is_numeric($value)) {
+                    $formatted = number_format((float) $value, 2);
+                    if ($valueType === 'percentage') {
+                        return "{$year}: {$formatted}%";
+                    }
+
+                    if ($valueType === 'currency') {
+                        return "{$year}: {$currency} {$formatted}";
+                    }
+
+                    return "{$year}: {$formatted}";
+                }
+
+                return "{$year}: " . (string) $value;
             })
             ->join(' | ');
 
