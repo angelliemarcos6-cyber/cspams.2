@@ -180,10 +180,10 @@ const MONITOR_MANUAL_STATUS_GUIDE = [
 
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
   { id: "all", label: "All Schools" },
-  { id: "submitted_any", label: "With Any CSPAMS Submission" },
-  { id: "complete", label: "Complete CSPAMS Package" },
-  { id: "awaiting_review", label: "Pending Monitor Review" },
-  { id: "missing", label: "Missing Records / Indicators" },
+  { id: "submitted_any", label: "With Submission" },
+  { id: "complete", label: "Fully Submitted" },
+  { id: "awaiting_review", label: "Waiting for Review" },
+  { id: "missing", label: "Missing Requirements" },
 ];
 
 const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
@@ -192,15 +192,15 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
     { id: "advanced_analytics", label: "Advanced Analytics", targetId: "monitor-analytics-toggle", icon: TrendingUp },
   ],
   requirements: [
-    { id: "filters", label: "Advanced Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
+    { id: "filters", label: "Quick Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
     { id: "tracker_table", label: "Requirement Tracker", targetId: "monitor-requirements-table", icon: ListChecks },
   ],
   compliance: [
-    { id: "filters_compliance", label: "Advanced Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
+    { id: "filters_compliance", label: "Quick Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
     { id: "indicators_queue", label: "Indicators Queue", targetId: "monitor-indicators-queue", icon: TrendingUp },
   ],
   records: [
-    { id: "filters_records", label: "Advanced Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
+    { id: "filters_records", label: "Quick Filters", targetId: "monitor-submission-filters-toggle", icon: Filter },
     { id: "school_records", label: "School Records", targetId: "monitor-school-records", icon: Database },
     { id: "student_records", label: "Learner Records", targetId: "monitor-student-records", icon: Users },
   ],
@@ -614,8 +614,8 @@ export function MonitorDashboard() {
 
   const selectedStudentLabel = selectedStudentLookup
     ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn}`
-    : "Search student name / LRN";
-  const selectedTeacherLabel = selectedTeacherLookup ?? "Search teacher name";
+    : "Find student (name or LRN)";
+  const selectedTeacherLabel = selectedTeacherLookup ?? "Find teacher";
   const studentRecordsLookupTerm = selectedStudentLookup
     ? selectedStudentLookup.lrn
     : selectedTeacherLookup ?? "";
@@ -969,7 +969,7 @@ export function MonitorDashboard() {
                   type="text"
                   value={schoolScopeQuery}
                   onChange={(event) => setSchoolScopeQuery(event.target.value)}
-                  placeholder="Search school code or name"
+                  placeholder="Type school code or name"
                   className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
               </div>
@@ -1042,7 +1042,7 @@ export function MonitorDashboard() {
                   type="text"
                   value={studentLookupQuery}
                   onChange={(event) => setStudentLookupQuery(event.target.value)}
-                  placeholder="Search student name or LRN"
+                  placeholder="Type student name or LRN"
                   className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
               </div>
@@ -1060,7 +1060,7 @@ export function MonitorDashboard() {
                   !selectedStudentLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
                 }`}
               >
-                Clear student selection
+                Show all students
               </button>
               {filteredStudentLookupOptions.map((option) => (
                 <button
@@ -1087,7 +1087,7 @@ export function MonitorDashboard() {
                 </button>
               ))}
               {filteredStudentLookupOptions.length === 0 && (
-                <p className="px-2.5 py-2 text-xs text-slate-500">No student match.</p>
+                <p className="px-2.5 py-2 text-xs text-slate-500">No student found.</p>
               )}
             </div>
           </div>
@@ -1118,7 +1118,7 @@ export function MonitorDashboard() {
                   type="text"
                   value={teacherLookupQuery}
                   onChange={(event) => setTeacherLookupQuery(event.target.value)}
-                  placeholder="Search teacher name"
+                  placeholder="Type teacher name"
                   className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
               </div>
@@ -1136,7 +1136,7 @@ export function MonitorDashboard() {
                   !selectedTeacherLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
                 }`}
               >
-                Clear teacher selection
+                Show all teachers
               </button>
               {filteredTeacherLookupOptions.map((name) => (
                 <button
@@ -1159,7 +1159,7 @@ export function MonitorDashboard() {
                 </button>
               ))}
               {filteredTeacherLookupOptions.length === 0 && (
-                <p className="px-2.5 py-2 text-xs text-slate-500">No teacher match.</p>
+                <p className="px-2.5 py-2 text-xs text-slate-500">No teacher found.</p>
               )}
             </div>
           </div>
@@ -1386,7 +1386,7 @@ export function MonitorDashboard() {
                       onClick={() => setShowAdvancedFilters((current) => !current)}
                       className="dashboard-quick-jump-btn rounded-sm"
                     >
-                      {showAdvancedFilters ? "Hide Advanced Filters" : "Show Advanced Filters"}
+                      {showAdvancedFilters ? "Hide Quick Filters" : "Show Quick Filters"}
                     </button>
                   )}
                 </div>
@@ -1397,7 +1397,8 @@ export function MonitorDashboard() {
 
           {showSubmissionFilters && (
           <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Advanced Filters</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Quick Filters</h2>
+            <p className="mt-1 text-xs text-slate-600">Use one or two filters to narrow schools quickly.</p>
             <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1405,7 +1406,7 @@ export function MonitorDashboard() {
                   type="text"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search school, region, code, or submitted by"
+                  placeholder="Find school by name, code, district, or region"
                   className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
               </div>
@@ -1417,7 +1418,7 @@ export function MonitorDashboard() {
                   onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
                   className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
                 >
-                  <option value="all">All status</option>
+                  <option value="all">Any school status</option>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                   <option value="pending">Pending</option>
@@ -1442,58 +1443,58 @@ export function MonitorDashboard() {
 
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">School Scope</p>
+                <p className="text-xs font-semibold text-slate-700">Which school</p>
                 {renderSchoolScopeSelector()}
               </article>
               <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Student Lookup</p>
+                <p className="text-xs font-semibold text-slate-700">Find a student</p>
                 {renderStudentLookupSelector()}
               </article>
               <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Teacher Lookup</p>
+                <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
                 {renderTeacherLookupSelector()}
               </article>
             </div>
 
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
               <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Schools in Scope</p>
+                <p className="text-xs font-semibold text-slate-700">Schools shown</p>
                 <p className="mt-1 text-lg font-bold text-slate-900">{requirementCounts.total}</p>
               </article>
               <article className="border border-primary-200 bg-primary-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Any CSPAMS Submission</p>
+                <p className="text-xs font-semibold text-primary-700">With submission</p>
                 <p className="mt-1 text-lg font-bold text-primary-800">{requirementCounts.submittedAny}</p>
               </article>
               <article className="border border-primary-200 bg-primary-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Complete CSPAMS Package</p>
+                <p className="text-xs font-semibold text-primary-700">Fully submitted</p>
                 <p className="mt-1 text-lg font-bold text-primary-800">{requirementCounts.complete}</p>
               </article>
               <article className="border border-slate-300 bg-slate-100 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Pending Monitor Review</p>
+                <p className="text-xs font-semibold text-slate-700">Waiting for review</p>
                 <p className="mt-1 text-lg font-bold text-slate-800">{requirementCounts.awaitingReview}</p>
               </article>
               <article className="border border-rose-200 bg-rose-50 px-3 py-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Missing Records / Indicators</p>
+                <p className="text-xs font-semibold text-rose-700">Missing requirements</p>
                 <p className="mt-1 text-lg font-bold text-rose-800">{requirementCounts.missing}</p>
               </article>
             </div>
 
             <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
               <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Complete Package</p>
-                <p className="mt-1 text-xs text-slate-700">Compliance record + indicators submitted/validated.</p>
+                <p className="text-xs font-semibold text-slate-700">Fully submitted</p>
+                <p className="mt-1 text-xs text-slate-700">Both compliance record and indicators are submitted or validated.</p>
               </article>
               <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pending Review</p>
-                <p className="mt-1 text-xs text-slate-700">At least one submission is in submitted status.</p>
+                <p className="text-xs font-semibold text-slate-700">Waiting for review</p>
+                <p className="mt-1 text-xs text-slate-700">At least one item is submitted and waiting for monitor action.</p>
               </article>
               <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Missing</p>
-                <p className="mt-1 text-xs text-slate-700">One or more required items are not yet submitted.</p>
+                <p className="text-xs font-semibold text-slate-700">Missing requirements</p>
+                <p className="mt-1 text-xs text-slate-700">One or more required items are still not submitted.</p>
               </article>
               <article className="border border-slate-200 bg-white px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filter Scope</p>
-                <p className="mt-1 text-xs text-slate-700">Applies to requirement table and monitor queues.</p>
+                <p className="text-xs font-semibold text-slate-700">Where filters apply</p>
+                <p className="mt-1 text-xs text-slate-700">These filters affect the Requirements table and Compliance queue.</p>
               </article>
             </div>
           </section>
