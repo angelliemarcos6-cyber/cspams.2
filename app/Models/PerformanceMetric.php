@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Audit\AuditsActivity;
+use App\Support\Domain\MetricDataType;
 use App\Support\Domain\MetricCategory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,7 +21,12 @@ class PerformanceMetric extends Model
         'code',
         'name',
         'category',
+        'framework',
+        'data_type',
         'description',
+        'input_schema',
+        'unit',
+        'sort_order',
         'is_active',
     ];
 
@@ -32,6 +38,9 @@ class PerformanceMetric extends Model
         return [
             'is_active' => 'boolean',
             'category' => MetricCategory::class,
+            'data_type' => MetricDataType::class,
+            'input_schema' => 'array',
+            'sort_order' => 'integer',
         ];
     }
 

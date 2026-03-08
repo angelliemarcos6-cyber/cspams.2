@@ -6,6 +6,8 @@ import type {
   IndicatorMetric,
   IndicatorSubmission,
   IndicatorSubmissionPayload,
+  IndicatorTypedValuePayload,
+  MetricDataType,
 } from "@/types";
 
 type MetricEntryState = Record<
@@ -14,9 +16,19 @@ type MetricEntryState = Record<
     enabled: boolean;
     targetValue: string;
     actualValue: string;
+    targetText: string;
+    actualText: string;
+    targetBoolean: "" | "yes" | "no";
+    actualBoolean: "" | "yes" | "no";
+    targetEnum: string;
+    actualEnum: string;
+    targetMatrix: Record<string, string>;
+    actualMatrix: Record<string, string>;
     remarks: string;
   }
 >;
+
+type MetricEntryValue = MetricEntryState[string];
 
 interface ComplianceCategory {
   id: string;
@@ -119,16 +131,70 @@ function formatDateTime(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+function metricDataType(metric: IndicatorMetric): MetricDataType {
+  const value = String(metric.dataType || "number").toLowerCase();
+  if (value === "currency") return "currency";
+  if (value === "yes_no") return "yes_no";
+  if (value === "enum") return "enum";
+  if (value === "yearly_matrix") return "yearly_matrix";
+  if (value === "text") return "text";
+  return "number";
+}
+
+function metricYears(metric: IndicatorMetric): string[] {
+  return Array.isArray(metric.inputSchema?.years) ? metric.inputSchema?.years ?? [] : [];
+}
+
+function normalizeBooleanInput(value: string): "" | "yes" | "no" {
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "y"].includes(normalized)) return "yes";
+  if (["0", "false", "no", "n"].includes(normalized)) return "no";
+  return "";
+}
+
+function buildDefaultEntry(metric: IndicatorMetric): MetricEntryValue {
+  const targetMatrix: Record<string, string> = {};
+  const actualMatrix: Record<string, string> = {};
+  for (const year of metricYears(metric)) {
+    targetMatrix[year] = "";
+    actualMatrix[year] = "";
+  }
+
+  return {
+    enabled: false,
+    targetValue: "",
+    actualValue: "",
+    targetText: "",
+    actualText: "",
+    targetBoolean: "" as const,
+    actualBoolean: "" as const,
+    targetEnum: "",
+    actualEnum: "",
+    targetMatrix,
+    actualMatrix,
+    remarks: "",
+  };
+}
+
 function buildInitialMetricEntries(metrics: IndicatorMetric[], current: MetricEntryState): MetricEntryState {
   const next: MetricEntryState = {};
 
   for (const metric of metrics) {
-    next[metric.id] = current[metric.id] ?? {
-      enabled: false,
-      targetValue: "",
-      actualValue: "",
-      remarks: "",
-    };
+    const previous = current[metric.id];
+    next[metric.id] = previous
+      ? {
+          ...buildDefaultEntry(metric),
+          ...previous,
+          targetMatrix: {
+            ...buildDefaultEntry(metric).targetMatrix,
+            ...(previous.targetMatrix ?? {}),
+          },
+          actualMatrix: {
+            ...buildDefaultEntry(metric).actualMatrix,
+            ...(previous.actualMatrix ?? {}),
+          },
+        }
+      : buildDefaultEntry(metric);
   }
 
   return next;
@@ -215,20 +281,80 @@ export function SchoolIndicatorPanel() {
 
     const entries = Object.entries(metricEntries)
       .filter(([, value]) => value.enabled)
-      .map(([metricId, value]) => ({
-        metricId: Number(metricId),
-        targetValue: Number(value.targetValue),
-        actualValue: Number(value.actualValue),
-        remarks: value.remarks.trim() || null,
-      }));
+      .map(([metricId, value]) => {
+        const metric = metrics.find((item) => item.id === metricId);
+        if (!metric) return null;
+
+        const type = metricDataType(metric);
+        let targetPayload: IndicatorTypedValuePayload | undefined;
+        let actualPayload: IndicatorTypedValuePayload | undefined;
+        let targetValue: number | undefined;
+        let actualValue: number | undefined;
+
+        if (type === "currency" || type === "number") {
+          targetValue = Number(value.targetValue);
+          actualValue = Number(value.actualValue);
+          targetPayload = type === "currency" ? { amount: targetValue, currency: metric.inputSchema?.currency ?? "PHP" } : undefined;
+          actualPayload = type === "currency" ? { amount: actualValue, currency: metric.inputSchema?.currency ?? "PHP" } : undefined;
+        } else if (type === "yes_no") {
+          targetPayload = { value: value.targetBoolean === "yes" };
+          actualPayload = { value: value.actualBoolean === "yes" };
+        } else if (type === "enum") {
+          targetPayload = { value: value.targetEnum };
+          actualPayload = { value: value.actualEnum };
+        } else if (type === "text") {
+          targetPayload = { value: value.targetText.trim() };
+          actualPayload = { value: value.actualText.trim() };
+        } else if (type === "yearly_matrix") {
+          targetPayload = {
+            values: Object.fromEntries(Object.entries(value.targetMatrix).map(([year, currentValue]) => [year, currentValue.trim()])),
+          };
+          actualPayload = {
+            values: Object.fromEntries(Object.entries(value.actualMatrix).map(([year, currentValue]) => [year, currentValue.trim()])),
+          };
+        }
+
+        return {
+          metricId: Number(metricId),
+          targetValue,
+          actualValue,
+          target: targetPayload,
+          actual: actualPayload,
+          remarks: value.remarks.trim() || null,
+          type,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
     if (entries.length === 0) {
       setSubmitError("Enable at least one indicator row before creating a package.");
       return;
     }
 
-    if (entries.some((entry) => Number.isNaN(entry.targetValue) || Number.isNaN(entry.actualValue))) {
-      setSubmitError("Target and actual values must be valid numbers.");
+    const invalidEntry = entries.find((entry) => {
+      if (entry.type === "number" || entry.type === "currency") {
+        return Number.isNaN(entry.targetValue ?? Number.NaN) || Number.isNaN(entry.actualValue ?? Number.NaN);
+      }
+
+      if (entry.type === "yes_no") {
+        return entry.target?.value === undefined || entry.actual?.value === undefined;
+      }
+
+      if (entry.type === "enum" || entry.type === "text") {
+        return !String(entry.target?.value ?? "").trim() || !String(entry.actual?.value ?? "").trim();
+      }
+
+      if (entry.type === "yearly_matrix") {
+        const targetValues = Object.values(entry.target?.values ?? {});
+        const actualValues = Object.values(entry.actual?.values ?? {});
+        return targetValues.length === 0 || actualValues.length === 0 || targetValues.some((value) => String(value).trim() === "") || actualValues.some((value) => String(value).trim() === "");
+      }
+
+      return false;
+    });
+
+    if (invalidEntry) {
+      setSubmitError("Complete all required typed target/actual fields for enabled indicators.");
       return;
     }
 
@@ -236,7 +362,14 @@ export function SchoolIndicatorPanel() {
       academicYearId: Number(academicYearId),
       reportingPeriod,
       notes: notes.trim() || null,
-      indicators: entries,
+      indicators: entries.map((entry) => ({
+        metricId: entry.metricId,
+        targetValue: entry.targetValue,
+        actualValue: entry.actualValue,
+        target: entry.target,
+        actual: entry.actual,
+        remarks: entry.remarks,
+      })),
     };
 
     try {
@@ -360,7 +493,7 @@ export function SchoolIndicatorPanel() {
             ))}
           </ul>
           <p className="mt-3 text-[11px] text-slate-500">
-            For Y/N indicators, encode `1` for yes and `0` for no. For evidence-level indicators, use a numeric scale agreed by the division monitor.
+            Typed inputs are enabled per indicator: yes/no, enum, currency, text, numeric, and school-year matrix values.
           </p>
         </div>
       </section>
@@ -433,12 +566,10 @@ export function SchoolIndicatorPanel() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {metrics.map((metric) => {
-                const current = metricEntries[metric.id] ?? {
-                  enabled: false,
-                  targetValue: "",
-                  actualValue: "",
-                  remarks: "",
-                };
+                const type = metricDataType(metric);
+                const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
+                const enumOptions = Array.isArray(metric.inputSchema?.options) ? metric.inputSchema?.options ?? [] : [];
+                const years = metricYears(metric);
 
                 return (
                   <tr key={metric.id}>
@@ -460,42 +591,207 @@ export function SchoolIndicatorPanel() {
                     <td className="px-2 py-2">
                       <p className="text-sm font-semibold text-slate-900">{metric.code}</p>
                       <p className="text-xs text-slate-500">{metric.name}</p>
+                      <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">
+                        {String(metric.framework || "targets_met").replace("_", " ")} · {type.replace("_", " ")}
+                      </p>
                     </td>
                     <td className="px-2 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        value={current.targetValue}
-                        onChange={(event) =>
-                          setMetricEntries((entries) => ({
-                            ...entries,
-                            [metric.id]: {
-                              ...current,
-                              targetValue: event.target.value,
-                            },
-                          }))
-                        }
-                        className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-right text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                      />
+                      {type === "yearly_matrix" ? (
+                        <div className="grid gap-1.5">
+                          {years.map((year) => (
+                            <label key={`${metric.id}-target-${year}`} className="grid grid-cols-[82px_1fr] items-center gap-2">
+                              <span className="text-[11px] font-semibold text-slate-500">{year}</span>
+                              <input
+                                type="text"
+                                value={current.targetMatrix[year] ?? ""}
+                                onChange={(event) =>
+                                  setMetricEntries((entries) => ({
+                                    ...entries,
+                                    [metric.id]: {
+                                      ...current,
+                                      targetMatrix: {
+                                        ...current.targetMatrix,
+                                        [year]: event.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      ) : type === "yes_no" ? (
+                        <select
+                          value={current.targetBoolean}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                targetBoolean: normalizeBooleanInput(event.target.value),
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        >
+                          <option value="">Select</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : type === "enum" ? (
+                        <select
+                          value={current.targetEnum}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                targetEnum: event.target.value,
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        >
+                          <option value="">Select</option>
+                          {enumOptions.map((option) => (
+                            <option key={`${metric.id}-target-opt-${option}`} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      ) : type === "text" ? (
+                        <input
+                          type="text"
+                          value={current.targetText}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                targetText: event.target.value,
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        />
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={current.targetValue}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                targetValue: event.target.value,
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-right text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        />
+                      )}
                     </td>
                     <td className="px-2 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        value={current.actualValue}
-                        onChange={(event) =>
-                          setMetricEntries((entries) => ({
-                            ...entries,
-                            [metric.id]: {
-                              ...current,
-                              actualValue: event.target.value,
-                            },
-                          }))
-                        }
-                        className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-right text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                      />
+                      {type === "yearly_matrix" ? (
+                        <div className="grid gap-1.5">
+                          {years.map((year) => (
+                            <label key={`${metric.id}-actual-${year}`} className="grid grid-cols-[82px_1fr] items-center gap-2">
+                              <span className="text-[11px] font-semibold text-slate-500">{year}</span>
+                              <input
+                                type="text"
+                                value={current.actualMatrix[year] ?? ""}
+                                onChange={(event) =>
+                                  setMetricEntries((entries) => ({
+                                    ...entries,
+                                    [metric.id]: {
+                                      ...current,
+                                      actualMatrix: {
+                                        ...current.actualMatrix,
+                                        [year]: event.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                                className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      ) : type === "yes_no" ? (
+                        <select
+                          value={current.actualBoolean}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                actualBoolean: normalizeBooleanInput(event.target.value),
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        >
+                          <option value="">Select</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : type === "enum" ? (
+                        <select
+                          value={current.actualEnum}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                actualEnum: event.target.value,
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        >
+                          <option value="">Select</option>
+                          {enumOptions.map((option) => (
+                            <option key={`${metric.id}-actual-opt-${option}`} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      ) : type === "text" ? (
+                        <input
+                          type="text"
+                          value={current.actualText}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                actualText: event.target.value,
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        />
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={current.actualValue}
+                          onChange={(event) =>
+                            setMetricEntries((entries) => ({
+                              ...entries,
+                              [metric.id]: {
+                                ...current,
+                                actualValue: event.target.value,
+                              },
+                            }))
+                          }
+                          className="w-full rounded-sm border border-slate-200 bg-white px-2 py-2 text-right text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        />
+                      )}
                     </td>
                     <td className="px-2 py-2">
                       <input
@@ -638,8 +934,8 @@ export function SchoolIndicatorPanel() {
                                           <p className="text-xs font-semibold text-slate-900">{entry.metric?.code || "N/A"}</p>
                                           <p className="text-xs text-slate-500">{entry.metric?.name || "Unknown metric"}</p>
                                         </td>
-                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetValue}</td>
-                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualValue}</td>
+                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetDisplay ?? entry.targetValue}</td>
+                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualDisplay ?? entry.actualValue}</td>
                                         <td className="px-2 py-2 text-center">
                                           <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${complianceTone(entry.complianceStatus)}`}>
                                             {entry.complianceStatus === "met" ? "Met" : "Below"}

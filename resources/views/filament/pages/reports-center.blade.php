@@ -11,21 +11,66 @@
 
             {{ $this->form }}
 
-            <div class="mt-4 flex flex-wrap gap-3">
-                <x-filament::button
-                    icon="heroicon-o-arrow-down-tray"
-                    wire:click="downloadSchoolSummaryCsv"
-                >
-                    Download School Summary CSV
-                </x-filament::button>
+            <div class="mt-4 grid gap-4 lg:grid-cols-2">
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+                    <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        School Summary Exports
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <x-filament::button
+                            icon="heroicon-o-arrow-down-tray"
+                            wire:click="downloadSchoolSummaryCsv"
+                        >
+                            CSV
+                        </x-filament::button>
 
-                <x-filament::button
-                    color="gray"
-                    icon="heroicon-o-arrow-down-tray"
-                    wire:click="downloadPerformanceSummaryCsv"
-                >
-                    Download Performance Summary CSV
-                </x-filament::button>
+                        <x-filament::button
+                            color="gray"
+                            icon="heroicon-o-document-arrow-down"
+                            wire:click="downloadSchoolSummaryExcel"
+                        >
+                            Excel
+                        </x-filament::button>
+
+                        <x-filament::button
+                            color="info"
+                            icon="heroicon-o-document-text"
+                            wire:click="downloadSchoolSummaryPdf"
+                        >
+                            PDF
+                        </x-filament::button>
+                    </div>
+                </div>
+
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+                    <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        Performance Summary Exports
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <x-filament::button
+                            icon="heroicon-o-arrow-down-tray"
+                            wire:click="downloadPerformanceSummaryCsv"
+                        >
+                            CSV
+                        </x-filament::button>
+
+                        <x-filament::button
+                            color="gray"
+                            icon="heroicon-o-document-arrow-down"
+                            wire:click="downloadPerformanceSummaryExcel"
+                        >
+                            Excel
+                        </x-filament::button>
+
+                        <x-filament::button
+                            color="info"
+                            icon="heroicon-o-document-text"
+                            wire:click="downloadPerformanceSummaryPdf"
+                        >
+                            PDF
+                        </x-filament::button>
+                    </div>
+                </div>
             </div>
         </x-filament::section>
 

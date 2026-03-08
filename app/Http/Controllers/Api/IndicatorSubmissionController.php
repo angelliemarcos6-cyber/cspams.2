@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ReviewIndicatorSubmissionRequest;
 use App\Http\Requests\Api\UpsertIndicatorSubmissionRequest;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
+use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -50,9 +52,10 @@ class IndicatorSubmissionController extends Controller
 
         $metrics = PerformanceMetric::query()
             ->where('is_active', true)
+            ->orderBy('sort_order')
             ->orderBy('category')
             ->orderBy('code')
-            ->get(['id', 'code', 'name', 'category']);
+            ->get(['id', 'code', 'name', 'category', 'framework', 'data_type', 'input_schema', 'unit', 'sort_order']);
 
         return response()->json([
             'data' => $metrics->map(static fn (PerformanceMetric $metric): array => [
@@ -62,6 +65,13 @@ class IndicatorSubmissionController extends Controller
                 'category' => is_string($metric->category)
                     ? $metric->category
                     : $metric->category->value,
+                'framework' => (string) $metric->framework,
+                'dataType' => $metric->data_type instanceof MetricDataType
+                    ? $metric->data_type->value
+                    : (string) $metric->data_type,
+                'inputSchema' => $metric->input_schema,
+                'unit' => $metric->unit,
+                'sortOrder' => (int) ($metric->sort_order ?? 0),
             ])->values(),
         ]);
     }
@@ -74,7 +84,7 @@ class IndicatorSubmissionController extends Controller
             ->with([
                 'school:id,school_code,name',
                 'academicYear:id,name',
-                'items.metric:id,code,name,category',
+                'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
                 'createdBy:id,name,email',
                 'submittedBy:id,name,email',
                 'reviewedBy:id,name,email',
@@ -95,7 +105,7 @@ class IndicatorSubmissionController extends Controller
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
-            'items.metric:id,code,name,category',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -121,18 +131,43 @@ class IndicatorSubmissionController extends Controller
             ? trim($request->string('notes')->toString())
             : null;
 
-        $indicatorRows = collect($request->input('indicators', []))
-            ->map(function (array $row): array {
-                $targetValue = round((float) $row['target_value'], 2);
-                $actualValue = round((float) $row['actual_value'], 2);
-                $varianceValue = round($actualValue - $targetValue, 2);
+        $rawIndicatorRows = collect($request->input('indicators', []))->values();
+        $metricIds = $rawIndicatorRows
+            ->pluck('metric_id')
+            ->map(static fn (mixed $value): int => (int) $value)
+            ->filter(static fn (int $value): bool => $value > 0)
+            ->unique()
+            ->values();
+
+        $metricsById = PerformanceMetric::query()
+            ->whereIn('id', $metricIds)
+            ->get()
+            ->keyBy('id');
+
+        $indicatorRows = $rawIndicatorRows
+            ->map(function (array $row, int $index) use ($metricsById): array {
+                $metricId = (int) ($row['metric_id'] ?? 0);
+                /** @var PerformanceMetric|null $metric */
+                $metric = $metricsById->get($metricId);
+
+                if (! $metric) {
+                    throw ValidationException::withMessages([
+                        "indicators.{$index}.metric_id" => 'Selected indicator metric does not exist.',
+                    ]);
+                }
+
+                $normalized = $this->normalizeMetricValues($metric, $row, $index);
 
                 return [
-                    'performance_metric_id' => (int) $row['metric_id'],
-                    'target_value' => $targetValue,
-                    'actual_value' => $actualValue,
-                    'variance_value' => $varianceValue,
-                    'compliance_status' => $this->complianceStatus($targetValue, $actualValue),
+                    'performance_metric_id' => $metricId,
+                    'target_value' => $normalized['target_value'],
+                    'target_typed_value' => $normalized['target_typed_value'],
+                    'actual_value' => $normalized['actual_value'],
+                    'actual_typed_value' => $normalized['actual_typed_value'],
+                    'variance_value' => $normalized['variance_value'],
+                    'target_display' => $normalized['target_display'],
+                    'actual_display' => $normalized['actual_display'],
+                    'compliance_status' => $normalized['compliance_status'],
                     'remarks' => isset($row['remarks']) ? trim((string) $row['remarks']) : null,
                 ];
             })
@@ -176,13 +211,22 @@ class IndicatorSubmissionController extends Controller
                 ],
             );
 
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'indicators',
+                'eventType' => 'indicators.generated',
+                'submissionId' => (string) $submission->id,
+                'schoolId' => (string) $submission->school_id,
+                'academicYearId' => (string) $submission->academic_year_id,
+                'status' => FormSubmissionStatus::DRAFT->value,
+            ]));
+
             return $submission;
         });
 
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
-            'items.metric:id,code,name,category',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -229,10 +273,19 @@ class IndicatorSubmissionController extends Controller
             notes: 'Indicator package submitted to monitor.',
         );
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'indicators',
+            'eventType' => 'indicators.submitted',
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => FormSubmissionStatus::SUBMITTED->value,
+        ]));
+
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
-            'items.metric:id,code,name,category',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -280,10 +333,20 @@ class IndicatorSubmissionController extends Controller
             notes: $notes,
         );
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'indicators',
+            'eventType' => $decision === FormSubmissionStatus::VALIDATED->value ? 'indicators.validated' : 'indicators.returned',
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => $decision,
+            'notes' => $notes,
+        ]));
+
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
-            'items.metric:id,code,name,category',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -392,9 +455,397 @@ class IndicatorSubmissionController extends Controller
         );
     }
 
-    private function complianceStatus(float $targetValue, float $actualValue): string
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $schema
+     * @param int $index
+     *
+     * @return array{
+     *     target_value: float,
+     *     actual_value: float,
+     *     variance_value: float,
+     *     target_typed_value: array<string, mixed>,
+     *     actual_typed_value: array<string, mixed>,
+     *     target_display: string,
+     *     actual_display: string,
+     *     compliance_status: string
+     * }
+     */
+    private function normalizeMetricValues(PerformanceMetric $metric, array $row, int $index): array
     {
-        return $actualValue >= $targetValue ? 'met' : 'below_target';
+        $schema = is_array($metric->input_schema) ? $metric->input_schema : [];
+        $dataType = $this->metricDataType($metric);
+        $comparison = (string) ($schema['comparison'] ?? $this->defaultComparison($dataType));
+
+        $targetRaw = array_key_exists('target', $row)
+            ? $row['target']
+            : ($row['target_value'] ?? null);
+        $actualRaw = array_key_exists('actual', $row)
+            ? $row['actual']
+            : ($row['actual_value'] ?? null);
+
+        if ($targetRaw === null || $actualRaw === null) {
+            throw ValidationException::withMessages([
+                "indicators.{$index}" => 'Both target and actual values are required for this indicator.',
+            ]);
+        }
+
+        $targetParsed = $this->parseMetricValue($dataType, $targetRaw, $schema, "indicators.{$index}.target");
+        $actualParsed = $this->parseMetricValue($dataType, $actualRaw, $schema, "indicators.{$index}.actual");
+        $varianceValue = round($actualParsed['numeric'] - $targetParsed['numeric'], 2);
+
+        $complianceStatus = $this->isCompliant(
+            $comparison,
+            $targetParsed['comparable'],
+            $actualParsed['comparable'],
+        ) ? 'met' : 'below_target';
+
+        return [
+            'target_value' => round($targetParsed['numeric'], 2),
+            'actual_value' => round($actualParsed['numeric'], 2),
+            'variance_value' => $varianceValue,
+            'target_typed_value' => $targetParsed['typed'],
+            'actual_typed_value' => $actualParsed['typed'],
+            'target_display' => $targetParsed['display'],
+            'actual_display' => $actualParsed['display'],
+            'compliance_status' => $complianceStatus,
+        ];
+    }
+
+    private function metricDataType(PerformanceMetric $metric): string
+    {
+        if ($metric->data_type instanceof MetricDataType) {
+            return $metric->data_type->value;
+        }
+
+        $raw = (string) $metric->data_type;
+        return MetricDataType::tryFrom($raw)?->value ?? MetricDataType::NUMBER->value;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     *
+     * @return array{
+     *     typed: array<string, mixed>,
+     *     numeric: float,
+     *     display: string,
+     *     comparable: mixed
+     * }
+     */
+    private function parseMetricValue(string $dataType, mixed $raw, array $schema, string $errorPath): array
+    {
+        return match ($dataType) {
+            MetricDataType::CURRENCY->value => $this->parseCurrencyValue($raw, $schema, $errorPath),
+            MetricDataType::YES_NO->value => $this->parseYesNoValue($raw, $errorPath),
+            MetricDataType::ENUM->value => $this->parseEnumValue($raw, $schema, $errorPath),
+            MetricDataType::YEARLY_MATRIX->value => $this->parseYearlyMatrixValue($raw, $schema, $errorPath),
+            MetricDataType::TEXT->value => $this->parseTextValue($raw, $errorPath),
+            default => $this->parseNumberValue($raw, $schema, $errorPath),
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     *
+     * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: float}
+     */
+    private function parseNumberValue(mixed $raw, array $schema, string $errorPath): array
+    {
+        $value = is_array($raw) ? ($raw['value'] ?? null) : $raw;
+
+        if (! is_numeric($value)) {
+            throw ValidationException::withMessages([
+                $errorPath => 'Numeric value is required.',
+            ]);
+        }
+
+        $numeric = round((float) $value, 2);
+        $valueType = (string) ($schema['valueType'] ?? 'number');
+
+        if ($valueType === 'integer' && floor($numeric) !== $numeric) {
+            throw ValidationException::withMessages([
+                $errorPath => 'Whole number is required.',
+            ]);
+        }
+
+        $display = $valueType === 'percentage'
+            ? number_format($numeric, 2) . '%'
+            : number_format($numeric, 2);
+
+        return [
+            'typed' => ['value' => $numeric],
+            'numeric' => $numeric,
+            'display' => $display,
+            'comparable' => $numeric,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     *
+     * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: float}
+     */
+    private function parseCurrencyValue(mixed $raw, array $schema, string $errorPath): array
+    {
+        $amount = is_array($raw)
+            ? ($raw['amount'] ?? $raw['value'] ?? null)
+            : $raw;
+
+        if (! is_numeric($amount)) {
+            throw ValidationException::withMessages([
+                $errorPath => 'Currency amount is required.',
+            ]);
+        }
+
+        $currency = (string) ($schema['currency'] ?? 'PHP');
+        $numeric = round((float) $amount, 2);
+
+        return [
+            'typed' => [
+                'amount' => $numeric,
+                'currency' => $currency,
+            ],
+            'numeric' => $numeric,
+            'display' => "{$currency} " . number_format($numeric, 2),
+            'comparable' => $numeric,
+        ];
+    }
+
+    /**
+     * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: bool}
+     */
+    private function parseYesNoValue(mixed $raw, string $errorPath): array
+    {
+        $value = is_array($raw) ? ($raw['value'] ?? null) : $raw;
+        $bool = $this->normalizeBoolean($value);
+
+        if ($bool === null) {
+            throw ValidationException::withMessages([
+                $errorPath => 'Value must be Yes or No.',
+            ]);
+        }
+
+        return [
+            'typed' => ['value' => $bool],
+            'numeric' => $bool ? 1.0 : 0.0,
+            'display' => $bool ? 'Yes' : 'No',
+            'comparable' => $bool,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     *
+     * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: string}
+     */
+    private function parseEnumValue(mixed $raw, array $schema, string $errorPath): array
+    {
+        $value = is_array($raw) ? ($raw['value'] ?? null) : $raw;
+        $value = is_string($value) ? trim($value) : '';
+        $options = collect($schema['options'] ?? [])->map(static fn (mixed $option): string => trim((string) $option))
+            ->filter(static fn (string $option): bool => $option !== '')
+            ->values();
+
+        if ($value === '' || $options->isEmpty() || ! $options->contains($value)) {
+            throw ValidationException::withMessages([
+                $errorPath => 'Invalid option selected for this indicator.',
+            ]);
+        }
+
+        $numeric = (float) ($options->search($value) + 1);
+
+        return [
+            'typed' => ['value' => $value],
+            'numeric' => $numeric,
+            'display' => $value,
+            'comparable' => $value,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     *
+     * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: array<string, mixed>}
+     */
+    private function parseYearlyMatrixValue(mixed $raw, array $schema, string $errorPath): array
+    {
+        if (is_array($raw)) {
+            $values = $raw['values'] ?? $raw;
+        } else {
+            $seedYears = collect($schema['years'] ?? [])
+                ->map(static fn (mixed $year): string => trim((string) $year))
+                ->filter(static fn (string $year): bool => $year !== '')
+                ->values();
+            $defaultYear = $seedYears->first() ?? 'value';
+            $values = [$defaultYear => $raw];
+        }
+
+        if (! is_array($values)) {
+            throw ValidationException::withMessages([
+                $errorPath => 'Yearly matrix values are required.',
+            ]);
+        }
+
+        $allowedYears = collect($schema['years'] ?? [])
+            ->map(static fn (mixed $year): string => trim((string) $year))
+            ->filter(static fn (string $year): bool => $year !== '')
+            ->values();
+        $providedYears = collect(array_keys($values))
+            ->map(static fn (mixed $year): string => trim((string) $year))
+            ->filter(static fn (string $year): bool => $year !== '')
+            ->values();
+        $valueType = (string) ($schema['valueType'] ?? 'number');
+
+        if ($allowedYears->isNotEmpty()) {
+            $invalidYear = $providedYears->first(
+                static fn (string $year): bool => ! $allowedYears->contains($year),
+            );
+
+            if (is_string($invalidYear)) {
+                throw ValidationException::withMessages([
+                    $errorPath => "Invalid school-year key: {$invalidYear}.",
+                ]);
+            }
+        }
+
+        $years = $providedYears;
+        if ($years->isEmpty()) {
+            throw ValidationException::withMessages([
+                $errorPath => 'At least one school-year value is required.',
+            ]);
+        }
+
+        $normalized = [];
+        foreach ($years as $year) {
+            if (! array_key_exists($year, $values)) {
+                throw ValidationException::withMessages([
+                    $errorPath => "Missing value for {$year}.",
+                ]);
+            }
+
+            $yearValue = $values[$year];
+
+            if ($valueType === 'yes_no') {
+                $boolValue = $this->normalizeBoolean($yearValue);
+                if ($boolValue === null) {
+                    throw ValidationException::withMessages([
+                        $errorPath => "Invalid Yes/No value for {$year}.",
+                    ]);
+                }
+                $normalized[$year] = $boolValue;
+                continue;
+            }
+
+            if (! is_numeric($yearValue)) {
+                throw ValidationException::withMessages([
+                    $errorPath => "Numeric value is required for {$year}.",
+                ]);
+            }
+
+            $numericValue = round((float) $yearValue, 2);
+            if ($valueType === 'integer' && floor($numericValue) !== $numericValue) {
+                throw ValidationException::withMessages([
+                    $errorPath => "Whole number is required for {$year}.",
+                ]);
+            }
+
+            $normalized[$year] = $numericValue;
+        }
+
+        $numeric = round(collect($normalized)->sum(static function (mixed $value): float {
+            return is_bool($value) ? ($value ? 1.0 : 0.0) : (float) $value;
+        }), 2);
+
+        $display = collect($normalized)
+            ->map(static function (mixed $value, string $year): string {
+                if (is_bool($value)) {
+                    return "{$year}: " . ($value ? 'Yes' : 'No');
+                }
+
+                return "{$year}: " . number_format((float) $value, 2);
+            })
+            ->join(' | ');
+
+        return [
+            'typed' => ['values' => $normalized],
+            'numeric' => $numeric,
+            'display' => $display,
+            'comparable' => $normalized,
+        ];
+    }
+
+    /**
+     * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: string}
+     */
+    private function parseTextValue(mixed $raw, string $errorPath): array
+    {
+        $value = is_array($raw) ? ($raw['value'] ?? null) : $raw;
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            throw ValidationException::withMessages([
+                $errorPath => 'Text value is required.',
+            ]);
+        }
+
+        return [
+            'typed' => ['value' => $value],
+            'numeric' => 1.0,
+            'display' => $value,
+            'comparable' => $value,
+        ];
+    }
+
+    private function defaultComparison(string $dataType): string
+    {
+        return match ($dataType) {
+            MetricDataType::YES_NO->value,
+            MetricDataType::ENUM->value,
+            MetricDataType::TEXT->value => 'equal',
+            default => 'greater_or_equal',
+        };
+    }
+
+    private function normalizeBoolean(mixed $value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+        return match ($normalized) {
+            '1', 'true', 'yes', 'y' => true,
+            '0', 'false', 'no', 'n' => false,
+            default => null,
+        };
+    }
+
+    private function isCompliant(string $comparison, mixed $target, mixed $actual): bool
+    {
+        if ($comparison === 'info_only') {
+            return true;
+        }
+
+        if (is_array($target) && is_array($actual)) {
+            $keys = array_unique(array_merge(array_keys($target), array_keys($actual)));
+            foreach ($keys as $key) {
+                if (! array_key_exists($key, $target) || ! array_key_exists($key, $actual)) {
+                    return false;
+                }
+
+                if (! $this->isCompliant($comparison, $target[$key], $actual[$key])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return match ($comparison) {
+            'less_or_equal' => (float) $actual <= (float) $target,
+            'equal' => (string) $actual === (string) $target,
+            default => (float) $actual >= (float) $target,
+        };
     }
 
     private function nextVersion(int $schoolId, int $academicYearId, ?string $reportingPeriod): int

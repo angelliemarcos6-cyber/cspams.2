@@ -165,7 +165,7 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndica
         </div>
         <p className="mt-2 text-xs text-slate-500">
           {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
-          {schoolFilterKeys ? " · Filtered school set active" : ""}
+          {schoolFilterKeys ? " - Filtered school set active" : ""}
         </p>
       </div>
 
@@ -320,8 +320,8 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndica
                                           <p className="text-xs font-semibold text-slate-900">{entry.metric?.code || "N/A"}</p>
                                           <p className="text-xs text-slate-500">{entry.metric?.name || "Unknown metric"}</p>
                                         </td>
-                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetValue}</td>
-                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualValue}</td>
+                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetDisplay ?? entry.targetValue}</td>
+                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualDisplay ?? entry.actualValue}</td>
                                         <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.varianceValue}</td>
                                         <td className="px-2 py-2 text-center">
                                           <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${complianceTone(entry.complianceStatus)}`}>
@@ -346,7 +346,7 @@ export function MonitorIndicatorPanel({ schoolFilterKeys = null }: MonitorIndica
                                   historyRows.map((entry) => (
                                     <article key={entry.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                                        {entry.action} · {formatDateTime(entry.createdAt)}
+                                        {entry.action} - {formatDateTime(entry.createdAt)}
                                       </p>
                                       <p className="mt-0.5 text-xs text-slate-600">
                                         {entry.actor?.name ? `By ${entry.actor.name}` : "System action"}

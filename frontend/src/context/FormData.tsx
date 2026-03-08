@@ -288,14 +288,23 @@ export function FormDataProvider({ children }: { children: ReactNode }) {
     const syncOnFocus = () => {
       void syncSubmissions(true);
     };
+    const syncOnRealtime = (event: Event) => {
+      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      if (!payload?.entity) return;
+      if (payload.entity === "forms") {
+        void syncSubmissions(true);
+      }
+    };
 
     window.addEventListener("focus", syncOnFocus);
     window.addEventListener("online", syncOnFocus);
+    window.addEventListener("cspams:update", syncOnRealtime);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncOnFocus);
       window.removeEventListener("online", syncOnFocus);
+      window.removeEventListener("cspams:update", syncOnRealtime);
     };
   }, [token, syncSubmissions]);
 
@@ -352,4 +361,3 @@ export function useFormData() {
   }
   return context;
 }
-

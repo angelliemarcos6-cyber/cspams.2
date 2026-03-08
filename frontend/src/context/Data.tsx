@@ -424,14 +424,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const syncOnFocus = () => {
       void syncRecords(true);
     };
+    const syncOnRealtime = (event: Event) => {
+      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      if (!payload?.entity) return;
+      if (["dashboard", "students", "forms", "indicators"].includes(payload.entity)) {
+        void syncRecords(true);
+      }
+    };
 
     window.addEventListener("focus", syncOnFocus);
     window.addEventListener("online", syncOnFocus);
+    window.addEventListener("cspams:update", syncOnRealtime);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncOnFocus);
       window.removeEventListener("online", syncOnFocus);
+      window.removeEventListener("cspams:update", syncOnRealtime);
     };
   }, [token, syncRecords]);
 

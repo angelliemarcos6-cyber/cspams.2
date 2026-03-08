@@ -236,14 +236,23 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     const syncOnFocus = () => {
       void syncStudents(true);
     };
+    const syncOnRealtime = (event: Event) => {
+      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      if (!payload?.entity) return;
+      if (payload.entity === "students" || payload.entity === "dashboard") {
+        void syncStudents(true);
+      }
+    };
 
     window.addEventListener("focus", syncOnFocus);
     window.addEventListener("online", syncOnFocus);
+    window.addEventListener("cspams:update", syncOnRealtime);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncOnFocus);
       window.removeEventListener("online", syncOnFocus);
+      window.removeEventListener("cspams:update", syncOnRealtime);
     };
   }, [token, syncStudents]);
 

@@ -24,8 +24,10 @@ class UpsertIndicatorSubmissionRequest extends FormRequest
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'indicators' => ['required', 'array', 'min:1'],
             'indicators.*.metric_id' => ['required', 'integer', 'exists:performance_metrics,id', 'distinct'],
-            'indicators.*.target_value' => ['required', 'numeric', 'min:0'],
-            'indicators.*.actual_value' => ['required', 'numeric', 'min:0'],
+            'indicators.*.target_value' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'indicators.*.actual_value' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'indicators.*.target' => ['sometimes', 'nullable', 'array'],
+            'indicators.*.actual' => ['sometimes', 'nullable', 'array'],
             'indicators.*.remarks' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }

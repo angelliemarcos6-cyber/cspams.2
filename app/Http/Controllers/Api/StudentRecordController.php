@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpsertStudentRecordRequest;
 use App\Http\Resources\StudentRecordResource;
@@ -115,6 +116,14 @@ class StudentRecordController extends Controller
 
         $this->applyPayload($student, $request, $user);
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'students',
+            'eventType' => 'students.created',
+            'studentId' => (string) $student->id,
+            'schoolId' => (string) $student->school_id,
+            'status' => $student->status instanceof StudentStatus ? $student->status->value : (string) $student->status,
+        ]));
+
         return response()->json([
             'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name'])))->resolve(),
             'meta' => [
@@ -136,6 +145,14 @@ class StudentRecordController extends Controller
 
         $this->applyPayload($student, $request, $user);
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'students',
+            'eventType' => 'students.updated',
+            'studentId' => (string) $student->id,
+            'schoolId' => (string) $student->school_id,
+            'status' => $student->status instanceof StudentStatus ? $student->status->value : (string) $student->status,
+        ]));
+
         return response()->json([
             'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name'])))->resolve(),
             'meta' => [
@@ -156,6 +173,13 @@ class StudentRecordController extends Controller
         }
 
         $student->delete();
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'students',
+            'eventType' => 'students.deleted',
+            'studentId' => (string) $student->id,
+            'schoolId' => (string) $student->school_id,
+        ]));
 
         return response()->json([
             'data' => [

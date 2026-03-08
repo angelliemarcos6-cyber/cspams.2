@@ -19,8 +19,12 @@ class IndicatorSubmissionItem extends Model
         'indicator_submission_id',
         'performance_metric_id',
         'target_value',
+        'target_typed_value',
         'actual_value',
+        'actual_typed_value',
         'variance_value',
+        'target_display',
+        'actual_display',
         'compliance_status',
         'remarks',
     ];
@@ -34,6 +38,8 @@ class IndicatorSubmissionItem extends Model
             'target_value' => 'decimal:2',
             'actual_value' => 'decimal:2',
             'variance_value' => 'decimal:2',
+            'target_typed_value' => 'array',
+            'actual_typed_value' => 'array',
         ];
     }
 

@@ -1,5 +1,5 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { LoaderCircle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
@@ -10,6 +10,7 @@ import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
+import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
 
 function FullscreenLoader() {
   return (
@@ -86,6 +87,13 @@ function AppRoutes() {
 }
 
 export function App() {
+  useEffect(() => {
+    startRealtimeBridge();
+    return () => {
+      stopRealtimeBridge();
+    };
+  }, []);
+
   return (
     <AuthProvider>
       <DataProvider>

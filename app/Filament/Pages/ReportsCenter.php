@@ -9,6 +9,7 @@ use App\Support\Domain\ReportingPeriod;
 use App\Support\Reports\PerformanceSummaryReportService;
 use App\Support\Reports\ReportFilters;
 use App\Support\Reports\SchoolSummaryReportService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -169,6 +170,64 @@ class ReportsCenter extends Page implements HasForms
         }, 'performance-summary-report-' . now()->format('Ymd-His') . '.csv', [
             'Content-Type' => 'text/csv',
         ]);
+    }
+
+    public function downloadSchoolSummaryExcel()
+    {
+        $rows = $this->schoolSummaryRows();
+
+        return response()->streamDownload(function () use ($rows): void {
+            echo view('exports.school-summary-excel', [
+                'rows' => $rows,
+                'generatedAt' => now()->format('Y-m-d H:i:s'),
+            ])->render();
+        }, 'school-summary-report-' . now()->format('Ymd-His') . '.xls', [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+        ]);
+    }
+
+    public function downloadPerformanceSummaryExcel()
+    {
+        $rows = $this->performanceSummaryRows();
+
+        return response()->streamDownload(function () use ($rows): void {
+            echo view('exports.performance-summary-excel', [
+                'rows' => $rows,
+                'generatedAt' => now()->format('Y-m-d H:i:s'),
+            ])->render();
+        }, 'performance-summary-report-' . now()->format('Ymd-His') . '.xls', [
+            'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+        ]);
+    }
+
+    public function downloadSchoolSummaryPdf()
+    {
+        $rows = $this->schoolSummaryRows();
+
+        $pdf = Pdf::loadView('exports.school-summary-pdf', [
+            'rows' => $rows,
+            'generatedAt' => now()->format('Y-m-d H:i:s'),
+            'filters' => $this->reportFilters(),
+        ])->setPaper('a4', 'landscape');
+
+        return response()->streamDownload(static function () use ($pdf): void {
+            echo $pdf->output();
+        }, 'school-summary-report-' . now()->format('Ymd-His') . '.pdf');
+    }
+
+    public function downloadPerformanceSummaryPdf()
+    {
+        $rows = $this->performanceSummaryRows();
+
+        $pdf = Pdf::loadView('exports.performance-summary-pdf', [
+            'rows' => $rows,
+            'generatedAt' => now()->format('Y-m-d H:i:s'),
+            'filters' => $this->reportFilters(),
+        ])->setPaper('a4', 'landscape');
+
+        return response()->streamDownload(static function () use ($pdf): void {
+            echo $pdf->output();
+        }, 'performance-summary-report-' . now()->format('Ymd-His') . '.pdf');
     }
 
     /**

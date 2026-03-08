@@ -180,8 +180,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
             notes: payload.notes ?? null,
             indicators: payload.indicators.map((entry) => ({
               metric_id: entry.metricId,
-              target_value: entry.targetValue,
-              actual_value: entry.actualValue,
+              target_value: entry.targetValue ?? null,
+              actual_value: entry.actualValue ?? null,
+              target: entry.target ?? null,
+              actual: entry.actual ?? null,
               remarks: entry.remarks ?? null,
             })),
           },
@@ -288,14 +290,23 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     const syncOnFocus = () => {
       void syncSubmissions(true);
     };
+    const syncOnRealtime = (event: Event) => {
+      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      if (!payload?.entity) return;
+      if (payload.entity === "indicators") {
+        void syncSubmissions(true);
+      }
+    };
 
     window.addEventListener("focus", syncOnFocus);
     window.addEventListener("online", syncOnFocus);
+    window.addEventListener("cspams:update", syncOnRealtime);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncOnFocus);
       window.removeEventListener("online", syncOnFocus);
+      window.removeEventListener("cspams:update", syncOnRealtime);
     };
   }, [token, syncSubmissions]);
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpsertSchoolRecordRequest;
 use App\Http\Resources\SchoolRecordResource;
@@ -171,6 +172,14 @@ class SchoolRecordController extends Controller
             ],
         ]);
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_records.deleted',
+            'schoolId' => (string) $school->id,
+            'alertsCount' => count($targetsMetBundle['alerts']),
+            'pendingSchools' => (int) ($targetsMetBundle['targetsMet']['pendingSchools'] ?? 0),
+        ]));
+
         return $this->applySyncHeaders(
             $response,
             $syncMeta['etag'],
@@ -310,6 +319,15 @@ class SchoolRecordController extends Controller
                 'alerts' => $targetsMetBundle['alerts'],
             ],
         ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_records.updated',
+            'schoolId' => (string) $school->id,
+            'status' => (string) $school->status,
+            'alertsCount' => count($targetsMetBundle['alerts']),
+            'pendingSchools' => (int) ($targetsMetBundle['targetsMet']['pendingSchools'] ?? 0),
+        ]));
 
         return $this->applySyncHeaders(
             $response,

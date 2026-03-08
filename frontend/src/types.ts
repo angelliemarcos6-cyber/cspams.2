@@ -3,6 +3,15 @@ export type UserRole = "school_head" | "monitor" | null;
 export type SchoolStatus = "active" | "inactive" | "pending";
 export type WorkflowStatus = "draft" | "submitted" | "validated" | "returned";
 export type IndicatorComplianceStatus = "met" | "below_target";
+export type MetricDataType = "number" | "currency" | "yes_no" | "enum" | "yearly_matrix" | "text";
+
+export interface MetricInputSchema {
+  comparison?: "greater_or_equal" | "less_or_equal" | "equal" | "info_only" | string;
+  options?: string[];
+  years?: string[];
+  valueType?: "number" | "integer" | "percentage" | "yes_no" | string;
+  currency?: string;
+}
 
 export interface SchoolRecord {
   id: string;
@@ -137,6 +146,11 @@ export interface IndicatorMetric {
   code: string;
   name: string;
   category: string;
+  framework: string;
+  dataType: MetricDataType | string;
+  inputSchema?: MetricInputSchema | null;
+  unit?: string | null;
+  sortOrder?: number;
 }
 
 export interface AcademicYearOption {
@@ -151,8 +165,19 @@ export interface IndicatorSubmissionItem {
   targetValue: number;
   actualValue: number;
   varianceValue: number;
+  targetTypedValue?: Record<string, unknown> | null;
+  actualTypedValue?: Record<string, unknown> | null;
+  targetDisplay?: string | null;
+  actualDisplay?: string | null;
   complianceStatus: IndicatorComplianceStatus | string;
   remarks: string | null;
+}
+
+export interface IndicatorTypedValuePayload {
+  value?: string | number | boolean | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  values?: Record<string, string | number | boolean | null>;
 }
 
 export interface IndicatorSubmissionSummary {
@@ -194,8 +219,10 @@ export interface IndicatorSubmissionPayload {
   notes?: string | null;
   indicators: Array<{
     metricId: number;
-    targetValue: number;
-    actualValue: number;
+    targetValue?: number;
+    actualValue?: number;
+    target?: IndicatorTypedValuePayload;
+    actual?: IndicatorTypedValuePayload;
     remarks?: string | null;
   }>;
 }

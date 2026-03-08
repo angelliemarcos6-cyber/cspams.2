@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\PerformanceMetricResource\Pages;
 use App\Models\PerformanceMetric;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\MetricDataType;
 use App\Support\Domain\MetricCategory;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -40,8 +41,35 @@ class PerformanceMetricResource extends Resource
                     ->options(MetricCategory::options())
                     ->required(),
 
+                Forms\Components\Select::make('framework')
+                    ->options([
+                        'targets_met' => 'TARGETS-MET',
+                        'i_meta' => 'I-META',
+                        'shared' => 'Shared',
+                    ])
+                    ->required()
+                    ->default('targets_met'),
+
+                Forms\Components\Select::make('data_type')
+                    ->options(MetricDataType::options())
+                    ->required()
+                    ->default(MetricDataType::NUMBER->value),
+
                 Forms\Components\Textarea::make('description')
                     ->rows(3),
+
+                Forms\Components\TextInput::make('unit')
+                    ->maxLength(30),
+
+                Forms\Components\KeyValue::make('input_schema')
+                    ->keyLabel('Schema Key')
+                    ->valueLabel('Schema Value')
+                    ->addButtonLabel('Add Item'),
+
+                Forms\Components\TextInput::make('sort_order')
+                    ->numeric()
+                    ->default(0)
+                    ->minValue(0),
 
                 Forms\Components\Toggle::make('is_active')
                     ->default(true),
@@ -62,6 +90,20 @@ class PerformanceMetricResource extends Resource
 
                 Tables\Columns\TextColumn::make('category')
                     ->badge()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('framework')
+                    ->label('Framework')
+                    ->badge()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('data_type')
+                    ->label('Data Type')
+                    ->badge()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('sort_order')
+                    ->label('Order')
                     ->sortable(),
 
                 Tables\Columns\IconColumn::make('is_active')

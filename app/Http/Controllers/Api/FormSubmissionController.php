@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\GenerateFormSubmissionRequest;
 use App\Http\Requests\Api\ValidateFormSubmissionRequest;
@@ -107,6 +108,16 @@ class FormSubmissionController extends Controller
             ],
         );
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'forms',
+            'eventType' => 'sf1.generated',
+            'formType' => Sf1Submission::FORM_TYPE,
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => FormSubmissionStatus::DRAFT->value,
+        ]));
+
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
@@ -161,6 +172,16 @@ class FormSubmissionController extends Controller
             ],
         );
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'forms',
+            'eventType' => 'sf5.generated',
+            'formType' => Sf5Submission::FORM_TYPE,
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => FormSubmissionStatus::DRAFT->value,
+        ]));
+
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
@@ -209,6 +230,16 @@ class FormSubmissionController extends Controller
             actorId: $user->id,
             notes: 'SF-1 submitted for monitor validation.',
         );
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'forms',
+            'eventType' => 'sf1.submitted',
+            'formType' => Sf1Submission::FORM_TYPE,
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => FormSubmissionStatus::SUBMITTED->value,
+        ]));
 
         $submission->load([
             'school:id,school_code,name',
@@ -259,6 +290,16 @@ class FormSubmissionController extends Controller
             notes: 'SF-5 submitted for monitor validation.',
         );
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'forms',
+            'eventType' => 'sf5.submitted',
+            'formType' => Sf5Submission::FORM_TYPE,
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => FormSubmissionStatus::SUBMITTED->value,
+        ]));
+
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
@@ -307,6 +348,17 @@ class FormSubmissionController extends Controller
             notes: $notes,
         );
 
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'forms',
+            'eventType' => $decision === FormSubmissionStatus::VALIDATED->value ? 'sf1.validated' : 'sf1.returned',
+            'formType' => Sf1Submission::FORM_TYPE,
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => $decision,
+            'notes' => $notes,
+        ]));
+
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
@@ -354,6 +406,17 @@ class FormSubmissionController extends Controller
             actorId: $user->id,
             notes: $notes,
         );
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'forms',
+            'eventType' => $decision === FormSubmissionStatus::VALIDATED->value ? 'sf5.validated' : 'sf5.returned',
+            'formType' => Sf5Submission::FORM_TYPE,
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'status' => $decision,
+            'notes' => $notes,
+        ]));
 
         $submission->load([
             'school:id,school_code,name',
