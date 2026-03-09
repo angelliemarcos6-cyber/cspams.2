@@ -8,6 +8,8 @@ import {
   BookOpenText,
   Building2,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
   ChevronUp,
   Edit2,
@@ -216,8 +218,10 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
   return direction === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
 }
 
-function navigatorButtonClass(active: boolean): string {
-  return `relative flex h-11 w-full items-center gap-2.5 rounded-sm border-l-4 border-r border-y px-3 text-left text-xs font-semibold uppercase leading-none tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
+function navigatorButtonClass(active: boolean, compact: boolean): string {
+  return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase leading-none tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
+    compact ? "h-11 justify-center px-2.5" : "h-11 gap-2.5 px-3"
+  } ${
     active
       ? "border-l-primary-100 border-r-primary-300/90 border-y-primary-300/90 bg-primary-700 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
       : "border-l-transparent border-r-primary-400/30 border-y-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-r-primary-200/60 hover:border-y-primary-200/60 hover:bg-primary-700/80 hover:text-white"
@@ -276,6 +280,7 @@ export function SchoolAdminDashboard() {
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("first_glance");
+  const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < SCHOOL_MOBILE_BREAKPOINT,
@@ -367,7 +372,7 @@ export function SchoolAdminDashboard() {
     [missingRequirements.length, pendingCount, returnedCount],
   );
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
-  const showNavigatorHeaderText = isNavigatorVisible;
+  const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -389,12 +394,16 @@ export function SchoolAdminDashboard() {
       const persisted = JSON.parse(raw) as {
         activeTopNavigator?: TopNavigatorItem["id"];
         isNavigatorVisible?: boolean;
+        isNavigatorCompact?: boolean;
       };
       if (persisted.activeTopNavigator && TOP_NAVIGATOR_ITEMS.some((item) => item.id === persisted.activeTopNavigator)) {
         setActiveTopNavigator(persisted.activeTopNavigator);
       }
       if (typeof persisted.isNavigatorVisible === "boolean") {
         setIsNavigatorVisible(persisted.isNavigatorVisible);
+      }
+      if (typeof persisted.isNavigatorCompact === "boolean") {
+        setIsNavigatorCompact(persisted.isNavigatorCompact);
       }
     } catch {
       // Ignore invalid saved navigator preferences.
@@ -406,12 +415,12 @@ export function SchoolAdminDashboard() {
     try {
       localStorage.setItem(
         SCHOOL_NAV_STORAGE_KEY,
-        JSON.stringify({ activeTopNavigator, isNavigatorVisible }),
+        JSON.stringify({ activeTopNavigator, isNavigatorVisible, isNavigatorCompact }),
       );
     } catch {
       // Ignore storage failures.
     }
-  }, [activeTopNavigator, isNavigatorVisible]);
+  }, [activeTopNavigator, isNavigatorVisible, isNavigatorCompact]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -753,8 +762,13 @@ export function SchoolAdminDashboard() {
         </section>
       )}
 
-      <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-stretch lg:gap-0">
-      <aside className="dashboard-side-rail ml-3 rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
+      <div
+        className={`dashboard-left-layout mb-5 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[700ms] lg:ease-in-out ${
+          isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
+        }`}
+      >
+      <aside className="dashboard-side-rail ml-3 rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:self-stretch lg:min-h-full lg:rounded-none">
+        <div className="flex min-h-full flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
             <div className={`flex items-center ${showNavigatorHeaderText ? "justify-between" : "justify-center"}`}>
@@ -767,12 +781,40 @@ export function SchoolAdminDashboard() {
               </h2>
               <button
                 type="button"
-                onClick={() => setIsNavigatorVisible((current) => !current)}
+                onClick={() => {
+                  if (isMobileViewport) {
+                    setIsNavigatorVisible((current) => !current);
+                    return;
+                  }
+                  setIsNavigatorCompact((current) => !current);
+                }}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
-                aria-label={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
-                title={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
+                aria-label={
+                  isMobileViewport
+                    ? isNavigatorVisible
+                      ? "Hide navigator"
+                      : "Show navigator"
+                    : isNavigatorCompact
+                      ? "Expand navigator"
+                      : "Collapse navigator"
+                }
+                title={
+                  isMobileViewport
+                    ? isNavigatorVisible
+                      ? "Hide navigator"
+                      : "Show navigator"
+                    : isNavigatorCompact
+                      ? "Expand navigator"
+                      : "Collapse navigator"
+                }
               >
-                {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {isMobileViewport ? (
+                  isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />
+                ) : isNavigatorCompact ? (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                )}
               </button>
             </div>
             <p
@@ -786,10 +828,10 @@ export function SchoolAdminDashboard() {
         </div>
         <div
           className={`overflow-hidden transition-[max-height,opacity,margin] duration-[700ms] ease-in-out ${
-            shouldRenderNavigatorItems ? "mt-3 max-h-[28rem] opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
+            shouldRenderNavigatorItems ? "mt-4 max-h-[34rem] opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
           }`}
         >
-          <div className="grid gap-2">
+          <div className={`grid ${isNavigatorCompact ? "gap-2" : "gap-2.5"}`}>
               {TOP_NAVIGATOR_ITEMS.map((item, index) => {
                 const Icon = SCHOOL_NAVIGATOR_ICONS[item.id];
                 const isActive = activeTopNavigator === item.id;
@@ -803,7 +845,7 @@ export function SchoolAdminDashboard() {
                   key={item.id}
                   type="button"
                   onClick={() => handleTopNavigate(item)}
-                  className={navigatorButtonClass(isActive)}
+                  className={navigatorButtonClass(isActive, isNavigatorCompact)}
                   title={`${item.label} (Alt+${index + 1})`}
                   aria-current={isActive ? "page" : undefined}
                   aria-label={`Open ${item.label}`}
@@ -812,8 +854,8 @@ export function SchoolAdminDashboard() {
                     <Icon className="h-4 w-4" />
                     {meta.urgency !== "none" && <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${urgencyTone}`} />}
                   </span>
-                  <span className="flex-1 truncate text-left">{item.label}</span>
-                  {hasPrimaryBadge && (
+                  {!isNavigatorCompact && <span className="flex-1 truncate text-left">{item.label}</span>}
+                  {!isNavigatorCompact && hasPrimaryBadge && (
                     <span className="ml-auto inline-flex items-center gap-1">
                       <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold text-primary-700">
                         {meta.primary}
@@ -823,6 +865,11 @@ export function SchoolAdminDashboard() {
                           R{meta.secondary}
                         </span>
                       )}
+                    </span>
+                  )}
+                  {isNavigatorCompact && hasPrimaryBadge && (
+                    <span className="absolute right-1 top-1 inline-flex min-w-[1rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1 text-[9px] font-bold text-primary-700">
+                      {meta.primary && meta.primary > 99 ? "99+" : meta.primary}
                     </span>
                   )}
                 </button>
@@ -835,21 +882,21 @@ export function SchoolAdminDashboard() {
             shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
           }`}
         >
-          <div className="border-t border-primary-400/30 pt-3">
+          <div className={`border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
               <button
                 type="button"
                 onClick={() => setShowNavigatorManual((current) => !current)}
-                className={`inline-flex w-full items-center justify-center gap-1.5 rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white transition ${
-                  showNavigatorManual
-                    ? "border-primary-300/80 bg-primary-100/90"
-                    : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
+                className={`inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
+                  isNavigatorCompact ? "h-8 w-8 justify-center p-0" : "w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide"
                 }`}
+                title="User Manual"
+                aria-label="Open user manual"
               >
                 <BookOpenText className="h-3.5 w-3.5" />
-                Help
-                {showNavigatorManual ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {!isNavigatorCompact && <span>Help</span>}
               </button>
           </div>
+        </div>
         </div>
       </aside>
       <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
@@ -1257,4 +1304,5 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
 
