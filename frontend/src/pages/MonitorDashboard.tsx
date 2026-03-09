@@ -31,7 +31,6 @@ import {
 } from "lucide-react";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
-import { RegionCard } from "@/components/RegionCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
@@ -3051,26 +3050,6 @@ export function MonitorDashboard() {
             </div>
           </section>
 
-          {regionAggregates.length > 0 && (
-            <section id="monitor-regional-cards" className={`mt-5 animate-fade-slide ${sectionFocusClass("monitor-regional-cards")}`}>
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Regional Monitoring Cards</h2>
-                <span className="text-xs text-slate-500">{regionAggregates.length} region entries</span>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {regionAggregates.map((region) => (
-                  <RegionCard
-                    key={region.region}
-                    region={region.region}
-                    schools={region.schools}
-                    activeSchools={region.activeSchools}
-                    students={region.students}
-                    teachers={region.teachers}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
             </>
           )}
         </>
