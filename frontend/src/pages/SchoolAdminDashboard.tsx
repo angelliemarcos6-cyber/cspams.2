@@ -172,6 +172,8 @@ const EMPTY_FORM: FormState = {
   teacherCount: "",
   status: "active",
 };
+const SCHOOL_NAV_STORAGE_KEY = "cspams.schoolhead.nav.v1";
+const SCHOOL_MOBILE_BREAKPOINT = 768;
 
 function statusTone(status: SchoolStatus) {
   if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
@@ -216,10 +218,10 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 function navigatorButtonClass(active: boolean): string {
-  return `flex w-full items-center gap-2 rounded-sm border px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition ${
+  return `relative flex w-full items-center gap-2.5 rounded-sm border-l-4 border-r border-y px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
     active
-      ? "border-primary-300/90 bg-primary-600/35 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
-      : "border-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-primary-200/60 hover:bg-primary-700/80 hover:text-white"
+      ? "border-l-primary-100 border-r-primary-300/90 border-y-primary-300/90 bg-primary-700 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
+      : "border-l-transparent border-r-primary-400/30 border-y-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-r-primary-200/60 hover:border-y-primary-200/60 hover:bg-primary-700/80 hover:text-white"
   }`;
 }
 
@@ -276,13 +278,12 @@ export function SchoolAdminDashboard() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("first_glance");
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window === "undefined" ? false : window.innerWidth < SCHOOL_MOBILE_BREAKPOINT,
+  );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
-  const activeNavigatorLabel = useMemo(
-    () => TOP_NAVIGATOR_ITEMS.find((item) => item.id === activeTopNavigator)?.label ?? "Overview",
-    [activeTopNavigator],
-  );
 
   const regionAggregates = useMemo(() => buildRegionAggregates(records), [records]);
   const statusDistribution = useMemo(() => buildStatusDistribution(records), [records]);
@@ -344,6 +345,102 @@ export function SchoolAdminDashboard() {
     () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
   );
+  const navigatorBadges = useMemo<
+    Record<TopNavigatorItem["id"], { primary?: number; secondary?: number; urgency: "none" | "high" | "medium" }>
+  >(
+    () => ({
+      first_glance: {
+        primary: missingRequirements.length,
+        urgency: missingRequirements.length > 0 ? "high" : "none",
+      },
+      requirements: {
+        primary: missingRequirements.length,
+        urgency: missingRequirements.length > 0 ? "high" : "none",
+      },
+      compliance: {
+        primary: pendingCount,
+        secondary: returnedCount,
+        urgency: returnedCount > 0 ? "high" : pendingCount > 0 ? "medium" : "none",
+      },
+      records: { urgency: "none" },
+    }),
+    [missingRequirements.length, pendingCount, returnedCount],
+  );
+  const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncViewport = () => {
+      setIsMobileViewport(window.innerWidth < SCHOOL_MOBILE_BREAKPOINT);
+    };
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(SCHOOL_NAV_STORAGE_KEY);
+      if (!raw) return;
+      const persisted = JSON.parse(raw) as {
+        activeTopNavigator?: TopNavigatorItem["id"];
+        isNavigatorVisible?: boolean;
+      };
+      if (persisted.activeTopNavigator && TOP_NAVIGATOR_ITEMS.some((item) => item.id === persisted.activeTopNavigator)) {
+        setActiveTopNavigator(persisted.activeTopNavigator);
+      }
+      if (typeof persisted.isNavigatorVisible === "boolean") {
+        setIsNavigatorVisible(persisted.isNavigatorVisible);
+      }
+    } catch {
+      // Ignore invalid saved navigator preferences.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        SCHOOL_NAV_STORAGE_KEY,
+        JSON.stringify({ activeTopNavigator, isNavigatorVisible }),
+      );
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [activeTopNavigator, isNavigatorVisible]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      const shortcutIndex = Number(event.key) - 1;
+      if (!Number.isInteger(shortcutIndex)) return;
+      const shortcutItem = TOP_NAVIGATOR_ITEMS[shortcutIndex];
+      if (!shortcutItem) return;
+
+      event.preventDefault();
+      setActiveTopNavigator(shortcutItem.id);
+      if (isMobileViewport) {
+        setIsNavigatorVisible(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isMobileViewport]);
 
   const syncComplianceForm = (record: SchoolRecord | null) => {
     if (record) {
@@ -406,6 +503,9 @@ export function SchoolAdminDashboard() {
 
   const handleRequirementNavigate = (item: RequirementItem) => {
     setActiveTopNavigator(item.navigatorId);
+    if (isMobileViewport) {
+      setIsNavigatorVisible(false);
+    }
     if (typeof window !== "undefined") {
       const targetId = item.id === "school_record" ? "compliance-input" : "indicator-workflow";
       window.setTimeout(() => scrollToSection(targetId), 60);
@@ -414,6 +514,9 @@ export function SchoolAdminDashboard() {
 
   const handleTopNavigate = (item: TopNavigatorItem) => {
     setActiveTopNavigator(item.id);
+    if (isMobileViewport) {
+      setIsNavigatorVisible(false);
+    }
   };
 
   const clearFocusAfterDelay = (targetId: string) => {
@@ -608,44 +711,64 @@ export function SchoolAdminDashboard() {
       <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-stretch lg:gap-0">
       <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
-            <button
-              type="button"
-              onClick={() => setIsNavigatorVisible((current) => !current)}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
-              aria-label={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
-              title={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
-            >
-              {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
+              <button
+                type="button"
+                onClick={() => setIsNavigatorVisible((current) => !current)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
+                aria-label={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
+                title={isNavigatorVisible ? "Hide navigator" : "Show navigator"}
+              >
+                {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-primary-100">School Head</p>
           </div>
         </div>
-        {isNavigatorVisible && (
+        {shouldRenderNavigatorItems && (
           <>
             <div className="mt-3 grid gap-2">
-              {TOP_NAVIGATOR_ITEMS.map((item) => {
+              {TOP_NAVIGATOR_ITEMS.map((item, index) => {
                 const Icon = SCHOOL_NAVIGATOR_ICONS[item.id];
+                const isActive = activeTopNavigator === item.id;
+                const meta = navigatorBadges[item.id];
+                const hasPrimaryBadge = typeof meta.primary === "number" && meta.primary > 0;
+                const hasSecondaryBadge = typeof meta.secondary === "number" && meta.secondary > 0;
+                const urgencyTone =
+                  meta.urgency === "high" ? "bg-rose-500" : meta.urgency === "medium" ? "bg-amber-400" : "bg-transparent";
                 return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => handleTopNavigate(item)}
-                  className={navigatorButtonClass(activeTopNavigator === item.id)}
+                  className={navigatorButtonClass(isActive)}
+                  title={`${item.label} (Alt+${index + 1})`}
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={`Open ${item.label}`}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  <span className="relative inline-flex h-4 w-4 items-center justify-center">
+                    <Icon className="h-4 w-4" />
+                    {meta.urgency !== "none" && <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${urgencyTone}`} />}
+                  </span>
+                  <span className="truncate">{item.label}</span>
+                  {hasPrimaryBadge && (
+                    <span className="ml-auto inline-flex items-center gap-1">
+                      <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold text-primary-700">
+                        {meta.primary}
+                      </span>
+                      {item.id === "compliance" && hasSecondaryBadge && (
+                        <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                          R{meta.secondary}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </button>
                 );
               })}
             </div>
-            <p className="mt-3 text-[11px] text-primary-100">
-              Current view:
-              {" "}
-              <span className="rounded-sm border border-primary-400/45 bg-primary-700/60 px-2 py-1 font-semibold uppercase tracking-wide text-white">
-                {activeNavigatorLabel}
-              </span>
-            </p>
             <div className="mt-3 border-t border-primary-400/30 pt-3">
               <button
                 type="button"

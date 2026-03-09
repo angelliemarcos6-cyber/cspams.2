@@ -279,6 +279,7 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
 
 const ALL_SCHOOL_SCOPE = "__all_schools__";
 const MONITOR_FILTER_STORAGE_KEY = "cspams.monitor.filters.v1";
+const MONITOR_NAV_STORAGE_KEY = "cspams.monitor.nav.v1";
 const SEARCH_DEBOUNCE_MS = 320;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
@@ -376,7 +377,7 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 function navigatorButtonClass(active: boolean, compact: boolean): string {
-  return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase tracking-wide transition ${
+  return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
     compact ? "justify-center px-2.5 py-2.5" : "gap-2.5 px-3 py-2.5"
   } ${
     active
@@ -521,6 +522,66 @@ export function MonitorDashboard() {
       window.removeEventListener("resize", syncViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(MONITOR_NAV_STORAGE_KEY);
+      if (!raw) return;
+      const persisted = JSON.parse(raw) as { compact?: boolean; visible?: boolean };
+      if (typeof persisted.compact === "boolean") {
+        setIsNavigatorCompact(persisted.compact);
+      }
+      if (typeof persisted.visible === "boolean") {
+        setIsNavigatorVisible(persisted.visible);
+      }
+    } catch {
+      // Ignore invalid persisted navigator state.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        MONITOR_NAV_STORAGE_KEY,
+        JSON.stringify({ compact: isNavigatorCompact, visible: isNavigatorVisible }),
+      );
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [isNavigatorCompact, isNavigatorVisible]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      const shortcutIndex = Number(event.key) - 1;
+      if (!Number.isInteger(shortcutIndex)) return;
+
+      const shortcutItem = MONITOR_TOP_NAVIGATOR_ITEMS[shortcutIndex];
+      if (!shortcutItem) return;
+
+      event.preventDefault();
+      setActiveTopNavigator(shortcutItem.id);
+      if (isMobileViewport) {
+        setIsNavigatorVisible(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isMobileViewport]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1537,8 +1598,15 @@ export function MonitorDashboard() {
     setSortDirection("asc");
   };
 
+  const handleMonitorTopNavigate = (id: MonitorTopNavigatorId) => {
+    setActiveTopNavigator(id);
+    if (isMobileViewport) {
+      setIsNavigatorVisible(false);
+    }
+  };
+
   const openStudentRecordsFromCard = () => {
-    setActiveTopNavigator("student_records");
+    handleMonitorTopNavigate("student_records");
 
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
@@ -1965,7 +2033,7 @@ export function MonitorDashboard() {
 
             {shouldRenderNavigatorItems && (
               <div className={`mt-4 grid ${isNavigatorCompact ? "gap-2" : "gap-2.5"}`}>
-                {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => {
+                {MONITOR_TOP_NAVIGATOR_ITEMS.map((item, index) => {
                   const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
                   const isActive = activeTopNavigator === item.id;
                   const meta = navigatorBadges[item.id];
@@ -1978,9 +2046,11 @@ export function MonitorDashboard() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setActiveTopNavigator(item.id)}
+                      onClick={() => handleMonitorTopNavigate(item.id)}
                       className={navigatorButtonClass(isActive, isNavigatorCompact)}
-                      title={item.label}
+                      title={`${item.label} (Alt+${index + 1})`}
+                      aria-current={isActive ? "page" : undefined}
+                      aria-label={`Open ${item.label}`}
                     >
                       <span className="relative inline-flex h-4 w-4 items-center justify-center">
                         <Icon className="h-4 w-4" />
