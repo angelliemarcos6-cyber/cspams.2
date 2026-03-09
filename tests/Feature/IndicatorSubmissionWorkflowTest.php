@@ -209,6 +209,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $sbmMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_SBM_LEVEL')->value('id');
         $internetMetricId = (int) PerformanceMetric::query()->where('code', 'INTERNET_ACCESS')->value('id');
         $incomeMetricId = (int) PerformanceMetric::query()->where('code', 'CANTEEN_INCOME')->value('id');
+        $matrixYear = '2026-2027';
 
         $response = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
@@ -219,12 +220,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
                     'metric_id' => $headNameMetricId,
                     'target' => [
                         'values' => [
-                            '2025-2026' => 'Ma. Teresa Dela Cruz',
+                            $matrixYear => 'Ma. Teresa Dela Cruz',
                         ],
                     ],
                     'actual' => [
                         'values' => [
-                            '2025-2026' => 'Ma. Teresa Dela Cruz',
+                            $matrixYear => 'Ma. Teresa Dela Cruz',
                         ],
                     ],
                 ],
@@ -232,12 +233,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
                     'metric_id' => $sbmMetricId,
                     'target' => [
                         'values' => [
-                            '2025-2026' => 'Level 2',
+                            $matrixYear => 'Level 2',
                         ],
                     ],
                     'actual' => [
                         'values' => [
-                            '2025-2026' => 'Level 2',
+                            $matrixYear => 'Level 2',
                         ],
                     ],
                 ],
@@ -245,12 +246,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
                     'metric_id' => $internetMetricId,
                     'target' => [
                         'values' => [
-                            '2025-2026' => true,
+                            $matrixYear => true,
                         ],
                     ],
                     'actual' => [
                         'values' => [
-                            '2025-2026' => true,
+                            $matrixYear => true,
                         ],
                     ],
                 ],
@@ -258,12 +259,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
                     'metric_id' => $incomeMetricId,
                     'target' => [
                         'values' => [
-                            '2025-2026' => 100000,
+                            $matrixYear => 100000,
                         ],
                     ],
                     'actual' => [
                         'values' => [
-                            '2025-2026' => 125000,
+                            $matrixYear => 125000,
                         ],
                     ],
                 ],

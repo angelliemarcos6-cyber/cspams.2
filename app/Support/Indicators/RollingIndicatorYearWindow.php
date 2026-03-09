@@ -77,7 +77,14 @@ class RollingIndicatorYearWindow
             ? (int) $now->year
             : ((int) $now->year - 1);
 
-        return max(self::BASE_START_YEAR, $currentSchoolYearStart);
+        // Keep the initial 5-year window anchored at 2026-2027 until a true
+        // 6th school year appears, then slide forward by one each school year.
+        $windowEndYear = max(
+            self::BASE_START_YEAR + self::WINDOW_SIZE - 1,
+            $currentSchoolYearStart,
+        );
+
+        return $windowEndYear - (self::WINDOW_SIZE - 1);
     }
 
     /**

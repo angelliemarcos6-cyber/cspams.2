@@ -58,7 +58,6 @@ class CspamsLogin extends BaseLogin
     {
         return [
             Hidden::make('role')
-<<<<<<< ours
                 ->default(UserRoleResolver::MONITOR)
                 ->dehydrated(),
 
@@ -75,20 +74,6 @@ class CspamsLogin extends BaseLogin
 
                     return $normalized !== '' ? $normalized : null;
                 }),
-=======
-            ->default('monitor')
-            ->dehydrated(true)
-            ->required(),
-
-            TextInput::make('email')
-            ->label('DepEd Email')
-            ->email()
-            ->required()
-            ->rules(['email', 'ends_with:@deped.gov.ph'])
-            ->autocomplete('username')
-            ->maxLength(255)
-            ->dehydrateStateUsing(fn (?string $state) => $state ? mb_strtolower(trim($state)) : null),
->>>>>>> theirs
 
             TextInput::make('password')
                 ->label('Password')
