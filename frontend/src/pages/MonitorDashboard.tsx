@@ -1687,6 +1687,7 @@ export function MonitorDashboard() {
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
   );
+  const shouldShowQuickJump = quickJumpItems.length > 1;
 
   const clearFocusAfterDelay = (targetId: string) => {
     if (typeof window === "undefined") return;
@@ -1705,6 +1706,78 @@ export function MonitorDashboard() {
   };
 
   const sectionFocusClass = (targetId: string) => (focusedSectionId === targetId ? "dashboard-focus-glow" : "");
+
+  const canResolveQuickJumpTarget = (targetId: string): boolean => {
+    if (targetId === "monitor-submission-filters") {
+      return true;
+    }
+
+    if (targetId === "monitor-analytics-toggle") {
+      return true;
+    }
+
+    if (typeof document === "undefined") {
+      return true;
+    }
+
+    return Boolean(document.getElementById(targetId));
+  };
+
+  const handleQuickJump = (item: QuickJumpItem) => {
+    if (item.targetId === "monitor-submission-filters" && isMobileViewport && !showAdvancedFilters) {
+      setShowAdvancedFilters(true);
+      window.setTimeout(() => {
+        focusAndScrollTo(item.targetId);
+      }, 80);
+      return;
+    }
+
+    if (item.targetId === "monitor-analytics-toggle") {
+      if (!showAdvancedAnalytics) {
+        setShowAdvancedAnalytics(true);
+      }
+      window.setTimeout(() => {
+        focusAndScrollTo("monitor-targets-snapshot");
+      }, 80);
+      return;
+    }
+
+    focusAndScrollTo(item.targetId);
+  };
+
+  const renderQuickJumpChips = (mobile: boolean) => {
+    if (!shouldShowQuickJump) {
+      return null;
+    }
+
+    return (
+      <div className={mobile ? "mt-2 flex gap-2 overflow-x-auto pb-1" : "flex flex-wrap items-center justify-end gap-2"}>
+        {quickJumpItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = focusedSectionId === item.targetId;
+          const isAvailable = canResolveQuickJumpTarget(item.targetId);
+
+          return (
+            <button
+              key={`monitor-quick-jump-${item.id}`}
+              type="button"
+              onClick={() => handleQuickJump(item)}
+              disabled={!isAvailable}
+              aria-pressed={isActive}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                isActive
+                  ? "border-primary-300 bg-primary-50 text-primary-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              } ${isAvailable ? "" : "cursor-not-allowed opacity-50"}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   const filteredRecords = useMemo(() => {
     const base = filteredSchoolKeys
@@ -2573,57 +2646,32 @@ export function MonitorDashboard() {
             </>
           )}
 
-          <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div className="min-w-0">
-                {quickJumpItems.length > 0 && (
-                  <div className="mt-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {quickJumpItems.map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <button
-                            key={`monitor-quick-jump-${item.id}`}
-                            type="button"
-                            onClick={() => focusAndScrollTo(item.targetId)}
-                            className="dashboard-quick-jump-btn rounded-sm"
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+          {(activeTopNavigator === "reports" || isMobileViewport) && (
+            <section className="dashboard-workflow-hero mb-5 rounded-sm p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {activeTopNavigator === "reports" && (
+                  <button
+                    id="monitor-analytics-toggle"
+                    type="button"
+                    onClick={() => setShowAdvancedAnalytics((current) => !current)}
+                    className="dashboard-quick-jump-btn rounded-sm"
+                  >
+                    {showAdvancedAnalytics ? "Hide Advanced Analytics" : "Show Advanced Analytics"}
+                  </button>
                 )}
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {activeTopNavigator === "reports" && (
-                    <button
-                      id="monitor-analytics-toggle"
-                      type="button"
-                      onClick={() => setShowAdvancedAnalytics((current) => !current)}
-                      className="dashboard-quick-jump-btn rounded-sm"
-                    >
-                      {showAdvancedAnalytics ? "Hide Advanced Analytics" : "Show Advanced Analytics"}
-                    </button>
-                  )}
-                  {isMobileViewport && (
-                    <button
-                      id="monitor-submission-filters-toggle"
-                      type="button"
-                      onClick={() => setShowAdvancedFilters((current) => !current)}
-                      className="dashboard-quick-jump-btn rounded-sm"
-                    >
-                      {showAdvancedFilters ? "Hide Filters" : "Show Filters"}
-                    </button>
-                  )}
-                </div>
+                {isMobileViewport && (
+                  <button
+                    id="monitor-submission-filters-toggle"
+                    type="button"
+                    onClick={() => setShowAdvancedFilters((current) => !current)}
+                    className="dashboard-quick-jump-btn rounded-sm"
+                  >
+                    {showAdvancedFilters ? "Hide Filters" : "Show Filters"}
+                  </button>
+                )}
               </div>
-
-            </div>
-          </section>
+            </section>
+          )}
 
           {showSubmissionFilters && !isMobileViewport && (
             <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
@@ -2688,6 +2736,17 @@ export function MonitorDashboard() {
 
       {activeTopNavigator === "reports" && (
         <>
+          <section id="monitor-reports-header" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-reports-header")}`}>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Reports</h2>
+                <p className="mt-1 text-xs text-slate-600">Summary cards and analytics for division monitoring.</p>
+              </div>
+              {!isMobileViewport && renderQuickJumpChips(false)}
+            </div>
+            {isMobileViewport && renderQuickJumpChips(true)}
+          </section>
+
           <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("monitor-overview-metrics")}`}>
             <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
             <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
@@ -2787,8 +2846,14 @@ export function MonitorDashboard() {
       {activeTopNavigator === "action_queue" && (
         <>
           <section id="monitor-action-queue" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-action-queue")}`}>
-            <h2 className="text-base font-bold text-slate-900">Action Queue</h2>
-            <p className="mt-1 text-xs text-slate-600">Missing, Returned, and Waiting schools.</p>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Action Queue</h2>
+                <p className="mt-1 text-xs text-slate-600">Missing, Returned, and Waiting schools.</p>
+              </div>
+              {!isMobileViewport && renderQuickJumpChips(false)}
+            </div>
+            {isMobileViewport && renderQuickJumpChips(true)}
             <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
               <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
@@ -2989,6 +3054,16 @@ export function MonitorDashboard() {
 
       {activeTopNavigator === "compliance_review" && (
         <section id="monitor-indicators-queue" className={sectionFocusClass("monitor-indicators-queue")}>
+          <div className="dashboard-shell mb-5 rounded-sm p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Review Queue</h2>
+                <p className="mt-1 text-xs text-slate-600">Validate or return submitted compliance packages.</p>
+              </div>
+              {!isMobileViewport && renderQuickJumpChips(false)}
+            </div>
+            {isMobileViewport && renderQuickJumpChips(true)}
+          </div>
           <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} onToast={pushToast} />
         </section>
       )}
@@ -2997,7 +3072,14 @@ export function MonitorDashboard() {
         <>
         <section id="monitor-school-records" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}>
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-            <h2 className="text-base font-bold text-slate-900">Schools</h2>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Schools</h2>
+                <p className="mt-1 text-xs text-slate-600">Inspect school profile, records, and latest activity.</p>
+              </div>
+              {!isMobileViewport && renderQuickJumpChips(false)}
+            </div>
+            {isMobileViewport && renderQuickJumpChips(true)}
           </div>
 
           <div className="border-b border-slate-100 px-5 py-4">
@@ -3678,6 +3760,16 @@ export function MonitorDashboard() {
 
       {activeTopNavigator === "student_records" && (
         <section id="monitor-student-records" className={sectionFocusClass("monitor-student-records")}>
+          <div className="dashboard-shell mb-5 rounded-sm p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Student Records</h2>
+                <p className="mt-1 text-xs text-slate-600">Read-only learner checks and search.</p>
+              </div>
+              {!isMobileViewport && renderQuickJumpChips(false)}
+            </div>
+            {isMobileViewport && renderQuickJumpChips(true)}
+          </div>
           <StudentRecordsPanel
             editable={false}
             showSchoolColumn

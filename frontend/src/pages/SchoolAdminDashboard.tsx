@@ -344,6 +344,7 @@ export function SchoolAdminDashboard() {
     () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
   );
+  const shouldShowQuickJump = quickJumpItems.length > 1;
   const navigatorBadges = useMemo<
     Record<TopNavigatorItem["id"], { primary?: number; secondary?: number; urgency: "none" | "high" | "medium" }>
   >(
@@ -537,8 +538,65 @@ export function SchoolAdminDashboard() {
 
   const sectionFocusClass = (sectionId: string) => (focusedSectionId === sectionId ? "dashboard-focus-glow" : "");
 
+  const canResolveQuickJumpTarget = (targetId: string): boolean => {
+    if (targetId === "school-analytics-toggle") {
+      return true;
+    }
+
+    if (typeof document === "undefined") {
+      return true;
+    }
+
+    return Boolean(document.getElementById(targetId));
+  };
+
   const handleQuickJump = (targetId: string) => {
+    if (targetId === "school-analytics-toggle") {
+      if (!showAdvancedAnalytics) {
+        setShowAdvancedAnalytics(true);
+      }
+
+      window.setTimeout(() => {
+        scrollToSection("targets-snapshot");
+      }, 80);
+      return;
+    }
+
     scrollToSection(targetId);
+  };
+
+  const renderQuickJumpChips = (mobile: boolean) => {
+    if (!shouldShowQuickJump) {
+      return null;
+    }
+
+    return (
+      <div className={mobile ? "mt-2 flex gap-2 overflow-x-auto pb-1" : "flex flex-wrap items-center justify-end gap-2"}>
+        {quickJumpItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = focusedSectionId === item.targetId;
+          const isAvailable = canResolveQuickJumpTarget(item.targetId);
+
+          return (
+            <button
+              key={`quick-jump-${item.id}`}
+              type="button"
+              onClick={() => handleQuickJump(item.targetId)}
+              disabled={!isAvailable}
+              aria-pressed={isActive}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                isActive
+                  ? "border-primary-300 bg-primary-50 text-primary-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              } ${isAvailable ? "" : "cursor-not-allowed opacity-50"}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    );
   };
 
   const validateForm = () => {
@@ -806,69 +864,40 @@ export function SchoolAdminDashboard() {
         </>
       )}
 
-      <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0">
-            {quickJumpItems.length > 0 && (
-            <div className="mt-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick Jump</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {quickJumpItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={`quick-jump-${item.id}`}
-                      type="button"
-                      onClick={() => handleQuickJump(item.targetId)}
-                      className="dashboard-quick-jump-btn rounded-sm"
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            )}
-
-            {activeTopNavigator === "first_glance" && (
-              <div className="mt-3">
-                <button
-                  id="school-analytics-toggle"
-                  type="button"
-                  onClick={() => setShowAdvancedAnalytics((current) => !current)}
-                  className="dashboard-quick-jump-btn rounded-sm"
-                >
-                  {showAdvancedAnalytics ? "Hide Advanced Analytics" : "Show Advanced Analytics"}
-                </button>
-              </div>
-            )}
-          </div>
-
-        </div>
-      </section>
-
       {activeTopNavigator === "first_glance" && (
       <section id="first-glance" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("first-glance")}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Overview Alerts</h2>
             <p className="mt-1 text-xs text-slate-600">
               Missing requirements: <span className="font-bold text-slate-900">{missingRequirements.length}</span> of{" "}
               <span className="font-bold text-slate-900">{requirements.length}</span>
             </p>
+            {isMobileViewport && renderQuickJumpChips(true)}
           </div>
-          {missingRequirements.length === 0 ? (
-            <span className="inline-flex items-center gap-1.5 border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              All monitor requirements are passed
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              Action needed before monitor review
-            </span>
-          )}
+          <div className="flex flex-col items-start gap-2 lg:items-end">
+            {missingRequirements.length === 0 ? (
+              <span className="inline-flex items-center gap-1.5 border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                All monitor requirements are passed
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Action needed before monitor review
+              </span>
+            )}
+            {!isMobileViewport && renderQuickJumpChips(false)}
+            <button
+              id="school-analytics-toggle"
+              type="button"
+              onClick={() => setShowAdvancedAnalytics((current) => !current)}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              <TrendingUp className="h-3.5 w-3.5" />
+              {showAdvancedAnalytics ? "Hide Analytics" : "Show Analytics"}
+            </button>
+          </div>
         </div>
 
         <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -899,7 +928,11 @@ export function SchoolAdminDashboard() {
 
       {activeTopNavigator === "requirements" && (
       <section id="requirement-navigator" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("requirement-navigator")}`}>
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirements</h2>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirements</h2>
+          {!isMobileViewport && renderQuickJumpChips(false)}
+        </div>
+        {isMobileViewport && renderQuickJumpChips(true)}
         <div className="mt-3 grid gap-2 md:grid-cols-4">
           {requirements.map((item) => (
             <button
@@ -1041,10 +1074,16 @@ export function SchoolAdminDashboard() {
         <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
           <section className="surface-panel dashboard-shell animate-fade-slide overflow-hidden">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <h2 className="text-base font-bold text-slate-900">All Compliance Inputs</h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Keep this section open and update school summary inputs before submitting indicators below.
-              </p>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">All Compliance Inputs</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Keep this section open and update school summary inputs before submitting indicators below.
+                  </p>
+                </div>
+                {!isMobileViewport && renderQuickJumpChips(false)}
+              </div>
+              {isMobileViewport && renderQuickJumpChips(true)}
             </div>
 
             <form className="grid gap-4 p-5 md:grid-cols-3" onSubmit={handleFormSubmit}>
@@ -1151,6 +1190,16 @@ export function SchoolAdminDashboard() {
 
       {activeTopNavigator === "records" && (
       <section id="school-records" className={sectionFocusClass("school-records")}>
+        <div className="dashboard-shell mb-5 rounded-sm p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">School Records</h2>
+              <p className="mt-1 text-xs text-slate-600">Manage learner records for your assigned school.</p>
+            </div>
+            {!isMobileViewport && renderQuickJumpChips(false)}
+          </div>
+          {isMobileViewport && renderQuickJumpChips(true)}
+        </div>
         <StudentRecordsPanel
           editable
           title="Student Records"
