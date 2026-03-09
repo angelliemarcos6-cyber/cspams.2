@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -32,8 +32,9 @@ type PriorityFilter = "all" | "normal" | "medium" | "high" | "overdue" | "return
 type DistrictRegionFilter = "all" | `district:${string}` | `region:${string}`;
 type AssignedReviewerFilter = "all" | "unassigned" | string;
 type ReviewDecisionAction = "validated" | "returned" | "clarification" | "escalated";
-type ReviewSavedView = "needs_action" | "overdue_72h" | "returned_today";
+type ReviewSavedView = "needs_action" | "my_queue" | "unassigned" | "overdue_72h" | "returned_today";
 type DetailTab = "overview" | "checklist" | "history";
+type QueueDensity = "comfortable" | "compact";
 
 interface ReviewQueueRow {
   submission: IndicatorSubmission;
@@ -313,7 +314,9 @@ export function MonitorIndicatorPanel({
   const [reviewActionError, setReviewActionError] = useState("");
   const [isReviewActionRunning, setIsReviewActionRunning] = useState(false);
   const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  const [queueDensity, setQueueDensity] = useState<QueueDensity>("comfortable");
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
+  const filteredRowsRef = useRef<ReviewQueueRow[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -651,6 +654,10 @@ export function MonitorIndicatorPanel({
   ]);
 
   useEffect(() => {
+    filteredRowsRef.current = filteredRows;
+  }, [filteredRows]);
+
+  useEffect(() => {
     setSelectedSubmissionIds((current) =>
       current.filter((id) => filteredRows.some((row) => row.submission.id === id)),
     );
@@ -668,6 +675,8 @@ export function MonitorIndicatorPanel({
     const returned = filteredRows.filter((row) => row.status === "returned").length;
     const validatedToday = filteredRows.filter((row) => row.status === "validated" && isToday(row.reviewedAt)).length;
     const overdue = filteredRows.filter((row) => row.overdue).length;
+    const returnedToday = filteredRows.filter((row) => row.status === "returned" && isToday(row.reviewedAt ?? row.submittedAt)).length;
+    const dueIn24h = filteredRows.filter((row) => row.status === "submitted" && row.pendingHours >= 48 && row.pendingHours < 72).length;
 
     const completedReviewDurations = filteredRows
       .map((row) => row.reviewDurationHours)
@@ -683,6 +692,8 @@ export function MonitorIndicatorPanel({
       returned,
       validatedToday,
       overdue,
+      returnedToday,
+      dueIn24h,
       avgReviewTime,
     };
   }, [filteredRows]);
@@ -735,6 +746,28 @@ export function MonitorIndicatorPanel({
     openDetails(nextRow);
   };
 
+  const autoFocusNextQueueRow = (completedSubmissionId: string) => {
+    const rows = filteredRowsRef.current;
+    if (rows.length === 0) {
+      setDetailSubmissionId(null);
+      return;
+    }
+
+    const currentIndex = rows.findIndex((row) => row.submission.id === completedSubmissionId);
+    if (currentIndex === -1) {
+      openDetails(rows[0]);
+      return;
+    }
+
+    const candidate = rows[currentIndex + 1] ?? rows[currentIndex - 1] ?? null;
+    if (candidate) {
+      openDetails(candidate);
+      return;
+    }
+
+    setDetailSubmissionId(null);
+  };
+
   const clearFilters = () => {
     setSearch("");
     setStatusFilter("all");
@@ -748,31 +781,43 @@ export function MonitorIndicatorPanel({
 
   const applySavedView = (view: ReviewSavedView) => {
     const today = new Date().toISOString().slice(0, 10);
+    const normalizedUser = username.trim();
 
     setSearch("");
     setDistrictRegionFilter("all");
     setSubmissionTypeFilter("all");
-    setAssignedReviewerFilter("all");
     setShowAdvancedControls(false);
+    setDateFrom("");
+    setDateTo("");
+    setPriorityFilter("all");
 
     if (view === "needs_action") {
       setStatusFilter("submitted");
-      setPriorityFilter("all");
-      setDateFrom("");
-      setDateTo("");
+      setAssignedReviewerFilter("all");
+      return;
+    }
+
+    if (view === "my_queue") {
+      setStatusFilter("submitted");
+      setAssignedReviewerFilter(normalizedUser.length > 0 ? normalizedUser : "all");
+      return;
+    }
+
+    if (view === "unassigned") {
+      setStatusFilter("submitted");
+      setAssignedReviewerFilter("unassigned");
       return;
     }
 
     if (view === "overdue_72h") {
       setStatusFilter("overdue");
       setPriorityFilter("overdue");
-      setDateFrom("");
-      setDateTo("");
+      setAssignedReviewerFilter("all");
       return;
     }
 
     setStatusFilter("returned");
-    setPriorityFilter("all");
+    setAssignedReviewerFilter("all");
     setDateFrom(today);
     setDateTo(today);
   };
@@ -852,7 +897,15 @@ export function MonitorIndicatorPanel({
         }
       }
 
-      closeReviewAction();
+      setReviewAction(null);
+      setReviewActionNotes("");
+      setReviewActionError("");
+
+      if (action === "validated" || action === "returned") {
+        window.setTimeout(() => {
+          autoFocusNextQueueRow(submission.id);
+        }, 120);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to complete review action.";
       setReviewActionError(message);
@@ -1036,28 +1089,33 @@ export function MonitorIndicatorPanel({
       </div>
 
       <div className="border-b border-slate-100 px-5 py-4">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Today's Work</p>
         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
             <p className="text-[11px] font-medium text-slate-500">For review</p>
             <p className="mt-1 text-lg font-bold text-slate-900">{kpi.forReview}</p>
           </article>
           <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-            <p className="text-[11px] font-medium text-slate-500">Returned</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.returned}</p>
-          </article>
-          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-            <p className="text-[11px] font-medium text-slate-500">Validated today</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.validatedToday}</p>
-          </article>
-          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
             <p className="text-[11px] font-medium text-slate-500">Overdue</p>
             <p className="mt-1 text-lg font-bold text-slate-900">{kpi.overdue}</p>
+          </article>
+          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+            <p className="text-[11px] font-medium text-slate-500">Returned today</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.returnedToday}</p>
+          </article>
+          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+            <p className="text-[11px] font-medium text-slate-500">Due in 24h</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.dueIn24h}</p>
           </article>
           <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
             <p className="text-[11px] font-medium text-slate-500">Avg review time</p>
             <p className="mt-1 text-lg font-bold text-slate-900">{formatHours(kpi.avgReviewTime)}</p>
           </article>
         </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Returned total: <span className="font-semibold text-slate-700">{kpi.returned}</span> | Validated today:{" "}
+          <span className="font-semibold text-slate-700">{kpi.validatedToday}</span>
+        </p>
       </div>
 
       <div className="border-b border-slate-100 px-5 py-3">
@@ -1069,6 +1127,20 @@ export function MonitorIndicatorPanel({
             className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
           >
             Needs Action
+          </button>
+          <button
+            type="button"
+            onClick={() => applySavedView("my_queue")}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            My Queue
+          </button>
+          <button
+            type="button"
+            onClick={() => applySavedView("unassigned")}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Unassigned
           </button>
           <button
             type="button"
@@ -1116,6 +1188,26 @@ export function MonitorIndicatorPanel({
           </label>
 
           <div className="flex items-end gap-2">
+            <div className="inline-flex rounded-sm border border-slate-300 bg-white p-0.5">
+              <button
+                type="button"
+                onClick={() => setQueueDensity("comfortable")}
+                className={`rounded-sm px-2 py-1 text-[11px] font-semibold transition ${
+                  queueDensity === "comfortable" ? "bg-primary-50 text-primary-700" : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Comfortable
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueueDensity("compact")}
+                className={`rounded-sm px-2 py-1 text-[11px] font-semibold transition ${
+                  queueDensity === "compact" ? "bg-primary-50 text-primary-700" : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Compact
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setShowAdvancedControls((current) => !current)}
@@ -1342,7 +1434,7 @@ export function MonitorIndicatorPanel({
         )}
 
         <div className="overflow-x-auto">
-          <table className="min-w-full">
+          <table className={`min-w-full ${queueDensity === "compact" ? "review-queue-table-compact" : ""}`}>
             <thead className="table-head-sticky">
               <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                 <th className="px-2 py-2 text-center">
@@ -1723,6 +1815,36 @@ export function MonitorIndicatorPanel({
                     )}
                   </div>
                 </article>
+              </div>
+            )}
+
+            {detailRow.status === "submitted" && (
+              <div className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                    Quick Decision
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openReviewAction(detailRow.submission, "returned")}
+                      disabled={isSaving || isLoading}
+                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Return
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openReviewAction(detailRow.submission, "validated")}
+                      disabled={isSaving || isLoading}
+                      className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <CheckCircle2 className="h-3 w-3" />
+                      Validate
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </aside>
