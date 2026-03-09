@@ -3018,21 +3018,26 @@ export function MonitorDashboard() {
 
       {activeTopNavigator === "reports" && (
         <>
-          <section id="monitor-reports-header" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-reports-header")}`}>
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Reports</h2>
-                <p className="mt-1 text-xs text-slate-600">Summary cards and analytics for division monitoring.</p>
+          <section className={`surface-panel dashboard-shell mb-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-reports-header")}`}>
+            <div id="monitor-reports-header" className="border-b border-slate-200 bg-white px-4 py-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Reports</h2>
+                  <p className="mt-1 text-xs text-slate-600">Summary cards and analytics for division monitoring.</p>
+                </div>
+                {!isMobileViewport && renderQuickJumpChips(false)}
               </div>
-              {!isMobileViewport && renderQuickJumpChips(false)}
+              {isMobileViewport && renderQuickJumpChips(true)}
             </div>
-            {isMobileViewport && renderQuickJumpChips(true)}
-          </section>
-
-          <section id="monitor-overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("monitor-overview-metrics")}`}>
-            <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
-            <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
-            <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
+            <div id="monitor-overview-metrics" className={`p-4 ${sectionFocusClass("monitor-overview-metrics")}`}>
+              <div className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
+                  <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
+                  <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
+                </div>
+              </div>
+            </div>
           </section>
 
           {showAdvancedAnalytics && (
