@@ -10,7 +10,15 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
-import type { SchoolRecord, SchoolRecordPayload, SyncAlert, TargetsMetSnapshot } from "@/types";
+import type {
+  SchoolBulkImportResult,
+  SchoolBulkImportRowPayload,
+  SchoolRecord,
+  SchoolRecordDeletePreview,
+  SchoolRecordPayload,
+  SyncAlert,
+  TargetsMetSnapshot,
+} from "@/types";
 
 type SyncScope = "division" | "school" | null;
 type SyncStatus = "idle" | "updated" | "up_to_date" | "error";
@@ -43,6 +51,27 @@ interface SchoolRecordDeleteResponse {
   meta?: SyncMeta;
 }
 
+interface SchoolRecordDeletePreviewResponse {
+  data: SchoolRecordDeletePreview;
+}
+
+interface ArchivedSchoolRecordsResponse {
+  data: SchoolRecord[];
+  meta?: {
+    count?: number;
+  };
+}
+
+interface SchoolRecordRestoreResponse {
+  data: SchoolRecord;
+  meta?: SyncMeta;
+}
+
+interface SchoolRecordBulkImportResponse {
+  data: SchoolBulkImportResult;
+  meta?: SyncMeta;
+}
+
 interface DataContextType {
   records: SchoolRecord[];
   targetsMet: TargetsMetSnapshot | null;
@@ -57,6 +86,13 @@ interface DataContextType {
   addRecord: (record: SchoolRecordPayload) => Promise<void>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
+  previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
+  listArchivedRecords: () => Promise<SchoolRecord[]>;
+  restoreRecord: (id: string) => Promise<void>;
+  bulkImportRecords: (
+    rows: SchoolBulkImportRowPayload[],
+    options?: { updateExisting?: boolean; restoreArchived?: boolean },
+  ) => Promise<SchoolBulkImportResult>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -410,6 +446,182 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, syncRecords, handleApiError],
   );
 
+  const previewDeleteRecord = useCallback(
+    async (id: string): Promise<SchoolRecordDeletePreview> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      try {
+        const response = await apiRequestRaw<SchoolRecordDeletePreviewResponse>(`/api/dashboard/records/${id}/delete-preview`, {
+          method: "GET",
+          token,
+        });
+
+        if (!response.data?.data) {
+          throw new Error("Unable to load delete preview.");
+        }
+
+        return response.data.data;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, handleApiError],
+  );
+
+  const listArchivedRecords = useCallback(
+    async (): Promise<SchoolRecord[]> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      try {
+        const response = await apiRequestRaw<ArchivedSchoolRecordsResponse>("/api/dashboard/records/archived", {
+          method: "GET",
+          token,
+        });
+
+        return Array.isArray(response.data?.data) ? response.data.data : [];
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, handleApiError],
+  );
+
+  const restoreRecord = useCallback(
+    async (id: string) => {
+      if (!token) {
+        const authError = new Error("You are signed out. Please sign in again.");
+        setError(authError.message);
+        setSyncStatus("error");
+        throw authError;
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolRecordRestoreResponse>(`/api/dashboard/records/${id}/restore`, {
+          method: "POST",
+          token,
+        });
+
+        const nextRecord = response.data?.data;
+        if (nextRecord) {
+          setRecords((current) => {
+            const existingIndex = current.findIndex((item) => item.id === nextRecord.id);
+            if (existingIndex < 0) {
+              return [nextRecord, ...current];
+            }
+
+            const updated = [...current];
+            updated[existingIndex] = nextRecord;
+            return updated;
+          });
+        }
+
+        const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+        if (scope) {
+          setSyncScope(scope);
+        }
+
+        const scopeKey = normalizeScopeKey(response.data?.meta?.scopeKey ?? (response.headers.get("X-Sync-Scope-Key") || undefined));
+        if (scopeKey) {
+          syncScopeKeyRef.current = scopeKey;
+        }
+
+        const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+        if (nextEtag) {
+          etagRef.current = nextEtag;
+        }
+
+        setLastSyncedAt(response.headers.get("X-Synced-At") ?? response.data?.meta?.syncedAt ?? new Date().toISOString());
+        setTargetsMet(response.data?.meta?.targetsMet ?? null);
+        setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
+        setSyncStatus("updated");
+
+        etagRef.current = "";
+        await syncRecords(true);
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, syncRecords, handleApiError],
+  );
+
+  const bulkImportRecords = useCallback(
+    async (
+      rows: SchoolBulkImportRowPayload[],
+      options?: { updateExisting?: boolean; restoreArchived?: boolean },
+    ): Promise<SchoolBulkImportResult> => {
+      if (!token) {
+        const authError = new Error("You are signed out. Please sign in again.");
+        setError(authError.message);
+        setSyncStatus("error");
+        throw authError;
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolRecordBulkImportResponse>("/api/dashboard/records/bulk-import", {
+          method: "POST",
+          token,
+          body: {
+            rows,
+            options: {
+              updateExisting: options?.updateExisting ?? true,
+              restoreArchived: options?.restoreArchived ?? true,
+            },
+          },
+        });
+
+        const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+        if (scope) {
+          setSyncScope(scope);
+        }
+
+        const scopeKey = normalizeScopeKey(response.data?.meta?.scopeKey ?? (response.headers.get("X-Sync-Scope-Key") || undefined));
+        if (scopeKey) {
+          syncScopeKeyRef.current = scopeKey;
+        }
+
+        const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+        if (nextEtag) {
+          etagRef.current = nextEtag;
+        }
+
+        setLastSyncedAt(response.headers.get("X-Synced-At") ?? response.data?.meta?.syncedAt ?? new Date().toISOString());
+        setTargetsMet(response.data?.meta?.targetsMet ?? null);
+        setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
+        setSyncStatus("updated");
+
+        etagRef.current = "";
+        await syncRecords(true);
+
+        if (!response.data?.data) {
+          throw new Error("Bulk import response is empty.");
+        }
+
+        return response.data.data;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, syncRecords, handleApiError],
+  );
+
   useEffect(() => {
     void syncRecords(false);
   }, [syncRecords]);
@@ -459,8 +671,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addRecord,
       updateRecord,
       deleteRecord,
+      previewDeleteRecord,
+      listArchivedRecords,
+      restoreRecord,
+      bulkImportRecords,
     }),
-    [records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord, deleteRecord],
+    [
+      records,
+      targetsMet,
+      syncAlerts,
+      isLoading,
+      isSaving,
+      error,
+      lastSyncedAt,
+      syncScope,
+      syncStatus,
+      refreshRecords,
+      addRecord,
+      updateRecord,
+      deleteRecord,
+      previewDeleteRecord,
+      listArchivedRecords,
+      restoreRecord,
+      bulkImportRecords,
+    ],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

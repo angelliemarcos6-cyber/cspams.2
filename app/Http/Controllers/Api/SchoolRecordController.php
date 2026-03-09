@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\BulkImportSchoolRecordsRequest;
 use App\Http\Requests\Api\UpsertSchoolRecordRequest;
 use App\Http\Resources\SchoolRecordResource;
+use App\Models\FormSubmissionHistory;
 use App\Models\School;
 use App\Models\Section;
 use App\Models\Student;
@@ -17,6 +19,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolRecordController extends Controller
@@ -147,11 +152,13 @@ class SchoolRecordController extends Controller
     public function destroy(Request $request, School $school): JsonResponse
     {
         $user = $this->requireMonitor($request);
+        $deletePreview = $this->buildDeletePreview($school);
 
         $deletedRecord = [
             'id' => (string) $school->id,
             'schoolId' => $school->school_code,
             'schoolName' => $school->name,
+            'dependencies' => $deletePreview,
         ];
 
         $school->delete();
@@ -191,6 +198,176 @@ class SchoolRecordController extends Controller
         );
     }
 
+    public function deletePreview(Request $request, School $school): JsonResponse
+    {
+        $this->requireMonitor($request);
+
+        return response()->json([
+            'data' => [
+                'id' => (string) $school->id,
+                'schoolId' => (string) $school->school_code,
+                'schoolName' => (string) $school->name,
+                'dependencies' => $this->buildDeletePreview($school),
+            ],
+        ]);
+    }
+
+    public function archived(Request $request): JsonResponse
+    {
+        $this->requireMonitor($request);
+
+        $records = School::onlyTrashed()
+            ->with('submittedBy:id,name')
+            ->withCount('students')
+            ->orderByDesc('deleted_at')
+            ->get();
+
+        return response()->json([
+            'data' => SchoolRecordResource::collection($records)->resolve(),
+            'meta' => [
+                'count' => $records->count(),
+            ],
+        ]);
+    }
+
+    public function restore(Request $request, string $school): JsonResponse
+    {
+        $user = $this->requireMonitor($request);
+
+        $record = School::withTrashed()->find($school);
+        if (! $record || ! $record->trashed()) {
+            return response()->json(
+                ['message' => 'Archived school record not found.'],
+                Response::HTTP_NOT_FOUND,
+            );
+        }
+
+        $record->restore();
+
+        return $this->buildMutationResponse($record, $user);
+    }
+
+    public function bulkImport(BulkImportSchoolRecordsRequest $request): JsonResponse
+    {
+        $user = $this->requireMonitor($request);
+
+        /** @var array<int, array<string, mixed>> $rows */
+        $rows = $request->validated('rows', []);
+        $updateExisting = $request->boolean('options.updateExisting', true);
+        $restoreArchived = $request->boolean('options.restoreArchived', true);
+
+        $created = 0;
+        $updated = 0;
+        $restored = 0;
+        $skipped = 0;
+        $failed = 0;
+        $results = [];
+
+        foreach ($rows as $index => $row) {
+            try {
+                $schoolCode = $this->normalizeSchoolCode((string) ($row['schoolId'] ?? ''));
+                $school = School::withTrashed()
+                    ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
+                    ->first();
+
+                $action = 'created';
+                if ($school) {
+                    if ($school->trashed()) {
+                        if (! $restoreArchived) {
+                            $skipped++;
+                            $results[] = [
+                                'row' => $index + 1,
+                                'schoolId' => $schoolCode,
+                                'action' => 'skipped',
+                                'message' => 'School is archived and restore is disabled.',
+                            ];
+                            continue;
+                        }
+
+                        $school->restore();
+                        $restored++;
+                        $action = 'restored';
+                    } elseif (! $updateExisting) {
+                        $skipped++;
+                        $results[] = [
+                            'row' => $index + 1,
+                            'schoolId' => $schoolCode,
+                            'action' => 'skipped',
+                            'message' => 'School already exists and update is disabled.',
+                        ];
+                        continue;
+                    } else {
+                        $updated++;
+                        $action = 'updated';
+                    }
+                } else {
+                    $school = new School();
+                    $created++;
+                }
+
+                $this->applyArrayPayload($school, $row, $user);
+
+                $results[] = [
+                    'row' => $index + 1,
+                    'schoolId' => $schoolCode,
+                    'schoolName' => (string) $school->name,
+                    'action' => $action,
+                ];
+            } catch (\Throwable $exception) {
+                $failed++;
+                $results[] = [
+                    'row' => $index + 1,
+                    'schoolId' => (string) ($row['schoolId'] ?? 'N/A'),
+                    'action' => 'failed',
+                    'message' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        $syncMeta = $this->buildSyncMetadataForUser($user);
+        $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);
+        $syncedAt = now()->toISOString();
+
+        $response = response()->json([
+            'data' => [
+                'created' => $created,
+                'updated' => $updated,
+                'restored' => $restored,
+                'skipped' => $skipped,
+                'failed' => $failed,
+                'results' => $results,
+            ],
+            'meta' => [
+                'syncedAt' => $syncedAt,
+                'scope' => $syncMeta['scope'],
+                'scopeKey' => $syncMeta['scopeKey'],
+                'recordCount' => $syncMeta['recordCount'],
+                'targetsMet' => $targetsMetBundle['targetsMet'],
+                'alerts' => $targetsMetBundle['alerts'],
+            ],
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_records.bulk_imported',
+            'created' => $created,
+            'updated' => $updated,
+            'restored' => $restored,
+            'failed' => $failed,
+            'alertsCount' => count($targetsMetBundle['alerts']),
+        ]));
+
+        return $this->applySyncHeaders(
+            $response,
+            $syncMeta['etag'],
+            $syncMeta['scope'],
+            $syncMeta['scopeKey'],
+            $syncMeta['recordCount'],
+            $syncMeta['latestAt'],
+            $syncedAt,
+        );
+    }
+
     private function requireAuthenticatedUser(Request $request): User
     {
         $user = ApiUserResolver::fromRequest($request);
@@ -213,25 +390,33 @@ class SchoolRecordController extends Controller
 
     private function storeAsMonitor(UpsertSchoolRecordRequest $request, User $user): JsonResponse
     {
-        $schoolId = trim($request->string('schoolId')->toString());
-        $schoolName = trim($request->string('schoolName')->toString());
-        $level = trim($request->string('level')->toString());
-        $type = trim($request->string('type')->toString());
-        $address = trim($request->string('address')->toString());
+        $schoolCode = $this->normalizeSchoolCode($request->string('schoolId')->toString());
+        $existing = School::withTrashed()
+            ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
+            ->first();
 
-        if ($schoolId === '' || $schoolName === '' || $level === '' || $type === '' || $address === '') {
-            return response()->json(
-                ['message' => 'School ID, school name, level, type, and address are required for monitor record creation.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
+        if ($existing && ! $existing->trashed()) {
+            throw ValidationException::withMessages([
+                'schoolId' => 'School ID already exists in active records.',
+            ]);
         }
 
-        $school = new School();
-        $school->school_code = $schoolId;
+        $school = $existing ?? new School();
+        if ($existing?->trashed()) {
+            $existing->restore();
+        }
+
+        $school->school_code = $schoolCode;
 
         $this->applyPayload($school, $request, $user);
 
-        return $this->buildMutationResponse($school, $user);
+        $schoolHeadAccountMeta = $this->createSchoolHeadAccountIfRequested($school, $request);
+
+        return $this->buildMutationResponse(
+            $school,
+            $user,
+            $schoolHeadAccountMeta ? ['schoolHeadAccount' => $schoolHeadAccountMeta] : [],
+        );
     }
 
     private function applyPayload(School $school, UpsertSchoolRecordRequest $request, User $user): void
@@ -250,7 +435,7 @@ class SchoolRecordController extends Controller
         // compliance counts/status, but cannot rewrite profile metadata.
         if (! $isSchoolHead) {
             if ($request->filled('schoolId')) {
-                $school->school_code = trim($request->string('schoolId')->toString());
+                $school->school_code = $this->normalizeSchoolCode($request->string('schoolId')->toString());
             }
 
             if ($request->filled('schoolName')) {
@@ -268,7 +453,7 @@ class SchoolRecordController extends Controller
             if ($request->filled('address')) {
                 $school->address = $request->string('address')->toString();
                 if (! $request->filled('district')) {
-                    $school->district = $school->address;
+                    $school->district = $this->deriveDistrictFromAddress($school->address);
                 }
             }
 
@@ -278,12 +463,113 @@ class SchoolRecordController extends Controller
 
             if ($request->filled('region')) {
                 $school->region = $request->string('region')->toString();
-            } elseif (! empty($school->address) && empty($school->region)) {
+            } elseif ($request->filled('address')) {
                 $school->region = $this->deriveRegionFromAddress($school->address);
             }
         }
 
         $school->save();
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function applyArrayPayload(School $school, array $payload, User $user): void
+    {
+        $schoolCode = $this->normalizeSchoolCode((string) ($payload['schoolId'] ?? ''));
+        $schoolName = trim((string) ($payload['schoolName'] ?? ''));
+        $level = trim((string) ($payload['level'] ?? ''));
+        $type = strtolower(trim((string) ($payload['type'] ?? 'public')));
+        $address = trim((string) ($payload['address'] ?? ''));
+        $district = trim((string) ($payload['district'] ?? ''));
+        $region = trim((string) ($payload['region'] ?? ''));
+        $status = trim((string) ($payload['status'] ?? 'active'));
+
+        $school->school_code = $schoolCode;
+        $school->name = $schoolName;
+        $school->level = $level;
+        $school->type = $type;
+        $school->address = $address;
+        $school->district = $district !== '' ? $district : $this->deriveDistrictFromAddress($address);
+        $school->region = $region !== '' ? $region : $this->deriveRegionFromAddress($address);
+        $school->status = $status;
+        $school->reported_student_count = (int) ($payload['studentCount'] ?? 0);
+        $school->reported_teacher_count = (int) ($payload['teacherCount'] ?? 0);
+        $school->submitted_by = $user->id;
+        $school->submitted_at = now();
+        $school->save();
+    }
+
+    private function createSchoolHeadAccountIfRequested(School $school, UpsertSchoolRecordRequest $request): ?array
+    {
+        if (! $request->filled('schoolHeadAccount')) {
+            return null;
+        }
+
+        /** @var array{name?: string, email?: string, password?: string|null, mustResetPassword?: bool|null}|null $payload */
+        $payload = $request->input('schoolHeadAccount');
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        $name = trim((string) ($payload['name'] ?? ''));
+        $email = strtolower(trim((string) ($payload['email'] ?? '')));
+        if ($name === '' || $email === '') {
+            return null;
+        }
+
+        if (User::query()->whereRaw('LOWER(email) = ?', [$email])->exists()) {
+            throw ValidationException::withMessages([
+                'schoolHeadAccount.email' => 'A user account with this email already exists.',
+            ]);
+        }
+
+        $rawPassword = trim((string) ($payload['password'] ?? ''));
+        $generatedPassword = null;
+        if ($rawPassword === '') {
+            $generatedPassword = Str::password(12);
+            $rawPassword = $generatedPassword;
+        }
+
+        $mustResetPassword = (bool) ($payload['mustResetPassword'] ?? true);
+        if ($generatedPassword !== null) {
+            $mustResetPassword = true;
+        }
+
+        $account = new User();
+        $account->name = $name;
+        $account->email = $email;
+        $account->password = Hash::make($rawPassword);
+        $account->must_reset_password = $mustResetPassword;
+        $account->password_changed_at = $mustResetPassword ? null : now();
+        $account->school_id = $school->id;
+        $account->save();
+        $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
+
+        return [
+            'id' => (string) $account->id,
+            'name' => $account->name,
+            'email' => $account->email,
+            'mustResetPassword' => $mustResetPassword,
+            'generatedPassword' => $generatedPassword,
+        ];
+    }
+
+    private function normalizeSchoolCode(string $value): string
+    {
+        return strtoupper(trim($value));
+    }
+
+    private function deriveDistrictFromAddress(string $address): string
+    {
+        $segments = array_values(
+            array_filter(
+                array_map(static fn (string $segment): string => trim($segment), explode(',', $address)),
+                static fn (string $segment): bool => $segment !== '',
+            ),
+        );
+
+        return $segments[0] ?? 'N/A';
     }
 
     private function deriveRegionFromAddress(string $address): string
@@ -302,7 +588,10 @@ class SchoolRecordController extends Controller
         return $segments[0] ?? 'N/A';
     }
 
-    private function buildMutationResponse(School $school, User $user): JsonResponse
+    /**
+     * @param array<string, mixed> $extraMeta
+     */
+    private function buildMutationResponse(School $school, User $user, array $extraMeta = []): JsonResponse
     {
         $syncMeta = $this->buildSyncMetadataForUser($user);
         $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);
@@ -310,14 +599,14 @@ class SchoolRecordController extends Controller
 
         $response = response()->json([
             'data' => (new SchoolRecordResource($school->load('submittedBy:id,name')))->resolve(),
-            'meta' => [
+            'meta' => array_merge([
                 'syncedAt' => $syncedAt,
                 'scope' => $syncMeta['scope'],
                 'scopeKey' => $syncMeta['scopeKey'],
                 'recordCount' => $syncMeta['recordCount'],
                 'targetsMet' => $targetsMetBundle['targetsMet'],
                 'alerts' => $targetsMetBundle['alerts'],
-            ],
+            ], $extraMeta),
         ]);
 
         event(new CspamsUpdateBroadcast([
@@ -338,6 +627,26 @@ class SchoolRecordController extends Controller
             $syncMeta['latestAt'],
             $syncedAt,
         );
+    }
+
+    /**
+     * @return array{
+     *     students: int,
+     *     sections: int,
+     *     indicatorSubmissions: int,
+     *     histories: int,
+     *     linkedUsers: int
+     * }
+     */
+    private function buildDeletePreview(School $school): array
+    {
+        return [
+            'students' => Student::query()->where('school_id', $school->id)->count(),
+            'sections' => Section::query()->where('school_id', $school->id)->count(),
+            'indicatorSubmissions' => $school->indicatorSubmissions()->count(),
+            'histories' => FormSubmissionHistory::query()->where('school_id', $school->id)->count(),
+            'linkedUsers' => User::query()->where('school_id', $school->id)->count(),
+        ];
     }
 
     /**

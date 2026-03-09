@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
+﻿import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -41,7 +41,8 @@ import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
-import type { IndicatorSubmission, SchoolRecord, SchoolStatus } from "@/types";
+import { isApiError } from "@/lib/api";
+import type { IndicatorSubmission, SchoolBulkImportResult, SchoolBulkImportRowPayload, SchoolRecord, SchoolStatus } from "@/types";
 import {
   buildRegionAggregates,
   buildStatusDistribution,
@@ -93,11 +94,33 @@ interface MonitorRecordFormState {
   schoolName: string;
   level: string;
   type: "public" | "private";
+  district: string;
+  region: string;
   address: string;
   studentCount: string;
   teacherCount: string;
   status: SchoolStatus;
+  createSchoolHeadAccount: boolean;
+  schoolHeadAccountName: string;
+  schoolHeadAccountEmail: string;
+  schoolHeadAccountPassword: string;
+  schoolHeadMustResetPassword: boolean;
 }
+
+type MonitorRecordFormField =
+  | "schoolId"
+  | "schoolName"
+  | "level"
+  | "type"
+  | "district"
+  | "region"
+  | "address"
+  | "studentCount"
+  | "teacherCount"
+  | "status"
+  | "schoolHeadAccountName"
+  | "schoolHeadAccountEmail"
+  | "schoolHeadAccountPassword";
 
 interface SchoolScopeOption {
   key: string;
@@ -271,10 +294,17 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
   schoolName: "",
   level: "Elementary",
   type: "public",
+  district: "",
+  region: "",
   address: "",
   studentCount: "",
   teacherCount: "",
   status: "active",
+  createSchoolHeadAccount: false,
+  schoolHeadAccountName: "",
+  schoolHeadAccountEmail: "",
+  schoolHeadAccountPassword: "",
+  schoolHeadMustResetPassword: true,
 };
 
 const ALL_SCHOOL_SCOPE = "__all_schools__";
@@ -465,8 +495,244 @@ function latestBySchool<
   return latest;
 }
 
+function extractApiValidationErrors(payload: unknown): Record<string, string> {
+  if (!payload || typeof payload !== "object" || !("errors" in payload)) {
+    return {};
+  }
+
+  const rawErrors = (payload as { errors?: unknown }).errors;
+  if (!rawErrors || typeof rawErrors !== "object") {
+    return {};
+  }
+
+  const fieldErrors: Record<string, string> = {};
+  for (const [field, value] of Object.entries(rawErrors as Record<string, unknown>)) {
+    if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
+      fieldErrors[field] = value[0];
+      continue;
+    }
+
+    if (typeof value === "string") {
+      fieldErrors[field] = value;
+    }
+  }
+
+  return fieldErrors;
+}
+
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function normalizeCsvHeader(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function resolveCsvColumnIndex(headers: Map<string, number>, aliases: string[]): number | null {
+  for (const alias of aliases) {
+    const key = normalizeCsvHeader(alias);
+    if (headers.has(key)) {
+      return headers.get(key) ?? null;
+    }
+  }
+
+  return null;
+}
+
+function toCsvInteger(value: string): number | null {
+  if (value.trim() === "") return 0;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImportRowPayload[]; errors: string[] } {
+  const lines = content
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0);
+
+  if (lines.length < 2) {
+    return { rows: [], errors: ["CSV must include a header and at least one data row."] };
+  }
+
+  const headers = parseCsvLine(lines[0]).map((value) => normalizeCsvHeader(value));
+  const headerIndexes = new Map<string, number>();
+  headers.forEach((header, index) => {
+    headerIndexes.set(header, index);
+  });
+
+  const columnIndex = {
+    schoolId: resolveCsvColumnIndex(headerIndexes, ["school_id", "school_code", "schoolid", "code"]),
+    schoolName: resolveCsvColumnIndex(headerIndexes, ["school_name", "school", "name"]),
+    level: resolveCsvColumnIndex(headerIndexes, ["level"]),
+    type: resolveCsvColumnIndex(headerIndexes, ["type"]),
+    address: resolveCsvColumnIndex(headerIndexes, ["address"]),
+    district: resolveCsvColumnIndex(headerIndexes, ["district"]),
+    region: resolveCsvColumnIndex(headerIndexes, ["region"]),
+    status: resolveCsvColumnIndex(headerIndexes, ["status"]),
+    studentCount: resolveCsvColumnIndex(headerIndexes, ["student_count", "students", "studentcount"]),
+    teacherCount: resolveCsvColumnIndex(headerIndexes, ["teacher_count", "teachers", "teachercount"]),
+  };
+
+  const missingRequiredColumns = [
+    { key: "schoolId", label: "school_id" },
+    { key: "schoolName", label: "school_name" },
+    { key: "level", label: "level" },
+    { key: "type", label: "type" },
+    { key: "address", label: "address" },
+    { key: "studentCount", label: "student_count" },
+    { key: "teacherCount", label: "teacher_count" },
+  ].filter((entry) => columnIndex[entry.key as keyof typeof columnIndex] === null);
+
+  if (missingRequiredColumns.length > 0) {
+    return {
+      rows: [],
+      errors: [
+        `Missing required CSV column(s): ${missingRequiredColumns
+          .map((item) => item.label)
+          .join(", ")}.`,
+      ],
+    };
+  }
+
+  const getValue = (values: string[], index: number | null): string => {
+    if (index === null || index < 0 || index >= values.length) return "";
+    return values[index]?.trim() ?? "";
+  };
+
+  const rows: SchoolBulkImportRowPayload[] = [];
+  const errors: string[] = [];
+
+  for (let rowIndex = 1; rowIndex < lines.length; rowIndex += 1) {
+    const values = parseCsvLine(lines[rowIndex]);
+
+    const schoolId = getValue(values, columnIndex.schoolId);
+    const schoolName = getValue(values, columnIndex.schoolName);
+    const level = getValue(values, columnIndex.level);
+    const type = getValue(values, columnIndex.type).toLowerCase();
+    const address = getValue(values, columnIndex.address);
+    const district = getValue(values, columnIndex.district);
+    const region = getValue(values, columnIndex.region);
+    const statusRaw = getValue(values, columnIndex.status).toLowerCase();
+    const studentCount = toCsvInteger(getValue(values, columnIndex.studentCount));
+    const teacherCount = toCsvInteger(getValue(values, columnIndex.teacherCount));
+
+    if (!schoolId && !schoolName && !level && !address) {
+      continue;
+    }
+
+    if (!/^\d{6}$/.test(schoolId)) {
+      errors.push(`Row ${rowIndex + 1}: School ID must be 6 digits.`);
+      continue;
+    }
+
+    if (!schoolName) {
+      errors.push(`Row ${rowIndex + 1}: School name is required.`);
+      continue;
+    }
+
+    if (!level) {
+      errors.push(`Row ${rowIndex + 1}: Level is required.`);
+      continue;
+    }
+
+    if (type !== "public" && type !== "private") {
+      errors.push(`Row ${rowIndex + 1}: Type must be public or private.`);
+      continue;
+    }
+
+    if (!address) {
+      errors.push(`Row ${rowIndex + 1}: Address is required.`);
+      continue;
+    }
+
+    if (studentCount === null) {
+      errors.push(`Row ${rowIndex + 1}: Student count must be a whole number >= 0.`);
+      continue;
+    }
+
+    if (teacherCount === null) {
+      errors.push(`Row ${rowIndex + 1}: Teacher count must be a whole number >= 0.`);
+      continue;
+    }
+
+    const normalizedStatus = statusRaw ? statusRaw : "active";
+    if (!["active", "inactive", "pending"].includes(normalizedStatus)) {
+      errors.push(`Row ${rowIndex + 1}: Status must be active, inactive, or pending.`);
+      continue;
+    }
+
+    rows.push({
+      schoolId,
+      schoolName,
+      level,
+      type,
+      address,
+      district: district || null,
+      region: region || null,
+      status: normalizedStatus as SchoolStatus,
+      studentCount,
+      teacherCount,
+    });
+  }
+
+  return { rows, errors };
+}
+
 export function MonitorDashboard() {
-  const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, refreshRecords, addRecord, updateRecord, deleteRecord } = useData();
+  const {
+    records,
+    targetsMet,
+    syncAlerts,
+    isLoading,
+    isSaving,
+    error,
+    lastSyncedAt,
+    syncScope,
+    syncStatus,
+    refreshRecords,
+    addRecord,
+    updateRecord,
+    deleteRecord,
+    previewDeleteRecord,
+    listArchivedRecords,
+    restoreRecord,
+    bulkImportRecords,
+  } = useData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
   const { students } = useStudentData();
 
@@ -504,10 +770,18 @@ export function MonitorDashboard() {
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [recordForm, setRecordForm] = useState<MonitorRecordFormState>(EMPTY_MONITOR_RECORD_FORM);
+  const [recordFormErrors, setRecordFormErrors] = useState<Partial<Record<MonitorRecordFormField, string>>>({});
   const [recordFormError, setRecordFormError] = useState("");
   const [recordFormMessage, setRecordFormMessage] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
+  const [archivedRecords, setArchivedRecords] = useState<SchoolRecord[]>([]);
+  const [showArchivedRecords, setShowArchivedRecords] = useState(false);
+  const [isArchivedRecordsLoading, setIsArchivedRecordsLoading] = useState(false);
+  const [bulkImportSummary, setBulkImportSummary] = useState<SchoolBulkImportResult | null>(null);
+  const [bulkImportError, setBulkImportError] = useState("");
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const bulkImportInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -706,12 +980,15 @@ export function MonitorDashboard() {
   const resetRecordForm = () => {
     setEditingRecordId(null);
     setRecordForm(EMPTY_MONITOR_RECORD_FORM);
+    setRecordFormErrors({});
     setRecordFormError("");
     setRecordFormMessage("");
   };
 
   const openCreateRecordForm = () => {
     resetRecordForm();
+    setBulkImportError("");
+    setBulkImportSummary(null);
     setActiveTopNavigator("schools");
     setShowRecordForm(true);
   };
@@ -728,65 +1005,119 @@ export function MonitorDashboard() {
       schoolName: record.schoolName ?? "",
       level: record.level ?? "Elementary",
       type: String(record.type ?? "").toLowerCase() === "private" ? "private" : "public",
+      district: record.district ?? "",
+      region: record.region ?? "",
       address: record.address ?? record.district ?? "",
       studentCount: String(record.studentCount ?? 0),
       teacherCount: String(record.teacherCount ?? 0),
       status: record.status,
+      createSchoolHeadAccount: false,
+      schoolHeadAccountName: "",
+      schoolHeadAccountEmail: "",
+      schoolHeadAccountPassword: "",
+      schoolHeadMustResetPassword: true,
     });
+    setRecordFormErrors({});
     setRecordFormError("");
     setRecordFormMessage("");
     setDeleteError("");
+    setBulkImportError("");
+    setBulkImportSummary(null);
     setShowRecordForm(true);
     setActiveTopNavigator("schools");
   };
 
   const validateRecordForm = (): boolean => {
-    const schoolId = recordForm.schoolId.trim();
+    const formErrors: Partial<Record<MonitorRecordFormField, string>> = {};
+    const schoolId = recordForm.schoolId.trim().toUpperCase();
     const schoolName = recordForm.schoolName.trim();
     const level = recordForm.level.trim();
+    const district = recordForm.district.trim();
+    const region = recordForm.region.trim();
     const address = recordForm.address.trim();
     const studentCount = Number(recordForm.studentCount);
     const teacherCount = Number(recordForm.teacherCount);
 
-    if (!schoolId || !schoolName || !level || !address) {
-      setRecordFormError("School ID, school name, level, and address are required.");
-      return false;
+    if (!/^\d{6}$/.test(schoolId)) {
+      formErrors.schoolId = "School ID must be exactly 6 digits.";
     }
 
+    if (!schoolName) formErrors.schoolName = "School name is required.";
+    if (!level) formErrors.level = "Level is required.";
+    if (!address) formErrors.address = "Address is required.";
+    if (!recordForm.type) formErrors.type = "Type is required.";
+
+    if (district.length > 255) formErrors.district = "District must be 255 characters or less.";
+    if (region.length > 255) formErrors.region = "Region must be 255 characters or less.";
+
     if (!Number.isFinite(studentCount) || studentCount < 0 || !Number.isInteger(studentCount)) {
-      setRecordFormError("Student count must be a non-negative whole number.");
-      return false;
+      formErrors.studentCount = "Student count must be a non-negative whole number.";
     }
 
     if (!Number.isFinite(teacherCount) || teacherCount < 0 || !Number.isInteger(teacherCount)) {
-      setRecordFormError("Teacher count must be a non-negative whole number.");
+      formErrors.teacherCount = "Teacher count must be a non-negative whole number.";
+    }
+
+    if (!editingRecordId && recordForm.createSchoolHeadAccount) {
+      if (!recordForm.schoolHeadAccountName.trim()) {
+        formErrors.schoolHeadAccountName = "Account name is required.";
+      }
+
+      if (!recordForm.schoolHeadAccountEmail.trim()) {
+        formErrors.schoolHeadAccountEmail = "Email is required.";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recordForm.schoolHeadAccountEmail.trim())) {
+        formErrors.schoolHeadAccountEmail = "Use a valid email address.";
+      }
+
+      if (!recordForm.schoolHeadAccountPassword.trim()) {
+        formErrors.schoolHeadAccountPassword = "Password is required.";
+      } else if (recordForm.schoolHeadAccountPassword.trim().length < 8) {
+        formErrors.schoolHeadAccountPassword = "Password must be at least 8 characters.";
+      }
+    }
+
+    setRecordFormErrors(formErrors);
+    if (Object.keys(formErrors).length > 0) {
+      setRecordFormError("Please fix the highlighted fields.");
       return false;
     }
 
+    setRecordFormError("");
     return true;
   };
 
   const handleRecordSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setRecordFormErrors({});
     setRecordFormError("");
     setRecordFormMessage("");
     setDeleteError("");
+    setBulkImportError("");
 
     if (!validateRecordForm()) {
       return;
     }
 
     const payload = {
-      schoolId: recordForm.schoolId.trim(),
+      schoolId: recordForm.schoolId.trim().toUpperCase(),
       schoolName: recordForm.schoolName.trim(),
       level: recordForm.level.trim(),
       type: recordForm.type,
       address: recordForm.address.trim(),
-      district: recordForm.address.trim(),
-      region: "Santiago City, Isabela",
+      district: recordForm.district.trim() || undefined,
+      region: recordForm.region.trim() || undefined,
       studentCount: Number(recordForm.studentCount),
       teacherCount: Number(recordForm.teacherCount),
       status: recordForm.status,
+      schoolHeadAccount:
+        !editingRecordId && recordForm.createSchoolHeadAccount
+          ? {
+              name: recordForm.schoolHeadAccountName.trim(),
+              email: recordForm.schoolHeadAccountEmail.trim(),
+              password: recordForm.schoolHeadAccountPassword.trim(),
+              mustResetPassword: recordForm.schoolHeadMustResetPassword,
+            }
+          : undefined,
     };
 
     try {
@@ -802,6 +1133,38 @@ export function MonitorDashboard() {
         closeRecordForm();
       }, 800);
     } catch (err) {
+      if (isApiError(err)) {
+        const apiFieldErrors = extractApiValidationErrors(err.payload);
+        if (Object.keys(apiFieldErrors).length > 0) {
+          const mappedErrors: Partial<Record<MonitorRecordFormField, string>> = {};
+          for (const [field, message] of Object.entries(apiFieldErrors)) {
+            if (field === "schoolHeadAccount.name") mappedErrors.schoolHeadAccountName = message;
+            else if (field === "schoolHeadAccount.email") mappedErrors.schoolHeadAccountEmail = message;
+            else if (field === "schoolHeadAccount.password") mappedErrors.schoolHeadAccountPassword = message;
+            else if (
+              field === "schoolId" ||
+              field === "schoolName" ||
+              field === "level" ||
+              field === "type" ||
+              field === "district" ||
+              field === "region" ||
+              field === "address" ||
+              field === "studentCount" ||
+              field === "teacherCount" ||
+              field === "status"
+            ) {
+              mappedErrors[field as MonitorRecordFormField] = message;
+            }
+          }
+
+          if (Object.keys(mappedErrors).length > 0) {
+            setRecordFormErrors(mappedErrors);
+            setRecordFormError("Please fix the highlighted fields.");
+            return;
+          }
+        }
+      }
+
       setRecordFormError(err instanceof Error ? err.message : "Unable to save school record.");
     }
   };
@@ -809,9 +1172,18 @@ export function MonitorDashboard() {
   const handleDeleteRecord = async (record: SchoolRecord) => {
     setDeleteError("");
     setRecordFormMessage("");
+    setBulkImportError("");
 
     const schoolName = record.schoolName || "this school";
-    const confirmed = window.confirm(`Delete ${schoolName}? This also removes related submissions and student records.`);
+    let previewMessage = "";
+    try {
+      const preview = await previewDeleteRecord(record.id);
+      previewMessage = `\n\nDependencies:\n- Students: ${preview.dependencies.students}\n- Sections: ${preview.dependencies.sections}\n- Indicator submissions: ${preview.dependencies.indicatorSubmissions}\n- Compliance histories: ${preview.dependencies.histories}\n- Linked users: ${preview.dependencies.linkedUsers}`;
+    } catch {
+      previewMessage = "\n\nDependency preview unavailable. Proceed with caution.";
+    }
+
+    const confirmed = window.confirm(`Archive ${schoolName}? This hides it from active lists and can be restored later.${previewMessage}`);
     if (!confirmed) {
       return;
     }
@@ -826,6 +1198,85 @@ export function MonitorDashboard() {
       setDeleteError(err instanceof Error ? err.message : "Unable to delete school record.");
     } finally {
       setDeletingRecordId(null);
+    }
+  };
+
+  const loadArchivedRecords = async () => {
+    setIsArchivedRecordsLoading(true);
+    setDeleteError("");
+    try {
+      const archived = await listArchivedRecords();
+      setArchivedRecords(archived);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Unable to load archived schools.");
+    } finally {
+      setIsArchivedRecordsLoading(false);
+    }
+  };
+
+  const handleToggleArchivedRecords = async () => {
+    const next = !showArchivedRecords;
+    setShowArchivedRecords(next);
+    if (next) {
+      await loadArchivedRecords();
+    }
+  };
+
+  const handleRestoreArchivedRecord = async (record: SchoolRecord) => {
+    setDeleteError("");
+    try {
+      await restoreRecord(record.id);
+      await loadArchivedRecords();
+      pushToast(`Restored ${record.schoolName}.`, "success");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Unable to restore school record.");
+    }
+  };
+
+  const handleOpenBulkImportPicker = () => {
+    bulkImportInputRef.current?.click();
+  };
+
+  const handleBulkImportFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setBulkImportError("");
+    setBulkImportSummary(null);
+    setIsBulkImporting(true);
+
+    try {
+      const content = await file.text();
+      const parsed = parseSchoolBulkImportCsv(content);
+      if (parsed.errors.length > 0) {
+        setBulkImportError(parsed.errors.slice(0, 5).join(" "));
+        return;
+      }
+
+      if (parsed.rows.length === 0) {
+        setBulkImportError("No valid rows found in the CSV file.");
+        return;
+      }
+
+      const summary = await bulkImportRecords(parsed.rows, {
+        updateExisting: true,
+        restoreArchived: true,
+      });
+
+      setBulkImportSummary(summary);
+      pushToast(
+        `Import complete: ${summary.created} created, ${summary.updated} updated, ${summary.restored} restored.`,
+        "success",
+      );
+
+      if (showArchivedRecords) {
+        await loadArchivedRecords();
+      }
+    } catch (err) {
+      setBulkImportError(err instanceof Error ? err.message : "Bulk import failed.");
+    } finally {
+      setIsBulkImporting(false);
     }
   };
 
@@ -2623,11 +3074,47 @@ export function MonitorDashboard() {
             <h2 className="text-base font-bold text-slate-900">Schools</h2>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
-            <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-              Showing {paginatedRecords.length} of {filteredRecords.length}
+          <div className="border-b border-slate-100 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
+                Showing {paginatedRecords.length} of {filteredRecords.length}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={bulkImportInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(event) => void handleBulkImportFileChange(event)}
+                />
+                <button
+                  type="button"
+                  onClick={openCreateRecordForm}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-300/60 bg-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add School
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenBulkImportPicker}
+                  disabled={isBulkImporting}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <Database className="h-3.5 w-3.5" />
+                  {isBulkImporting ? "Importing..." : "Import CSV"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleToggleArchivedRecords()}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {showArchivedRecords ? "Hide Archived" : "Show Archived"}
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-slate-500">Global filters are applied to this list.</p>
+            <p className="mt-2 text-xs text-slate-500">Global filters are applied to this list.</p>
           </div>
 
           {deleteError && (
@@ -2636,12 +3123,25 @@ export function MonitorDashboard() {
             </div>
           )}
 
+          {bulkImportError && (
+            <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+              {bulkImportError}
+            </div>
+          )}
+
+          {bulkImportSummary && (
+            <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+              Import complete: {bulkImportSummary.created} created, {bulkImportSummary.updated} updated,{" "}
+              {bulkImportSummary.restored} restored, {bulkImportSummary.skipped} skipped, {bulkImportSummary.failed} failed.
+            </div>
+          )}
+
           {showRecordForm && (
             <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">{editingRecordId ? "Edit School Record" : "Add School Record"}</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">School ID, school name, level, type, and address are required.</p>
+                  <p className="mt-0.5 text-xs text-slate-500">School ID must be 6 digits. School name, level, type, and address are required.</p>
                 </div>
                 <button
                   type="button"
@@ -2661,9 +3161,17 @@ export function MonitorDashboard() {
                     id="monitor-school-id"
                     type="text"
                     value={recordForm.schoolId}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, schoolId: event.target.value }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      const normalizedSchoolId = event.target.value.replace(/\D+/g, "").slice(0, 6);
+                      setRecordForm((current) => ({ ...current, schoolId: normalizedSchoolId }));
+                      setRecordFormErrors((current) => ({ ...current, schoolId: undefined }));
+                    }}
+                    placeholder="e.g. 103811"
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.schoolId ? "border-primary-300" : "border-slate-200"
+                    }`}
                   />
+                  {recordFormErrors.schoolId && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolId}</p>}
                 </div>
                 <div>
                   <label htmlFor="monitor-school-name" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2673,9 +3181,15 @@ export function MonitorDashboard() {
                     id="monitor-school-name"
                     type="text"
                     value={recordForm.schoolName}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, schoolName: event.target.value }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, schoolName: event.target.value }));
+                      setRecordFormErrors((current) => ({ ...current, schoolName: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.schoolName ? "border-primary-300" : "border-slate-200"
+                    }`}
                   />
+                  {recordFormErrors.schoolName && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolName}</p>}
                 </div>
                 <div>
                   <label htmlFor="monitor-level" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2685,9 +3199,15 @@ export function MonitorDashboard() {
                     id="monitor-level"
                     type="text"
                     value={recordForm.level}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, level: event.target.value }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, level: event.target.value }));
+                      setRecordFormErrors((current) => ({ ...current, level: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.level ? "border-primary-300" : "border-slate-200"
+                    }`}
                   />
+                  {recordFormErrors.level && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.level}</p>}
                 </div>
                 <div>
                   <label htmlFor="monitor-type" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2696,14 +3216,57 @@ export function MonitorDashboard() {
                   <select
                     id="monitor-type"
                     value={recordForm.type}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, type: event.target.value as "public" | "private" }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, type: event.target.value as "public" | "private" }));
+                      setRecordFormErrors((current) => ({ ...current, type: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.type ? "border-primary-300" : "border-slate-200"
+                    }`}
                   >
                     <option value="public">Public</option>
                     <option value="private">Private</option>
                   </select>
+                  {recordFormErrors.type && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.type}</p>}
                 </div>
-                <div className="md:col-span-2 xl:col-span-4">
+                <div>
+                  <label htmlFor="monitor-district" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    District
+                  </label>
+                  <input
+                    id="monitor-district"
+                    type="text"
+                    value={recordForm.district}
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, district: event.target.value }));
+                      setRecordFormErrors((current) => ({ ...current, district: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.district ? "border-primary-300" : "border-slate-200"
+                    }`}
+                  />
+                  {recordFormErrors.district && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.district}</p>}
+                </div>
+                <div>
+                  <label htmlFor="monitor-region" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Region
+                  </label>
+                  <input
+                    id="monitor-region"
+                    type="text"
+                    value={recordForm.region}
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, region: event.target.value }));
+                      setRecordFormErrors((current) => ({ ...current, region: undefined }));
+                    }}
+                    placeholder="Leave blank to auto-derive from address"
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.region ? "border-primary-300" : "border-slate-200"
+                    }`}
+                  />
+                  {recordFormErrors.region && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.region}</p>}
+                </div>
+                <div className="md:col-span-2 xl:col-span-2">
                   <label htmlFor="monitor-address" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                     Address
                   </label>
@@ -2711,9 +3274,15 @@ export function MonitorDashboard() {
                     id="monitor-address"
                     type="text"
                     value={recordForm.address}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, address: event.target.value }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, address: event.target.value }));
+                      setRecordFormErrors((current) => ({ ...current, address: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.address ? "border-primary-300" : "border-slate-200"
+                    }`}
                   />
+                  {recordFormErrors.address && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.address}</p>}
                 </div>
                 <div>
                   <label htmlFor="monitor-students" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2725,9 +3294,15 @@ export function MonitorDashboard() {
                     min={0}
                     step={1}
                     value={recordForm.studentCount}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, studentCount: event.target.value }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, studentCount: event.target.value }));
+                      setRecordFormErrors((current) => ({ ...current, studentCount: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.studentCount ? "border-primary-300" : "border-slate-200"
+                    }`}
                   />
+                  {recordFormErrors.studentCount && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.studentCount}</p>}
                 </div>
                 <div>
                   <label htmlFor="monitor-teachers" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2739,9 +3314,15 @@ export function MonitorDashboard() {
                     min={0}
                     step={1}
                     value={recordForm.teacherCount}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, teacherCount: event.target.value }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, teacherCount: event.target.value }));
+                      setRecordFormErrors((current) => ({ ...current, teacherCount: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.teacherCount ? "border-primary-300" : "border-slate-200"
+                    }`}
                   />
+                  {recordFormErrors.teacherCount && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.teacherCount}</p>}
                 </div>
                 <div>
                   <label htmlFor="monitor-status" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2750,14 +3331,110 @@ export function MonitorDashboard() {
                   <select
                     id="monitor-status"
                     value={recordForm.status}
-                    onChange={(event) => setRecordForm((current) => ({ ...current, status: event.target.value as SchoolStatus }))}
-                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    onChange={(event) => {
+                      setRecordForm((current) => ({ ...current, status: event.target.value as SchoolStatus }));
+                      setRecordFormErrors((current) => ({ ...current, status: undefined }));
+                    }}
+                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                      recordFormErrors.status ? "border-primary-300" : "border-slate-200"
+                    }`}
                   >
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                     <option value="pending">Pending</option>
                   </select>
+                  {recordFormErrors.status && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.status}</p>}
                 </div>
+                {!editingRecordId && (
+                  <div className="md:col-span-2 xl:col-span-4 rounded-sm border border-slate-200 bg-slate-50 p-3">
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={recordForm.createSchoolHeadAccount}
+                        onChange={(event) =>
+                          setRecordForm((current) => ({
+                            ...current,
+                            createSchoolHeadAccount: event.target.checked,
+                          }))
+                        }
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary-100"
+                      />
+                      Create School Head Account
+                    </label>
+                    {recordForm.createSchoolHeadAccount && (
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <div>
+                          <label htmlFor="monitor-account-name" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Account Name
+                          </label>
+                          <input
+                            id="monitor-account-name"
+                            type="text"
+                            value={recordForm.schoolHeadAccountName}
+                            onChange={(event) => {
+                              setRecordForm((current) => ({ ...current, schoolHeadAccountName: event.target.value }));
+                              setRecordFormErrors((current) => ({ ...current, schoolHeadAccountName: undefined }));
+                            }}
+                            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                              recordFormErrors.schoolHeadAccountName ? "border-primary-300" : "border-slate-200"
+                            }`}
+                          />
+                          {recordFormErrors.schoolHeadAccountName && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountName}</p>}
+                        </div>
+                        <div>
+                          <label htmlFor="monitor-account-email" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Account Email
+                          </label>
+                          <input
+                            id="monitor-account-email"
+                            type="email"
+                            value={recordForm.schoolHeadAccountEmail}
+                            onChange={(event) => {
+                              setRecordForm((current) => ({ ...current, schoolHeadAccountEmail: event.target.value }));
+                              setRecordFormErrors((current) => ({ ...current, schoolHeadAccountEmail: undefined }));
+                            }}
+                            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                              recordFormErrors.schoolHeadAccountEmail ? "border-primary-300" : "border-slate-200"
+                            }`}
+                          />
+                          {recordFormErrors.schoolHeadAccountEmail && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountEmail}</p>}
+                        </div>
+                        <div>
+                          <label htmlFor="monitor-account-password" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Temporary Password
+                          </label>
+                          <input
+                            id="monitor-account-password"
+                            type="password"
+                            value={recordForm.schoolHeadAccountPassword}
+                            onChange={(event) => {
+                              setRecordForm((current) => ({ ...current, schoolHeadAccountPassword: event.target.value }));
+                              setRecordFormErrors((current) => ({ ...current, schoolHeadAccountPassword: undefined }));
+                            }}
+                            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+                              recordFormErrors.schoolHeadAccountPassword ? "border-primary-300" : "border-slate-200"
+                            }`}
+                          />
+                          {recordFormErrors.schoolHeadAccountPassword && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountPassword}</p>}
+                        </div>
+                        <label className="md:col-span-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={recordForm.schoolHeadMustResetPassword}
+                            onChange={(event) =>
+                              setRecordForm((current) => ({
+                                ...current,
+                                schoolHeadMustResetPassword: event.target.checked,
+                              }))
+                            }
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary-100"
+                          />
+                          Require password reset on first login
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-end">
                   <button
                     type="submit"
@@ -2886,7 +3563,7 @@ export function MonitorDashboard() {
                           className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                          {deletingRecordId === record.id ? "Deleting..." : "Delete"}
+                          {deletingRecordId === record.id ? "Archiving..." : "Archive"}
                         </button>
                       </div>
                     </article>
@@ -3037,7 +3714,7 @@ export function MonitorDashboard() {
                                 className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
-                                {deletingRecordId === record.id ? "Deleting..." : "Delete"}
+                                {deletingRecordId === record.id ? "Archiving..." : "Archive"}
                               </button>
                             </div>
                           </td>
@@ -3072,6 +3749,62 @@ export function MonitorDashboard() {
                   </button>
                 </div>
               </div>
+
+              {showArchivedRecords && (
+                <section className="border-t border-slate-200 bg-slate-50/60 px-5 py-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold text-slate-900">Archived Schools</h3>
+                    <button
+                      type="button"
+                      onClick={() => void loadArchivedRecords()}
+                      disabled={isArchivedRecordsLoading}
+                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      {isArchivedRecordsLoading ? "Loading..." : "Refresh"}
+                    </button>
+                  </div>
+
+                  {isArchivedRecordsLoading ? (
+                    <p className="mt-2 text-xs text-slate-600">Loading archived records...</p>
+                  ) : archivedRecords.length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-600">No archived school records.</p>
+                  ) : (
+                    <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200 bg-white">
+                      <table className="min-w-full">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                            <th className="px-3 py-2 text-left">School ID</th>
+                            <th className="px-3 py-2 text-left">School Name</th>
+                            <th className="px-3 py-2 text-left">Last Updated</th>
+                            <th className="px-3 py-2 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {archivedRecords.map((record) => (
+                            <tr key={`archived-${record.id}`}>
+                              <td className="px-3 py-2 text-xs text-slate-700">{record.schoolId ?? record.schoolCode ?? "N/A"}</td>
+                              <td className="px-3 py-2 text-xs text-slate-900">{record.schoolName}</td>
+                              <td className="px-3 py-2 text-xs text-slate-600">{formatDateTime(record.lastUpdated)}</td>
+                              <td className="px-3 py-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRestoreArchivedRecord(record)}
+                                  disabled={isSaving}
+                                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                  Restore
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              )}
             </>
           )}
         </section>
@@ -3218,6 +3951,10 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
+
+
+
 
 
 

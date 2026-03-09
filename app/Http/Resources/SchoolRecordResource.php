@@ -34,6 +34,7 @@ class SchoolRecordResource extends JsonResource
             'status' => $this->status,
             'submittedBy' => $this->submittedBy?->name ?? 'Unassigned',
             'lastUpdated' => ($this->submitted_at ?? $this->updated_at)?->toISOString(),
+            'deletedAt' => $this->deleted_at?->toISOString(),
         ];
     }
 }

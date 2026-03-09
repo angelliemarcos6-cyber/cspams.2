@@ -19,6 +19,10 @@ Route::prefix('auth')->group(function (): void {
 Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void {
     Route::get('/records', [SchoolRecordController::class, 'index']);
     Route::post('/records', [SchoolRecordController::class, 'store']);
+    Route::post('/records/bulk-import', [SchoolRecordController::class, 'bulkImport']);
+    Route::get('/records/archived', [SchoolRecordController::class, 'archived']);
+    Route::get('/records/{school}/delete-preview', [SchoolRecordController::class, 'deletePreview']);
+    Route::post('/records/{school}/restore', [SchoolRecordController::class, 'restore']);
     Route::put('/records/{school}', [SchoolRecordController::class, 'update']);
     Route::patch('/records/{school}', [SchoolRecordController::class, 'update']);
     Route::delete('/records/{school}', [SchoolRecordController::class, 'destroy']);

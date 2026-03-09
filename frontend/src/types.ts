@@ -28,6 +28,14 @@ export interface SchoolRecord {
   status: SchoolStatus;
   submittedBy: string;
   lastUpdated: string;
+  deletedAt?: string | null;
+}
+
+export interface SchoolHeadAccountPayload {
+  name: string;
+  email: string;
+  password?: string | null;
+  mustResetPassword?: boolean;
 }
 
 export interface SessionUser {
@@ -51,6 +59,48 @@ export interface SchoolRecordPayload {
   district?: string | null;
   address?: string | null;
   type?: "public" | "private" | null;
+  schoolHeadAccount?: SchoolHeadAccountPayload | null;
+}
+
+export interface SchoolRecordDeletePreview {
+  id: string;
+  schoolId: string;
+  schoolName: string;
+  dependencies: {
+    students: number;
+    sections: number;
+    indicatorSubmissions: number;
+    histories: number;
+    linkedUsers: number;
+  };
+}
+
+export interface SchoolBulkImportRowPayload {
+  schoolId: string;
+  schoolName: string;
+  level: string;
+  type: "public" | "private";
+  address: string;
+  district?: string | null;
+  region?: string | null;
+  status?: SchoolStatus;
+  studentCount: number;
+  teacherCount: number;
+}
+
+export interface SchoolBulkImportResult {
+  created: number;
+  updated: number;
+  restored: number;
+  skipped: number;
+  failed: number;
+  results: Array<{
+    row: number;
+    schoolId: string;
+    schoolName?: string;
+    action: "created" | "updated" | "restored" | "skipped" | "failed";
+    message?: string;
+  }>;
 }
 
 export type StudentEnrollmentStatus =
