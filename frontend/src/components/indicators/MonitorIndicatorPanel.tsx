@@ -73,6 +73,39 @@ interface SchoolMeta {
 const REVIEW_ASSIGNMENT_STORAGE_KEY = "cspams.monitor.review.assignments.v1";
 const UNASSIGNED_REVIEWER_VALUE = "__unassigned__";
 
+function savedViewButtonClass(view: ReviewSavedView, active: boolean): string {
+  const base =
+    "inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100";
+
+  if (view === "needs_action") {
+    return active
+      ? `${base} border-primary-300 bg-primary-100 text-primary-800`
+      : `${base} border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100`;
+  }
+
+  if (view === "my_queue") {
+    return active
+      ? `${base} border-cyan-300 bg-cyan-100 text-cyan-800`
+      : `${base} border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100`;
+  }
+
+  if (view === "unassigned") {
+    return active
+      ? `${base} border-slate-400 bg-slate-200 text-slate-800`
+      : `${base} border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200`;
+  }
+
+  if (view === "overdue_72h") {
+    return active
+      ? `${base} border-rose-300 bg-rose-100 text-rose-800`
+      : `${base} border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`;
+  }
+
+  return active
+    ? `${base} border-amber-300 bg-amber-100 text-amber-800`
+    : `${base} border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100`;
+}
+
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
@@ -314,6 +347,7 @@ export function MonitorIndicatorPanel({
   const [reviewActionError, setReviewActionError] = useState("");
   const [isReviewActionRunning, setIsReviewActionRunning] = useState(false);
   const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  const [activeSavedView, setActiveSavedView] = useState<ReviewSavedView | null>(null);
   const [queueDensity, setQueueDensity] = useState<QueueDensity>("comfortable");
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const filteredRowsRef = useRef<ReviewQueueRow[]>([]);
@@ -777,11 +811,13 @@ export function MonitorIndicatorPanel({
     setDateTo("");
     setPriorityFilter("all");
     setAssignedReviewerFilter("all");
+    setActiveSavedView(null);
   };
 
   const applySavedView = (view: ReviewSavedView) => {
     const today = new Date().toISOString().slice(0, 10);
     const normalizedUser = username.trim();
+    setActiveSavedView(view);
 
     setSearch("");
     setDistrictRegionFilter("all");
@@ -1124,35 +1160,35 @@ export function MonitorIndicatorPanel({
           <button
             type="button"
             onClick={() => applySavedView("needs_action")}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            className={savedViewButtonClass("needs_action", activeSavedView === "needs_action")}
           >
             Needs Action
           </button>
           <button
             type="button"
             onClick={() => applySavedView("my_queue")}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            className={savedViewButtonClass("my_queue", activeSavedView === "my_queue")}
           >
             My Queue
           </button>
           <button
             type="button"
             onClick={() => applySavedView("unassigned")}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            className={savedViewButtonClass("unassigned", activeSavedView === "unassigned")}
           >
             Unassigned
           </button>
           <button
             type="button"
             onClick={() => applySavedView("overdue_72h")}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            className={savedViewButtonClass("overdue_72h", activeSavedView === "overdue_72h")}
           >
             Overdue 72h+
           </button>
           <button
             type="button"
             onClick={() => applySavedView("returned_today")}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            className={savedViewButtonClass("returned_today", activeSavedView === "returned_today")}
           >
             Returned Today
           </button>
