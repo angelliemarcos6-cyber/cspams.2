@@ -424,6 +424,19 @@ function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: s
   return "unknown";
 }
 
+function normalizeSearchTerms(value: string): string[] {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((term) => term.length > 0);
+}
+
+function matchesAllSearchTerms(searchableText: string, terms: string[]): boolean {
+  if (terms.length === 0) return true;
+  return terms.every((term) => searchableText.includes(term));
+}
+
 function toTime(...candidates: Array<string | null | undefined>): number {
   for (const candidate of candidates) {
     const value = new Date(candidate ?? 0).getTime();
@@ -1414,6 +1427,24 @@ export function MonitorDashboard() {
     return teacherLookupOptions.filter((name) => name.toLowerCase().includes(query));
   }, [teacherLookupOptions, teacherLookupQuery]);
 
+  const selectedTeacherSchoolKeys = useMemo(() => {
+    if (!selectedTeacherLookup) return null;
+
+    const normalizedTeacher = selectedTeacherLookup.trim().toLowerCase();
+    const keys = new Set<string>();
+
+    for (const student of scopedStudentPool) {
+      if ((student.teacher ?? "").trim().toLowerCase() !== normalizedTeacher) continue;
+
+      const key = normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null);
+      if (key !== "unknown") {
+        keys.add(key);
+      }
+    }
+
+    return keys;
+  }, [scopedStudentPool, selectedTeacherLookup]);
+
   const selectedStudentLabel = selectedStudentLookup
     ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn}`
     : "Find student (name or LRN)";
@@ -1650,8 +1681,13 @@ export function MonitorDashboard() {
     setRequirementFilter("all");
   }, [requirementFilter, visibleRequirementFilterIds]);
 
+  const searchTerms = useMemo(() => normalizeSearchTerms(debouncedSearch), [debouncedSearch]);
+
   const filteredRequirementRows = useMemo(() => {
-    const query = debouncedSearch.trim().toLowerCase();
+    const selectedStudentSchoolKey =
+      selectedStudentLookup?.schoolKey && selectedStudentLookup.schoolKey !== "unknown"
+        ? selectedStudentLookup.schoolKey
+        : null;
 
     return scopedRequirementRows.filter((row) => {
       const record = scopedRecordBySchoolKey.get(row.schoolKey);
@@ -1663,20 +1699,34 @@ export function MonitorDashboard() {
         record?.type ?? "",
         record?.address ?? record?.district ?? "",
         record?.submittedBy ?? "",
-      ]
+        ]
         .join(" ")
         .toLowerCase();
 
-      const matchesSearch =
-        query.length === 0 ||
-        searchableText.includes(query);
+      const matchesSearch = matchesAllSearchTerms(searchableText, searchTerms);
       const matchesStatus = statusFilter === "all" || row.schoolStatus === statusFilter;
       const matchesRequirement = matchesRequirementFilter(row, requirementFilter);
-      return matchesSearch && matchesStatus && matchesRequirement;
-    });
-  }, [scopedRequirementRows, scopedRecordBySchoolKey, debouncedSearch, statusFilter, requirementFilter]);
+      const matchesStudentLookup = !selectedStudentSchoolKey || row.schoolKey === selectedStudentSchoolKey;
+      const matchesTeacherLookup = !selectedTeacherSchoolKeys || selectedTeacherSchoolKeys.has(row.schoolKey);
 
-  const hasDashboardFilters = debouncedSearch.trim().length > 0 || statusFilter !== "all" || requirementFilter !== "all";
+      return matchesSearch && matchesStatus && matchesRequirement && matchesStudentLookup && matchesTeacherLookup;
+    });
+  }, [
+    scopedRequirementRows,
+    scopedRecordBySchoolKey,
+    searchTerms,
+    selectedStudentLookup,
+    selectedTeacherSchoolKeys,
+    statusFilter,
+    requirementFilter,
+  ]);
+
+  const hasDashboardFilters =
+    searchTerms.length > 0 ||
+    statusFilter !== "all" ||
+    requirementFilter !== "all" ||
+    Boolean(selectedStudentLookup) ||
+    Boolean(selectedTeacherLookup);
   const filteredSchoolKeys = useMemo(() => {
     if (!hasDashboardFilters && !scopedSchoolKeys) {
       return null;
