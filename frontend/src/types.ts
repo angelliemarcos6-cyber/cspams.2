@@ -265,6 +265,21 @@ export interface IndicatorSubmission {
   reviewNotes: string | null;
   summary: IndicatorSubmissionSummary;
   indicators: IndicatorSubmissionItem[];
+  createdBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  submittedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  reviewedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   submittedAt: string | null;
   reviewedAt: string | null;
   createdAt: string | null;

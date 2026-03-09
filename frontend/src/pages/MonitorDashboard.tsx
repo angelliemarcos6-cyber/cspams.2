@@ -2215,7 +2215,7 @@ export function MonitorDashboard() {
     setSchoolDrawerKey(null);
   };
 
-  const sendReminderForSchool = async (schoolKey: string, schoolName: string) => {
+  const sendReminderForSchool = async (schoolKey: string, schoolName: string, notes?: string | null) => {
     const record = scopedRecordBySchoolKey.get(schoolKey) ?? recordBySchoolKey.get(schoolKey);
     if (!record) {
       pushToast(`Unable to send reminder for ${schoolName}: school record not found.`, "warning");
@@ -2224,7 +2224,7 @@ export function MonitorDashboard() {
 
     setRemindingSchoolKey(schoolKey);
     try {
-      const receipt = await sendReminder(record.id);
+      const receipt = await sendReminder(record.id, notes);
       const recipientLabel = receipt.recipientCount === 1 ? "recipient" : "recipients";
       pushToast(`Reminder sent to ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
     } catch (err) {
@@ -3340,7 +3340,12 @@ export function MonitorDashboard() {
             </div>
             {isMobileViewport && renderQuickJumpChips(true)}
           </div>
-          <MonitorIndicatorPanel schoolFilterKeys={filteredSchoolKeys} onToast={pushToast} />
+          <MonitorIndicatorPanel
+            schoolFilterKeys={filteredSchoolKeys}
+            schoolRecords={records}
+            onToast={pushToast}
+            onSendReminder={sendReminderForSchool}
+          />
         </section>
       )}
 
