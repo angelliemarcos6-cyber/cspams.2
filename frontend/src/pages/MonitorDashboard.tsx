@@ -3041,71 +3041,72 @@ export function MonitorDashboard() {
           </section>
 
           {showAdvancedAnalytics && (
-            <>
-          <section id="monitor-targets-snapshot" className={`mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr] ${sectionFocusClass("monitor-targets-snapshot")}`}>
-            <div id="monitor-sync-alerts" className={`surface-panel dashboard-shell p-5 ${sectionFocusClass("monitor-sync-alerts")}`}>
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Sync Snapshot</h2>
-                <span className="text-xs text-slate-500">
-                  {targetsMet?.generatedAt ? `Generated ${new Date(targetsMet.generatedAt).toLocaleTimeString()}` : "Waiting for data"}
-                </span>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Retention Rate</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.retentionRatePercent.toFixed(2)}%` : "--"}</p>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dropout Rate</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.dropoutRatePercent.toFixed(2)}%` : "--"}</p>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion Rate</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.completionRatePercent.toFixed(2)}%` : "--"}</p>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">At-Risk Learners</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? targetsMet.atRiskLearners.toLocaleString() : "--"}</p>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Teacher Ratio</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentTeacherRatio ?? "--"}</p>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Classroom Ratio</p>
-                  <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentClassroomRatio ?? "--"}</p>
-                </div>
-              </div>
-            </div>
+            <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
+              <div id="monitor-targets-snapshot" className={`p-4 ${sectionFocusClass("monitor-targets-snapshot")}`}>
+                <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+                  <div id="monitor-sync-alerts" className={`rounded-sm border border-slate-200 bg-white p-5 ${sectionFocusClass("monitor-sync-alerts")}`}>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Sync Snapshot</h2>
+                      <span className="text-xs text-slate-500">
+                        {targetsMet?.generatedAt ? `Generated ${new Date(targetsMet.generatedAt).toLocaleTimeString()}` : "Waiting for data"}
+                      </span>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Retention Rate</p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.retentionRatePercent.toFixed(2)}%` : "--"}</p>
+                      </div>
+                      <div className="border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dropout Rate</p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.dropoutRatePercent.toFixed(2)}%` : "--"}</p>
+                      </div>
+                      <div className="border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion Rate</p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.completionRatePercent.toFixed(2)}%` : "--"}</p>
+                      </div>
+                      <div className="border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">At-Risk Learners</p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? targetsMet.atRiskLearners.toLocaleString() : "--"}</p>
+                      </div>
+                      <div className="border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Teacher Ratio</p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentTeacherRatio ?? "--"}</p>
+                      </div>
+                      <div className="border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Classroom Ratio</p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentClassroomRatio ?? "--"}</p>
+                      </div>
+                    </div>
+                  </div>
 
-            <div className="surface-panel dashboard-shell p-5">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Synchronized Alerts</h2>
-              <div className="mt-4 space-y-3">
-                {syncAlerts.slice(0, 4).map((alert) => (
-                  <article key={alert.id} className="border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{alert.level}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{alert.title}</p>
-                    <p className="mt-1 text-xs text-slate-600">{alert.message}</p>
-                  </article>
-                ))}
-                {syncAlerts.length === 0 && <p className="text-xs text-slate-500">No synchronized alerts yet.</p>}
+                  <div className="rounded-sm border border-slate-200 bg-white p-5">
+                    <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Synchronized Alerts</h2>
+                    <div className="mt-4 space-y-3">
+                      {syncAlerts.slice(0, 4).map((alert) => (
+                        <article key={alert.id} className="border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{alert.level}</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">{alert.title}</p>
+                          <p className="mt-1 text-xs text-slate-600">{alert.message}</p>
+                        </article>
+                      ))}
+                      {syncAlerts.length === 0 && <p className="text-xs text-slate-500">No synchronized alerts yet.</p>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                  <div id="monitor-status-chart" className={`rounded-sm border border-slate-200 bg-white p-3 ${sectionFocusClass("monitor-status-chart")}`}>
+                    <StatusPieChart data={statusDistribution} />
+                  </div>
+                  <div id="monitor-region-chart" className={`rounded-sm border border-slate-200 bg-white p-3 ${sectionFocusClass("monitor-region-chart")}`}>
+                    <RegionBarChart data={regionAggregates} />
+                  </div>
+                  <div id="monitor-trend-chart" className={`rounded-sm border border-slate-200 bg-white p-3 ${sectionFocusClass("monitor-trend-chart")}`}>
+                    <SubmissionTrendChart data={submissionTrend} />
+                  </div>
+                </div>
               </div>
-            </div>
-          </section>
-
-          <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
-            <div id="monitor-status-chart" className={sectionFocusClass("monitor-status-chart")}>
-              <StatusPieChart data={statusDistribution} />
-            </div>
-            <div id="monitor-region-chart" className={sectionFocusClass("monitor-region-chart")}>
-              <RegionBarChart data={regionAggregates} />
-            </div>
-            <div id="monitor-trend-chart" className={sectionFocusClass("monitor-trend-chart")}>
-              <SubmissionTrendChart data={submissionTrend} />
-            </div>
-          </section>
-
-            </>
+            </section>
           )}
         </>
       )}
