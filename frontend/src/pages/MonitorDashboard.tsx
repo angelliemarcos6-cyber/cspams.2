@@ -2012,20 +2012,22 @@ export function MonitorDashboard() {
               </div>
             )}
 
-            <div className={`mt-auto border-t border-primary-400/30 pt-4 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
-              <button
-                type="button"
-                onClick={() => setShowNavigatorManual((current) => !current)}
-                className={`inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
-                  isNavigatorCompact ? "h-8 w-8 justify-center p-0" : "w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide"
-                }`}
-                title="User Manual"
-                aria-label="Open user manual"
-              >
-                <BookOpenText className="h-3.5 w-3.5" />
-                {!isNavigatorCompact && <span>Help</span>}
-              </button>
-            </div>
+            {shouldRenderNavigatorItems && (
+              <div className={`mt-3 border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
+                <button
+                  type="button"
+                  onClick={() => setShowNavigatorManual((current) => !current)}
+                  className={`inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
+                    isNavigatorCompact ? "h-8 w-8 justify-center p-0" : "w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide"
+                  }`}
+                  title="User Manual"
+                  aria-label="Open user manual"
+                >
+                  <BookOpenText className="h-3.5 w-3.5" />
+                  {!isNavigatorCompact && <span>Help</span>}
+                </button>
+              </div>
+            )}
           </div>
         </aside>
         <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
