@@ -26,12 +26,14 @@ interface MonitorIndicatorPanelProps {
   embedded?: boolean;
 }
 
-type ReviewStatusFilter = "all" | "submitted" | "returned" | "validated" | "draft";
+type ReviewStatusFilter = "all" | "submitted" | "returned" | "validated" | "overdue" | "draft";
 type SubmissionTypeFilter = "all" | "indicator";
 type PriorityFilter = "all" | "normal" | "medium" | "high" | "overdue" | "returned";
 type DistrictRegionFilter = "all" | `district:${string}` | `region:${string}`;
 type AssignedReviewerFilter = "all" | "unassigned" | string;
 type ReviewDecisionAction = "validated" | "returned" | "clarification" | "escalated";
+type ReviewSavedView = "needs_action" | "overdue_72h" | "returned_today";
+type DetailTab = "overview" | "checklist" | "history";
 
 interface ReviewQueueRow {
   submission: IndicatorSubmission;
@@ -311,6 +313,7 @@ export function MonitorIndicatorPanel({
   const [reviewActionError, setReviewActionError] = useState("");
   const [isReviewActionRunning, setIsReviewActionRunning] = useState(false);
   const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  const [detailTab, setDetailTab] = useState<DetailTab>("overview");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -565,7 +568,9 @@ export function MonitorIndicatorPanel({
           return false;
         }
 
-        if (statusFilter !== "all" && row.status !== statusFilter) {
+        if (statusFilter === "overdue") {
+          if (!row.overdue) return false;
+        } else if (statusFilter !== "all" && row.status !== statusFilter) {
           return false;
         }
 
@@ -712,11 +717,22 @@ export function MonitorIndicatorPanel({
 
   const openDetails = (row: ReviewQueueRow) => {
     setDetailSubmissionId(row.submission.id);
+    setDetailTab("overview");
     void ensureHistoryLoaded(row.submission.id);
   };
 
   const closeDetails = () => {
     setDetailSubmissionId(null);
+  };
+
+  const detailRowIndex = detailRow ? filteredRows.findIndex((row) => row.submission.id === detailRow.submission.id) : -1;
+  const hasNextDetailRow = detailRowIndex >= 0 && detailRowIndex < filteredRows.length - 1;
+
+  const openNextDetailRow = () => {
+    if (!hasNextDetailRow) return;
+    const nextRow = filteredRows[detailRowIndex + 1];
+    if (!nextRow) return;
+    openDetails(nextRow);
   };
 
   const clearFilters = () => {
@@ -728,6 +744,37 @@ export function MonitorIndicatorPanel({
     setDateTo("");
     setPriorityFilter("all");
     setAssignedReviewerFilter("all");
+  };
+
+  const applySavedView = (view: ReviewSavedView) => {
+    const today = new Date().toISOString().slice(0, 10);
+
+    setSearch("");
+    setDistrictRegionFilter("all");
+    setSubmissionTypeFilter("all");
+    setAssignedReviewerFilter("all");
+    setShowAdvancedControls(false);
+
+    if (view === "needs_action") {
+      setStatusFilter("submitted");
+      setPriorityFilter("all");
+      setDateFrom("");
+      setDateTo("");
+      return;
+    }
+
+    if (view === "overdue_72h") {
+      setStatusFilter("overdue");
+      setPriorityFilter("overdue");
+      setDateFrom("");
+      setDateTo("");
+      return;
+    }
+
+    setStatusFilter("returned");
+    setPriorityFilter("all");
+    setDateFrom(today);
+    setDateTo(today);
   };
 
   const toggleSelectAll = () => {
@@ -815,6 +862,46 @@ export function MonitorIndicatorPanel({
       setIsReviewActionRunning(false);
     }
   };
+
+  useEffect(() => {
+    if (!detailRow) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      const key = event.key.toLowerCase();
+
+      if (key === "n") {
+        if (!hasNextDetailRow) return;
+        event.preventDefault();
+        openNextDetailRow();
+        return;
+      }
+
+      if (detailRow.status !== "submitted") return;
+
+      if (key === "v") {
+        event.preventDefault();
+        openReviewAction(detailRow.submission, "validated");
+      }
+
+      if (key === "r") {
+        event.preventDefault();
+        openReviewAction(detailRow.submission, "returned");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [detailRow, hasNextDetailRow, openNextDetailRow, openReviewAction]);
 
   const applyBatchReviewer = () => {
     if (selectedRows.length === 0) {
@@ -973,6 +1060,33 @@ export function MonitorIndicatorPanel({
         </div>
       </div>
 
+      <div className="border-b border-slate-100 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Saved Views</span>
+          <button
+            type="button"
+            onClick={() => applySavedView("needs_action")}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Needs Action
+          </button>
+          <button
+            type="button"
+            onClick={() => applySavedView("overdue_72h")}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Overdue 72h+
+          </button>
+          <button
+            type="button"
+            onClick={() => applySavedView("returned_today")}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Returned Today
+          </button>
+        </div>
+      </div>
+
       <div className="border-b border-slate-100 px-5 py-4">
         <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
           <label className="block">
@@ -997,7 +1111,7 @@ export function MonitorIndicatorPanel({
               <option value="submitted">For review</option>
               <option value="returned">Returned</option>
               <option value="validated">Validated</option>
-              <option value="draft">Draft</option>
+              <option value="overdue">Overdue</option>
             </select>
           </label>
 
@@ -1009,7 +1123,7 @@ export function MonitorIndicatorPanel({
             >
               {showAdvancedControls ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               {showAdvancedControls ? "Hide advanced" : "More filters"}
-              {hasAdvancedFiltersActive && !showAdvancedControls ? " • active" : ""}
+              {hasAdvancedFiltersActive && !showAdvancedControls ? " - active" : ""}
             </button>
             <button
               type="button"
@@ -1146,62 +1260,66 @@ export function MonitorIndicatorPanel({
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-slate-600">Batch reviewer</label>
-                <div className="inline-flex items-center gap-2">
-                  <select
-                    value={batchReviewer}
-                    onChange={(event) => setBatchReviewer(event.target.value)}
-                    className="rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  >
-                    <option value={UNASSIGNED_REVIEWER_VALUE}>Unassigned</option>
-                    {reviewerOptions.map((reviewer) => (
-                      <option key={`batch-reviewer-${reviewer}`} value={reviewer}>
-                        {reviewer}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={applyBatchReviewer}
-                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                  >
-                    <UserPlus className="h-3.5 w-3.5" />
-                    Apply
-                  </button>
+            {selectedRows.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-600">Batch reviewer</label>
+                  <div className="inline-flex items-center gap-2">
+                    <select
+                      value={batchReviewer}
+                      onChange={(event) => setBatchReviewer(event.target.value)}
+                      className="rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    >
+                      <option value={UNASSIGNED_REVIEWER_VALUE}>Unassigned</option>
+                      {reviewerOptions.map((reviewer) => (
+                        <option key={`batch-reviewer-${reviewer}`} value={reviewer}>
+                          {reviewer}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={applyBatchReviewer}
+                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Apply
+                    </button>
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => void sendBatchReminders()}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  Send reminders
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportSelectedRows}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export selected
+                </button>
+
+                <button
+                  type="button"
+                  onClick={exportFilteredRows}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export filtered
+                </button>
+
+                <p className="text-xs text-slate-500">{selectedRows.length} selected</p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => void sendBatchReminders()}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                <Mail className="h-3.5 w-3.5" />
-                Send reminders
-              </button>
-
-              <button
-                type="button"
-                onClick={exportSelectedRows}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Export selected
-              </button>
-
-              <button
-                type="button"
-                onClick={exportFilteredRows}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Export filtered
-              </button>
-
-              <p className="text-xs text-slate-500">{selectedRows.length} selected</p>
-            </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">Select queue rows to enable batch assignment, reminders, and exports.</p>
+            )}
           </div>
         )}
       </div>
@@ -1309,33 +1427,37 @@ export function MonitorIndicatorPanel({
                               <CheckCircle2 className="h-3 w-3" />
                               Validate
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => openReviewAction(row.submission, "returned")}
-                              disabled={isSaving || isLoading}
-                              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              <RotateCcw className="h-3 w-3" />
-                              Return
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openReviewAction(row.submission, "clarification")}
-                              disabled={isSaving || isLoading}
-                              className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              <AlertCircle className="h-3 w-3" />
-                              Clarify
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openReviewAction(row.submission, "escalated")}
-                              disabled={isSaving || isLoading}
-                              className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              <Send className="h-3 w-3" />
-                              Escalate
-                            </button>
+                            {isSelected && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openReviewAction(row.submission, "returned")}
+                                  disabled={isSaving || isLoading}
+                                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  Return
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openReviewAction(row.submission, "clarification")}
+                                  disabled={isSaving || isLoading}
+                                  className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                  <AlertCircle className="h-3 w-3" />
+                                  Clarify
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openReviewAction(row.submission, "escalated")}
+                                  disabled={isSaving || isLoading}
+                                  className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                  <Send className="h-3 w-3" />
+                                  Escalate
+                                </button>
+                              </>
+                            )}
                           </>
                         )}
                         <button
@@ -1346,6 +1468,9 @@ export function MonitorIndicatorPanel({
                           <Eye className="h-3 w-3" />
                           Details
                         </button>
+                        {isSubmitted && !isSelected && (
+                          <span className="text-[10px] font-medium text-slate-500">Select row for more actions</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1390,160 +1515,216 @@ export function MonitorIndicatorPanel({
               </div>
             </div>
 
-            <div className="grid gap-4 px-5 py-4 lg:grid-cols-[1.2fr_1fr]">
-              <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Submission Overview</p>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <p className="text-xs text-slate-700"><span className="font-semibold">School:</span> {detailRow.schoolName}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Code:</span> {detailRow.schoolCode}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">District:</span> {detailRow.district}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Region:</span> {detailRow.region}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Submission Type:</span> {detailRow.submissionType}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Period:</span> {detailRow.submission.reportingPeriod ?? "N/A"}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Submitted:</span> {formatDateTime(detailRow.submittedAt)}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Reviewed:</span> {formatDateTime(detailRow.reviewedAt)}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Status:</span> {workflowLabel(detailRow.status)}</p>
-                  <p className="text-xs text-slate-700"><span className="font-semibold">Reviewer:</span> {detailRow.assignedReviewer}</p>
-                </div>
-                {detailRow.submission.notes && (
-                  <p className="mt-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700">
-                    <span className="font-semibold">School note:</span> {detailRow.submission.notes}
-                  </p>
+            <div className="border-b border-slate-200 px-5 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("overview")}
+                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    detailTab === "overview"
+                      ? "border-primary-200 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  Overview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("checklist")}
+                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    detailTab === "checklist"
+                      ? "border-primary-200 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  Checklist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("history")}
+                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    detailTab === "history"
+                      ? "border-primary-200 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  History
+                </button>
+                <span className="ml-auto text-[11px] text-slate-500">Keyboard: V validate, R return, N next</span>
+                {hasNextDetailRow && (
+                  <button
+                    type="button"
+                    onClick={openNextDetailRow}
+                    className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Next Row
+                  </button>
                 )}
-                {detailRow.submission.reviewNotes && (
-                  <p className="mt-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700">
-                    <span className="font-semibold">Review note:</span> {detailRow.submission.reviewNotes}
-                  </p>
-                )}
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Previous Cycle Comparison</p>
-                {detailRow.previousSubmission ? (
-                  <div className="mt-2 space-y-1 text-xs text-slate-700">
-                    <p>
-                      <span className="font-semibold">Previous Package:</span> #{detailRow.previousSubmission.id}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Previous Period:</span> {detailRow.previousSubmission.reportingPeriod ?? "N/A"}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Previous Compliance:</span>{" "}
-                      {detailRow.previousSubmission.summary.complianceRatePercent.toFixed(2)}%
-                    </p>
-                    <p>
-                      <span className="font-semibold">Current Compliance:</span>{" "}
-                      {detailRow.submission.summary.complianceRatePercent.toFixed(2)}%
-                    </p>
-                    <p>
-                      <span className="font-semibold">Change:</span>{" "}
-                      {(detailRow.submission.summary.complianceRatePercent - detailRow.previousSubmission.summary.complianceRatePercent).toFixed(2)}%
-                    </p>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-500">No previous cycle package found for comparison.</p>
-                )}
-              </article>
+              </div>
             </div>
 
-            <div className="px-5 pb-4">
-              <article className="rounded-sm border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Indicator Checklist</p>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead className="table-head-sticky">
-                      <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                        <th className="px-2 py-2 text-left">Indicator</th>
-                        <th className="px-2 py-2 text-right">Target</th>
-                        <th className="px-2 py-2 text-right">Actual</th>
-                        <th className="px-2 py-2 text-right">Variance</th>
-                        <th className="px-2 py-2 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {detailRow.submission.indicators.map((entry) => (
-                        <tr key={entry.id}>
-                          <td className="px-2 py-2 text-xs text-slate-700">
-                            <p className="font-semibold text-slate-900">{entry.metric?.code || "N/A"}</p>
-                            <p className="text-slate-500">{entry.metric?.name || "Unknown metric"}</p>
-                          </td>
-                          <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetDisplay ?? entry.targetValue}</td>
-                          <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualDisplay ?? entry.actualValue}</td>
-                          <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.varianceValue}</td>
-                          <td className="px-2 py-2 text-center">
-                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${complianceTone(entry.complianceStatus)}`}>
-                              {entry.complianceStatus === "met" ? "Met" : "Below"}
-                            </span>
-                          </td>
+            {detailTab === "overview" && (
+              <>
+                <div className="grid gap-4 px-5 py-4 lg:grid-cols-[1.2fr_1fr]">
+                  <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Submission Overview</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <p className="text-xs text-slate-700"><span className="font-semibold">School:</span> {detailRow.schoolName}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Code:</span> {detailRow.schoolCode}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">District:</span> {detailRow.district}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Region:</span> {detailRow.region}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Submission Type:</span> {detailRow.submissionType}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Period:</span> {detailRow.submission.reportingPeriod ?? "N/A"}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Submitted:</span> {formatDateTime(detailRow.submittedAt)}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Reviewed:</span> {formatDateTime(detailRow.reviewedAt)}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Status:</span> {workflowLabel(detailRow.status)}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Reviewer:</span> {detailRow.assignedReviewer}</p>
+                    </div>
+                    {detailRow.submission.notes && (
+                      <p className="mt-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">School note:</span> {detailRow.submission.notes}
+                      </p>
+                    )}
+                    {detailRow.submission.reviewNotes && (
+                      <p className="mt-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700">
+                        <span className="font-semibold">Review note:</span> {detailRow.submission.reviewNotes}
+                      </p>
+                    )}
+                  </article>
+
+                  <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Previous Cycle Comparison</p>
+                    {detailRow.previousSubmission ? (
+                      <div className="mt-2 space-y-1 text-xs text-slate-700">
+                        <p>
+                          <span className="font-semibold">Previous Package:</span> #{detailRow.previousSubmission.id}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Previous Period:</span> {detailRow.previousSubmission.reportingPeriod ?? "N/A"}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Previous Compliance:</span>{" "}
+                          {detailRow.previousSubmission.summary.complianceRatePercent.toFixed(2)}%
+                        </p>
+                        <p>
+                          <span className="font-semibold">Current Compliance:</span>{" "}
+                          {detailRow.submission.summary.complianceRatePercent.toFixed(2)}%
+                        </p>
+                        <p>
+                          <span className="font-semibold">Change:</span>{" "}
+                          {(detailRow.submission.summary.complianceRatePercent - detailRow.previousSubmission.summary.complianceRatePercent).toFixed(2)}%
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">No previous cycle package found for comparison.</p>
+                    )}
+                  </article>
+                </div>
+
+                <div className="grid gap-4 px-5 pb-5 lg:grid-cols-2">
+                  <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Missing Fields</p>
+                    {detailRow.missingFields.length === 0 ? (
+                      <p className="mt-2 text-xs text-primary-700">No missing fields detected in this submission snapshot.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-1">
+                        {detailRow.missingFields.map((field) => (
+                          <li key={field} className="text-xs text-slate-700">
+                            - {field}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </article>
+
+                  <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Attachment / Evidence Links</p>
+                    {detailRow.evidenceLinks.length === 0 ? (
+                      <p className="mt-2 text-xs text-slate-500">No evidence links found in notes or indicator remarks.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-1">
+                        {detailRow.evidenceLinks.map((link) => (
+                          <li key={link} className="text-xs">
+                            <a href={link} target="_blank" rel="noreferrer" className="text-primary-700 underline">
+                              {link}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </article>
+                </div>
+              </>
+            )}
+
+            {detailTab === "checklist" && (
+              <div className="px-5 py-4">
+                <article className="rounded-sm border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Indicator Checklist</p>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="min-w-full">
+                      <thead className="table-head-sticky">
+                        <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-2 py-2 text-left">Indicator</th>
+                          <th className="px-2 py-2 text-right">Target</th>
+                          <th className="px-2 py-2 text-right">Actual</th>
+                          <th className="px-2 py-2 text-right">Variance</th>
+                          <th className="px-2 py-2 text-center">Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </article>
-            </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {detailRow.submission.indicators.map((entry) => (
+                          <tr key={entry.id}>
+                            <td className="px-2 py-2 text-xs text-slate-700">
+                              <p className="font-semibold text-slate-900">{entry.metric?.code || "N/A"}</p>
+                              <p className="text-slate-500">{entry.metric?.name || "Unknown metric"}</p>
+                            </td>
+                            <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetDisplay ?? entry.targetValue}</td>
+                            <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualDisplay ?? entry.actualValue}</td>
+                            <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.varianceValue}</td>
+                            <td className="px-2 py-2 text-center">
+                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${complianceTone(entry.complianceStatus)}`}>
+                                {entry.complianceStatus === "met" ? "Met" : "Below"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              </div>
+            )}
 
-            <div className="grid gap-4 px-5 pb-5 lg:grid-cols-2">
-              <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Missing Fields</p>
-                {detailRow.missingFields.length === 0 ? (
-                  <p className="mt-2 text-xs text-primary-700">No missing fields detected in this submission snapshot.</p>
-                ) : (
-                  <ul className="mt-2 space-y-1">
-                    {detailRow.missingFields.map((field) => (
-                      <li key={field} className="text-xs text-slate-700">
-                        - {field}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Attachment / Evidence Links</p>
-                {detailRow.evidenceLinks.length === 0 ? (
-                  <p className="mt-2 text-xs text-slate-500">No evidence links found in notes or indicator remarks.</p>
-                ) : (
-                  <ul className="mt-2 space-y-1">
-                    {detailRow.evidenceLinks.map((link) => (
-                      <li key={link} className="text-xs">
-                        <a href={link} target="_blank" rel="noreferrer" className="text-primary-700 underline">
-                          {link}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </article>
-            </div>
-
-            <div className="px-5 pb-6">
-              <article className="rounded-sm border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Review Notes + Audit Trail</p>
-                <div className="mt-2 space-y-2">
-                  {isDetailHistoryLoading ? (
-                    <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">Loading history...</p>
-                  ) : detailHistory.length === 0 ? (
-                    <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">No history entries found.</p>
-                  ) : (
-                    detailHistory.map((entry) => (
-                      <article key={entry.id} className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                          {entry.action} - {formatDateTime(entry.createdAt)}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-600">
-                          {entry.fromStatusLabel || "N/A"} -&gt; {entry.toStatusLabel || "N/A"}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-600">
-                          {entry.actor?.name ? `By ${entry.actor.name}` : "System action"}
-                        </p>
-                        {entry.notes && <p className="mt-1 text-xs text-slate-700">{entry.notes}</p>}
-                      </article>
-                    ))
-                  )}
-                </div>
-              </article>
-            </div>
+            {detailTab === "history" && (
+              <div className="px-5 py-4">
+                <article className="rounded-sm border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Review Notes + Audit Trail</p>
+                  <div className="mt-2 space-y-2">
+                    {isDetailHistoryLoading ? (
+                      <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">Loading history...</p>
+                    ) : detailHistory.length === 0 ? (
+                      <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">No history entries found.</p>
+                    ) : (
+                      detailHistory.map((entry) => (
+                        <article key={entry.id} className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            {entry.action} - {formatDateTime(entry.createdAt)}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-600">
+                            {entry.fromStatusLabel || "N/A"} -&gt; {entry.toStatusLabel || "N/A"}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-600">
+                            {entry.actor?.name ? `By ${entry.actor.name}` : "System action"}
+                          </p>
+                          {entry.notes && <p className="mt-1 text-xs text-slate-700">{entry.notes}</p>}
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </article>
+              </div>
+            )}
           </aside>
         </>
       )}
@@ -1633,3 +1814,4 @@ export function MonitorIndicatorPanel({
     </section>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -53,9 +53,9 @@ type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "s
 type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 type WorkflowStatus = Exclude<RequirementFilter, "all">;
-type MonitorTopNavigatorId = "action_queue" | "schools" | "compliance_review" | "student_records" | "reports";
+type MonitorTopNavigatorId = "action_queue" | "schools" | "compliance_review" | "reports";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
-type FilterChipId = "search" | "status" | "requirement" | "school" | "student" | "teacher";
+type FilterChipId = "search" | "status" | "requirement" | "school" | "student" | "teacher" | "date";
 type ToastTone = "success" | "info" | "warning";
 
 interface MonitorTopNavigatorItem {
@@ -174,6 +174,8 @@ interface PersistedMonitorFilters {
   schoolScopeKey?: string;
   studentLookupId?: string | null;
   teacherLookup?: string | null;
+  filterDateFrom?: string;
+  filterDateTo?: string;
   activeTopNavigator?: MonitorTopNavigatorId;
 }
 
@@ -182,7 +184,6 @@ const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "action_queue", label: "Action Queue" },
   { id: "compliance_review", label: "Review" },
   { id: "schools", label: "Schools" },
-  { id: "student_records", label: "Students" },
   { id: "reports", label: "Reports" },
 ];
 
@@ -190,7 +191,6 @@ const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIc
   action_queue: ListChecks,
   schools: Building2,
   compliance_review: ClipboardList,
-  student_records: Users,
   reports: LayoutDashboard,
 };
 
@@ -200,7 +200,7 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
     title: "Action Queue",
     objective: "Handle schools that need immediate monitor action.",
     actions: [
-      "Check Missing, Returned, and Waiting rows first.",
+      "Check Missing, Returned, and For Review rows first.",
       "Use Review, Open School, or Send Reminder on each row.",
     ],
     doneWhen: "No urgent rows remain unassigned for action.",
@@ -218,22 +218,13 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "schools",
     title: "Schools",
-    objective: "Inspect school profile, status, and latest activity in one place.",
+    objective: "Inspect school profile, status, learner records, and latest activity in one place.",
     actions: [
       "Review school profile and activity updates.",
+      "Open learner records directly from Schools when needed.",
       "Use row actions for follow-up without leaving the page.",
     ],
     doneWhen: "School details and latest updates are verified.",
-  },
-  {
-    id: "student_records",
-    title: "Student Records",
-    objective: "Run read-only learner checks with quick search.",
-    actions: [
-      "Search learners by name or LRN.",
-      "Confirm school and teacher assignments are synchronized.",
-    ],
-    doneWhen: "Learner records match expected school submissions.",
   },
   {
     id: "reports",
@@ -249,7 +240,7 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
 
 const MONITOR_MANUAL_STATUS_GUIDE = [
   "Missing: Requirement not yet submitted by school.",
-  "Waiting: Submitted and waiting for monitor review.",
+  "For Review: Submitted and waiting for monitor review.",
   "Returned: Sent back to school head for correction.",
   "Submitted: School package has been sent to monitor.",
   "Validated: Approved and closed.",
@@ -258,7 +249,7 @@ const MONITOR_MANUAL_STATUS_GUIDE = [
 const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
   { id: "all", label: "All statuses" },
   { id: "missing", label: "Missing" },
-  { id: "waiting", label: "Waiting" },
+  { id: "waiting", label: "For Review" },
   { id: "returned", label: "Returned" },
   { id: "submitted", label: "Submitted" },
   { id: "validated", label: "Validated" },
@@ -272,14 +263,11 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   schools: [
     { id: "filters_schools", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
     { id: "school_records", label: "School List", targetId: "monitor-school-records", icon: Building2 },
+    { id: "school_learners", label: "Learner Records", targetId: "monitor-school-learners", icon: Users },
   ],
   compliance_review: [
     { id: "filters_review", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
     { id: "indicators_queue", label: "Review Queue", targetId: "monitor-indicators-queue", icon: ClipboardList },
-  ],
-  student_records: [
-    { id: "filters_students", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "student_records", label: "Learner List", targetId: "monitor-student-records", icon: Users },
   ],
   reports: [
     { id: "reports_summary", label: "Reports Summary", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
@@ -338,7 +326,7 @@ function workflowTone(status: string | null) {
 
 function workflowLabel(status: string | null): string {
   if (!status) return "Missing";
-  if (status === "submitted") return "Waiting";
+  if (status === "submitted") return "For Review";
   if (status === "validated") return "Validated";
   if (status === "returned") return "Returned";
   if (status === "draft") return "Missing";
@@ -363,7 +351,7 @@ function isValidSchoolStatusFilter(value: string | null | undefined): value is S
 }
 
 function isValidMonitorTopNavigator(value: string | null | undefined): value is MonitorTopNavigatorId {
-  return value === "action_queue" || value === "schools" || value === "compliance_review" || value === "student_records" || value === "reports";
+  return value === "action_queue" || value === "schools" || value === "compliance_review" || value === "reports";
 }
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -489,7 +477,7 @@ function queuePriorityScore(row: SchoolRequirementSummary): number {
 function queuePriorityLabel(row: SchoolRequirementSummary): string {
   if (row.indicatorStatus === "returned") return "Returned";
   if (row.missingCount > 0) return "Missing";
-  if (row.awaitingReviewCount > 0) return "Waiting";
+  if (row.awaitingReviewCount > 0) return "For Review";
   return "Normal";
 }
 
@@ -782,6 +770,8 @@ export function MonitorDashboard() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
   const [requirementFilter, setRequirementFilter] = useState<RequirementFilter>("all");
   const [selectedSchoolScopeKey, setSelectedSchoolScopeKey] = useState<string>(ALL_SCHOOL_SCOPE);
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
@@ -804,6 +794,8 @@ export function MonitorDashboard() {
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showContextAdvancedFilters, setShowContextAdvancedFilters] = useState(false);
+  const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [renderAdvancedAnalytics, setRenderAdvancedAnalytics] = useState(false);
   const [isHidingAdvancedAnalytics, setIsHidingAdvancedAnalytics] = useState(false);
@@ -944,7 +936,7 @@ export function MonitorDashboard() {
     if (typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
-    const hasQueryFilters = ["q", "status", "workflow", "school", "student", "teacher", "tab"].some((key) =>
+    const hasQueryFilters = ["q", "status", "workflow", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
       params.has(key),
     );
 
@@ -958,6 +950,8 @@ export function MonitorDashboard() {
         schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
         studentLookupId: params.get("student"),
         teacherLookup: params.get("teacher"),
+        filterDateFrom: params.get("from") ?? "",
+        filterDateTo: params.get("to") ?? "",
         activeTopNavigator: (params.get("tab") as MonitorTopNavigatorId | null) ?? undefined,
       };
     } else {
@@ -986,6 +980,8 @@ export function MonitorDashboard() {
         setSelectedTeacherLookup(persisted.teacherLookup);
         setTeacherLookupQuery(persisted.teacherLookup);
       }
+      setFilterDateFrom(persisted.filterDateFrom?.trim() ?? "");
+      setFilterDateTo(persisted.filterDateTo?.trim() ?? "");
       if (persisted.studentLookupId) {
         setPendingStudentLookupId(persisted.studentLookupId);
       }
@@ -1007,6 +1003,8 @@ export function MonitorDashboard() {
       schoolScopeKey: selectedSchoolScopeKey,
       studentLookupId: selectedStudentLookup?.id ?? pendingStudentLookupId ?? null,
       teacherLookup: selectedTeacherLookup,
+      filterDateFrom,
+      filterDateTo,
       activeTopNavigator,
     };
 
@@ -1031,6 +1029,8 @@ export function MonitorDashboard() {
     setOrDelete("school", selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
     setOrDelete("student", selectedStudentLookup?.id ?? pendingStudentLookupId ?? null);
     setOrDelete("teacher", selectedTeacherLookup ?? null);
+    setOrDelete("from", filterDateFrom.trim() ? filterDateFrom.trim() : null);
+    setOrDelete("to", filterDateTo.trim() ? filterDateTo.trim() : null);
     setOrDelete("tab", activeTopNavigator !== "action_queue" ? activeTopNavigator : null);
 
     const nextQuery = params.toString();
@@ -1038,6 +1038,8 @@ export function MonitorDashboard() {
     window.history.replaceState(null, "", nextUrl);
   }, [
     activeTopNavigator,
+    filterDateFrom,
+    filterDateTo,
     filtersHydrated,
     pendingStudentLookupId,
     requirementFilter,
@@ -1507,6 +1509,11 @@ export function MonitorDashboard() {
     setSelectedTeacherLookup(null);
   }, [selectedTeacherLookup, teacherLookupOptions]);
 
+  useEffect(() => {
+    if (!selectedStudentLookup && !selectedTeacherLookup) return;
+    setShowSchoolLearnerRecords(true);
+  }, [selectedStudentLookup, selectedTeacherLookup]);
+
   const scopedRecords = useMemo(() => {
     if (!scopedSchoolKeys) {
       return records;
@@ -1714,6 +1721,8 @@ export function MonitorDashboard() {
   const searchTerms = useMemo(() => normalizeSearchTerms(debouncedSearch), [debouncedSearch]);
 
   const filteredRequirementRows = useMemo(() => {
+    const fromTime = filterDateFrom ? new Date(`${filterDateFrom}T00:00:00`).getTime() : null;
+    const toTime = filterDateTo ? new Date(`${filterDateTo}T23:59:59.999`).getTime() : null;
     const selectedStudentSchoolKey =
       selectedStudentLookup?.schoolKey && selectedStudentLookup.schoolKey !== "unknown"
         ? selectedStudentLookup.schoolKey
@@ -1738,23 +1747,29 @@ export function MonitorDashboard() {
       const matchesRequirement = matchesRequirementFilter(row, requirementFilter);
       const matchesStudentLookup = !selectedStudentSchoolKey || row.schoolKey === selectedStudentSchoolKey;
       const matchesTeacherLookup = !selectedTeacherSchoolKeys || selectedTeacherSchoolKeys.has(row.schoolKey);
+      const matchesDateFrom = fromTime === null || (row.lastActivityTime > 0 && row.lastActivityTime >= fromTime);
+      const matchesDateTo = toTime === null || (row.lastActivityTime > 0 && row.lastActivityTime <= toTime);
 
-      return matchesSearch && matchesStatus && matchesRequirement && matchesStudentLookup && matchesTeacherLookup;
+      return matchesSearch && matchesStatus && matchesRequirement && matchesStudentLookup && matchesTeacherLookup && matchesDateFrom && matchesDateTo;
     });
   }, [
+    filterDateFrom,
+    filterDateTo,
+    requirementFilter,
     scopedRequirementRows,
     scopedRecordBySchoolKey,
     searchTerms,
     selectedStudentLookup,
     selectedTeacherSchoolKeys,
     statusFilter,
-    requirementFilter,
   ]);
 
   const hasDashboardFilters =
     searchTerms.length > 0 ||
     statusFilter !== "all" ||
     requirementFilter !== "all" ||
+    filterDateFrom.length > 0 ||
+    filterDateTo.length > 0 ||
     Boolean(selectedStudentLookup) ||
     Boolean(selectedTeacherLookup);
   const filteredSchoolKeys = useMemo(() => {
@@ -1820,7 +1835,6 @@ export function MonitorDashboard() {
         secondary: requirementCounts.returned,
         urgency: requirementCounts.returned > 0 ? "high" : requirementCounts.awaitingReview > 0 ? "medium" : "none",
       },
-      student_records: { urgency: "none" },
       reports: { urgency: "none" },
     }),
     [needsActionCount, requirementCounts.awaitingReview, requirementCounts.missing, requirementCounts.returned],
@@ -2052,14 +2066,26 @@ export function MonitorDashboard() {
   }, [quickJumpItems, shouldShowQuickJump, handleQuickJump, canResolveQuickJumpTarget]);
 
   const filteredRecords = useMemo(() => {
+    const fromTime = filterDateFrom ? new Date(`${filterDateFrom}T00:00:00`).getTime() : null;
+    const toTime = filterDateTo ? new Date(`${filterDateTo}T23:59:59.999`).getTime() : null;
     const base = filteredSchoolKeys
       ? scopedRecords.filter((record) =>
           filteredSchoolKeys.has(normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName)),
         )
       : scopedRecords;
 
-    return [...base].sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
-  }, [scopedRecords, filteredSchoolKeys, sortColumn, sortDirection]);
+    const dateFiltered = base.filter((record) => {
+      const updatedAt = new Date(record.lastUpdated ?? 0).getTime();
+      if (!Number.isFinite(updatedAt) || updatedAt <= 0) {
+        return fromTime === null && toTime === null;
+      }
+      if (fromTime !== null && updatedAt < fromTime) return false;
+      if (toTime !== null && updatedAt > toTime) return false;
+      return true;
+    });
+
+    return [...dateFiltered].sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
+  }, [filterDateFrom, filterDateTo, scopedRecords, filteredSchoolKeys, sortColumn, sortDirection]);
 
   const recordBySchoolKey = useMemo(() => {
     const map = new Map<string, SchoolRecord>();
@@ -2153,12 +2179,20 @@ export function MonitorDashboard() {
     if (search.trim()) chips.push({ id: "search", label: `Search: ${search.trim()}` });
     if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
     if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Queue: ${requirementFilterLabel(requirementFilter)}` });
+    if (filterDateFrom || filterDateTo) {
+      chips.push({
+        id: "date",
+        label: `Date: ${filterDateFrom || "Any"} to ${filterDateTo || "Any"}`,
+      });
+    }
     if (selectedSchoolScope) chips.push({ id: "school", label: `School: ${selectedSchoolScope.code}` });
     if (selectedStudentLookup) chips.push({ id: "student", label: `Student: ${selectedStudentLookup.fullName}` });
     if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup}` });
 
     return chips;
   }, [
+    filterDateFrom,
+    filterDateTo,
     requirementFilter,
     search,
     selectedSchoolScope,
@@ -2171,12 +2205,14 @@ export function MonitorDashboard() {
     setRequirementsPage(1);
     setRecordsPage(1);
   }, [
-    search,
-    statusFilter,
+    filterDateFrom,
+    filterDateTo,
     requirementFilter,
+    search,
     selectedSchoolScopeKey,
     selectedStudentLookup?.id,
     selectedTeacherLookup,
+    statusFilter,
   ]);
 
   useEffect(() => {
@@ -2194,6 +2230,8 @@ export function MonitorDashboard() {
   const clearAllFilters = () => {
     setSearch("");
     setStatusFilter("all");
+    setFilterDateFrom("");
+    setFilterDateTo("");
     setRequirementFilter("all");
     setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
     setSelectedStudentLookup(null);
@@ -2203,6 +2241,7 @@ export function MonitorDashboard() {
     setStudentLookupQuery("");
     setTeacherLookupQuery("");
     setSchoolScopeDropdownSlot(null);
+    setShowContextAdvancedFilters(false);
   };
 
   const resetQueueFilters = () => {
@@ -2219,6 +2258,10 @@ export function MonitorDashboard() {
         break;
       case "requirement":
         setRequirementFilter("all");
+        break;
+      case "date":
+        setFilterDateFrom("");
+        setFilterDateTo("");
         break;
       case "school":
         setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
@@ -2382,11 +2425,12 @@ export function MonitorDashboard() {
   };
 
   const openStudentRecordsFromCard = () => {
-    handleMonitorTopNavigate("student_records");
+    setShowSchoolLearnerRecords(true);
+    handleMonitorTopNavigate("schools");
 
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
-        focusAndScrollTo("monitor-student-records");
+        focusAndScrollTo("monitor-school-learners");
       }, 50);
     }
   };
@@ -2620,6 +2664,14 @@ export function MonitorDashboard() {
     );
   };
 
+  const hasContextAdvancedFiltersActive =
+    requirementFilter !== "all" ||
+    Boolean(selectedSchoolScope) ||
+    Boolean(selectedStudentLookup) ||
+    Boolean(selectedTeacherLookup) ||
+    filterDateFrom.length > 0 ||
+    filterDateTo.length > 0;
+
   const quickFiltersPanelContent = (
     <>
       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
@@ -2648,59 +2700,97 @@ export function MonitorDashboard() {
           </select>
         </label>
 
-        <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <select
-            value={requirementFilter}
-            onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
-            className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-          >
-            {visibleRequirementFilterOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
-        <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-          <p className="text-xs font-semibold text-slate-700">Which school</p>
-          {renderSchoolScopeSelector()}
-        </article>
-        <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-          <p className="text-xs font-semibold text-slate-700">Find a student</p>
-          {renderStudentLookupSelector()}
-        </article>
-        <article className="border border-slate-200 bg-slate-50 px-3 py-2.5">
-          <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
-          {renderTeacherLookupSelector()}
-        </article>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {activeFilterChips.map((chip) => (
-          <button
-            key={chip.id}
-            type="button"
-            onClick={() => clearFilterChip(chip.id)}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-          >
-            {chip.label}
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ))}
-        {activeFilterChips.length > 0 && (
+        <div className="flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={clearAllFilters}
-            className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+            onClick={() => setShowContextAdvancedFilters((current) => !current)}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
           >
-            Clear all
+            {showContextAdvancedFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {showContextAdvancedFilters ? "Hide filters" : "More filters"}
+            {hasContextAdvancedFiltersActive && !showContextAdvancedFilters ? " - active" : ""}
           </button>
-        )}
+          {activeFilterChips.length > 0 && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
+
+      {showContextAdvancedFilters && (
+        <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+              <Filter className="h-4 w-4 text-slate-400" />
+              <select
+                value={requirementFilter}
+                onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
+                className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+              >
+                {visibleRequirementFilterOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date From</span>
+              <input
+                type="date"
+                value={filterDateFrom}
+                onChange={(event) => setFilterDateFrom(event.target.value)}
+                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date To</span>
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(event) => setFilterDateTo(event.target.value)}
+                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <article className="border border-slate-200 bg-white px-3 py-2.5">
+              <p className="text-xs font-semibold text-slate-700">Which school</p>
+              {renderSchoolScopeSelector()}
+            </article>
+            <article className="border border-slate-200 bg-white px-3 py-2.5">
+              <p className="text-xs font-semibold text-slate-700">Find a student</p>
+              {renderStudentLookupSelector()}
+            </article>
+            <article className="border border-slate-200 bg-white px-3 py-2.5">
+              <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
+              {renderTeacherLookupSelector()}
+            </article>
+          </div>
+        </div>
+      )}
+
+      {activeFilterChips.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {activeFilterChips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={() => clearFilterChip(chip.id)}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+            >
+              {chip.label}
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ))}
+        </div>
+      )}
 
       <p className="mt-3 text-xs text-slate-600">
         Showing <span className="font-semibold text-slate-900">{filteredRequirementRows.length}</span> of{" "}
@@ -2714,7 +2804,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="Action queue, schools, compliance review, student records, and reports."
+      subtitle="Action queue, review center, schools, and reports."
       actions={
         <div className="flex min-w-0 flex-col gap-2 lg:items-end">
           <div className="flex flex-wrap items-center gap-2">
@@ -2745,9 +2835,9 @@ export function MonitorDashboard() {
           </div>
           <span className="inline-flex max-w-full items-center rounded-sm border border-white/35 bg-white/92 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
             {syncStatus === "up_to_date" ? "Up to date" : "Records updated"}
-            {" • "}
+            {" | "}
             {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
-            {syncScope ? ` • ${syncScope}` : ""}
+            {syncScope ? ` | ${syncScope}` : ""}
           </span>
         </div>
       }
@@ -2986,9 +3076,12 @@ export function MonitorDashboard() {
           )}
 
           {showSubmissionFilters && !isMobileViewport && (
-            <section id="monitor-submission-filters" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}>
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Global Filter Bar</h2>
-              <p className="mt-1 text-xs text-slate-600">Use one search and filter set across all monitor pages.</p>
+            <section
+              id="monitor-submission-filters"
+              className={`surface-panel dashboard-shell sticky top-24 z-30 mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}
+            >
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Monitor Context Bar</h2>
+              <p className="mt-1 text-xs text-slate-600">Persistent filters for search, status, date range, and school scope.</p>
               {quickFiltersPanelContent}
             </section>
           )}
@@ -3003,7 +3096,7 @@ export function MonitorDashboard() {
               />
               <section id="monitor-submission-filters" className="fixed inset-x-0 bottom-0 z-[73] max-h-[84vh] overflow-y-auto rounded-t-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Global Filter Bar</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Monitor Context Bar</h2>
                   <button
                     type="button"
                     onClick={() => setShowAdvancedFilters(false)}
@@ -3012,7 +3105,7 @@ export function MonitorDashboard() {
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-slate-600">Use one search and filter set across all monitor pages.</p>
+                <p className="mt-1 text-xs text-slate-600">Persistent filters for search, status, date range, and school scope.</p>
                 {quickFiltersPanelContent}
               </section>
             </>
@@ -3153,7 +3246,7 @@ export function MonitorDashboard() {
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">Action Queue</h2>
-                <p className="mt-1 text-xs text-slate-600">Missing, Returned, and Waiting schools.</p>
+                <p className="mt-1 text-xs text-slate-600">Missing, Returned, and For Review schools.</p>
               </div>
               {!isMobileViewport && renderQuickJumpChips(false)}
             </div>
@@ -3168,13 +3261,13 @@ export function MonitorDashboard() {
           <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
               <h2 className="text-base font-bold text-slate-900">Queue List</h2>
-              <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then Waiting.</p>
+              <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then For Review.</p>
             </div>
 
             {paginatedRequirementRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-5 py-14 text-slate-500">
                 <AlertCircle className="h-9 w-9 text-slate-400" />
-                <p className="text-sm font-semibold">No Missing, Returned, or Waiting schools found.</p>
+                <p className="text-sm font-semibold">No Missing, Returned, or For Review schools found.</p>
                 <p className="text-xs text-slate-400">Current filters may be hiding results.</p>
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                   <button
@@ -3217,7 +3310,7 @@ export function MonitorDashboard() {
                         <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${workflowTone(row.indicatorStatus)}`}>
                           {workflowLabel(row.indicatorStatus)}
                         </span>
-                        <span className="text-slate-600">Waiting: {row.awaitingReviewCount}</span>
+                        <span className="text-slate-600">For Review: {row.awaitingReviewCount}</span>
                       </div>
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         <button
@@ -3259,7 +3352,7 @@ export function MonitorDashboard() {
                         <th className="px-2 py-2 text-center">Compliance</th>
                         <th className="px-2 py-2 text-center">Indicators</th>
                         <th className="px-2 py-2 text-center">Missing</th>
-                        <th className="px-2 py-2 text-center">Waiting</th>
+                        <th className="px-2 py-2 text-center">For Review</th>
                         <th className="px-2 py-2 text-center">Priority</th>
                         <th className="px-2 py-2 text-left">Last Activity</th>
                         <th className="px-2 py-2 text-center">Actions</th>
@@ -3446,6 +3539,14 @@ export function MonitorDashboard() {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   {showArchivedRecords ? "Hide Archived" : "Show Archived"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSchoolLearnerRecords((current) => !current)}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  {showSchoolLearnerRecords ? "Hide Learners" : "Show Learners"}
                 </button>
               </div>
             </div>
@@ -4094,30 +4195,42 @@ export function MonitorDashboard() {
             </>
           )}
         </section>
-        </>
-      )}
-
-      {activeTopNavigator === "student_records" && (
-        <section id="monitor-student-records" className={sectionFocusClass("monitor-student-records")}>
-          <div className="dashboard-shell mb-5 rounded-sm p-4">
+        <section
+          id="monitor-school-learners"
+          className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-learners")}`}
+        >
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Student Records</h2>
-                <p className="mt-1 text-xs text-slate-600">Read-only learner checks and search.</p>
+                <h2 className="text-base font-bold text-slate-900">Learner Records</h2>
+                <p className="mt-1 text-xs text-slate-600">Read-only learner checks by school, student, or teacher.</p>
               </div>
-              {!isMobileViewport && renderQuickJumpChips(false)}
+              <button
+                type="button"
+                onClick={() => setShowSchoolLearnerRecords((current) => !current)}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                {showSchoolLearnerRecords ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {showSchoolLearnerRecords ? "Hide Learner Records" : "Show Learner Records"}
+              </button>
             </div>
-            {isMobileViewport && renderQuickJumpChips(true)}
           </div>
-          <StudentRecordsPanel
-            editable={false}
-            showSchoolColumn
-            schoolFilterKeys={filteredSchoolKeys}
-            externalSearchTerm={studentRecordsLookupTerm}
-            title="Student Records"
-            description="Read-only learner checks and search."
-          />
+          {showSchoolLearnerRecords ? (
+            <StudentRecordsPanel
+              editable={false}
+              showSchoolColumn
+              schoolFilterKeys={filteredSchoolKeys}
+              externalSearchTerm={studentRecordsLookupTerm}
+              title="Student Records"
+              description="Read-only learner checks and search."
+            />
+          ) : (
+            <div className="px-5 py-8 text-sm text-slate-500">
+              Learner records are hidden. Use <span className="font-semibold text-slate-700">Show Learner Records</span> to open this panel.
+            </div>
+          )}
         </section>
+        </>
       )}
 
       {schoolDrawerKey && (
@@ -4176,7 +4289,7 @@ export function MonitorDashboard() {
                     Missing requirements: <span className="font-semibold text-slate-900">{schoolDetail.missingCount}</span>
                   </p>
                   <p>
-                    Waiting: <span className="font-semibold text-slate-900">{schoolDetail.awaitingReviewCount}</span>
+                    For Review: <span className="font-semibold text-slate-900">{schoolDetail.awaitingReviewCount}</span>
                   </p>
                   <p>
                     Last activity:{" "}
@@ -4247,6 +4360,7 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
 
 
 
