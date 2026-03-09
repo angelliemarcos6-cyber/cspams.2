@@ -12,7 +12,6 @@ import {
   ChevronUp,
   Edit2,
   Filter,
-  GraduationCap,
   RefreshCw,
   Save,
   Search,
@@ -1123,74 +1122,68 @@ export function SchoolAdminDashboard() {
               </p>
             </div>
 
-            <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={handleFormSubmit}>
+            <form className="grid gap-4 p-5 md:grid-cols-3" onSubmit={handleFormSubmit}>
               <div>
-                <label htmlFor="studentCount" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Student Count
+                <label htmlFor="studentCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Students
                 </label>
-                <div className="relative">
-                  <GraduationCap className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="studentCount"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={form.studentCount}
-                    onChange={(event) => {
-                      setForm((current) => ({ ...current, studentCount: event.target.value }));
-                      setFormErrors((current) => ({ ...current, studentCount: undefined }));
-                      setSubmitError("");
-                    }}
-                    placeholder="0"
-                    className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  />
-                </div>
+                <input
+                  id="studentCount"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={form.studentCount}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, studentCount: event.target.value }));
+                    setFormErrors((current) => ({ ...current, studentCount: undefined }));
+                    setSubmitError("");
+                  }}
+                  placeholder="0"
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
                 {formErrors.studentCount && <p className="mt-1 text-xs text-primary-700">{formErrors.studentCount}</p>}
               </div>
 
               <div>
-                <label htmlFor="teacherCount" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Teacher Count
+                <label htmlFor="teacherCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Teachers
                 </label>
-                <div className="relative">
-                  <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="teacherCount"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={form.teacherCount}
-                    onChange={(event) => {
-                      setForm((current) => ({ ...current, teacherCount: event.target.value }));
-                      setFormErrors((current) => ({ ...current, teacherCount: undefined }));
-                      setSubmitError("");
-                    }}
-                    placeholder="0"
-                    className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  />
-                </div>
+                <input
+                  id="teacherCount"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={form.teacherCount}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, teacherCount: event.target.value }));
+                    setFormErrors((current) => ({ ...current, teacherCount: undefined }));
+                    setSubmitError("");
+                  }}
+                  placeholder="0"
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
                 {formErrors.teacherCount && <p className="mt-1 text-xs text-primary-700">{formErrors.teacherCount}</p>}
               </div>
 
               <div>
-                <p className="mb-1.5 block text-sm font-semibold text-slate-700">Status</p>
-                <div className="inline-flex w-full rounded-sm border border-slate-200 bg-slate-50 p-1">
-                  {(["active", "inactive", "pending"] as const).map((statusOption) => (
-                    <button
-                      key={statusOption}
-                      type="button"
-                      onClick={() => setForm((current) => ({ ...current, status: statusOption }))}
-                      className={`flex-1 rounded-sm px-3 py-2 text-xs font-semibold uppercase tracking-wide transition ${
-                        form.status === statusOption ? "bg-white text-primary shadow-sm" : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      {statusLabel(statusOption)}
-                    </button>
-                  ))}
-                </div>
+                <label htmlFor="schoolStatus" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Status
+                </label>
+                <select
+                  id="schoolStatus"
+                  value={form.status}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, status: event.target.value as SchoolStatus }));
+                  }}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                >
+                  <option value="active">{statusLabel("active")}</option>
+                  <option value="inactive">{statusLabel("inactive")}</option>
+                  <option value="pending">{statusLabel("pending")}</option>
+                </select>
               </div>
 
-              <div className="md:col-span-2">
+              <div className="md:col-span-3">
                 {saveMessage && (
                   <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
                     <CheckCircle2 className="h-4 w-4" />
