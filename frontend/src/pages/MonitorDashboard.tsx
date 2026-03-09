@@ -1986,7 +1986,7 @@ export function MonitorDashboard() {
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-        <aside className="dashboard-side-rail rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:self-stretch lg:min-h-full lg:rounded-none">
+        <aside className="dashboard-side-rail ml-3 rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:self-stretch lg:min-h-full lg:rounded-none">
           <div className="flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>

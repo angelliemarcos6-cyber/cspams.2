@@ -710,7 +710,7 @@ export function SchoolAdminDashboard() {
       )}
 
       <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-stretch lg:gap-0">
-      <aside className="dashboard-side-rail rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
+      <aside className="dashboard-side-rail ml-3 rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
         <div className="flex items-start justify-between gap-2">
           <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
             <div className={`flex items-center ${showNavigatorHeaderText ? "justify-between" : "justify-center"}`}>
