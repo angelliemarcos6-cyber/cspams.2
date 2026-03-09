@@ -3371,8 +3371,11 @@ export function MonitorDashboard() {
       )}
 
       {activeTopNavigator === "compliance_review" && (
-        <section id="monitor-indicators-queue" className={sectionFocusClass("monitor-indicators-queue")}>
-          <div className="dashboard-shell mb-5 rounded-sm p-4">
+        <section
+          id="monitor-indicators-queue"
+          className={`surface-panel dashboard-shell animate-fade-slide overflow-hidden rounded-sm ${sectionFocusClass("monitor-indicators-queue")}`}
+        >
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">Review Queue</h2>
@@ -3383,6 +3386,7 @@ export function MonitorDashboard() {
             {isMobileViewport && renderQuickJumpChips(true)}
           </div>
           <MonitorIndicatorPanel
+            embedded
             schoolFilterKeys={filteredSchoolKeys}
             schoolRecords={records}
             onToast={pushToast}

@@ -23,6 +23,7 @@ interface MonitorIndicatorPanelProps {
   schoolRecords?: SchoolRecord[];
   onToast?: (message: string, tone?: "success" | "info" | "warning") => void;
   onSendReminder?: (schoolKey: string, schoolName: string, notes?: string | null) => Promise<void>;
+  embedded?: boolean;
 }
 
 type ReviewStatusFilter = "all" | "submitted" | "returned" | "validated" | "draft";
@@ -272,6 +273,7 @@ export function MonitorIndicatorPanel({
   schoolRecords = [],
   onToast,
   onSendReminder,
+  embedded = false,
 }: MonitorIndicatorPanelProps) {
   const { username } = useAuth();
   const {
@@ -917,8 +919,12 @@ export function MonitorIndicatorPanel({
     priorityFilter !== "all" ||
     assignedReviewerFilter !== "all";
 
+  const panelClassName = embedded
+    ? "overflow-hidden"
+    : "surface-panel mt-5 animate-fade-slide overflow-hidden rounded-sm";
+
   return (
-    <section className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-sm">
+    <section className={panelClassName}>
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
