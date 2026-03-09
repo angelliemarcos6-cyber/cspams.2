@@ -25,7 +25,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
     <div className="min-h-screen bg-page-bg">
       <header className="sticky top-0 z-50 border-b border-primary-200/25 bg-primary-800 shadow-2xl shadow-primary-900/30">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 pl-3">
             <img src="/depedlogo.png" alt="DepEd logo" className="h-11 w-auto border border-slate-200/90 bg-white px-1.5 py-1 shadow-sm" />
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-100">CSPAMS</p>
