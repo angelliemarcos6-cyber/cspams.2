@@ -181,8 +181,8 @@ interface PersistedMonitorFilters {
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "action_queue", label: "Action Queue" },
-  { id: "schools", label: "Schools" },
   { id: "compliance_review", label: "Review" },
+  { id: "schools", label: "Schools" },
   { id: "student_records", label: "Students" },
   { id: "reports", label: "Reports" },
 ];
@@ -207,16 +207,6 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
     doneWhen: "No urgent rows remain unassigned for action.",
   },
   {
-    id: "schools",
-    title: "Schools",
-    objective: "Inspect school profile, status, and latest activity in one place.",
-    actions: [
-      "Review school profile and activity updates.",
-      "Use row actions for follow-up without leaving the page.",
-    ],
-    doneWhen: "School details and latest updates are verified.",
-  },
-  {
     id: "compliance_review",
     title: "Compliance Review",
     objective: "Validate or return compliance submissions.",
@@ -225,6 +215,16 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
       "Write clear notes when returning a submission.",
     ],
     doneWhen: "No pending submissions remain without a validation decision.",
+  },
+  {
+    id: "schools",
+    title: "Schools",
+    objective: "Inspect school profile, status, and latest activity in one place.",
+    actions: [
+      "Review school profile and activity updates.",
+      "Use row actions for follow-up without leaving the page.",
+    ],
+    doneWhen: "School details and latest updates are verified.",
   },
   {
     id: "student_records",
@@ -464,6 +464,36 @@ function urgencyRowTone(row: SchoolRequirementSummary): string {
     return "bg-amber-50/80";
   }
   return "";
+}
+
+function queuePriorityScore(row: SchoolRequirementSummary): number {
+  if (row.indicatorStatus === "returned") return 0;
+  if (row.missingCount > 0) return 1;
+  if (row.awaitingReviewCount > 0) return 2;
+  return 3;
+}
+
+function queuePriorityLabel(row: SchoolRequirementSummary): string {
+  if (row.indicatorStatus === "returned") return "Returned";
+  if (row.missingCount > 0) return "Missing";
+  if (row.awaitingReviewCount > 0) return "Waiting";
+  return "Normal";
+}
+
+function queuePriorityTone(row: SchoolRequirementSummary): string {
+  if (row.indicatorStatus === "returned") {
+    return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  }
+
+  if (row.missingCount > 0) {
+    return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+  }
+
+  if (row.awaitingReviewCount > 0) {
+    return "bg-primary-50 text-primary-700 ring-1 ring-primary-200";
+  }
+
+  return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
 }
 
 function latestBySchool<
@@ -1654,9 +1684,23 @@ export function MonitorDashboard() {
   );
   const actionQueueRows = useMemo(
     () =>
-      filteredRequirementRows.filter(
-        (row) => row.missingCount > 0 || row.awaitingReviewCount > 0 || row.indicatorStatus === "returned",
-      ),
+      filteredRequirementRows
+        .filter((row) => row.missingCount > 0 || row.awaitingReviewCount > 0 || row.indicatorStatus === "returned")
+        .sort((a, b) => {
+          const priorityDiff = queuePriorityScore(a) - queuePriorityScore(b);
+          if (priorityDiff !== 0) return priorityDiff;
+
+          const missingDiff = b.missingCount - a.missingCount;
+          if (missingDiff !== 0) return missingDiff;
+
+          const waitingDiff = b.awaitingReviewCount - a.awaitingReviewCount;
+          if (waitingDiff !== 0) return waitingDiff;
+
+          const activityDiff = b.lastActivityTime - a.lastActivityTime;
+          if (activityDiff !== 0) return activityDiff;
+
+          return a.schoolName.localeCompare(b.schoolName);
+        }),
     [filteredRequirementRows],
   );
   const showSubmissionFilters = !isMobileViewport || showAdvancedFilters;
@@ -2908,6 +2952,7 @@ export function MonitorDashboard() {
           <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
               <h2 className="text-base font-bold text-slate-900">Queue List</h2>
+              <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then Waiting.</p>
             </div>
 
             {paginatedRequirementRows.length === 0 ? (
@@ -2942,7 +2987,12 @@ export function MonitorDashboard() {
                           <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
                           <p className="text-xs text-slate-500">{row.schoolCode} - {row.region}</p>
                         </div>
-                        <span className="text-xs font-semibold text-slate-700">Missing: {row.missingCount}</span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${queuePriorityTone(row)}`}>
+                            {queuePriorityLabel(row)}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">Missing: {row.missingCount}</span>
+                        </div>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                         <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${row.hasComplianceRecord ? "bg-primary-100 text-primary-700" : "bg-slate-100 text-slate-700"}`}>
@@ -2953,7 +3003,7 @@ export function MonitorDashboard() {
                         </span>
                         <span className="text-slate-600">Waiting: {row.awaitingReviewCount}</span>
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="mt-3 grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => handleReviewSchool(row)}
@@ -2973,7 +3023,7 @@ export function MonitorDashboard() {
                         <button
                           type="button"
                           onClick={() => handleSendReminder(row)}
-                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700"
+                          className="col-span-2 inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700"
                         >
                           <BellRing className="h-3.5 w-3.5" />
                           Send Reminder
@@ -2993,6 +3043,7 @@ export function MonitorDashboard() {
                         <th className="px-2 py-2 text-center">Indicators</th>
                         <th className="px-2 py-2 text-center">Missing</th>
                         <th className="px-2 py-2 text-center">Waiting</th>
+                        <th className="px-2 py-2 text-center">Priority</th>
                         <th className="px-2 py-2 text-left">Last Activity</th>
                         <th className="px-2 py-2 text-center">Actions</th>
                       </tr>
@@ -3027,15 +3078,20 @@ export function MonitorDashboard() {
                           </td>
                           <td className="px-2 py-2 text-center text-sm font-semibold text-slate-900">{row.missingCount}</td>
                           <td className="px-2 py-2 text-center text-sm font-semibold text-slate-900">{row.awaitingReviewCount}</td>
+                          <td className="px-2 py-2 text-center">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${queuePriorityTone(row)}`}>
+                              {queuePriorityLabel(row)}
+                            </span>
+                          </td>
                           <td className="px-2 py-2 text-sm text-slate-600">
                             {row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A"}
                           </td>
-                          <td className="px-2 py-2">
-                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          <td className="min-w-[18rem] px-2 py-2">
+                            <div className="flex flex-nowrap items-center justify-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => handleReviewSchool(row)}
-                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
                               >
                                 <Eye className="h-3.5 w-3.5" />
                                 Review
@@ -3043,7 +3099,7 @@ export function MonitorDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleOpenSchool(row)}
-                                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
                               >
                                 <Building2 className="h-3.5 w-3.5" />
                                 Open School
@@ -3051,10 +3107,10 @@ export function MonitorDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleSendReminder(row)}
-                                className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
                               >
                                 <BellRing className="h-3.5 w-3.5" />
-                                Send Reminder
+                                Reminder
                               </button>
                             </div>
                           </td>
