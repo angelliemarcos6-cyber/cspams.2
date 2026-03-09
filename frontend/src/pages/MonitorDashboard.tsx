@@ -3078,7 +3078,7 @@ export function MonitorDashboard() {
           {showSubmissionFilters && !isMobileViewport && (
             <section
               id="monitor-submission-filters"
-              className={`surface-panel dashboard-shell sticky top-24 z-30 mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}
+              className={`surface-panel dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}
             >
               <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Monitor Context Bar</h2>
               <p className="mt-1 text-xs text-slate-600">Persistent filters for search, status, date range, and school scope.</p>
