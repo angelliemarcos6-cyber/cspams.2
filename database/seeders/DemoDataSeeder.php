@@ -108,28 +108,32 @@ class DemoDataSeeder extends Seeder
             );
         }
 
-        $monitor = User::query()->updateOrCreate(
-            ['email' => 'monitor@cspams.local'],
-            [
-                'name' => 'Division Monitor',
-                'password' => Hash::make($this->demoPasswordForKey('monitor')),
-                'must_reset_password' => false,
-                'password_changed_at' => now(),
-            ],
-        );
+        $monitor = User::query()->firstOrNew(['email' => 'monitor@cspams.local']);
+        $monitorWasRecentlyCreated = ! $monitor->exists;
+        $monitor->name = 'Division Monitor';
+
+        if ($monitorWasRecentlyCreated) {
+            $monitor->password = Hash::make($this->demoPasswordForKey('monitor'));
+            $monitor->must_reset_password = false;
+            $monitor->password_changed_at = now();
+        }
+
+        $monitor->save();
         $monitor->syncRoles([UserRoleResolver::MONITOR]);
 
         foreach ($schoolModels as $index => $school) {
-            $head = User::query()->updateOrCreate(
-                ['email' => 'schoolhead' . ($index + 1) . '@cspams.local'],
-                [
-                    'name' => 'School Head ' . ($index + 1),
-                    'password' => Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code))),
-                    'must_reset_password' => false,
-                    'password_changed_at' => now(),
-                    'school_id' => $school->id,
-                ],
-            );
+            $head = User::query()->firstOrNew(['email' => 'schoolhead' . ($index + 1) . '@cspams.local']);
+            $headWasRecentlyCreated = ! $head->exists;
+            $head->name = 'School Head ' . ($index + 1);
+            $head->school_id = $school->id;
+
+            if ($headWasRecentlyCreated) {
+                $head->password = Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code)));
+                $head->must_reset_password = false;
+                $head->password_changed_at = now();
+            }
+
+            $head->save();
             $head->syncRoles([UserRoleResolver::SCHOOL_HEAD]);
 
             $school->update([

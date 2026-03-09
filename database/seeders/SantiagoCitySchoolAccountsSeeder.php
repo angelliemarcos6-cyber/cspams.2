@@ -30,16 +30,18 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
                 ],
             );
 
-            $schoolHead = User::query()->updateOrCreate(
-                ['email' => $this->schoolHeadEmail($entry['school_code'])],
-                [
-                    'name' => 'School Head - ' . $entry['name'],
-                    'password' => Hash::make($this->temporaryPasswordForSchoolCode($entry['school_code'])),
-                    'must_reset_password' => true,
-                    'password_changed_at' => null,
-                    'school_id' => $school->id,
-                ],
-            );
+            $schoolHead = User::query()->firstOrNew(['email' => $this->schoolHeadEmail($entry['school_code'])]);
+            $schoolHeadWasRecentlyCreated = ! $schoolHead->exists;
+            $schoolHead->name = 'School Head - ' . $entry['name'];
+            $schoolHead->school_id = $school->id;
+
+            if ($schoolHeadWasRecentlyCreated) {
+                $schoolHead->password = Hash::make($this->temporaryPasswordForSchoolCode($entry['school_code']));
+                $schoolHead->must_reset_password = true;
+                $schoolHead->password_changed_at = null;
+            }
+
+            $schoolHead->save();
 
             $schoolHead->syncRoles([UserRoleResolver::SCHOOL_HEAD]);
 
