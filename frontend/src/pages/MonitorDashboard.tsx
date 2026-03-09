@@ -377,8 +377,8 @@ function SortIndicator({ active, direction }: { active: boolean; direction: Sort
 }
 
 function navigatorButtonClass(active: boolean, compact: boolean): string {
-  return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
-    compact ? "justify-center px-2.5 py-2.5" : "gap-2.5 px-3 py-2.5"
+  return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase leading-none tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
+    compact ? "h-11 justify-center px-2.5" : "h-11 gap-2.5 px-3"
   } ${
     active
       ? "border-l-primary-100 border-r-primary-300/90 border-y-primary-300/90 bg-primary-700 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
@@ -1981,13 +1981,23 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      <div className={`dashboard-left-layout mb-5 lg:grid lg:items-stretch lg:gap-0 ${isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"}`}>
-        <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:min-h-full lg:rounded-none">
+      <div
+        className={`dashboard-left-layout mb-5 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[2000ms] lg:ease-in-out ${
+          isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
+        }`}
+      >
+        <aside className="dashboard-side-rail rounded-sm p-3 transition-[padding] duration-[2000ms] ease-in-out lg:self-stretch lg:min-h-full lg:rounded-none">
           <div className="flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
-              <div className={showNavigatorHeaderText ? "" : "w-full text-center"}>
-                <div className={`flex items-center ${showNavigatorHeaderText ? "gap-2" : "justify-center"}`}>
-                  {showNavigatorHeaderText && <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>}
+              <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
+                <div className={`flex items-center ${showNavigatorHeaderText ? "justify-between" : "justify-center"}`}>
+                  <h2
+                    className={`overflow-hidden whitespace-nowrap text-sm font-bold uppercase tracking-wide text-white transition-[max-width,opacity] duration-[2000ms] ease-in-out ${
+                      showNavigatorHeaderText ? "max-w-[11rem] opacity-100" : "max-w-0 opacity-0"
+                    }`}
+                  >
+                    Navigator
+                  </h2>
                   <button
                     type="button"
                     onClick={() => {
@@ -1997,7 +2007,7 @@ export function MonitorDashboard() {
                       }
                       setIsNavigatorCompact((current) => !current);
                     }}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
                     aria-label={
                       isMobileViewport
                         ? isNavigatorVisible
@@ -2026,14 +2036,22 @@ export function MonitorDashboard() {
                     )}
                   </button>
                 </div>
-                {showNavigatorHeaderText && (
-                  <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-primary-100">Division Monitor</p>
-                )}
+                <p
+                  className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 transition-[max-height,opacity,margin] duration-[2000ms] ease-in-out ${
+                    showNavigatorHeaderText ? "mt-1 max-h-5 opacity-100" : "mt-0 max-h-0 opacity-0"
+                  }`}
+                >
+                  Division Monitor
+                </p>
               </div>
             </div>
 
-            {shouldRenderNavigatorItems && (
-              <div className={`mt-4 grid ${isNavigatorCompact ? "gap-2" : "gap-2.5"}`}>
+            <div
+              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[2000ms] ease-in-out ${
+                shouldRenderNavigatorItems ? "mt-4 max-h-[34rem] opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className={`grid ${isNavigatorCompact ? "gap-2" : "gap-2.5"}`}>
                 {MONITOR_TOP_NAVIGATOR_ITEMS.map((item, index) => {
                   const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
                   const isActive = activeTopNavigator === item.id;
@@ -2053,11 +2071,11 @@ export function MonitorDashboard() {
                       aria-current={isActive ? "page" : undefined}
                       aria-label={`Open ${item.label}`}
                     >
-                      <span className="relative inline-flex h-4 w-4 items-center justify-center">
+                      <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
                         <Icon className="h-4 w-4" />
                         {meta.urgency !== "none" && <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${urgencyTone}`} />}
                       </span>
-                      {!isNavigatorCompact && <span className="truncate">{item.label}</span>}
+                      {!isNavigatorCompact && <span className="flex-1 truncate text-left">{item.label}</span>}
 
                       {!isNavigatorCompact && hasPrimaryBadge && (
                         <span className="ml-auto inline-flex items-center gap-1">
@@ -2081,10 +2099,14 @@ export function MonitorDashboard() {
                   );
                 })}
               </div>
-            )}
+            </div>
 
-            {shouldRenderNavigatorItems && (
-              <div className={`mt-3 border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
+            <div
+              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[2000ms] ease-in-out ${
+                shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className={`border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
                 <button
                   type="button"
                   onClick={() => setShowNavigatorManual((current) => !current)}
@@ -2098,7 +2120,7 @@ export function MonitorDashboard() {
                   {!isNavigatorCompact && <span>Help</span>}
                 </button>
               </div>
-            )}
+            </div>
           </div>
         </aside>
         <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
