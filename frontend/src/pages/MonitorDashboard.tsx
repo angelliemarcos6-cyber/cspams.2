@@ -18,7 +18,6 @@ import {
   Edit2,
   Eye,
   Filter,
-  GraduationCap,
   LayoutDashboard,
   ListChecks,
   Plus,
@@ -1035,8 +1034,6 @@ export function MonitorDashboard() {
     const district = recordForm.district.trim();
     const region = recordForm.region.trim();
     const address = recordForm.address.trim();
-    const studentCount = Number(recordForm.studentCount);
-    const teacherCount = Number(recordForm.teacherCount);
 
     if (!/^\d{6}$/.test(schoolId)) {
       formErrors.schoolId = "School ID must be exactly 6 digits.";
@@ -1049,14 +1046,6 @@ export function MonitorDashboard() {
 
     if (district.length > 255) formErrors.district = "District must be 255 characters or less.";
     if (region.length > 255) formErrors.region = "Region must be 255 characters or less.";
-
-    if (!Number.isFinite(studentCount) || studentCount < 0 || !Number.isInteger(studentCount)) {
-      formErrors.studentCount = "Student count must be a non-negative whole number.";
-    }
-
-    if (!Number.isFinite(teacherCount) || teacherCount < 0 || !Number.isInteger(teacherCount)) {
-      formErrors.teacherCount = "Teacher count must be a non-negative whole number.";
-    }
 
     if (!editingRecordId && recordForm.createSchoolHeadAccount) {
       if (!recordForm.schoolHeadAccountName.trim()) {
@@ -1098,6 +1087,11 @@ export function MonitorDashboard() {
       return;
     }
 
+    const editingRecord = editingRecordId ? records.find((item) => item.id === editingRecordId) : null;
+    const resolvedStudentCount = editingRecord?.studentCount ?? Number(recordForm.studentCount || 0);
+    const resolvedTeacherCount = editingRecord?.teacherCount ?? Number(recordForm.teacherCount || 0);
+    const resolvedStatus = editingRecord?.status ?? recordForm.status ?? "active";
+
     const payload = {
       schoolId: recordForm.schoolId.trim().toUpperCase(),
       schoolName: recordForm.schoolName.trim(),
@@ -1106,9 +1100,9 @@ export function MonitorDashboard() {
       address: recordForm.address.trim(),
       district: recordForm.district.trim() || undefined,
       region: recordForm.region.trim() || undefined,
-      studentCount: Number(recordForm.studentCount),
-      teacherCount: Number(recordForm.teacherCount),
-      status: recordForm.status,
+      studentCount: resolvedStudentCount,
+      teacherCount: resolvedTeacherCount,
+      status: resolvedStatus,
       schoolHeadAccount:
         !editingRecordId && recordForm.createSchoolHeadAccount
           ? {
@@ -3141,7 +3135,7 @@ export function MonitorDashboard() {
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">{editingRecordId ? "Edit School Record" : "Add School Record"}</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">School ID must be 6 digits. School name, level, type, and address are required.</p>
+                  <p className="mt-0.5 text-xs text-slate-500">School ID must be 6 digits. School name, level, type, and address are required. Students, teachers, and status are managed by School Head.</p>
                 </div>
                 <button
                   type="button"
@@ -3283,67 +3277,6 @@ export function MonitorDashboard() {
                     }`}
                   />
                   {recordFormErrors.address && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.address}</p>}
-                </div>
-                <div>
-                  <label htmlFor="monitor-students" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Students
-                  </label>
-                  <input
-                    id="monitor-students"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={recordForm.studentCount}
-                    onChange={(event) => {
-                      setRecordForm((current) => ({ ...current, studentCount: event.target.value }));
-                      setRecordFormErrors((current) => ({ ...current, studentCount: undefined }));
-                    }}
-                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-                      recordFormErrors.studentCount ? "border-primary-300" : "border-slate-200"
-                    }`}
-                  />
-                  {recordFormErrors.studentCount && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.studentCount}</p>}
-                </div>
-                <div>
-                  <label htmlFor="monitor-teachers" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Teachers
-                  </label>
-                  <input
-                    id="monitor-teachers"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={recordForm.teacherCount}
-                    onChange={(event) => {
-                      setRecordForm((current) => ({ ...current, teacherCount: event.target.value }));
-                      setRecordFormErrors((current) => ({ ...current, teacherCount: undefined }));
-                    }}
-                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-                      recordFormErrors.teacherCount ? "border-primary-300" : "border-slate-200"
-                    }`}
-                  />
-                  {recordFormErrors.teacherCount && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.teacherCount}</p>}
-                </div>
-                <div>
-                  <label htmlFor="monitor-status" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Status
-                  </label>
-                  <select
-                    id="monitor-status"
-                    value={recordForm.status}
-                    onChange={(event) => {
-                      setRecordForm((current) => ({ ...current, status: event.target.value as SchoolStatus }));
-                      setRecordFormErrors((current) => ({ ...current, status: undefined }));
-                    }}
-                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-                      recordFormErrors.status ? "border-primary-300" : "border-slate-200"
-                    }`}
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="pending">Pending</option>
-                  </select>
-                  {recordFormErrors.status && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.status}</p>}
                 </div>
                 {!editingRecordId && (
                   <div className="md:col-span-2 xl:col-span-4 rounded-sm border border-slate-200 bg-slate-50 p-3">
