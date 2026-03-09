@@ -56,36 +56,41 @@ class CspamsLogin extends BaseLogin
 
     protected function getFormSchema(): array
     {
+        $roleField = Hidden::make('role')
+            ->default(UserRoleResolver::MONITOR)
+            ->dehydrated();
+
+        $loginField = TextInput::make('login')
+            ->label('Account ID')
+            ->required()
+            ->autocomplete('username')
+            ->autofocus()
+            ->placeholder('Monitor email/name or School Code')
+            ->helperText('Division Monitor: email/name. School Head: school code.')
+            ->maxLength(255)
+            ->dehydrateStateUsing(function (?string $state): ?string {
+                $normalized = trim((string) $state);
+
+                return $normalized !== '' ? $normalized : null;
+            });
+
+        $passwordField = TextInput::make('password')
+            ->label('Password')
+            ->password()
+            ->revealable()
+            ->required()
+            ->rule(Password::min(6))
+            ->autocomplete('current-password')
+            ->placeholder('Enter your password');
+
+        $rememberField = Checkbox::make('remember')
+            ->label('Remember me');
+
         return [
-            Hidden::make('role')
-                ->default(UserRoleResolver::MONITOR)
-                ->dehydrated(),
-
-            TextInput::make('login')
-                ->label('Account ID')
-                ->required()
-                ->autocomplete('username')
-                ->autofocus()
-                ->placeholder('Monitor email/name or School Code')
-                ->helperText('Division Monitor: email/name. School Head: school code.')
-                ->maxLength(255)
-                ->dehydrateStateUsing(function (?string $state): ?string {
-                    $normalized = trim((string) $state);
-
-                    return $normalized !== '' ? $normalized : null;
-                }),
-
-            TextInput::make('password')
-                ->label('Password')
-                ->password()
-                ->revealable()
-                ->required()
-                ->rule(Password::min(6))
-                ->autocomplete('current-password')
-                ->placeholder('Enter your password'),
-
-            Checkbox::make('remember')
-                ->label('Remember me'),
+            $roleField,
+            $loginField,
+            $passwordField,
+            $rememberField,
         ];
     }
 
@@ -193,4 +198,3 @@ class CspamsLogin extends BaseLogin
         ]);
     }
 }
-
