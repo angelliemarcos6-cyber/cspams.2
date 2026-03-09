@@ -1707,12 +1707,18 @@ export function MonitorDashboard() {
 
   const sectionFocusClass = (targetId: string) => (focusedSectionId === targetId ? "dashboard-focus-glow" : "");
 
-  const canResolveQuickJumpTarget = (targetId: string): boolean => {
-    if (targetId === "monitor-submission-filters") {
-      return true;
+  const resolveQuickJumpTargetId = (targetId: string): string => {
+    if (targetId === "monitor-analytics-toggle") {
+      return "monitor-targets-snapshot";
     }
 
-    if (targetId === "monitor-analytics-toggle") {
+    return targetId;
+  };
+
+  const canResolveQuickJumpTarget = (targetId: string): boolean => {
+    const resolvedTargetId = resolveQuickJumpTargetId(targetId);
+
+    if (resolvedTargetId === "monitor-submission-filters") {
       return true;
     }
 
@@ -1720,14 +1726,16 @@ export function MonitorDashboard() {
       return true;
     }
 
-    return Boolean(document.getElementById(targetId));
+    return Boolean(document.getElementById(resolvedTargetId));
   };
 
   const handleQuickJump = (item: QuickJumpItem) => {
-    if (item.targetId === "monitor-submission-filters" && isMobileViewport && !showAdvancedFilters) {
+    const resolvedTargetId = resolveQuickJumpTargetId(item.targetId);
+
+    if (resolvedTargetId === "monitor-submission-filters" && isMobileViewport && !showAdvancedFilters) {
       setShowAdvancedFilters(true);
       window.setTimeout(() => {
-        focusAndScrollTo(item.targetId);
+        focusAndScrollTo(resolvedTargetId);
       }, 80);
       return;
     }
@@ -1737,12 +1745,12 @@ export function MonitorDashboard() {
         setShowAdvancedAnalytics(true);
       }
       window.setTimeout(() => {
-        focusAndScrollTo("monitor-targets-snapshot");
+        focusAndScrollTo(resolvedTargetId);
       }, 80);
       return;
     }
 
-    focusAndScrollTo(item.targetId);
+    focusAndScrollTo(resolvedTargetId);
   };
 
   const renderQuickJumpChips = (mobile: boolean) => {
@@ -1754,8 +1762,11 @@ export function MonitorDashboard() {
       <div className={mobile ? "mt-2 flex gap-2 overflow-x-auto pb-1" : "flex flex-wrap items-center justify-end gap-2"}>
         {quickJumpItems.map((item) => {
           const Icon = item.icon;
-          const isActive = focusedSectionId === item.targetId;
+          const resolvedTargetId = resolveQuickJumpTargetId(item.targetId);
+          const isActive = focusedSectionId === resolvedTargetId;
           const isAvailable = canResolveQuickJumpTarget(item.targetId);
+          const quickJumpIndex = quickJumpItems.findIndex((candidate) => candidate.id === item.id);
+          const shortcutLabel = quickJumpIndex >= 0 && quickJumpIndex < 9 ? `Alt+Shift+${quickJumpIndex + 1}` : null;
 
           return (
             <button
@@ -1764,6 +1775,7 @@ export function MonitorDashboard() {
               onClick={() => handleQuickJump(item)}
               disabled={!isAvailable}
               aria-pressed={isActive}
+              title={shortcutLabel ? `${item.label} (${shortcutLabel})` : item.label}
               className={`inline-flex shrink-0 items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold transition ${
                 isActive
                   ? "border-primary-300 bg-primary-50 text-primary-700"
@@ -1778,6 +1790,38 @@ export function MonitorDashboard() {
       </div>
     );
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !shouldShowQuickJump) return;
+
+    const onQuickJumpHotkey = (event: KeyboardEvent) => {
+      if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      const shortcutIndex = Number(event.key) - 1;
+      if (!Number.isInteger(shortcutIndex) || shortcutIndex < 0 || shortcutIndex >= quickJumpItems.length) {
+        return;
+      }
+
+      const quickJumpItem = quickJumpItems[shortcutIndex];
+      if (!quickJumpItem || !canResolveQuickJumpTarget(quickJumpItem.targetId)) {
+        return;
+      }
+
+      event.preventDefault();
+      handleQuickJump(quickJumpItem);
+    };
+
+    window.addEventListener("keydown", onQuickJumpHotkey);
+    return () => window.removeEventListener("keydown", onQuickJumpHotkey);
+  }, [quickJumpItems, shouldShowQuickJump, handleQuickJump, canResolveQuickJumpTarget]);
 
   const filteredRecords = useMemo(() => {
     const base = filteredSchoolKeys
@@ -2689,7 +2733,7 @@ export function MonitorDashboard() {
                 className="fixed inset-0 z-[72] bg-slate-900/40"
                 aria-label="Close quick filters"
               />
-              <section className="fixed inset-x-0 bottom-0 z-[73] max-h-[84vh] overflow-y-auto rounded-t-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide">
+              <section id="monitor-submission-filters" className="fixed inset-x-0 bottom-0 z-[73] max-h-[84vh] overflow-y-auto rounded-t-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Global Filter Bar</h2>
                   <button

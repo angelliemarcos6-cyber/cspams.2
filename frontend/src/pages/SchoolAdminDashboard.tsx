@@ -538,8 +538,17 @@ export function SchoolAdminDashboard() {
 
   const sectionFocusClass = (sectionId: string) => (focusedSectionId === sectionId ? "dashboard-focus-glow" : "");
 
-  const canResolveQuickJumpTarget = (targetId: string): boolean => {
+  const resolveQuickJumpTargetId = (targetId: string): string => {
     if (targetId === "school-analytics-toggle") {
+      return "targets-snapshot";
+    }
+
+    return targetId;
+  };
+
+  const canResolveQuickJumpTarget = (targetId: string): boolean => {
+    const resolvedTargetId = resolveQuickJumpTargetId(targetId);
+    if (resolvedTargetId === "targets-snapshot") {
       return true;
     }
 
@@ -547,22 +556,24 @@ export function SchoolAdminDashboard() {
       return true;
     }
 
-    return Boolean(document.getElementById(targetId));
+    return Boolean(document.getElementById(resolvedTargetId));
   };
 
   const handleQuickJump = (targetId: string) => {
+    const resolvedTargetId = resolveQuickJumpTargetId(targetId);
+
     if (targetId === "school-analytics-toggle") {
       if (!showAdvancedAnalytics) {
         setShowAdvancedAnalytics(true);
       }
 
       window.setTimeout(() => {
-        scrollToSection("targets-snapshot");
+        scrollToSection(resolvedTargetId);
       }, 80);
       return;
     }
 
-    scrollToSection(targetId);
+    scrollToSection(resolvedTargetId);
   };
 
   const renderQuickJumpChips = (mobile: boolean) => {
@@ -574,8 +585,11 @@ export function SchoolAdminDashboard() {
       <div className={mobile ? "mt-2 flex gap-2 overflow-x-auto pb-1" : "flex flex-wrap items-center justify-end gap-2"}>
         {quickJumpItems.map((item) => {
           const Icon = item.icon;
-          const isActive = focusedSectionId === item.targetId;
+          const resolvedTargetId = resolveQuickJumpTargetId(item.targetId);
+          const isActive = focusedSectionId === resolvedTargetId;
           const isAvailable = canResolveQuickJumpTarget(item.targetId);
+          const quickJumpIndex = quickJumpItems.findIndex((candidate) => candidate.id === item.id);
+          const shortcutLabel = quickJumpIndex >= 0 && quickJumpIndex < 9 ? `Alt+Shift+${quickJumpIndex + 1}` : null;
 
           return (
             <button
@@ -584,6 +598,7 @@ export function SchoolAdminDashboard() {
               onClick={() => handleQuickJump(item.targetId)}
               disabled={!isAvailable}
               aria-pressed={isActive}
+              title={shortcutLabel ? `${item.label} (${shortcutLabel})` : item.label}
               className={`inline-flex shrink-0 items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold transition ${
                 isActive
                   ? "border-primary-300 bg-primary-50 text-primary-700"
@@ -598,6 +613,38 @@ export function SchoolAdminDashboard() {
       </div>
     );
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !shouldShowQuickJump) return;
+
+    const onQuickJumpHotkey = (event: KeyboardEvent) => {
+      if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      const shortcutIndex = Number(event.key) - 1;
+      if (!Number.isInteger(shortcutIndex) || shortcutIndex < 0 || shortcutIndex >= quickJumpItems.length) {
+        return;
+      }
+
+      const quickJumpItem = quickJumpItems[shortcutIndex];
+      if (!quickJumpItem || !canResolveQuickJumpTarget(quickJumpItem.targetId)) {
+        return;
+      }
+
+      event.preventDefault();
+      handleQuickJump(quickJumpItem.targetId);
+    };
+
+    window.addEventListener("keydown", onQuickJumpHotkey);
+    return () => window.removeEventListener("keydown", onQuickJumpHotkey);
+  }, [quickJumpItems, shouldShowQuickJump, handleQuickJump, canResolveQuickJumpTarget]);
 
   const validateForm = () => {
     const errors: Partial<Record<keyof FormState, string>> = {};
