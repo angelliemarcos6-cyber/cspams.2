@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
+﻿import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -811,6 +811,16 @@ export function MonitorDashboard() {
   const [bulkImportError, setBulkImportError] = useState("");
   const [isBulkImporting, setIsBulkImporting] = useState(false);
   const bulkImportInputRef = useRef<HTMLInputElement | null>(null);
+  const schoolsTableScrollerRef = useRef<HTMLDivElement | null>(null);
+  const schoolsTableDragStateRef = useRef<{
+    active: boolean;
+    pointerId: number;
+    startX: number;
+    startScrollLeft: number;
+    button: number;
+    moved: boolean;
+  } | null>(null);
+  const [isSchoolsTableDragging, setIsSchoolsTableDragging] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1833,6 +1843,92 @@ export function MonitorDashboard() {
         })}
       </div>
     );
+  };
+
+  const endSchoolsTableDrag = (pointerId?: number) => {
+    const state = schoolsTableDragStateRef.current;
+    const scroller = schoolsTableScrollerRef.current;
+
+    if (!state) {
+      return;
+    }
+
+    if (typeof pointerId === "number" && state.pointerId !== pointerId) {
+      return;
+    }
+
+    if (scroller) {
+      try {
+        scroller.releasePointerCapture(state.pointerId);
+      } catch {
+        // Ignore release failures.
+      }
+    }
+
+    schoolsTableDragStateRef.current = null;
+    setIsSchoolsTableDragging(false);
+  };
+
+  const handleSchoolsTablePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const scroller = schoolsTableScrollerRef.current;
+    if (!scroller) return;
+
+    if (scroller.scrollWidth <= scroller.clientWidth) return;
+
+    if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 2) {
+      return;
+    }
+
+    schoolsTableDragStateRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: scroller.scrollLeft,
+      button: event.button,
+      moved: false,
+    };
+    setIsSchoolsTableDragging(true);
+
+    try {
+      scroller.setPointerCapture(event.pointerId);
+    } catch {
+      // Ignore capture failures.
+    }
+
+    if (event.pointerType === "mouse") {
+      event.preventDefault();
+    }
+  };
+
+  const handleSchoolsTablePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const scroller = schoolsTableScrollerRef.current;
+    const state = schoolsTableDragStateRef.current;
+    if (!scroller || !state || state.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - state.startX;
+    if (Math.abs(deltaX) > 3) {
+      state.moved = true;
+    }
+
+    scroller.scrollLeft = state.startScrollLeft - deltaX;
+
+    if (state.moved) {
+      event.preventDefault();
+    }
+  };
+
+  const handleSchoolsTableContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const state = schoolsTableDragStateRef.current;
+    if (!state) {
+      return;
+    }
+
+    if (state.button === 2) {
+      event.preventDefault();
+      endSchoolsTableDrag(state.pointerId);
+    }
   };
 
   useEffect(() => {
@@ -3223,6 +3319,7 @@ export function MonitorDashboard() {
               </div>
             </div>
             <p className="mt-2 text-xs text-slate-500">Global filters are applied to this list.</p>
+            <p className="mt-1 text-[11px] text-slate-500">Tip: Drag left/right in the table (left or right mouse hold) or use two-finger touchpad swipe.</p>
           </div>
 
           {deleteError && (
@@ -3618,7 +3715,16 @@ export function MonitorDashboard() {
                 })}
               </div>
 
-              <div className="hidden overflow-x-auto md:block">
+              <div
+                ref={schoolsTableScrollerRef}
+                className={`hidden overflow-x-auto md:block ${isSchoolsTableDragging ? "cursor-grabbing select-none" : "cursor-grab"}`}
+                onPointerDown={handleSchoolsTablePointerDown}
+                onPointerMove={handleSchoolsTablePointerMove}
+                onPointerUp={(event) => endSchoolsTableDrag(event.pointerId)}
+                onPointerCancel={(event) => endSchoolsTableDrag(event.pointerId)}
+                onLostPointerCapture={(event) => endSchoolsTableDrag(event.pointerId)}
+                onContextMenu={handleSchoolsTableContextMenu}
+              >
                 <table className="min-w-full">
                   <thead className="table-head-sticky">
                     <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
@@ -4008,6 +4114,9 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
+
+
 
 
 
