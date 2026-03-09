@@ -18,6 +18,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
+use App\Support\Indicators\RollingIndicatorYearWindow;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -49,6 +50,7 @@ class IndicatorSubmissionController extends Controller
     public function metrics(Request $request): JsonResponse
     {
         $this->requireUser($request);
+        $this->syncRollingIndicatorYears();
 
         $metrics = PerformanceMetric::query()
             ->where('is_active', true)
@@ -124,6 +126,7 @@ class IndicatorSubmissionController extends Controller
         $user = $this->requireUser($request);
         $this->assertSchoolHead($user);
         abort_if(! $user->school_id, Response::HTTP_FORBIDDEN, 'School Head account is missing school assignment.');
+        $this->syncRollingIndicatorYears();
 
         $schoolId = (int) $user->school_id;
         $academicYearId = $request->integer('academic_year_id');
@@ -381,6 +384,11 @@ class IndicatorSubmissionController extends Controller
         abort_if(! $user, Response::HTTP_UNAUTHORIZED, 'Unauthenticated.');
 
         return $user;
+    }
+
+    private function syncRollingIndicatorYears(): void
+    {
+        app(RollingIndicatorYearWindow::class)->sync();
     }
 
     private function applyVisibilityScope(Builder $query, User $user): void

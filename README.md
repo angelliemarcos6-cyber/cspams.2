@@ -1,3 +1,4 @@
+<<<<<<< ours
 ﻿# CSPAMS
 
 Centralized Student Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
@@ -109,3 +110,14 @@ For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users
 
 - [CAPSTONE_COMPLETION_GUIDE.md](C:/Users/Angie/Documents/New%20project/cspams.2/CAPSTONE_COMPLETION_GUIDE.md)
 - [USER_MANUAL.md](C:/Users/Angie/Documents/New%20project/cspams.2/USER_MANUAL.md)
+=======
+# cspams.2
+
+## Capstone planning
+
+See `CAPSTONE_COMPLETION_GUIDE.md` for a step-by-step completion roadmap.
+## User manual
+
+See `USER_MANUAL.md` for end-user instructions (login, navigation, section management, and troubleshooting).
+
+>>>>>>> theirs
