@@ -309,6 +309,7 @@ const ALL_SCHOOL_SCOPE = "__all_schools__";
 const MONITOR_FILTER_STORAGE_KEY = "cspams.monitor.filters.v1";
 const MONITOR_NAV_STORAGE_KEY = "cspams.monitor.nav.v1";
 const SEARCH_DEBOUNCE_MS = 320;
+const ADVANCED_ANALYTICS_HIDE_MS = 520;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
@@ -804,6 +805,8 @@ export function MonitorDashboard() {
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
+  const [renderAdvancedAnalytics, setRenderAdvancedAnalytics] = useState(false);
+  const [isHidingAdvancedAnalytics, setIsHidingAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
@@ -849,6 +852,33 @@ export function MonitorDashboard() {
       window.removeEventListener("resize", syncViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (showAdvancedAnalytics) {
+      setRenderAdvancedAnalytics(true);
+      setIsHidingAdvancedAnalytics(false);
+      return;
+    }
+
+    if (!renderAdvancedAnalytics) {
+      return;
+    }
+
+    setIsHidingAdvancedAnalytics(true);
+
+    if (typeof window === "undefined") {
+      setRenderAdvancedAnalytics(false);
+      setIsHidingAdvancedAnalytics(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setRenderAdvancedAnalytics(false);
+      setIsHidingAdvancedAnalytics(false);
+    }, ADVANCED_ANALYTICS_HIDE_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [showAdvancedAnalytics, renderAdvancedAnalytics]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3040,8 +3070,14 @@ export function MonitorDashboard() {
             </div>
           </section>
 
-          {showAdvancedAnalytics && (
-            <section className="surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden">
+          {renderAdvancedAnalytics && (
+            <section
+              className={`surface-panel dashboard-shell overflow-hidden transition-[max-height,opacity,transform,margin] duration-[520ms] ease-in-out ${
+                isHidingAdvancedAnalytics
+                  ? "mt-0 max-h-0 -translate-y-1 opacity-0 pointer-events-none"
+                  : "mt-5 max-h-[2600px] translate-y-0 opacity-100 animate-fade-slide"
+              }`}
+            >
               <div id="monitor-targets-snapshot" className={`p-4 ${sectionFocusClass("monitor-targets-snapshot")}`}>
                 <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
                   <div id="monitor-sync-alerts" className={`rounded-sm border border-slate-200 bg-white p-5 ${sectionFocusClass("monitor-sync-alerts")}`}>
