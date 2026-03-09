@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   Download,
   Eye,
@@ -306,6 +308,7 @@ export function MonitorIndicatorPanel({
   const [reviewActionNotes, setReviewActionNotes] = useState("");
   const [reviewActionError, setReviewActionError] = useState("");
   const [isReviewActionRunning, setIsReviewActionRunning] = useState(false);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -906,6 +909,14 @@ export function MonitorIndicatorPanel({
     onToast?.(`Exported ${filteredRows.length} filtered row(s).`, "success");
   };
 
+  const hasAdvancedFiltersActive =
+    districtRegionFilter !== "all" ||
+    submissionTypeFilter !== "all" ||
+    dateFrom.length > 0 ||
+    dateTo.length > 0 ||
+    priorityFilter !== "all" ||
+    assignedReviewerFilter !== "all";
+
   return (
     <section className="surface-panel mt-5 animate-fade-slide overflow-hidden rounded-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -931,246 +942,262 @@ export function MonitorIndicatorPanel({
         </p>
       </div>
 
-      <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-5">
-        <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">For Review</p>
-          <p className="mt-1 text-lg font-bold text-primary-800">{kpi.forReview}</p>
-        </article>
-        <article className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Returned</p>
-          <p className="mt-1 text-lg font-bold text-amber-800">{kpi.returned}</p>
-        </article>
-        <article className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Validated Today</p>
-          <p className="mt-1 text-lg font-bold text-primary-800">{kpi.validatedToday}</p>
-        </article>
-        <article className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Overdue</p>
-          <p className="mt-1 text-lg font-bold text-rose-800">{kpi.overdue}</p>
-        </article>
-        <article className="rounded-sm border border-slate-200 bg-white px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Avg Review Time</p>
-          <p className="mt-1 text-lg font-bold text-slate-900">{formatHours(kpi.avgReviewTime)}</p>
-        </article>
+      <div className="border-b border-slate-100 px-5 py-4">
+        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+            <p className="text-[11px] font-medium text-slate-500">For review</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.forReview}</p>
+          </article>
+          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+            <p className="text-[11px] font-medium text-slate-500">Returned</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.returned}</p>
+          </article>
+          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+            <p className="text-[11px] font-medium text-slate-500">Validated today</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.validatedToday}</p>
+          </article>
+          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+            <p className="text-[11px] font-medium text-slate-500">Overdue</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.overdue}</p>
+          </article>
+          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+            <p className="text-[11px] font-medium text-slate-500">Avg review time</p>
+            <p className="mt-1 text-lg font-bold text-slate-900">{formatHours(kpi.avgReviewTime)}</p>
+          </article>
+        </div>
       </div>
 
       <div className="border-b border-slate-100 px-5 py-4">
-        <div className="grid gap-3 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Search</span>
+            <span className="mb-1 block text-xs font-medium text-slate-600">Search</span>
             <input
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="School, code, reviewer, notes"
+              placeholder="School, code, reviewer, note"
               className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Status</span>
+            <span className="mb-1 block text-xs font-medium text-slate-600">Status</span>
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as ReviewStatusFilter)}
               className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             >
               <option value="all">All</option>
-              <option value="submitted">For Review</option>
+              <option value="submitted">For review</option>
               <option value="returned">Returned</option>
               <option value="validated">Validated</option>
               <option value="draft">Draft</option>
             </select>
           </label>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">District / Region</span>
-            <select
-              value={districtRegionFilter}
-              onChange={(event) => setDistrictRegionFilter(event.target.value as DistrictRegionFilter)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+          <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedControls((current) => !current)}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
             >
-              <option value="all">All districts and regions</option>
-              {districtRegionOptions.districts.map((district) => (
-                <option key={`district-${district}`} value={`district:${district}`}>
-                  District: {district}
-                </option>
-              ))}
-              {districtRegionOptions.regions.map((region) => (
-                <option key={`region-${region}`} value={`region:${region}`}>
-                  Region: {region}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Submission Type</span>
-            <select
-              value={submissionTypeFilter}
-              onChange={(event) => setSubmissionTypeFilter(event.target.value as SubmissionTypeFilter)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              {showAdvancedControls ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {showAdvancedControls ? "Hide advanced" : "More filters"}
+              {hasAdvancedFiltersActive && !showAdvancedControls ? " • active" : ""}
+            </button>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
             >
-              <option value="all">All types</option>
-              <option value="indicator">Indicator Package</option>
-            </select>
-          </label>
+              <X className="h-3.5 w-3.5" />
+              Reset
+            </button>
+          </div>
         </div>
 
-        <div className="mt-3 grid gap-3 lg:grid-cols-4">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date From</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            />
-          </label>
+        <p className="mt-3 text-xs text-slate-600">
+          Showing <span className="font-semibold text-slate-900">{filteredRows.length}</span> of{" "}
+          <span className="font-semibold text-slate-900">{reviewRows.length}</span> submissions.
+        </p>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date To</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            />
-          </label>
+        {showAdvancedControls && (
+          <div className="mt-4 rounded-sm border border-slate-200 bg-slate-50 p-3">
+            <div className="grid gap-3 lg:grid-cols-4">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">District / Region</span>
+                <select
+                  value={districtRegionFilter}
+                  onChange={(event) => setDistrictRegionFilter(event.target.value as DistrictRegionFilter)}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                >
+                  <option value="all">All districts and regions</option>
+                  {districtRegionOptions.districts.map((district) => (
+                    <option key={`district-${district}`} value={`district:${district}`}>
+                      District: {district}
+                    </option>
+                  ))}
+                  {districtRegionOptions.regions.map((region) => (
+                    <option key={`region-${region}`} value={`region:${region}`}>
+                      Region: {region}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Priority</span>
-            <select
-              value={priorityFilter}
-              onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            >
-              <option value="all">All priorities</option>
-              <option value="normal">Normal</option>
-              <option value="medium">24h</option>
-              <option value="high">48h</option>
-              <option value="overdue">72h+ Overdue</option>
-              <option value="returned">Returned</option>
-            </select>
-          </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Submission Type</span>
+                <select
+                  value={submissionTypeFilter}
+                  onChange={(event) => setSubmissionTypeFilter(event.target.value as SubmissionTypeFilter)}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                >
+                  <option value="all">All types</option>
+                  <option value="indicator">Indicator Package</option>
+                </select>
+              </label>
 
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Assigned Reviewer</span>
-            <select
-              value={assignedReviewerFilter}
-              onChange={(event) => setAssignedReviewerFilter(event.target.value as AssignedReviewerFilter)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            >
-              <option value="all">All reviewers</option>
-              <option value="unassigned">Unassigned</option>
-              {reviewerOptions.map((reviewer) => (
-                <option key={`reviewer-filter-${reviewer}`} value={reviewer}>
-                  {reviewer}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Date From</span>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => setDateFrom(event.target.value)}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+              </label>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <p className="text-xs text-slate-600">
-            Showing <span className="font-semibold text-slate-900">{filteredRows.length}</span> of{" "}
-            <span className="font-semibold text-slate-900">{reviewRows.length}</span> submissions.
-          </p>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            <X className="h-3.5 w-3.5" />
-            Clear filters
-          </button>
-        </div>
-      </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Date To</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => setDateTo(event.target.value)}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+              </label>
+            </div>
 
-      <div className="border-b border-slate-100 px-5 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">SLA / Aging</span>
-          <button
-            type="button"
-            onClick={() => setPriorityFilter("medium")}
-            className="rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
-          >
-            24h+
-          </button>
-          <button
-            type="button"
-            onClick={() => setPriorityFilter("high")}
-            className="rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
-          >
-            48h+
-          </button>
-          <button
-            type="button"
-            onClick={() => setPriorityFilter("overdue")}
-            className="rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700"
-          >
-            72h+ Overdue
-          </button>
-        </div>
-      </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-4">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Priority</span>
+                <select
+                  value={priorityFilter}
+                  onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                >
+                  <option value="all">All priorities</option>
+                  <option value="normal">Normal</option>
+                  <option value="medium">24h</option>
+                  <option value="high">48h</option>
+                  <option value="overdue">72h+ Overdue</option>
+                  <option value="returned">Returned</option>
+                </select>
+              </label>
 
-      <div className="border-b border-slate-100 px-5 py-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Batch assign reviewer</label>
-            <div className="inline-flex items-center gap-2">
-              <select
-                value={batchReviewer}
-                onChange={(event) => setBatchReviewer(event.target.value)}
-                className="rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              >
-                <option value={UNASSIGNED_REVIEWER_VALUE}>Unassigned</option>
-                {reviewerOptions.map((reviewer) => (
-                  <option key={`batch-reviewer-${reviewer}`} value={reviewer}>
-                    {reviewer}
-                  </option>
-                ))}
-              </select>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Assigned Reviewer</span>
+                <select
+                  value={assignedReviewerFilter}
+                  onChange={(event) => setAssignedReviewerFilter(event.target.value as AssignedReviewerFilter)}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                >
+                  <option value="all">All reviewers</option>
+                  <option value="unassigned">Unassigned</option>
+                  {reviewerOptions.map((reviewer) => (
+                    <option key={`reviewer-filter-${reviewer}`} value={reviewer}>
+                      {reviewer}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="lg:col-span-2">
+                <span className="mb-1 block text-xs font-medium text-slate-600">SLA quick picks</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPriorityFilter("medium")}
+                    className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                  >
+                    24h+
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriorityFilter("high")}
+                    className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                  >
+                    48h+
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriorityFilter("overdue")}
+                    className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                  >
+                    72h+
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-end gap-2">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-600">Batch reviewer</label>
+                <div className="inline-flex items-center gap-2">
+                  <select
+                    value={batchReviewer}
+                    onChange={(event) => setBatchReviewer(event.target.value)}
+                    className="rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  >
+                    <option value={UNASSIGNED_REVIEWER_VALUE}>Unassigned</option>
+                    {reviewerOptions.map((reviewer) => (
+                      <option key={`batch-reviewer-${reviewer}`} value={reviewer}>
+                        {reviewer}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={applyBatchReviewer}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Apply
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="button"
-                onClick={applyBatchReviewer}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                onClick={() => void sendBatchReminders()}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
               >
-                <UserPlus className="h-3.5 w-3.5" />
-                Apply
+                <Mail className="h-3.5 w-3.5" />
+                Send reminders
               </button>
+
+              <button
+                type="button"
+                onClick={exportSelectedRows}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export selected
+              </button>
+
+              <button
+                type="button"
+                onClick={exportFilteredRows}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export filtered
+              </button>
+
+              <p className="text-xs text-slate-500">{selectedRows.length} selected</p>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => void sendBatchReminders()}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            <Mail className="h-3.5 w-3.5" />
-            Send reminders
-          </button>
-
-          <button
-            type="button"
-            onClick={exportSelectedRows}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export selected
-          </button>
-
-          <button
-            type="button"
-            onClick={exportFilteredRows}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export filtered
-          </button>
-
-          <p className="text-xs text-slate-500">{selectedRows.length} selected</p>
-        </div>
+        )}
       </div>
 
       <div className="px-5 py-4">
