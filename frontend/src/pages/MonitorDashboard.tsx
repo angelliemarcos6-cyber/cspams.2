@@ -1980,61 +1980,6 @@ export function MonitorDashboard() {
     setActiveTopNavigator("schools");
   };
 
-  const nextStep = useMemo(() => {
-    if (requirementCounts.missing > 0) {
-      return {
-        label: "Open Action Queue",
-        detail: "Review schools with missing submissions and send follow-up.",
-        action: "action_queue_missing" as const,
-      };
-    }
-
-    if (requirementCounts.returned > 0) {
-      return {
-        label: "Open Compliance Review",
-        detail: "Review returned submissions and wait for corrected resubmissions.",
-        action: "compliance_returned" as const,
-      };
-    }
-
-    if (requirementCounts.awaitingReview > 0) {
-      return {
-        label: "Open Compliance Review",
-        detail: "Validate pending indicator packages.",
-        action: "compliance_pending" as const,
-      };
-    }
-
-    return {
-      label: "Open Schools",
-      detail: "Audit synchronized school and learner records for final checks.",
-      action: "schools" as const,
-    };
-  }, [requirementCounts.awaitingReview, requirementCounts.missing, requirementCounts.returned]);
-
-  const handleNextStepAction = () => {
-    if (nextStep.action === "action_queue_missing") {
-      setRequirementFilter("missing");
-      setActiveTopNavigator("action_queue");
-      return;
-    }
-
-    if (nextStep.action === "compliance_returned") {
-      setRequirementFilter("returned");
-      setActiveTopNavigator("compliance_review");
-      return;
-    }
-
-    if (nextStep.action === "compliance_pending") {
-      setRequirementFilter("waiting");
-      setActiveTopNavigator("compliance_review");
-      return;
-    }
-
-    setRequirementFilter("all");
-    setActiveTopNavigator("schools");
-  };
-
   const handleSort = (column: SortColumn) => {
     if (column === sortColumn) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -2627,19 +2572,6 @@ export function MonitorDashboard() {
             </aside>
             </>
           )}
-
-          <aside className="fixed bottom-4 right-4 z-[60] w-[min(24rem,calc(100vw-1rem))] border border-primary-200 bg-white p-3 shadow-2xl">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Next Step</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">{nextStep.label}</p>
-            <p className="mt-1 text-xs text-slate-600">{nextStep.detail}</p>
-            <button
-              type="button"
-              onClick={handleNextStepAction}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
-            >
-              Continue
-            </button>
-          </aside>
 
           <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">

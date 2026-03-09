@@ -601,68 +601,6 @@ export function SchoolAdminDashboard() {
     setActiveTopNavigator("records");
   };
 
-  const nextStep = useMemo(() => {
-    const nextMissing = missingRequirements[0];
-    if (nextMissing) {
-      if (nextMissing.id === "school_record") {
-        return {
-          label: "Open Compliance Records",
-          detail: "Encode and save School Compliance Record counts first.",
-          action: "compliance_record" as const,
-        };
-      }
-
-      return {
-        label: "Open Compliance Records",
-        detail: "Encode and submit the Compliance Indicators package.",
-        action: "compliance_indicators" as const,
-      };
-    }
-
-    if (syncAlerts.length > 0) {
-      return {
-        label: "Open Overview",
-        detail: "Review synchronization alerts and verify current status.",
-        action: "overview_alerts" as const,
-      };
-    }
-
-    return {
-      label: "Open School Records",
-      detail: "Verify learner records and latest synchronized entries.",
-      action: "school_records" as const,
-    };
-  }, [missingRequirements, syncAlerts.length]);
-
-  const handleNextStepAction = () => {
-    if (nextStep.action === "compliance_record") {
-      setActiveTopNavigator("compliance");
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => scrollToSection("compliance-input"), 60);
-      }
-      return;
-    }
-
-    if (nextStep.action === "compliance_indicators") {
-      setActiveTopNavigator("compliance");
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => scrollToSection("indicator-workflow"), 60);
-      }
-      return;
-    }
-
-    if (nextStep.action === "overview_alerts") {
-      setActiveTopNavigator("first_glance");
-      setShowAdvancedAnalytics(true);
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => scrollToSection("sync-alerts-panel"), 60);
-      }
-      return;
-    }
-
-    setActiveTopNavigator("records");
-  };
-
   return (
     <Shell
       title="School Head Dashboard"
@@ -867,19 +805,6 @@ export function SchoolAdminDashboard() {
         </aside>
         </>
       )}
-
-      <aside className="fixed bottom-4 right-4 z-[60] w-[min(24rem,calc(100vw-1rem))] border border-primary-200 bg-white p-3 shadow-2xl">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Next Step</p>
-        <p className="mt-1 text-sm font-semibold text-slate-900">{nextStep.label}</p>
-        <p className="mt-1 text-xs text-slate-600">{nextStep.detail}</p>
-        <button
-          type="button"
-          onClick={handleNextStepAction}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
-        >
-          Continue
-        </button>
-      </aside>
 
       <section className="dashboard-workflow-hero mb-5 rounded-sm p-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
