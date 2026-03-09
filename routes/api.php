@@ -22,6 +22,7 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::post('/records/bulk-import', [SchoolRecordController::class, 'bulkImport']);
     Route::get('/records/archived', [SchoolRecordController::class, 'archived']);
     Route::get('/records/{school}/delete-preview', [SchoolRecordController::class, 'deletePreview']);
+    Route::post('/records/{school}/send-reminder', [SchoolRecordController::class, 'sendReminder']);
     Route::post('/records/{school}/restore', [SchoolRecordController::class, 'restore']);
     Route::put('/records/{school}', [SchoolRecordController::class, 'update']);
     Route::patch('/records/{school}', [SchoolRecordController::class, 'update']);

@@ -760,6 +760,7 @@ export function MonitorDashboard() {
     previewDeleteRecord,
     listArchivedRecords,
     restoreRecord,
+    sendReminder,
     bulkImportRecords,
   } = useData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
@@ -804,6 +805,7 @@ export function MonitorDashboard() {
   const [recordFormMessage, setRecordFormMessage] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
+  const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
   const [archivedRecords, setArchivedRecords] = useState<SchoolRecord[]>([]);
   const [showArchivedRecords, setShowArchivedRecords] = useState(false);
   const [isArchivedRecordsLoading, setIsArchivedRecordsLoading] = useState(false);
@@ -1064,6 +1066,9 @@ export function MonitorDashboard() {
     setBulkImportSummary(null);
     setShowRecordForm(true);
     setActiveTopNavigator("schools");
+    window.setTimeout(() => {
+      focusAndScrollTo("monitor-school-records");
+    }, 80);
   };
 
   const validateRecordForm = (): boolean => {
@@ -1225,6 +1230,10 @@ export function MonitorDashboard() {
     setDeletingRecordId(record.id);
     try {
       await deleteRecord(record.id);
+      if (showArchivedRecords) {
+        await loadArchivedRecords();
+      }
+      pushToast(`Archived ${schoolName}.`, "success");
       if (editingRecordId === record.id) {
         closeRecordForm();
       }
@@ -2157,6 +2166,26 @@ export function MonitorDashboard() {
     setSchoolDrawerKey(null);
   };
 
+  const sendReminderForSchool = async (schoolKey: string, schoolName: string) => {
+    const record = scopedRecordBySchoolKey.get(schoolKey) ?? recordBySchoolKey.get(schoolKey);
+    if (!record) {
+      pushToast(`Unable to send reminder for ${schoolName}: school record not found.`, "warning");
+      return;
+    }
+
+    setRemindingSchoolKey(schoolKey);
+    try {
+      const receipt = await sendReminder(record.id);
+      const recipientLabel = receipt.recipientCount === 1 ? "recipient" : "recipients";
+      pushToast(`Reminder sent to ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Unable to send reminder for ${schoolName}.`;
+      pushToast(message, "warning");
+    } finally {
+      setRemindingSchoolKey((current) => (current === schoolKey ? null : current));
+    }
+  };
+
   const handleReviewSchool = (summary: SchoolRequirementSummary) => {
     setSelectedSchoolScopeKey(summary.schoolKey);
     setSelectedStudentLookup(null);
@@ -2174,17 +2203,24 @@ export function MonitorDashboard() {
     }
 
     setActiveTopNavigator("compliance_review");
+    window.setTimeout(() => {
+      focusAndScrollTo("monitor-indicators-queue");
+    }, 80);
     pushToast(`Review opened for ${summary.schoolName}.`, "info");
   };
 
   const handleOpenSchool = (summary: SchoolRequirementSummary) => {
     setSelectedSchoolScopeKey(summary.schoolKey);
+    setActiveTopNavigator("schools");
     openSchoolDrawer(summary.schoolKey);
+    window.setTimeout(() => {
+      focusAndScrollTo("monitor-school-records");
+    }, 80);
     pushToast(`Opened school details for ${summary.schoolName}.`, "info");
   };
 
   const handleSendReminder = (summary: SchoolRequirementSummary) => {
-    pushToast(`Reminder sent to ${summary.schoolName}.`, "success");
+    void sendReminderForSchool(summary.schoolKey, summary.schoolName);
   };
 
   const handleReviewRecord = (record: SchoolRecord) => {
@@ -2199,6 +2235,9 @@ export function MonitorDashboard() {
 
     setSelectedSchoolScopeKey(schoolKey);
     setActiveTopNavigator("compliance_review");
+    window.setTimeout(() => {
+      focusAndScrollTo("monitor-indicators-queue");
+    }, 80);
     pushToast(`Review opened for ${record.schoolName}.`, "info");
   };
 
@@ -2206,12 +2245,22 @@ export function MonitorDashboard() {
     const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
     if (schoolKey === "unknown") return;
     setSelectedSchoolScopeKey(schoolKey);
+    setActiveTopNavigator("schools");
     openSchoolDrawer(schoolKey);
+    window.setTimeout(() => {
+      focusAndScrollTo("monitor-school-records");
+    }, 80);
     pushToast(`Opened school details for ${record.schoolName}.`, "info");
   };
 
   const handleSendReminderRecord = (record: SchoolRecord) => {
-    pushToast(`Reminder sent to ${record.schoolName}.`, "success");
+    const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+    if (schoolKey === "unknown") {
+      pushToast(`Unable to send reminder for ${record.schoolName}: school key is missing.`, "warning");
+      return;
+    }
+
+    void sendReminderForSchool(schoolKey, record.schoolName);
   };
 
   const handleContinuePendingRequirements = () => {
@@ -3119,10 +3168,11 @@ export function MonitorDashboard() {
                         <button
                           type="button"
                           onClick={() => handleSendReminder(row)}
-                          className="col-span-2 inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700"
+                          disabled={remindingSchoolKey === row.schoolKey}
+                          className="col-span-2 inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           <BellRing className="h-3.5 w-3.5" />
-                          Send Reminder
+                          {remindingSchoolKey === row.schoolKey ? "Sending..." : "Send Reminder"}
                         </button>
                       </div>
                     </article>
@@ -3203,10 +3253,11 @@ export function MonitorDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleSendReminder(row)}
-                                className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
+                                disabled={remindingSchoolKey === row.schoolKey}
+                                className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
                               >
                                 <BellRing className="h-3.5 w-3.5" />
-                                Reminder
+                                {remindingSchoolKey === row.schoolKey ? "Sending..." : "Reminder"}
                               </button>
                             </div>
                           </td>
@@ -3685,10 +3736,11 @@ export function MonitorDashboard() {
                         <button
                           type="button"
                           onClick={() => handleSendReminderRecord(record)}
-                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700"
+                          disabled={remindingSchoolKey === schoolKey}
+                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           <BellRing className="h-3.5 w-3.5" />
-                          Send Reminder
+                          {remindingSchoolKey === schoolKey ? "Sending..." : "Send Reminder"}
                         </button>
                       </div>
                       <div className="mt-2 flex items-center gap-2">
@@ -3847,10 +3899,11 @@ export function MonitorDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleSendReminderRecord(record)}
-                                className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
+                                disabled={remindingSchoolKey === schoolKey}
+                                className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
                               >
                                 <BellRing className="h-3.5 w-3.5" />
-                                Send Reminder
+                                {remindingSchoolKey === schoolKey ? "Sending..." : "Send Reminder"}
                               </button>
                               <button
                                 type="button"

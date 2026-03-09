@@ -13,6 +13,7 @@ import { apiRequestRaw, isApiError } from "@/lib/api";
 import type {
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
+  SchoolReminderReceipt,
   SchoolRecord,
   SchoolRecordDeletePreview,
   SchoolRecordPayload,
@@ -67,6 +68,10 @@ interface SchoolRecordRestoreResponse {
   meta?: SyncMeta;
 }
 
+interface SchoolReminderResponse {
+  data: SchoolReminderReceipt;
+}
+
 interface SchoolRecordBulkImportResponse {
   data: SchoolBulkImportResult;
   meta?: SyncMeta;
@@ -89,6 +94,7 @@ interface DataContextType {
   previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
   listArchivedRecords: () => Promise<SchoolRecord[]>;
   restoreRecord: (id: string) => Promise<void>;
+  sendReminder: (id: string, notes?: string | null) => Promise<SchoolReminderReceipt>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
     options?: { updateExisting?: boolean; restoreArchived?: boolean },
@@ -556,6 +562,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, syncRecords, handleApiError],
   );
 
+  const sendReminder = useCallback(
+    async (id: string, notes?: string | null): Promise<SchoolReminderReceipt> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolReminderResponse>(`/api/dashboard/records/${id}/send-reminder`, {
+          method: "POST",
+          token,
+          body: {
+            notes: notes?.trim() || undefined,
+          },
+        });
+
+        if (!response.data?.data) {
+          throw new Error("Reminder response is empty.");
+        }
+
+        return response.data.data;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError],
+  );
+
   const bulkImportRecords = useCallback(
     async (
       rows: SchoolBulkImportRowPayload[],
@@ -674,6 +713,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       previewDeleteRecord,
       listArchivedRecords,
       restoreRecord,
+      sendReminder,
       bulkImportRecords,
     }),
     [
@@ -693,6 +733,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       previewDeleteRecord,
       listArchivedRecords,
       restoreRecord,
+      sendReminder,
       bulkImportRecords,
     ],
   );

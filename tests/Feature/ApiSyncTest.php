@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\School;
 use App\Models\Student;
 use App\Models\User;
+use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Support\Domain\StudentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -263,6 +266,63 @@ class ApiSyncTest extends TestCase
         $this->assertNotSame('', $newEtag);
         $this->assertNotSame($initialEtag, $newEtag);
         $this->assertGreaterThan($startingDropouts, (int) $resynced->json('meta.targetsMet.dropoutLearners', 0));
+    }
+
+    public function test_monitor_can_send_school_reminder_to_school_head_account(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var School $school */
+        $school = School::query()->where('school_code', 'SDO-SC-001')->firstOrFail();
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('school_id', $school->id)->firstOrFail();
+
+        $response = $this->withToken($monitorToken)->postJson("/api/dashboard/records/{$school->id}/send-reminder", [
+            'notes' => 'Please submit your latest school package this week.',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.schoolId', 'SDO-SC-001')
+            ->assertJsonPath('data.schoolName', 'Santiago City National High School')
+            ->assertJsonPath('data.recipientCount', 1)
+            ->assertJsonStructure([
+                'data' => [
+                    'recipientEmails',
+                    'remindedAt',
+                ],
+            ]);
+
+        Notification::assertSentTo(
+            [$schoolHead],
+            SchoolSubmissionReminderNotification::class,
+        );
+    }
+
+    public function test_school_head_cannot_send_school_reminder(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $this->schoolHeadLogin($schoolHead),
+            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHead)),
+        ]);
+        $login->assertOk();
+        $schoolHeadToken = (string) $login->json('token');
+
+        $forbidden = $this->withToken($schoolHeadToken)->postJson('/api/dashboard/records/' . $schoolHead->school_id . '/send-reminder');
+        $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
 
     private function schoolHeadLogin(User $user): string

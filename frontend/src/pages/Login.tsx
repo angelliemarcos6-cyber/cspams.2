@@ -109,7 +109,7 @@ export function Login() {
           <div className="mb-5 border border-primary-100 bg-primary-50/60 px-3 py-2.5">
             <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
               <LockKeyhole className="h-3.5 w-3.5 text-primary-700" />
-              {roleMeta.label}
+              Sign in
             </p>
           </div>
 

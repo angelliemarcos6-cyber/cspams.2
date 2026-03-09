@@ -75,6 +75,14 @@ export interface SchoolRecordDeletePreview {
   };
 }
 
+export interface SchoolReminderReceipt {
+  schoolId: string;
+  schoolName: string;
+  recipientCount: number;
+  recipientEmails: string[];
+  remindedAt: string;
+}
+
 export interface SchoolBulkImportRowPayload {
   schoolId: string;
   schoolName: string;

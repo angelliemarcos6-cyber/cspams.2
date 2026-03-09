@@ -7,11 +7,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\BulkImportSchoolRecordsRequest;
 use App\Http\Requests\Api\UpsertSchoolRecordRequest;
 use App\Http\Resources\SchoolRecordResource;
+use App\Models\AuditLog;
 use App\Models\FormSubmissionHistory;
 use App\Models\School;
 use App\Models\Section;
 use App\Models\Student;
 use App\Models\User;
+use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use Carbon\Carbon;
@@ -245,6 +247,85 @@ class SchoolRecordController extends Controller
         $record->restore();
 
         return $this->buildMutationResponse($record, $user);
+    }
+
+    public function sendReminder(Request $request, School $school): JsonResponse
+    {
+        $monitor = $this->requireMonitor($request);
+        $notes = trim((string) $request->input('notes', ''));
+
+        if (strlen($notes) > 500) {
+            return response()->json(
+                ['message' => 'Reminder note must be 500 characters or less.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $schoolHeads = User::query()
+            ->with('roles')
+            ->where('school_id', $school->id)
+            ->get()
+            ->filter(
+                static fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
+            )
+            ->values();
+
+        if ($schoolHeads->isEmpty()) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        foreach ($schoolHeads as $schoolHead) {
+            $schoolHead->notify(
+                new SchoolSubmissionReminderNotification(
+                    $school,
+                    $monitor,
+                    $notes !== '' ? $notes : null,
+                ),
+            );
+        }
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'school.reminder_sent',
+            'auditable_type' => School::class,
+            'auditable_id' => $school->id,
+            'metadata' => [
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'school_name' => (string) $school->name,
+                'recipient_count' => $schoolHeads->count(),
+                'recipient_emails' => $schoolHeads->pluck('email')->values()->all(),
+                'notes' => $notes !== '' ? $notes : null,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        $remindedAt = now()->toISOString();
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_records.reminder_sent',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'schoolName' => (string) $school->name,
+            'recipientCount' => $schoolHeads->count(),
+            'remindedAt' => $remindedAt,
+        ]));
+
+        return response()->json([
+            'data' => [
+                'schoolId' => (string) $school->school_code,
+                'schoolName' => (string) $school->name,
+                'recipientCount' => $schoolHeads->count(),
+                'recipientEmails' => $schoolHeads->pluck('email')->values(),
+                'remindedAt' => $remindedAt,
+            ],
+        ]);
     }
 
     public function bulkImport(BulkImportSchoolRecordsRequest $request): JsonResponse
