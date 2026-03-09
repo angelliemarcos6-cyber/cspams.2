@@ -1218,6 +1218,7 @@ export function MonitorDashboard() {
   const returnedCount = requirementCounts.returned;
   const submittedCount = requirementCounts.submittedAny;
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
+  const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
   const navigatorBadges = useMemo<
     Record<MonitorTopNavigatorId, { primary?: number; secondary?: number; urgency: "none" | "high" | "medium" }>
   >(
@@ -1984,9 +1985,9 @@ export function MonitorDashboard() {
         <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:min-h-full lg:rounded-none">
           <div className="flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
-              <div className={isNavigatorCompact ? "w-full text-center" : ""}>
-                <div className={`flex items-center ${isNavigatorCompact ? "justify-center" : "gap-2"}`}>
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
+              <div className={showNavigatorHeaderText ? "" : "w-full text-center"}>
+                <div className={`flex items-center ${showNavigatorHeaderText ? "gap-2" : "justify-center"}`}>
+                  {showNavigatorHeaderText && <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>}
                   <button
                     type="button"
                     onClick={() => {
@@ -2025,7 +2026,7 @@ export function MonitorDashboard() {
                     )}
                   </button>
                 </div>
-                {!isNavigatorCompact && (
+                {showNavigatorHeaderText && (
                   <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-primary-100">Division Monitor</p>
                 )}
               </div>

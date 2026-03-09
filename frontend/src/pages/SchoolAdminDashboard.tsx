@@ -367,6 +367,7 @@ export function SchoolAdminDashboard() {
     [missingRequirements.length, pendingCount, returnedCount],
   );
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
+  const showNavigatorHeaderText = isNavigatorVisible;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -711,9 +712,9 @@ export function SchoolAdminDashboard() {
       <div className="dashboard-left-layout mb-5 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-stretch lg:gap-0">
       <aside className="dashboard-side-rail rounded-sm p-3 lg:self-stretch lg:rounded-t-none lg:rounded-br-none">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>
+          <div className={showNavigatorHeaderText ? "" : "w-full text-center"}>
+            <div className={`flex items-center ${showNavigatorHeaderText ? "gap-2" : "justify-center"}`}>
+              {showNavigatorHeaderText && <h2 className="text-sm font-bold uppercase tracking-wide text-white">Navigator</h2>}
               <button
                 type="button"
                 onClick={() => setIsNavigatorVisible((current) => !current)}
@@ -724,7 +725,7 @@ export function SchoolAdminDashboard() {
                 {isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
             </div>
-            <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-primary-100">School Head</p>
+            {showNavigatorHeaderText && <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-primary-100">School Head</p>}
           </div>
         </div>
         {shouldRenderNavigatorItems && (
