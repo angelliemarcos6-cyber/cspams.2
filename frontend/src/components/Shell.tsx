@@ -51,7 +51,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
         <div className="h-1 w-full bg-primary-300/60" />
         <div className="border-t border-white/12 bg-primary-800/90">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-            <div>
+            <div className="pl-3">
               <p className="inline-flex items-center gap-2 border border-white/25 bg-white/12 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-100 shadow-sm">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 {roleLabel} Workspace
