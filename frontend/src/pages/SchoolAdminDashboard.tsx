@@ -748,7 +748,7 @@ export function SchoolAdminDashboard() {
       }
     >
       {error && (
-        <section className="mb-5 border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700">
+        <section className="mb-5 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </section>
       )}
@@ -887,8 +887,8 @@ export function SchoolAdminDashboard() {
                   <p className="mt-1 text-xs font-medium text-slate-700">Goal: {step.objective}</p>
                   <ul className="mt-1 space-y-1">
                     {step.actions.map((action) => (
-                      <li key={`${step.id}-${action}`} className="text-xs text-slate-600">
-                        - {action}
+                      <li key={`${step.id}-${action}`} className="ml-4 list-disc text-xs text-slate-600">
+                        {action}
                       </li>
                     ))}
                   </ul>
@@ -900,8 +900,8 @@ export function SchoolAdminDashboard() {
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
               <ul className="mt-1 space-y-1">
                 {SCHOOL_MANUAL_STATUS_GUIDE.map((item) => (
-                  <li key={item} className="text-xs text-slate-600">
-                    - {item}
+                  <li key={item} className="ml-4 list-disc text-xs text-slate-600">
+                    {item}
                   </li>
                 ))}
               </ul>
@@ -949,12 +949,12 @@ export function SchoolAdminDashboard() {
 
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           {missingRequirements.length === 0 ? (
-            <article className="border border-primary-200 bg-primary-50 px-3 py-3 text-sm text-primary-700">
-              No missing submissions. Keep monitoring sync alerts and update compliance counts when needed.
+            <article className="dashboard-subtle-panel px-3 py-3 text-sm text-slate-700">
+              No missing submissions right now.
             </article>
           ) : (
             missingRequirements.map((item) => (
-              <article key={item.id} className="border border-slate-300 bg-slate-100 px-3 py-3">
+              <article key={item.id} className="dashboard-subtle-panel px-3 py-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">{item.summary}</p>
                 <p className="mt-1 text-xs text-slate-700">{item.detail}</p>
@@ -963,7 +963,7 @@ export function SchoolAdminDashboard() {
           )}
 
           {syncAlerts.slice(0, 2).map((alert) => (
-            <article key={alert.id} className="border border-slate-200 bg-slate-50 px-3 py-3">
+            <article key={alert.id} className="dashboard-subtle-panel px-3 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{alert.level}</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">{alert.title}</p>
               <p className="mt-1 text-xs text-slate-600">{alert.message}</p>
@@ -980,7 +980,7 @@ export function SchoolAdminDashboard() {
           {!isMobileViewport && renderQuickJumpChips(false)}
         </div>
         {isMobileViewport && renderQuickJumpChips(true)}
-        <div className="mt-3 grid gap-2 md:grid-cols-4">
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
           {requirements.map((item) => (
             <button
               key={item.id}
@@ -989,13 +989,13 @@ export function SchoolAdminDashboard() {
               className={`border px-3 py-3 text-left transition ${
                 item.isComplete
                   ? "border-primary-200 bg-primary-50 hover:bg-primary-100"
-                  : "border-slate-300 bg-slate-100 hover:bg-slate-200"
+                  : "border-rose-200 bg-rose-50 hover:bg-rose-100"
               }`}
             >
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
               <p className="mt-1 text-[11px] text-slate-600">{item.summary}</p>
-              <p className={`mt-2 text-xs font-bold ${item.isComplete ? "text-primary-700" : "text-slate-700"}`}>
-                {item.isComplete ? "Passed to monitor" : "Missing / needs action"}
+              <p className={`mt-2 text-xs font-bold ${item.isComplete ? "text-primary-700" : "text-rose-700"}`}>
+                {item.isComplete ? "Passed to monitor" : "Needs action"}
               </p>
             </button>
           ))}
@@ -1124,9 +1124,7 @@ export function SchoolAdminDashboard() {
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <h2 className="text-base font-bold text-slate-900">All Compliance Inputs</h2>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Keep this section open and update school summary inputs before submitting indicators below.
-                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">Update summary fields, then complete indicators below.</p>
                 </div>
                 {!isMobileViewport && renderQuickJumpChips(false)}
               </div>
@@ -1202,7 +1200,7 @@ export function SchoolAdminDashboard() {
                   </div>
                 )}
                 {submitError && (
-                  <div className="mb-3 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+                  <div className="mb-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
                     {submitError}
                   </div>
                 )}
@@ -1241,7 +1239,7 @@ export function SchoolAdminDashboard() {
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900">School Records</h2>
-              <p className="mt-1 text-xs text-slate-600">Manage learner records for your assigned school.</p>
+              <p className="mt-1 text-xs text-slate-600">Manage learner records.</p>
             </div>
             {!isMobileViewport && renderQuickJumpChips(false)}
           </div>
@@ -1259,3 +1257,4 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
