@@ -36,6 +36,13 @@ interface ComplianceCategory {
   metricCodes: string[];
 }
 
+type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" | "validated" | "overdue";
+
+interface SchoolIndicatorPanelProps {
+  statusFilter?: IndicatorWorkflowStatusFilter;
+  academicYearFilter?: string;
+}
+
 const SCHOOL_ACHIEVEMENTS_METRIC_CODES = [
   "IMETA_HEAD_NAME",
   "IMETA_ENROLL_TOTAL",
@@ -124,6 +131,7 @@ const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
 const BASE_SCHOOL_YEAR_START = 2026;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
+const INDICATOR_DRAFT_STORAGE_KEY = "cspams.schoolhead.indicator.autosave.v1";
 
 const METRIC_LABEL_OVERRIDES: Record<string, string> = {
   IMETA_HEAD_NAME: "NAME OF SCHOOL HEAD",
@@ -195,6 +203,15 @@ function workflowTone(status: string): string {
   if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "returned") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+}
+
+function workflowLabel(status: string, fallback: string): string {
+  if (status === "draft") return "Draft";
+  if (status === "submitted") return "Submitted";
+  if (status === "validated") return "Validated";
+  if (status === "returned") return "Needs Revision";
+  if (status === "overdue") return "Overdue";
+  return fallback || status;
 }
 
 function complianceTone(status: string): string {
@@ -286,7 +303,10 @@ function buildInitialMetricEntries(metrics: IndicatorMetric[], current: MetricEn
   return next;
 }
 
-export function SchoolIndicatorPanel() {
+export function SchoolIndicatorPanel({
+  statusFilter = "all",
+  academicYearFilter = "all",
+}: SchoolIndicatorPanelProps) {
   const {
     submissions,
     metrics,
@@ -310,6 +330,8 @@ export function SchoolIndicatorPanel() {
   const [expandedSubmissionId, setExpandedSubmissionId] = useState<string | null>(null);
   const [historyBySubmissionId, setHistoryBySubmissionId] = useState<Record<string, FormSubmissionHistoryEntry[]>>({});
   const [historyLoadingSubmissionId, setHistoryLoadingSubmissionId] = useState<string | null>(null);
+  const [showAdvancedInputs, setShowAdvancedInputs] = useState(true);
+  const [autosaveAt, setAutosaveAt] = useState<string | null>(null);
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -352,6 +374,57 @@ export function SchoolIndicatorPanel() {
     setAcademicYearId(currentYear?.id ?? academicYears[0].id);
   }, [academicYearId, academicYears]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = localStorage.getItem(INDICATOR_DRAFT_STORAGE_KEY);
+      if (!raw) return;
+
+      const persisted = JSON.parse(raw) as {
+        academicYearId?: string;
+        notes?: string;
+        metricEntries?: MetricEntryState;
+        savedAt?: string;
+      };
+
+      if (persisted.academicYearId) {
+        setAcademicYearId(persisted.academicYearId);
+      }
+      if (typeof persisted.notes === "string") {
+        setNotes(persisted.notes);
+      }
+      if (persisted.metricEntries && typeof persisted.metricEntries === "object") {
+        setMetricEntries((current) => ({ ...current, ...persisted.metricEntries }));
+      }
+      if (persisted.savedAt) {
+        setAutosaveAt(persisted.savedAt);
+      }
+    } catch {
+      // Ignore invalid local autosave payload.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (complianceMetrics.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      const savedAt = new Date().toISOString();
+      try {
+        localStorage.setItem(
+          INDICATOR_DRAFT_STORAGE_KEY,
+          JSON.stringify({ academicYearId, notes, metricEntries, savedAt }),
+        );
+        setAutosaveAt(savedAt);
+      } catch {
+        // Ignore autosave storage failures.
+      }
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [academicYearId, notes, metricEntries, complianceMetrics.length]);
+
   const sortedSubmissions = useMemo(
     () =>
       [...submissions].sort((a, b) => {
@@ -361,10 +434,28 @@ export function SchoolIndicatorPanel() {
       }),
     [submissions],
   );
+  const filteredSubmissions = useMemo(
+    () =>
+      sortedSubmissions.filter((submission) => {
+        const matchesYear = academicYearFilter === "all" || submission.academicYear?.id === academicYearFilter;
+        const normalizedStatus = String(submission.status ?? "").toLowerCase();
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "overdue" ? normalizedStatus === "returned" : normalizedStatus === statusFilter);
+
+        return matchesYear && matchesStatus;
+      }),
+    [academicYearFilter, sortedSubmissions, statusFilter],
+  );
+  const visibleCategoryMetrics = showAdvancedInputs ? categoryMetrics : categoryMetrics.slice(0, 1);
 
   const resetForm = () => {
     setNotes("");
     setMetricEntries(() => buildInitialMetricEntries(complianceMetrics, {}));
+    setAutosaveAt(null);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(INDICATOR_DRAFT_STORAGE_KEY);
+    }
   };
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
@@ -591,17 +682,29 @@ export function SchoolIndicatorPanel() {
             <h2 className="text-base font-bold text-slate-900">COMPLIANCE INDICATORS</h2>
             <p className="mt-0.5 text-xs text-slate-500">Complete each table, save draft, then submit to monitor.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void refreshSubmissions()}
-            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedInputs((current) => !current)}
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              {showAdvancedInputs ? "Hide advanced" : "Show advanced"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void refreshSubmissions()}
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+          </div>
         </div>
         <p className="mt-2 text-xs text-slate-500">
           {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          {autosaveAt ? `Saved ${new Date(autosaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not saved yet"}
         </p>
       </div>
 
@@ -654,7 +757,7 @@ export function SchoolIndicatorPanel() {
           </div>
         </div>
 
-        {categoryMetrics.map((category) => {
+        {visibleCategoryMetrics.map((category) => {
           const useTargetActualLayout = category.mode === "target_actual";
 
           return (
@@ -821,6 +924,11 @@ export function SchoolIndicatorPanel() {
             </div>
           );
         })}
+        {!showAdvancedInputs && categoryMetrics.length > 1 && (
+          <p className="text-xs text-slate-500">
+            Advanced tables are hidden. Use <span className="font-semibold text-slate-700">Show advanced</span> to view all sections.
+          </p>
+        )}
 
         {submitError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{submitError}</p>}
         {saveMessage && (
@@ -854,7 +962,7 @@ export function SchoolIndicatorPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedSubmissions.map((submission) => {
+              {filteredSubmissions.map((submission) => {
                 const historyRows = historyBySubmissionId[submission.id] ?? [];
                 const isExpanded = expandedSubmissionId === submission.id;
                 const isHistoryLoading = historyLoadingSubmissionId === submission.id;
@@ -870,7 +978,7 @@ export function SchoolIndicatorPanel() {
                             submission.status,
                           )}`}
                         >
-                          {submission.statusLabel}
+                          {workflowLabel(submission.status, submission.statusLabel)}
                         </span>
                       </td>
                       <td className="px-2 py-2 text-right text-sm font-semibold text-slate-900">
@@ -979,10 +1087,10 @@ export function SchoolIndicatorPanel() {
                   </Fragment>
                 );
               })}
-              {sortedSubmissions.length === 0 && (
+              {filteredSubmissions.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-2 py-8 text-center text-sm text-slate-500">
-                    No indicator packages yet. Create your first draft above.
+                    No indicator packages match the current context.
                   </td>
                 </tr>
               )}

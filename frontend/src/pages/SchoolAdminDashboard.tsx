@@ -21,15 +21,11 @@ import {
   ListChecks,
   ClipboardList,
   Database,
-  TrendingUp,
   Users,
   X,
 } from "lucide-react";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
-import { StatusPieChart } from "@/components/charts/StatusPieChart";
-import { RegionBarChart } from "@/components/charts/RegionBarChart";
-import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
 import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useAuth } from "@/context/Auth";
@@ -37,9 +33,6 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type { IndicatorSubmission, SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 import {
-  buildRegionAggregates,
-  buildStatusDistribution,
-  buildSubmissionTrend,
   formatDateTime,
   statusLabel,
 } from "@/utils/analytics";
@@ -86,10 +79,10 @@ interface QuickJumpItem {
 
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
-  { id: "first_glance", label: "Overview" },
-  { id: "requirements", label: "Requirements" },
-  { id: "compliance", label: "Compliance Records" },
-  { id: "records", label: "School Records" },
+  { id: "first_glance", label: "My Tasks" },
+  { id: "compliance", label: "Submission Workspace" },
+  { id: "requirements", label: "Returned & Revisions" },
+  { id: "records", label: "History & Exports" },
 ];
 
 const SCHOOL_NAVIGATOR_ICONS: Record<TopNavigatorItem["id"], NavigatorIcon> = {
@@ -102,43 +95,43 @@ const SCHOOL_NAVIGATOR_ICONS: Record<TopNavigatorItem["id"], NavigatorIcon> = {
 const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "first_glance",
-    title: "Overview",
-    objective: "Identify urgent tasks before encoding new data.",
+    title: "My Tasks",
+    objective: "Start with today’s high-priority items before entering full details.",
     actions: [
-      "Review missing requirements and sync alerts.",
-      "Prioritize any module marked as missing or returned.",
+      "Check overdue, returned, and pending monitor items first.",
+      "Use quick jump chips to open the exact section that needs action.",
     ],
-    doneWhen: "No urgent alert remains and you know the next module to open.",
-  },
-  {
-    id: "requirements",
-    title: "Requirements",
-    objective: "Use one screen to track all required submissions.",
-    actions: [
-      "Open each requirement tile and check if status is passed or missing.",
-      "Jump directly to the related module for missing items.",
-    ],
-    doneWhen: "All tiles show passed to monitor, or only pending review items remain.",
+    doneWhen: "You have a clear priority order for what to encode or revise next.",
   },
   {
     id: "compliance",
-    title: "Compliance Records",
-    objective: "Encode and submit all compliance data from one module.",
+    title: "Submission Workspace",
+    objective: "Encode required information in one focused working surface.",
     actions: [
-      "Update SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES entries for each school year.",
-      "Encode and submit compliance indicators.",
+      "Update school summary fields and then complete indicator tables.",
+      "Use Save Draft often, then submit package to monitor when complete.",
     ],
-    doneWhen: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES entries and indicator package are submitted or validated.",
+    doneWhen: "School summary and indicator package are updated and saved without errors.",
+  },
+  {
+    id: "requirements",
+    title: "Returned & Revisions",
+    objective: "Resolve monitor feedback quickly and resubmit with confidence.",
+    actions: [
+      "Review returned items and monitor notes in the side panel.",
+      "Jump directly to the relevant field and fix missing information.",
+    ],
+    doneWhen: "Returned items are fixed and ready to resubmit.",
   },
   {
     id: "records",
-    title: "School Records",
-    objective: "Confirm final synchronized data before ending session.",
+    title: "History & Exports",
+    objective: "Track prior submissions and keep proof records ready.",
     actions: [
-      "Search or filter to verify your latest update row.",
-      "Check last updated timestamp and status consistency.",
+      "Review student records and historical updates.",
+      "Validate status consistency before sharing reports.",
     ],
-    doneWhen: "Table reflects latest values and no mismatch is visible.",
+    doneWhen: "Historical records are accurate and review-ready.",
   },
 ];
 
@@ -146,24 +139,24 @@ const SCHOOL_MANUAL_STATUS_GUIDE = [
   "Draft: Saved but not yet sent to monitor.",
   "Submitted: Sent to monitor and waiting for review.",
   "Validated: Approved by monitor.",
-  "Returned: Needs correction and resubmission.",
+  "Needs Revision: Returned by monitor for corrections and resubmission.",
 ];
 
 const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
   first_glance: [
-    { id: "overview_alerts", label: "Overview Alerts", targetId: "first-glance", icon: AlertTriangle },
+    { id: "overview_alerts", label: "Today Focus", targetId: "first-glance", icon: AlertTriangle },
     { id: "school_info", label: "School Info", targetId: "school-overview", icon: Building2 },
-    { id: "kpi_cards", label: "Overview Status", targetId: "overview-metrics", icon: LayoutDashboard },
-    { id: "advanced_analytics", label: "Advanced Analytics", targetId: "school-analytics-toggle", icon: TrendingUp },
-  ],
-  requirements: [
-    { id: "requirement_cards", label: "Requirement Cards", targetId: "requirement-navigator", icon: ListChecks },
+    { id: "kpi_cards", label: "Task KPIs", targetId: "overview-metrics", icon: LayoutDashboard },
   ],
   compliance: [
-    { id: "compliance_input", label: "All Compliance Inputs", targetId: "compliance-input", icon: Database },
+    { id: "compliance_input", label: "Summary Inputs", targetId: "compliance-input", icon: Database },
+    { id: "indicator_workflow", label: "Indicator Workflow", targetId: "indicator-workflow", icon: ClipboardList },
+  ],
+  requirements: [
+    { id: "requirement_cards", label: "Returned Items", targetId: "requirement-navigator", icon: ListChecks },
   ],
   records: [
-    { id: "student_records", label: "Student Records", targetId: "school-records", icon: Users },
+    { id: "student_records", label: "History Records", targetId: "school-records", icon: Users },
   ],
 };
 
@@ -265,8 +258,8 @@ function buildWorkflowDetail(label: string, submission: IndicatorSubmission | nu
 
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
-  const { records, targetsMet, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
-  const { submissions: indicatorSubmissions } = useIndicatorData();
+  const { records, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
+  const { submissions: indicatorSubmissions, academicYears } = useIndicatorData();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -285,12 +278,12 @@ export function SchoolAdminDashboard() {
     typeof window === "undefined" ? false : window.innerWidth < SCHOOL_MOBILE_BREAKPOINT,
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
-  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
+  const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
+  const [contextSubmissionType, setContextSubmissionType] = useState<"all" | "school_record" | "indicator_package">("all");
+  const [contextWorkflowStatus, setContextWorkflowStatus] = useState<"all" | "draft" | "submitted" | "returned" | "validated" | "overdue">("all");
+  const [selectedRequirementId, setSelectedRequirementId] = useState<RequirementItem["id"]>("school_record");
 
-  const regionAggregates = useMemo(() => buildRegionAggregates(records), [records]);
-  const statusDistribution = useMemo(() => buildStatusDistribution(records), [records]);
-  const submissionTrend = useMemo(() => buildSubmissionTrend(records), [records]);
   const assignedRecord = records[0] ?? null;
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
@@ -344,6 +337,46 @@ export function SchoolAdminDashboard() {
     () => submissionStatuses.filter((status) => status === "submitted" || status === "validated").length,
     [submissionStatuses],
   );
+  const returnedSubmissions = useMemo(
+    () => indicatorSubmissions.filter((submission) => submission.status === "returned"),
+    [indicatorSubmissions],
+  );
+  const workspaceCompletion = useMemo(() => {
+    if (requirements.length === 0) return 0;
+    const complete = requirements.filter((item) => item.isComplete).length;
+    return Math.round((complete / requirements.length) * 100);
+  }, [requirements]);
+  const selectedRequirement = useMemo(
+    () => requirements.find((item) => item.id === selectedRequirementId) ?? requirements[0] ?? null,
+    [requirements, selectedRequirementId],
+  );
+  const contextDeadline = useMemo(() => {
+    if (!latestIndicators?.updatedAt && !latestIndicators?.createdAt) {
+      return "Not set";
+    }
+    const dateValue = latestIndicators.updatedAt ?? latestIndicators.createdAt;
+    return dateValue ? new Date(dateValue).toLocaleDateString() : "Not set";
+  }, [latestIndicators?.createdAt, latestIndicators?.updatedAt]);
+  const latestIndicatorUpdatedAt = latestIndicators?.updatedAt ?? latestIndicators?.createdAt ?? null;
+  const activeContextSummary = useMemo(() => {
+    const pieces = [
+      contextAcademicYearId === "all"
+        ? "All school years"
+        : academicYears.find((year) => year.id === contextAcademicYearId)?.name ?? "Selected school year",
+      contextSubmissionType === "all"
+        ? "All submission types"
+        : contextSubmissionType === "school_record"
+          ? "School record"
+          : "Indicator package",
+      contextWorkflowStatus === "all"
+        ? "All statuses"
+        : contextWorkflowStatus === "returned"
+          ? "Needs Revision"
+          : contextWorkflowStatus.charAt(0).toUpperCase() + contextWorkflowStatus.slice(1),
+    ];
+
+    return pieces.join(" | ");
+  }, [academicYears, contextAcademicYearId, contextSubmissionType, contextWorkflowStatus]);
   const quickJumpItems = useMemo(
     () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
@@ -358,12 +391,12 @@ export function SchoolAdminDashboard() {
         urgency: missingRequirements.length > 0 ? "high" : "none",
       },
       requirements: {
-        primary: missingRequirements.length,
-        urgency: missingRequirements.length > 0 ? "high" : "none",
+        primary: returnedCount,
+        urgency: returnedCount > 0 ? "high" : "none",
       },
       compliance: {
-        primary: pendingCount,
-        secondary: returnedCount,
+        primary: missingRequirements.length,
+        secondary: pendingCount,
         urgency: returnedCount > 0 ? "high" : pendingCount > 0 ? "medium" : "none",
       },
       records: { urgency: "none" },
@@ -372,6 +405,12 @@ export function SchoolAdminDashboard() {
   );
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
+
+  useEffect(() => {
+    if (requirements.length === 0) return;
+    if (requirements.some((item) => item.id === selectedRequirementId)) return;
+    setSelectedRequirementId(requirements[0].id);
+  }, [requirements, selectedRequirementId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -546,42 +585,16 @@ export function SchoolAdminDashboard() {
 
   const sectionFocusClass = (sectionId: string) => (focusedSectionId === sectionId ? "dashboard-focus-glow" : "");
 
-  const resolveQuickJumpTargetId = (targetId: string): string => {
-    if (targetId === "school-analytics-toggle") {
-      return "targets-snapshot";
-    }
-
-    return targetId;
-  };
-
   const canResolveQuickJumpTarget = (targetId: string): boolean => {
-    const resolvedTargetId = resolveQuickJumpTargetId(targetId);
-    if (resolvedTargetId === "targets-snapshot") {
-      return true;
-    }
-
     if (typeof document === "undefined") {
       return true;
     }
 
-    return Boolean(document.getElementById(resolvedTargetId));
+    return Boolean(document.getElementById(targetId));
   };
 
   const handleQuickJump = (targetId: string) => {
-    const resolvedTargetId = resolveQuickJumpTargetId(targetId);
-
-    if (targetId === "school-analytics-toggle") {
-      if (!showAdvancedAnalytics) {
-        setShowAdvancedAnalytics(true);
-      }
-
-      window.setTimeout(() => {
-        scrollToSection(resolvedTargetId);
-      }, 80);
-      return;
-    }
-
-    scrollToSection(resolvedTargetId);
+    scrollToSection(targetId);
   };
 
   const renderQuickJumpChips = (mobile: boolean) => {
@@ -593,8 +606,7 @@ export function SchoolAdminDashboard() {
       <div className={mobile ? "mt-2 flex gap-2 overflow-x-auto pb-1" : "flex flex-wrap items-center justify-end gap-2"}>
         {quickJumpItems.map((item) => {
           const Icon = item.icon;
-          const resolvedTargetId = resolveQuickJumpTargetId(item.targetId);
-          const isActive = focusedSectionId === resolvedTargetId;
+          const isActive = focusedSectionId === item.targetId;
           const isAvailable = canResolveQuickJumpTarget(item.targetId);
           const quickJumpIndex = quickJumpItems.findIndex((candidate) => candidate.id === item.id);
           const shortcutLabel = quickJumpIndex >= 0 && quickJumpIndex < 9 ? `Alt+Shift+${quickJumpIndex + 1}` : null;
@@ -706,18 +718,27 @@ export function SchoolAdminDashboard() {
   };
 
   const handleContinuePendingRequirements = () => {
-    if (missingRequirements.length > 0) {
+    if (returnedCount > 0) {
       setActiveTopNavigator("requirements");
       return;
     }
 
-    setActiveTopNavigator("records");
+    setActiveTopNavigator("compliance");
+  };
+
+  const clearTopContext = () => {
+    setContextAcademicYearId("all");
+    setContextSubmissionType("all");
+    setContextWorkflowStatus("all");
+    setSearch("");
+    setStatusFilter("all");
+    setFocusedSectionId(null);
   };
 
   return (
     <Shell
       title="School Head Dashboard"
-      subtitle="Overview, requirements, compliance records, and school records."
+      subtitle="My tasks, submission workspace, revisions, and history."
       actions={
         <div className="flex min-w-0 flex-col gap-2 lg:items-end">
           <div className="flex flex-wrap items-center gap-2">
@@ -735,7 +756,7 @@ export function SchoolAdminDashboard() {
               className="inline-flex h-9 items-center gap-2 rounded-sm border border-primary-300/50 bg-primary px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-600"
             >
               <ListChecks className="h-3.5 w-3.5" />
-              Continue Pending Requirements
+              Open Returned & Revisions
             </button>
             <button
               type="button"
@@ -743,14 +764,14 @@ export function SchoolAdminDashboard() {
               className="inline-flex h-9 items-center gap-2 rounded-sm border border-white/35 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white"
             >
               <ClipboardList className="h-3.5 w-3.5" />
-              Go to Compliance Inputs
+              Open Submission Workspace
             </button>
           </div>
           <span className="inline-flex max-w-full items-center rounded-sm border border-white/35 bg-white/92 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
             {syncStatus === "up_to_date" ? "Up to date" : "Records updated"}
-            {" • "}
+            {" | "}
             {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
-            {syncScope ? ` • ${syncScope}` : ""}
+            {syncScope ? ` | ${syncScope}` : ""}
           </span>
         </div>
       }
@@ -861,7 +882,7 @@ export function SchoolAdminDashboard() {
                       </span>
                       {item.id === "compliance" && hasSecondaryBadge && (
                         <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                          R{meta.secondary}
+                          P{meta.secondary}
                         </span>
                       )}
                     </span>
@@ -957,11 +978,85 @@ export function SchoolAdminDashboard() {
         </>
       )}
 
+      <section className="dashboard-shell sticky top-2 z-20 mb-5 rounded-sm border border-slate-200 bg-white/95">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Context Bar</h2>
+              <p className="mt-0.5 text-xs text-slate-600">
+                Keep one context while switching modes to avoid re-filtering.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={clearTopContext}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Clear all
+            </button>
+          </div>
+        </div>
+        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">School Year / Period</span>
+            <select
+              value={contextAcademicYearId}
+              onChange={(event) => setContextAcademicYearId(event.target.value)}
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            >
+              <option value="all">All school years (Annual)</option>
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name}
+                  {year.isCurrent ? " (Current)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Submission Type</span>
+            <select
+              value={contextSubmissionType}
+              onChange={(event) => setContextSubmissionType(event.target.value as "all" | "school_record" | "indicator_package")}
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            >
+              <option value="all">All submissions</option>
+              <option value="school_record">School record</option>
+              <option value="indicator_package">Indicator package</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Deadline</span>
+            <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{contextDeadline}</div>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Status</span>
+            <select
+              value={contextWorkflowStatus}
+              onChange={(event) =>
+                setContextWorkflowStatus(event.target.value as "all" | "draft" | "submitted" | "returned" | "validated" | "overdue")
+              }
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            >
+              <option value="all">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="submitted">Submitted</option>
+              <option value="returned">Needs Revision</option>
+              <option value="validated">Validated</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </label>
+        </div>
+        <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-600">
+          Active context: <span className="font-semibold text-slate-800">{activeContextSummary}</span>
+        </p>
+      </section>
+
       {activeTopNavigator === "first_glance" && (
       <section id="first-glance" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("first-glance")}`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Overview Alerts</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">My Tasks</h2>
             <p className="mt-1 text-xs text-slate-600">
               Missing requirements: <span className="font-bold text-slate-900">{missingRequirements.length}</span> of{" "}
               <span className="font-bold text-slate-900">{requirements.length}</span>
@@ -972,7 +1067,7 @@ export function SchoolAdminDashboard() {
             {missingRequirements.length === 0 ? (
               <span className="inline-flex items-center gap-1.5 border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                All monitor requirements are passed
+                No urgent task right now
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -981,15 +1076,6 @@ export function SchoolAdminDashboard() {
               </span>
             )}
             {!isMobileViewport && renderQuickJumpChips(false)}
-            <button
-              id="school-analytics-toggle"
-              type="button"
-              onClick={() => setShowAdvancedAnalytics((current) => !current)}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              <TrendingUp className="h-3.5 w-3.5" />
-              {showAdvancedAnalytics ? "Hide Analytics" : "Show Analytics"}
-            </button>
           </div>
         </div>
 
@@ -1020,31 +1106,86 @@ export function SchoolAdminDashboard() {
       )}
 
       {activeTopNavigator === "requirements" && (
-      <section id="requirement-navigator" className={`dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("requirement-navigator")}`}>
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Requirements</h2>
-          {!isMobileViewport && renderQuickJumpChips(false)}
+      <section id="requirement-navigator" className={`dashboard-shell mb-5 overflow-hidden rounded-sm ${sectionFocusClass("requirement-navigator")}`}>
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Returned & Revisions</h2>
+              <p className="mt-0.5 text-xs text-slate-600">Resolve monitor feedback quickly from one place.</p>
+            </div>
+            {!isMobileViewport && renderQuickJumpChips(false)}
+          </div>
+          {isMobileViewport && renderQuickJumpChips(true)}
         </div>
-        {isMobileViewport && renderQuickJumpChips(true)}
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {requirements.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => handleRequirementNavigate(item)}
-              className={`border px-3 py-3 text-left transition ${
-                item.isComplete
-                  ? "border-primary-200 bg-primary-50 hover:bg-primary-100"
-                  : "border-rose-200 bg-rose-50 hover:bg-rose-100"
-              }`}
-            >
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
-              <p className="mt-1 text-[11px] text-slate-600">{item.summary}</p>
-              <p className={`mt-2 text-xs font-bold ${item.isComplete ? "text-primary-700" : "text-rose-700"}`}>
-                {item.isComplete ? "Passed to monitor" : "Needs action"}
-              </p>
-            </button>
-          ))}
+        <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="space-y-4">
+            <div className="grid gap-2 md:grid-cols-2">
+              {requirements.map((item) => {
+                const isSelected = selectedRequirement?.id === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedRequirementId(item.id)}
+                    className={`rounded-sm border px-3 py-3 text-left transition ${
+                      isSelected
+                        ? "border-primary-300 bg-primary-50"
+                        : item.isComplete
+                          ? "border-primary-200 bg-white hover:bg-primary-50"
+                          : "border-rose-200 bg-rose-50 hover:bg-rose-100"
+                    }`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
+                    <p className="mt-1 text-[11px] text-slate-600">{item.summary}</p>
+                    <p className={`mt-2 text-xs font-bold ${item.isComplete ? "text-primary-700" : "text-rose-700"}`}>
+                      {item.isComplete ? "Passed to monitor" : "Needs action"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="rounded-sm border border-slate-200 bg-white p-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Returned Queue</h3>
+              {returnedSubmissions.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-600">No returned indicator packages right now.</p>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  {returnedSubmissions.slice(0, 6).map((submission) => (
+                    <article key={submission.id} className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Package #{submission.id}</p>
+                      <p className="mt-0.5 text-xs text-slate-700">{submission.reviewNotes || "No monitor note provided."}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Detail Drawer</h3>
+            {selectedRequirement ? (
+              <>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{selectedRequirement.label}</p>
+                <p className="mt-1 text-xs text-slate-700">{selectedRequirement.detail}</p>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Monitor Notes</p>
+                <p className="mt-1 text-xs text-slate-600">{latestIndicators?.reviewNotes || "No notes available for the latest package."}</p>
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Previous Cycle Comparison</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {latestIndicators
+                    ? `Last package updated ${latestIndicatorUpdatedAt ? formatDateTime(latestIndicatorUpdatedAt) : "N/A"} with ${latestIndicators.summary.complianceRatePercent.toFixed(2)}% compliance.`
+                    : "No prior package yet."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleRequirementNavigate(selectedRequirement)}
+                  className="mt-3 inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                >
+                  Open in Submission Workspace
+                </button>
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-slate-600">Select a requirement to view details.</p>
+            )}
+          </aside>
         </div>
       </section>
       )}
@@ -1067,194 +1208,212 @@ export function SchoolAdminDashboard() {
       </section>
 
       <section id="overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("overview-metrics")}`}>
-        <StatCard label="Pending" value={pendingCount.toLocaleString()} icon={<AlertCircle className="h-5 w-5" />} />
-        <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
-        <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
+        <StatCard label="For Review" value={pendingCount.toLocaleString()} icon={<AlertCircle className="h-5 w-5" />} />
+        <StatCard label="Needs Revision" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
+        <StatCard label="Validated / Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
       </section>
-
-      {showAdvancedAnalytics && (
-      <>
-      <section id="targets-snapshot" className={`mt-5 animate-fade-slide grid gap-4 xl:grid-cols-[1.4fr_1fr] ${sectionFocusClass("targets-snapshot")}`}>
-        <div id="sync-alerts-panel" className={`surface-panel dashboard-shell p-5 ${sectionFocusClass("sync-alerts-panel")}`}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET Snapshot</h2>
-            <span className="text-xs text-slate-500">
-              {targetsMet?.generatedAt ? `Generated ${new Date(targetsMet.generatedAt).toLocaleTimeString()}` : "Waiting for data"}
-            </span>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Retention Rate</p>
-              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.retentionRatePercent.toFixed(2)}%` : "--"}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Dropout Rate</p>
-              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.dropoutRatePercent.toFixed(2)}%` : "--"}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completion Rate</p>
-              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? `${targetsMet.completionRatePercent.toFixed(2)}%` : "--"}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">At-Risk Learners</p>
-              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet ? targetsMet.atRiskLearners.toLocaleString() : "--"}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Teacher Ratio</p>
-              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentTeacherRatio ?? "--"}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Student-Classroom Ratio</p>
-              <p className="mt-1 text-lg font-bold text-slate-900">{targetsMet?.studentClassroomRatio ?? "--"}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="surface-panel dashboard-shell p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Sync Alerts for Action</h2>
-          <div className="mt-4 space-y-3">
-            {syncAlerts.slice(0, 4).map((alert) => (
-              <article key={alert.id} className="border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{alert.level}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{alert.title}</p>
-                <p className="mt-1 text-xs text-slate-600">{alert.message}</p>
-              </article>
-            ))}
-            {syncAlerts.length === 0 && <p className="text-xs text-slate-500">No synchronized alerts yet.</p>}
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-5 animate-fade-slide grid gap-4 xl:grid-cols-3">
-        <div id="status-chart-panel" className={sectionFocusClass("status-chart-panel")}>
-          <StatusPieChart data={statusDistribution} />
-        </div>
-        <div id="region-chart-panel" className={sectionFocusClass("region-chart-panel")}>
-          <RegionBarChart data={regionAggregates} />
-        </div>
-        <div id="trend-chart-panel" className={sectionFocusClass("trend-chart-panel")}>
-          <SubmissionTrendChart data={submissionTrend} />
-        </div>
-      </section>
-
-      </>
-      )}
       </>
       )}
 
       {activeTopNavigator === "compliance" && (
       <section id="compliance-records" className="grid gap-5">
-        <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
-          <section className="surface-panel dashboard-shell animate-fade-slide overflow-hidden">
-            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">All Compliance Inputs</h2>
-                  <p className="mt-0.5 text-xs text-slate-500">Update summary fields, then complete indicators below.</p>
-                </div>
-                {!isMobileViewport && renderQuickJumpChips(false)}
+        <section className="dashboard-shell overflow-hidden rounded-sm">
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Workspace</h2>
+                <p className="mt-0.5 text-xs text-slate-600">Checklist and summary form on top, full-width compliance indicators below.</p>
               </div>
-              {isMobileViewport && renderQuickJumpChips(true)}
+              {!isMobileViewport && renderQuickJumpChips(false)}
             </div>
-
-            <form className="grid gap-4 p-5 md:grid-cols-3" onSubmit={handleFormSubmit}>
-              <div>
-                <label htmlFor="studentCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Students
-                </label>
-                <input
-                  id="studentCount"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={form.studentCount}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, studentCount: event.target.value }));
-                    setFormErrors((current) => ({ ...current, studentCount: undefined }));
-                    setSubmitError("");
-                  }}
-                  placeholder="0"
-                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-                {formErrors.studentCount && <p className="mt-1 text-xs text-primary-700">{formErrors.studentCount}</p>}
+            {isMobileViewport && renderQuickJumpChips(true)}
+          </div>
+          <div className="grid gap-4 p-4 xl:grid-cols-[14rem_minmax(0,1fr)]">
+            <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Section Checklist</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{workspaceCompletion}% complete</p>
+              <div className="mt-2 h-1.5 rounded-full bg-slate-200">
+                <div className="h-1.5 rounded-full bg-primary transition-[width] duration-300" style={{ width: `${workspaceCompletion}%` }} />
               </div>
-
-              <div>
-                <label htmlFor="teacherCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Teachers
-                </label>
-                <input
-                  id="teacherCount"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={form.teacherCount}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, teacherCount: event.target.value }));
-                    setFormErrors((current) => ({ ...current, teacherCount: undefined }));
-                    setSubmitError("");
-                  }}
-                  placeholder="0"
-                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-                {formErrors.teacherCount && <p className="mt-1 text-xs text-primary-700">{formErrors.teacherCount}</p>}
-              </div>
-
-              <div>
-                <label htmlFor="schoolStatus" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Status
-                </label>
-                <select
-                  id="schoolStatus"
-                  value={form.status}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, status: event.target.value as SchoolStatus }));
-                  }}
-                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                >
-                  <option value="active">{statusLabel("active")}</option>
-                  <option value="inactive">{statusLabel("inactive")}</option>
-                  <option value="pending">{statusLabel("pending")}</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-3">
-                {saveMessage && (
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                    <CheckCircle2 className="h-4 w-4" />
-                    {saveMessage}
-                  </div>
-                )}
-                {submitError && (
-                  <div className="mb-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                    {submitError}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2">
+              <div className="mt-3 space-y-2">
+                {requirements.map((item) => (
                   <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleRequirementNavigate(item)}
+                    className={`w-full rounded-sm border px-2.5 py-2 text-left text-xs transition ${
+                      item.isComplete
+                        ? "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
+                        : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    }`}
                   >
-                    <Save className="h-4 w-4" />
-                    {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save School Record"}
+                    <p className="font-semibold uppercase tracking-wide">{item.label}</p>
+                    <p className="mt-1 text-[11px]">{item.isComplete ? "Passed to monitor" : "Needs action"}</p>
                   </button>
+                ))}
+              </div>
+            </aside>
+
+            <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_19rem]">
+                <section className="surface-panel animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white">
+                  {contextSubmissionType !== "indicator_package" ? (
+                    <>
+                      <div className="border-b border-slate-200 px-5 py-4">
+                        <h3 className="text-base font-bold text-slate-900">School Summary Input</h3>
+                        <p className="mt-0.5 text-xs text-slate-500">Complete required fields first, then continue to indicators below.</p>
+                      </div>
+                      <form className="grid gap-4 p-5 md:grid-cols-3" onSubmit={handleFormSubmit}>
+                        <div>
+                          <label htmlFor="studentCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Students
+                          </label>
+                          <input
+                            id="studentCount"
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={form.studentCount}
+                            onChange={(event) => {
+                              setForm((current) => ({ ...current, studentCount: event.target.value }));
+                              setFormErrors((current) => ({ ...current, studentCount: undefined }));
+                              setSubmitError("");
+                            }}
+                            placeholder="0"
+                            className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                          />
+                          {formErrors.studentCount && <p className="mt-1 text-xs text-primary-700">{formErrors.studentCount}</p>}
+                        </div>
+
+                        <div>
+                          <label htmlFor="teacherCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Teachers
+                          </label>
+                          <input
+                            id="teacherCount"
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={form.teacherCount}
+                            onChange={(event) => {
+                              setForm((current) => ({ ...current, teacherCount: event.target.value }));
+                              setFormErrors((current) => ({ ...current, teacherCount: undefined }));
+                              setSubmitError("");
+                            }}
+                            placeholder="0"
+                            className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                          />
+                          {formErrors.teacherCount && <p className="mt-1 text-xs text-primary-700">{formErrors.teacherCount}</p>}
+                        </div>
+
+                        <div>
+                          <label htmlFor="schoolStatus" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            Status
+                          </label>
+                          <select
+                            id="schoolStatus"
+                            value={form.status}
+                            onChange={(event) => {
+                              setForm((current) => ({ ...current, status: event.target.value as SchoolStatus }));
+                            }}
+                            className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                          >
+                            <option value="active">{statusLabel("active")}</option>
+                            <option value="inactive">{statusLabel("inactive")}</option>
+                            <option value="pending">{statusLabel("pending")}</option>
+                          </select>
+                        </div>
+
+                        <div className="md:col-span-3">
+                          {saveMessage && (
+                            <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+                              <CheckCircle2 className="h-4 w-4" />
+                              {saveMessage}
+                            </div>
+                          )}
+                          {submitError && (
+                            <div className="mb-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                              {submitError}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="submit"
+                              disabled={isSaving}
+                              className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              <Save className="h-4 w-4" />
+                              {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save School Record"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={resetForm}
+                              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                            >
+                              <X className="h-4 w-4" />
+                              Reset Fields
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="border-b border-slate-200 px-5 py-4">
+                      <h3 className="text-base font-bold text-slate-900">Indicator Package Focus</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">School summary form is hidden while submission type is set to indicator package.</p>
+                    </div>
+                  )}
+                </section>
+
+                <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Guidance Drawer</p>
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Monitor Notes</p>
+                  <p className="mt-1 text-xs text-slate-700">{latestIndicators?.reviewNotes || "No monitor note for the latest package."}</p>
+
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Missing Fields</p>
+                  {Object.keys(formErrors).length === 0 ? (
+                    <p className="mt-1 text-xs text-slate-600">No missing required fields in school summary.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {Object.values(formErrors).filter(Boolean).map((entry) => (
+                        <li key={entry} className="text-xs text-rose-700">
+                          {entry}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Previous Cycle</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {latestIndicators
+                      ? `Latest package #${latestIndicators.id} is ${latestIndicators.statusLabel} with ${latestIndicators.summary.complianceRatePercent.toFixed(2)}% compliance.`
+                      : "No previous indicator package yet."}
+                  </p>
+
                   <button
                     type="button"
-                    onClick={resetForm}
-                    className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                    onClick={() => setActiveTopNavigator("requirements")}
+                    className="mt-3 inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                   >
-                    <X className="h-4 w-4" />
-                    Reset Fields
+                    Open Returned & Revisions
                   </button>
-                </div>
+                </aside>
               </div>
-            </form>
+            </section>
+          </div>
 
-            <div id="indicator-workflow" className={`border-t border-slate-200 ${sectionFocusClass("indicator-workflow")}`}>
-              <SchoolIndicatorPanel />
-            </div>
-          </section>
+          <div id="indicator-workflow" className={`border-t border-slate-200 ${sectionFocusClass("indicator-workflow")}`}>
+            {contextSubmissionType === "school_record" ? (
+              <div className="px-5 py-4 text-sm text-slate-600">
+                Indicator workflow is hidden while submission type is set to school record.
+              </div>
+            ) : (
+              <SchoolIndicatorPanel
+                statusFilter={contextWorkflowStatus}
+                academicYearFilter={contextAcademicYearId}
+              />
+            )}
+          </div>
         </section>
       </section>
       )}
@@ -1264,8 +1423,8 @@ export function SchoolAdminDashboard() {
         <div className="dashboard-shell mb-5 rounded-sm p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-900">School Records</h2>
-              <p className="mt-1 text-xs text-slate-600">Manage learner records.</p>
+              <h2 className="text-base font-bold text-slate-900">History & Exports</h2>
+              <p className="mt-1 text-xs text-slate-600">Review records and prepare export-ready history.</p>
             </div>
             {!isMobileViewport && renderQuickJumpChips(false)}
           </div>
@@ -1273,8 +1432,8 @@ export function SchoolAdminDashboard() {
         </div>
         <StudentRecordsPanel
           editable
-          title="Student Records"
-          description="Manage learner records."
+          title="Student Records History"
+          description="Manage learner records and review historical entries."
         />
       </section>
       )}
@@ -1283,5 +1442,6 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
 
 
