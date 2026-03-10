@@ -183,19 +183,19 @@ const METRIC_LABEL_OVERRIDES: Record<string, string> = {
   TR: "Transition Rate",
   NIR: "Net Intake Rate",
   PR: "Participation Rate",
-  ALS_COMPLETER_PCT: "Percentage of ALS Completers",
-  GPI: "Gender Parity Rate Index (GPI)",
+  ALS_COMPLETER_PCT: "ALS Completion Rate",
+  GPI: "Gender Parity Index (GPI)",
   IQR: "Interquartile Ratio",
   CR: "Completion Rate",
   CSR: "Cohort Survival Rate",
-  PLM_NEARLY_PROF: "a. Nearly Proficient (50%-74%)",
-  PLM_PROF: "b. Proficient (75%-89%)",
-  PLM_HIGH_PROF: "c. Highly Proficient (90%-100%)",
-  AE_PASS_RATE: "Percentage of Learners who passed the A&E Test",
-  VIOLENCE_REPORT_RATE: "Percentage of learners who reported violence by other learners",
-  LEARNER_SATISFACTION: "Percentage of learners satisfied with their education experience",
-  RIGHTS_AWARENESS: "Percentage of learners who know and can claim their education rights",
-  RBE_MANIFEST: "Percentage of schools and LCs manifesting indicators of RBE",
+  PLM_NEARLY_PROF: "Learning Mastery: Nearly Proficient (50%-74%)",
+  PLM_PROF: "Learning Mastery: Proficient (75%-89%)",
+  PLM_HIGH_PROF: "Learning Mastery: Highly Proficient (90%-100%)",
+  AE_PASS_RATE: "A&E Test Pass Rate",
+  VIOLENCE_REPORT_RATE: "Learners Reporting School Violence",
+  LEARNER_SATISFACTION: "Learner Satisfaction",
+  RIGHTS_AWARENESS: "Learners Aware of Education Rights",
+  RBE_MANIFEST: "Schools/LCs Manifesting RBE Indicators",
 };
 
 function workflowTone(status: string): string {
@@ -820,7 +820,7 @@ export function SchoolIndicatorPanel({
           {autosaveAt ? `Saved ${new Date(autosaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not saved"}
         </p>
         <p className="mt-1 text-xs text-primary-700">
-          KEY PERFORMANCE INDICATORS are auto-calculated from synchronized records during draft save.
+          Key performance indicators are auto-calculated from synchronized school records. Review entries, then save draft.
         </p>
       </div>
 
@@ -932,7 +932,7 @@ export function SchoolIndicatorPanel({
                 <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
                   <thead>
                     <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                      <th rowSpan={2} className="sticky left-0 z-20 border border-slate-300 bg-slate-100 px-3 py-2 text-left">
+                      <th rowSpan={2} className="sticky left-0 z-20 min-w-[280px] border border-slate-300 bg-slate-100 px-3 py-2 text-left">
                         Indicators
                       </th>
                       {activeCategory.mode === "target_actual" ? (
@@ -997,14 +997,14 @@ export function SchoolIndicatorPanel({
 
                       return (
                         <tr key={`${activeCategory.id}-${metric.id}`} className={rowTone}>
-                          <td className={`sticky left-0 z-10 border border-slate-300 px-3 py-2 ${stickyTone}`}>
-                            <p className="text-sm font-semibold text-slate-900">{metricDisplayLabel(metric)}</p>
-                            <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                              {isComplete ? "Complete" : "Pending"}
+                          <td className={`sticky left-0 z-10 min-w-[280px] max-w-[320px] border border-slate-300 px-3 py-2 align-top ${stickyTone}`}>
+                            <p className="text-[13px] font-semibold leading-5 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
+                            <p className="mt-1 text-[11px] font-medium text-slate-600">
+                              Status: {isComplete ? "Complete" : "Pending"}
                             </p>
                             {isAutoCalculated && (
-                              <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700">
-                                Auto-calculated
+                              <p className="mt-0.5 text-[11px] font-medium text-primary-700">
+                                Value source: Auto-calculated
                               </p>
                             )}
                           </td>
@@ -1020,7 +1020,7 @@ export function SchoolIndicatorPanel({
                               if (activeCategory.mode !== "target_actual") {
                                 return (
                                   <td key={`${metric.id}-${year}-auto`} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-700">Auto</span>
+                                    <span className="text-[11px] font-semibold text-primary-700">Auto</span>
                                   </td>
                                 );
                               }
@@ -1028,10 +1028,10 @@ export function SchoolIndicatorPanel({
                               return (
                                 <Fragment key={`${metric.id}-${year}-auto`}>
                                   <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-700">Auto</span>
+                                    <span className="text-[11px] font-semibold text-primary-700">Auto</span>
                                   </td>
                                   <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-700">Auto</span>
+                                    <span className="text-[11px] font-semibold text-primary-700">Auto</span>
                                   </td>
                                 </Fragment>
                               );
