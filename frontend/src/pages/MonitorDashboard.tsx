@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+﻿import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -53,9 +53,10 @@ type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "s
 type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 type WorkflowStatus = Exclude<RequirementFilter, "all">;
+type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
 type MonitorTopNavigatorId = "action_queue" | "schools" | "compliance_review" | "reports";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
-type FilterChipId = "search" | "status" | "requirement" | "school" | "student" | "teacher" | "date";
+type FilterChipId = "search" | "status" | "requirement" | "lane" | "school" | "student" | "teacher" | "date";
 type ToastTone = "success" | "info" | "warning";
 
 interface MonitorTopNavigatorItem {
@@ -185,6 +186,7 @@ interface PersistedMonitorFilters {
   search?: string;
   statusFilter?: SchoolStatus | "all";
   requirementFilter?: RequirementFilter;
+  queueLane?: QueueLane;
   schoolScopeKey?: string;
   studentLookupId?: string | null;
   teacherLookup?: string | null;
@@ -195,7 +197,7 @@ interface PersistedMonitorFilters {
 
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
-  { id: "action_queue", label: "Action Queue" },
+  { id: "action_queue", label: "My Queue" },
   { id: "compliance_review", label: "Review" },
   { id: "schools", label: "Schools" },
   { id: "reports", label: "Reports" },
@@ -211,11 +213,11 @@ const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIc
 const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "action_queue",
-    title: "Action Queue",
-    objective: "Start with schools that need urgent monitor action.",
+    title: "My Queue",
+    objective: "Start in one workspace for urgent schools and live review actions.",
     actions: [
-      "Check Missing, Returned, and For Review rows first.",
-      "Use Review, Open School, or Send Reminder to move each item forward.",
+      "Check lanes first: Urgent, Returned, For Review, and Waiting Data.",
+      "Open a school once and complete review actions from the same workspace.",
     ],
     doneWhen: "No urgent schools are left without an action.",
   },
@@ -273,6 +275,7 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   action_queue: [
     { id: "filters_queue", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
     { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },
+    { id: "queue_workspace", label: "Review Workspace", targetId: "monitor-queue-workspace", icon: ClipboardList },
   ],
   schools: [
     { id: "filters_schools", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
@@ -536,6 +539,10 @@ function isValidRequirementFilter(value: string | null | undefined): value is Re
   return value === "all" || value === "missing" || value === "waiting" || value === "returned" || value === "submitted" || value === "validated";
 }
 
+function isValidQueueLane(value: string | null | undefined): value is QueueLane {
+  return value === "all" || value === "urgent" || value === "returned" || value === "for_review" || value === "waiting_data";
+}
+
 function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {
   return value === "all" || value === "active" || value === "inactive" || value === "pending";
 }
@@ -699,6 +706,22 @@ function queuePriorityTone(row: SchoolRequirementSummary): string {
   }
 
   return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
+}
+
+function matchesQueueLane(row: SchoolRequirementSummary, lane: QueueLane): boolean {
+  if (lane === "all") return true;
+  if (lane === "urgent") return row.missingCount > 0 || row.indicatorStatus === "returned";
+  if (lane === "returned") return row.indicatorStatus === "returned";
+  if (lane === "for_review") return row.awaitingReviewCount > 0;
+  return row.missingCount > 0;
+}
+
+function queueLaneLabel(lane: QueueLane): string {
+  if (lane === "all") return "All lanes";
+  if (lane === "urgent") return "Urgent";
+  if (lane === "returned") return "Returned";
+  if (lane === "for_review") return "For Review";
+  return "Waiting Data";
 }
 
 function latestBySchool<
@@ -1006,6 +1029,14 @@ export function MonitorDashboard() {
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
+  const [queueLane, setQueueLane] = useState<QueueLane>("all");
+  const [lockedSchoolContextKey, setLockedSchoolContextKey] = useState<string | null>(null);
+  const [lastReviewCompletion, setLastReviewCompletion] = useState<{
+    schoolKey: string;
+    schoolName: string;
+    submissionId: string;
+    action: "validated" | "returned";
+  } | null>(null);
   const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
   const [toasts, setToasts] = useState<DashboardToast[]>([]);
   const [showRecordForm, setShowRecordForm] = useState(false);
@@ -1126,7 +1157,7 @@ export function MonitorDashboard() {
       if (!shortcutItem) return;
 
       event.preventDefault();
-      setActiveTopNavigator(shortcutItem.id);
+      setActiveTopNavigator(shortcutItem.id === "compliance_review" ? "action_queue" : shortcutItem.id);
       if (isMobileViewport) {
         setIsNavigatorVisible(false);
       }
@@ -1140,7 +1171,7 @@ export function MonitorDashboard() {
     if (typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
-    const hasQueryFilters = ["q", "status", "workflow", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
+    const hasQueryFilters = ["q", "status", "workflow", "lane", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
       params.has(key),
     );
 
@@ -1151,6 +1182,7 @@ export function MonitorDashboard() {
         search: params.get("q") ?? "",
         statusFilter: (params.get("status") as SchoolStatus | "all" | null) ?? undefined,
         requirementFilter: (params.get("workflow") as RequirementFilter | null) ?? undefined,
+        queueLane: (params.get("lane") as QueueLane | null) ?? undefined,
         schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
         studentLookupId: params.get("student"),
         teacherLookup: params.get("teacher"),
@@ -1177,6 +1209,9 @@ export function MonitorDashboard() {
       if (isValidRequirementFilter(persisted.requirementFilter)) {
         setRequirementFilter(persisted.requirementFilter);
       }
+      if (isValidQueueLane(persisted.queueLane)) {
+        setQueueLane(persisted.queueLane);
+      }
       if (persisted.schoolScopeKey) {
         setSelectedSchoolScopeKey(persisted.schoolScopeKey);
       }
@@ -1190,7 +1225,7 @@ export function MonitorDashboard() {
         setPendingStudentLookupId(persisted.studentLookupId);
       }
       if (isValidMonitorTopNavigator(persisted.activeTopNavigator)) {
-        setActiveTopNavigator(persisted.activeTopNavigator);
+        setActiveTopNavigator(persisted.activeTopNavigator === "compliance_review" ? "action_queue" : persisted.activeTopNavigator);
       }
     }
 
@@ -1204,6 +1239,7 @@ export function MonitorDashboard() {
       search,
       statusFilter,
       requirementFilter,
+      queueLane,
       schoolScopeKey: selectedSchoolScopeKey,
       studentLookupId: selectedStudentLookup?.id ?? pendingStudentLookupId ?? null,
       teacherLookup: selectedTeacherLookup,
@@ -1230,6 +1266,7 @@ export function MonitorDashboard() {
     setOrDelete("q", search.trim() ? search.trim() : null);
     setOrDelete("status", statusFilter !== "all" ? statusFilter : null);
     setOrDelete("workflow", requirementFilter !== "all" ? requirementFilter : null);
+    setOrDelete("lane", queueLane !== "all" ? queueLane : null);
     setOrDelete("school", selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
     setOrDelete("student", selectedStudentLookup?.id ?? pendingStudentLookupId ?? null);
     setOrDelete("teacher", selectedTeacherLookup ?? null);
@@ -1246,6 +1283,7 @@ export function MonitorDashboard() {
     filterDateTo,
     filtersHydrated,
     pendingStudentLookupId,
+    queueLane,
     requirementFilter,
     search,
     selectedSchoolScopeKey,
@@ -2048,6 +2086,29 @@ export function MonitorDashboard() {
         }),
     [filteredRequirementRows],
   );
+  const queueLaneCounts = useMemo(
+    () => ({
+      all: actionQueueRows.length,
+      urgent: actionQueueRows.filter((row) => matchesQueueLane(row, "urgent")).length,
+      returned: actionQueueRows.filter((row) => matchesQueueLane(row, "returned")).length,
+      for_review: actionQueueRows.filter((row) => matchesQueueLane(row, "for_review")).length,
+      waiting_data: actionQueueRows.filter((row) => matchesQueueLane(row, "waiting_data")).length,
+    }),
+    [actionQueueRows],
+  );
+  const laneFilteredQueueRows = useMemo(
+    () => actionQueueRows.filter((row) => matchesQueueLane(row, queueLane)),
+    [actionQueueRows, queueLane],
+  );
+  const queueWorkspaceSchoolFilterKeys = useMemo(() => {
+    if (lockedSchoolContextKey) {
+      return new Set([lockedSchoolContextKey]);
+    }
+    if (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE) {
+      return new Set([selectedSchoolScopeKey]);
+    }
+    return filteredSchoolKeys;
+  }, [filteredSchoolKeys, lockedSchoolContextKey, selectedSchoolScopeKey]);
   const showSubmissionFilters = !isMobileViewport || showAdvancedFilters;
   const returnedCount = requirementCounts.returned;
   const submittedCount = requirementCounts.submittedAny;
@@ -2367,12 +2428,12 @@ export function MonitorDashboard() {
     return map;
   }, [students]);
 
-  const totalRequirementPages = Math.max(1, Math.ceil(actionQueueRows.length / REQUIREMENT_PAGE_SIZE));
+  const totalRequirementPages = Math.max(1, Math.ceil(laneFilteredQueueRows.length / REQUIREMENT_PAGE_SIZE));
   const safeRequirementsPage = Math.min(requirementsPage, totalRequirementPages);
   const paginatedRequirementRows = useMemo(() => {
     const start = (safeRequirementsPage - 1) * REQUIREMENT_PAGE_SIZE;
-    return actionQueueRows.slice(start, start + REQUIREMENT_PAGE_SIZE);
-  }, [actionQueueRows, safeRequirementsPage]);
+    return laneFilteredQueueRows.slice(start, start + REQUIREMENT_PAGE_SIZE);
+  }, [laneFilteredQueueRows, safeRequirementsPage]);
 
   const totalRecordPages = Math.max(1, Math.ceil(filteredRecords.length / RECORD_PAGE_SIZE));
   const safeRecordsPage = Math.min(recordsPage, totalRecordPages);
@@ -2568,6 +2629,7 @@ export function MonitorDashboard() {
     if (search.trim()) chips.push({ id: "search", label: `Search: ${search.trim()}` });
     if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
     if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Queue: ${requirementFilterLabel(requirementFilter)}` });
+    if (queueLane !== "all") chips.push({ id: "lane", label: `Lane: ${queueLaneLabel(queueLane)}` });
     if (filterDateFrom || filterDateTo) {
       chips.push({
         id: "date",
@@ -2582,7 +2644,9 @@ export function MonitorDashboard() {
   }, [
     filterDateFrom,
     filterDateTo,
+    queueLane,
     requirementFilter,
+    queueLane,
     search,
     selectedSchoolScope,
     selectedStudentLookup,
@@ -2622,6 +2686,7 @@ export function MonitorDashboard() {
     setFilterDateFrom("");
     setFilterDateTo("");
     setRequirementFilter("all");
+    setQueueLane("all");
     setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
     setSelectedStudentLookup(null);
     setPendingStudentLookupId(null);
@@ -2635,6 +2700,7 @@ export function MonitorDashboard() {
 
   const resetQueueFilters = () => {
     setRequirementFilter("all");
+    setQueueLane("all");
   };
 
   const clearFilterChip = (chipId: FilterChipId) => {
@@ -2647,6 +2713,9 @@ export function MonitorDashboard() {
         break;
       case "requirement":
         setRequirementFilter("all");
+        break;
+      case "lane":
+        setQueueLane("all");
         break;
       case "date":
         setFilterDateFrom("");
@@ -2704,11 +2773,6 @@ export function MonitorDashboard() {
   };
 
   const handleReviewSchool = (summary: SchoolRequirementSummary) => {
-    setSelectedSchoolScopeKey(summary.schoolKey);
-    setSelectedStudentLookup(null);
-    setSelectedTeacherLookup(null);
-    setSchoolScopeDropdownSlot(null);
-
     if (summary.missingCount > 0) {
       setRequirementFilter("missing");
     } else if (summary.indicatorStatus === "returned") {
@@ -2719,19 +2783,21 @@ export function MonitorDashboard() {
       setRequirementFilter("all");
     }
 
-    setActiveTopNavigator("compliance_review");
+    setLockedSchoolContextKey(summary.schoolKey);
+    openSchoolDrawer(summary.schoolKey);
+    setActiveTopNavigator("action_queue");
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-indicators-queue");
+      focusAndScrollTo("monitor-queue-workspace");
     }, 80);
-    pushToast(`Review opened for ${summary.schoolName}.`, "info");
+    pushToast(`Review workspace opened for ${summary.schoolName}.`, "info");
   };
 
   const handleOpenSchool = (summary: SchoolRequirementSummary) => {
-    setSelectedSchoolScopeKey(summary.schoolKey);
-    setActiveTopNavigator("schools");
+    setLockedSchoolContextKey(summary.schoolKey);
+    setActiveTopNavigator("action_queue");
     openSchoolDrawer(summary.schoolKey);
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-school-records");
+      focusAndScrollTo("monitor-queue-workspace");
     }, 80);
     pushToast(`Opened school details for ${summary.schoolName}.`, "info");
   };
@@ -2753,12 +2819,13 @@ export function MonitorDashboard() {
       return;
     }
 
-    setSelectedSchoolScopeKey(schoolKey);
-    setActiveTopNavigator("compliance_review");
+    setLockedSchoolContextKey(schoolKey);
+    openSchoolDrawer(schoolKey);
+    setActiveTopNavigator("action_queue");
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-indicators-queue");
+      focusAndScrollTo("monitor-queue-workspace");
     }, 80);
-    pushToast(`Review opened for ${record.schoolName}.`, "info");
+    pushToast(`Review workspace opened for ${record.schoolName}.`, "info");
   };
 
   const handleOpenSchoolRecord = (record: SchoolRecord) => {
@@ -2767,11 +2834,11 @@ export function MonitorDashboard() {
       pushToast(`Unable to open school details for ${record.schoolName}: school key is missing.`, "warning");
       return;
     }
-    setSelectedSchoolScopeKey(schoolKey);
-    setActiveTopNavigator("schools");
+    setLockedSchoolContextKey(schoolKey);
+    setActiveTopNavigator("action_queue");
     openSchoolDrawer(schoolKey);
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-school-records");
+      focusAndScrollTo("monitor-queue-workspace");
     }, 80);
     pushToast(`Opened school details for ${record.schoolName}.`, "info");
   };
@@ -2786,27 +2853,71 @@ export function MonitorDashboard() {
     void sendReminderForSchool(schoolKey, record.schoolName);
   };
 
+  const clearLockedSchoolContext = () => {
+    setLockedSchoolContextKey(null);
+    setSchoolDrawerKey(null);
+    pushToast("School context cleared.", "info");
+  };
+
+  const handleQueueSchoolFocus = (schoolKey: string) => {
+    if (schoolKey === "unknown") return;
+    setLockedSchoolContextKey(schoolKey);
+    openSchoolDrawer(schoolKey);
+    setActiveTopNavigator("action_queue");
+  };
+
+  const handleQueueReviewCompleted = (payload: {
+    schoolKey: string;
+    schoolName: string;
+    submissionId: string;
+    action: "validated" | "returned";
+  }) => {
+    setLastReviewCompletion(payload);
+  };
+
+  useEffect(() => {
+    if (!lastReviewCompletion) return;
+
+    const currentIndex = laneFilteredQueueRows.findIndex((row) => row.schoolKey === lastReviewCompletion.schoolKey);
+    const nextRow =
+      currentIndex >= 0
+        ? laneFilteredQueueRows[currentIndex + 1] ?? laneFilteredQueueRows[currentIndex - 1] ?? null
+        : laneFilteredQueueRows[0] ?? null;
+
+    if (nextRow && nextRow.schoolKey !== lastReviewCompletion.schoolKey) {
+      setLockedSchoolContextKey(nextRow.schoolKey);
+      openSchoolDrawer(nextRow.schoolKey);
+      pushToast(`Auto-focused next school: ${nextRow.schoolName}.`, "info");
+    }
+
+    setLastReviewCompletion(null);
+  }, [laneFilteredQueueRows, lastReviewCompletion]);
+
   const handleContinuePendingRequirements = () => {
     if (requirementCounts.missing > 0) {
       setRequirementFilter("missing");
+      setQueueLane("waiting_data");
       setActiveTopNavigator("action_queue");
       return;
     }
 
     if (requirementCounts.returned > 0) {
       setRequirementFilter("returned");
-      setActiveTopNavigator("compliance_review");
+      setQueueLane("returned");
+      setActiveTopNavigator("action_queue");
       return;
     }
 
     if (requirementCounts.awaitingReview > 0) {
       setRequirementFilter("waiting");
-      setActiveTopNavigator("compliance_review");
+      setQueueLane("for_review");
+      setActiveTopNavigator("action_queue");
       return;
     }
 
     setRequirementFilter("all");
-    setActiveTopNavigator("schools");
+    setQueueLane("all");
+    setActiveTopNavigator("action_queue");
   };
 
   const handleSort = (column: SortColumn) => {
@@ -2819,7 +2930,8 @@ export function MonitorDashboard() {
   };
 
   const handleMonitorTopNavigate = (id: MonitorTopNavigatorId) => {
-    setActiveTopNavigator(id);
+    const normalizedTarget = id === "compliance_review" ? "action_queue" : id;
+    setActiveTopNavigator(normalizedTarget);
     if (isMobileViewport) {
       setIsNavigatorVisible(false);
     }
@@ -3067,6 +3179,7 @@ export function MonitorDashboard() {
 
   const hasContextAdvancedFiltersActive =
     requirementFilter !== "all" ||
+    queueLane !== "all" ||
     Boolean(selectedSchoolScope) ||
     Boolean(selectedStudentLookup) ||
     Boolean(selectedTeacherLookup) ||
@@ -3125,7 +3238,7 @@ export function MonitorDashboard() {
 
       {showContextAdvancedFilters && (
         <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
               <Filter className="h-4 w-4 text-slate-400" />
               <select
@@ -3138,6 +3251,20 @@ export function MonitorDashboard() {
                     {option.label}
                   </option>
                 ))}
+              </select>
+            </label>
+            <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+              <ListChecks className="h-4 w-4 text-slate-400" />
+              <select
+                value={queueLane}
+                onChange={(event) => setQueueLane(event.target.value as QueueLane)}
+                className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+              >
+                <option value="all">All lanes ({queueLaneCounts.all})</option>
+                <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
+                <option value="returned">Returned ({queueLaneCounts.returned})</option>
+                <option value="for_review">For Review ({queueLaneCounts.for_review})</option>
+                <option value="waiting_data">Waiting Data ({queueLaneCounts.waiting_data})</option>
               </select>
             </label>
             <label className="block">
@@ -3197,7 +3324,10 @@ export function MonitorDashboard() {
         Showing <span className="font-semibold text-slate-900">{filteredRequirementRows.length}</span> of{" "}
         <span className="font-semibold text-slate-900">{scopedRequirementRows.length}</span> schools in scope.
         {" "}
-        Queue rows: <span className="font-semibold text-slate-900">{actionQueueRows.length}</span>.
+        Queue rows: <span className="font-semibold text-slate-900">{laneFilteredQueueRows.length}</span>{" "}
+        <span className="text-slate-500">(lane)</span> /{" "}
+        <span className="font-semibold text-slate-900">{actionQueueRows.length}</span>{" "}
+        <span className="text-slate-500">(all)</span>.
       </p>
     </>
   );
@@ -3205,7 +3335,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="Action queue, review center, schools, and reports."
+      subtitle="My Queue workspace for triage, review, schools, and reports."
       actions={
         <div className="flex min-w-0 flex-col gap-2 lg:items-end">
           <div className="flex flex-wrap items-center gap-2">
@@ -3661,8 +3791,8 @@ export function MonitorDashboard() {
           <section id="monitor-action-queue" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-action-queue")}`}>
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Action Queue</h2>
-                <p className="mt-1 text-xs text-slate-600">Missing, Returned, and For Review schools.</p>
+                <h2 className="text-base font-bold text-slate-900">My Queue</h2>
+                <p className="mt-1 text-xs text-slate-600">Single workspace for triage, school context, and review actions.</p>
               </div>
               {!isMobileViewport && renderQuickJumpChips(false)}
             </div>
@@ -3672,12 +3802,58 @@ export function MonitorDashboard() {
               <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
               <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Queue Lanes</span>
+              {(
+                [
+                  { key: "all", label: "All", count: queueLaneCounts.all },
+                  { key: "urgent", label: "Urgent", count: queueLaneCounts.urgent },
+                  { key: "returned", label: "Returned", count: queueLaneCounts.returned },
+                  { key: "for_review", label: "For Review", count: queueLaneCounts.for_review },
+                  { key: "waiting_data", label: "Waiting Data", count: queueLaneCounts.waiting_data },
+                ] as Array<{ key: QueueLane; label: string; count: number }>
+              ).map((lane) => (
+                <button
+                  key={`queue-lane-${lane.key}`}
+                  type="button"
+                  onClick={() => setQueueLane(lane.key)}
+                  className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                    queueLane === lane.key
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {lane.label}
+                  <span className="rounded-sm border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
+                    {lane.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {(lockedSchoolContextKey || schoolDrawerKey) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2">
+                <p className="text-xs font-semibold text-primary-700">
+                  School context locked:{" "}
+                  <span className="text-primary-900">
+                    {schoolDetail?.schoolName ?? schoolRequirementByKey.get(lockedSchoolContextKey ?? "")?.schoolName ?? "Selected school"}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={clearLockedSchoolContext}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
+                >
+                  <X className="h-3 w-3" />
+                  Clear School Context
+                </button>
+              </div>
+            )}
           </section>
 
           <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
               <h2 className="text-base font-bold text-slate-900">Queue List</h2>
-              <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then For Review.</p>
+              <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then For Review. Active lane: {queueLaneLabel(queueLane)}.</p>
             </div>
 
             {paginatedRequirementRows.length === 0 ? (
@@ -3706,7 +3882,16 @@ export function MonitorDashboard() {
               <>
                 <div className="space-y-3 px-4 py-4 md:hidden">
                   {paginatedRequirementRows.map((row) => (
-                    <article key={row.schoolKey} className={`rounded-sm border border-slate-200 bg-white p-3 ${isUrgentRequirement(row) ? urgencyRowTone(row) : ""}`}>
+                    <article
+                      key={row.schoolKey}
+                      className={`rounded-sm border border-slate-200 bg-white p-3 ${
+                        lockedSchoolContextKey === row.schoolKey
+                          ? "ring-2 ring-primary-200"
+                          : isUrgentRequirement(row)
+                            ? urgencyRowTone(row)
+                            : ""
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
@@ -3776,7 +3961,16 @@ export function MonitorDashboard() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {paginatedRequirementRows.map((row) => (
-                        <tr key={row.schoolKey} className={`${isUrgentRequirement(row) ? urgencyRowTone(row) : "dashboard-table-row"}`}>
+                        <tr
+                          key={row.schoolKey}
+                          className={
+                            lockedSchoolContextKey === row.schoolKey
+                              ? "bg-primary-50/60"
+                              : isUrgentRequirement(row)
+                                ? urgencyRowTone(row)
+                                : "dashboard-table-row"
+                          }
+                        >
                           <td className="px-2 py-2">
                             <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
                             <p className="text-xs text-slate-500">{row.schoolCode}</p>
@@ -3849,7 +4043,7 @@ export function MonitorDashboard() {
               </>
             )}
 
-            {actionQueueRows.length > 0 && (
+            {laneFilteredQueueRows.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-xs text-slate-600">
                   Page <span className="font-semibold text-slate-900">{safeRequirementsPage}</span> of{" "}
@@ -3876,6 +4070,33 @@ export function MonitorDashboard() {
               </div>
             )}
           </section>
+
+          <section
+            id="monitor-queue-workspace"
+            className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm ${sectionFocusClass("monitor-queue-workspace")}`}
+          >
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <h2 className="text-base font-bold text-slate-900">Queue Review Workspace</h2>
+              <p className="mt-1 text-xs text-slate-600">
+                Review submitted indicators, write notes, validate/return, and send reminders in one place.
+              </p>
+            </div>
+            {queueWorkspaceSchoolFilterKeys && queueWorkspaceSchoolFilterKeys.size > 0 ? (
+              <MonitorIndicatorPanel
+                embedded
+                schoolFilterKeys={queueWorkspaceSchoolFilterKeys}
+                schoolRecords={records}
+                onToast={pushToast}
+                onSendReminder={sendReminderForSchool}
+                onSchoolFocusChange={(schoolKey) => handleQueueSchoolFocus(schoolKey)}
+                onReviewCompleted={handleQueueReviewCompleted}
+              />
+            ) : (
+              <div className="px-5 py-8 text-sm text-slate-500">
+                Select a school from the queue to start reviewing submissions.
+              </div>
+            )}
+          </section>
         </>
       )}
 
@@ -3896,10 +4117,12 @@ export function MonitorDashboard() {
           </div>
           <MonitorIndicatorPanel
             embedded
-            schoolFilterKeys={filteredSchoolKeys}
+            schoolFilterKeys={queueWorkspaceSchoolFilterKeys}
             schoolRecords={records}
             onToast={pushToast}
             onSendReminder={sendReminderForSchool}
+            onSchoolFocusChange={(schoolKey) => handleQueueSchoolFocus(schoolKey)}
+            onReviewCompleted={handleQueueReviewCompleted}
           />
         </section>
       )}

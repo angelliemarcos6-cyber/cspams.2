@@ -23,6 +23,13 @@ interface MonitorIndicatorPanelProps {
   schoolRecords?: SchoolRecord[];
   onToast?: (message: string, tone?: "success" | "info" | "warning") => void;
   onSendReminder?: (schoolKey: string, schoolName: string, notes?: string | null) => Promise<void>;
+  onSchoolFocusChange?: (schoolKey: string, schoolName: string) => void;
+  onReviewCompleted?: (payload: {
+    schoolKey: string;
+    schoolName: string;
+    action: "validated" | "returned";
+    submissionId: string;
+  }) => void;
   embedded?: boolean;
 }
 
@@ -75,6 +82,22 @@ interface SchoolMeta {
 
 const REVIEW_ASSIGNMENT_STORAGE_KEY = "cspams.monitor.review.assignments.v1";
 const UNASSIGNED_REVIEWER_VALUE = "__unassigned__";
+const RETURN_NOTE_TEMPLATES = [
+  "Incomplete rows detected. Please complete all required indicators before resubmitting.",
+  "Evidence links are missing or unclear. Attach supporting evidence per indicator.",
+  "Reported values do not match expected computation. Recheck target and actual figures.",
+  "Some below-target indicators need clear remarks and corrective action notes.",
+];
+const CLARIFICATION_NOTE_TEMPLATES = [
+  "Please clarify the data source and reference period used for flagged indicators.",
+  "Please explain significant variance between target and actual values.",
+  "Please confirm that submitted figures are validated by the school head.",
+];
+const ESCALATION_NOTE_TEMPLATES = [
+  "Escalated for further monitor review due to repeated inconsistencies.",
+  "Escalated due to missing evidence after multiple follow-ups.",
+  "Escalated for policy guidance before final validation.",
+];
 
 function savedViewButtonClass(view: ReviewSavedView, active: boolean): string {
   const base =
@@ -330,6 +353,8 @@ export function MonitorIndicatorPanel({
   schoolRecords = [],
   onToast,
   onSendReminder,
+  onSchoolFocusChange,
+  onReviewCompleted,
   embedded = false,
 }: MonitorIndicatorPanelProps) {
   const { username } = useAuth();
@@ -367,6 +392,7 @@ export function MonitorIndicatorPanel({
   const [reviewActionNotes, setReviewActionNotes] = useState("");
   const [reviewActionError, setReviewActionError] = useState("");
   const [isReviewActionRunning, setIsReviewActionRunning] = useState(false);
+  const [isDetailReminderSending, setIsDetailReminderSending] = useState(false);
   const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   const [activeSavedView, setActiveSavedView] = useState<ReviewSavedView | null>(null);
   const [queueDensity, setQueueDensity] = useState<QueueDensity>("comfortable");
@@ -817,6 +843,9 @@ export function MonitorIndicatorPanel({
   const openDetails = (row: ReviewQueueRow, initialTab: DetailTab = "overview") => {
     setDetailSubmissionId(row.submission.id);
     setDetailTab(initialTab);
+    if (row.schoolKey !== "unknown") {
+      onSchoolFocusChange?.(row.schoolKey, row.schoolName);
+    }
     void ensureHistoryLoaded(row.submission.id);
   };
 
@@ -992,6 +1021,16 @@ export function MonitorIndicatorPanel({
       setReviewActionError("");
 
       if (action === "validated" || action === "returned") {
+        const schoolKey = normalizeSchoolKey(submission.school?.schoolCode ?? null, submission.school?.name ?? null);
+        const schoolName = submission.school?.name ?? "Selected school";
+        if (schoolKey !== "unknown") {
+          onReviewCompleted?.({
+            schoolKey,
+            schoolName,
+            action,
+            submissionId: submission.id,
+          });
+        }
         window.setTimeout(() => {
           autoFocusNextQueueRow(submission.id);
         }, 120);
@@ -1121,6 +1160,30 @@ export function MonitorIndicatorPanel({
     }
   };
 
+  const sendDetailReminder = async () => {
+    if (!detailRow) return;
+    if (!onSendReminder) {
+      onToast?.("Reminder hook is unavailable in this view.", "warning");
+      return;
+    }
+    if (detailRow.schoolKey === "unknown") {
+      onToast?.("Unable to send reminder: school key is missing.", "warning");
+      return;
+    }
+
+    setIsDetailReminderSending(true);
+    try {
+      const note = `Reminder: pending monitor review package #${detailRow.submission.id} (${detailRow.submission.reportingPeriod ?? "N/A"}).`;
+      await onSendReminder(detailRow.schoolKey, detailRow.schoolName, note);
+      onToast?.(`Reminder sent to ${detailRow.schoolName}.`, "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to send reminder.";
+      onToast?.(message, "warning");
+    } finally {
+      setIsDetailReminderSending(false);
+    }
+  };
+
   const exportSelectedRows = () => {
     if (selectedRows.length === 0) {
       onToast?.("Select at least one row before exporting.", "warning");
@@ -1148,6 +1211,29 @@ export function MonitorIndicatorPanel({
     dateTo.length > 0 ||
     priorityFilter !== "all" ||
     assignedReviewerFilter !== "all";
+
+  const activeFilterChips = useMemo(() => {
+    const chips: string[] = [];
+    if (search.trim()) chips.push(`Search: ${search.trim()}`);
+    if (statusFilter !== "all") chips.push(`Status: ${statusFilter === "submitted" ? "For review" : statusFilter}`);
+    if (districtRegionFilter !== "all") chips.push(`Scope: ${districtRegionFilter.replace("district:", "District ").replace("region:", "Region ")}`);
+    if (submissionTypeFilter !== "all") chips.push("Type: Indicator package");
+    if (dateFrom || dateTo) chips.push(`Date: ${dateFrom || "Any"} to ${dateTo || "Any"}`);
+    if (priorityFilter !== "all") chips.push(`Priority: ${priorityLabel(priorityFilter)}`);
+    if (assignedReviewerFilter !== "all") {
+      chips.push(`Reviewer: ${assignedReviewerFilter === "unassigned" ? "Unassigned" : assignedReviewerFilter}`);
+    }
+    return chips;
+  }, [
+    assignedReviewerFilter,
+    dateFrom,
+    dateTo,
+    districtRegionFilter,
+    priorityFilter,
+    search,
+    statusFilter,
+    submissionTypeFilter,
+  ]);
 
   const panelClassName = embedded
     ? "overflow-hidden"
@@ -1322,6 +1408,25 @@ export function MonitorIndicatorPanel({
           Showing <span className="font-semibold text-slate-900">{filteredRows.length}</span> of{" "}
           <span className="font-semibold text-slate-900">{reviewRows.length}</span> submissions.
         </p>
+        {activeFilterChips.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip}
+                className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700"
+              >
+                {chip}
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
 
         {showAdvancedControls && (
           <div className="mt-4 rounded-sm border border-slate-200 bg-slate-50 p-3">
@@ -1937,6 +2042,15 @@ export function MonitorIndicatorPanel({
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
+                      onClick={() => void sendDetailReminder()}
+                      disabled={isDetailReminderSending || isSaving || isLoading}
+                      className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <Mail className="h-3 w-3" />
+                      {isDetailReminderSending ? "Sending..." : "Reminder"}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => openReviewAction(detailRow.submission, "returned")}
                       disabled={isSaving || isLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
@@ -1953,6 +2067,15 @@ export function MonitorIndicatorPanel({
                       <CheckCircle2 className="h-3 w-3" />
                       Validate
                     </button>
+                    {hasNextDetailRow && (
+                      <button
+                        type="button"
+                        onClick={openNextDetailRow}
+                        className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                      >
+                        Next School
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1990,6 +2113,35 @@ export function MonitorIndicatorPanel({
               <p className="mt-1 text-xs text-slate-600">
                 Decision actions update workflow status and trigger audit history. Return and escalate require a reason.
               </p>
+
+              {reviewAction.action !== "validated" && (
+                <div className="mt-3">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                    Quick Note Templates
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(reviewAction.action === "returned"
+                      ? RETURN_NOTE_TEMPLATES
+                      : reviewAction.action === "clarification"
+                        ? CLARIFICATION_NOTE_TEMPLATES
+                        : ESCALATION_NOTE_TEMPLATES
+                    ).map((template, index) => (
+                      <button
+                        key={template}
+                        type="button"
+                        onClick={() => {
+                          setReviewActionNotes(template);
+                          setReviewActionError("");
+                        }}
+                        title={template}
+                        className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                      >
+                        Template {index + 1}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <label className="mt-3 block">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Reason / Comments</span>
