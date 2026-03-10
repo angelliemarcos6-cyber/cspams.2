@@ -15,6 +15,9 @@ import {
   Edit2,
   Filter,
   RefreshCw,
+  CalendarDays,
+  SlidersHorizontal,
+  FilterX,
   Save,
   Search,
   LayoutDashboard,
@@ -296,6 +299,7 @@ export function SchoolAdminDashboard() {
   const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
   const [contextSubmissionType, setContextSubmissionType] = useState<"all" | "school_record" | "indicator_package">("all");
   const [contextWorkflowStatus, setContextWorkflowStatus] = useState<"all" | "draft" | "submitted" | "returned" | "validated" | "overdue">("all");
+  const [showContextMoreFilters, setShowContextMoreFilters] = useState(false);
   const [selectedRequirementId, setSelectedRequirementId] = useState<RequirementItem["id"]>("school_record");
   const [activeSubmissionSection, setActiveSubmissionSection] = useState<RequirementItem["id"]>("school_record");
   const [showSubmissionAdvanced, setShowSubmissionAdvanced] = useState(false);
@@ -392,6 +396,32 @@ export function SchoolAdminDashboard() {
     return dateValue ? new Date(dateValue).toLocaleDateString() : "Not set";
   }, [latestIndicators?.createdAt, latestIndicators?.updatedAt]);
   const latestIndicatorUpdatedAt = latestIndicators?.updatedAt ?? latestIndicators?.createdAt ?? null;
+  const currentAcademicYearOption = useMemo(
+    () => academicYears.find((year) => year.isCurrent) ?? academicYears[0] ?? null,
+    [academicYears],
+  );
+  const selectedAcademicYearLabel = useMemo(() => {
+    if (contextAcademicYearId === "all") return "All school years";
+    return academicYears.find((year) => year.id === contextAcademicYearId)?.name ?? "Selected year";
+  }, [academicYears, contextAcademicYearId]);
+  const selectedSubmissionTypeLabel = useMemo(() => {
+    if (contextSubmissionType === "all") return "All submission types";
+    return contextSubmissionType === "school_record" ? "School record" : "Indicator package";
+  }, [contextSubmissionType]);
+  const selectedWorkflowStatusLabel = useMemo(() => {
+    if (contextWorkflowStatus === "all") return "All statuses";
+    if (contextWorkflowStatus === "returned") return "Needs Revision";
+    return contextWorkflowStatus.charAt(0).toUpperCase() + contextWorkflowStatus.slice(1);
+  }, [contextWorkflowStatus]);
+  const hasContextOverrides =
+    contextAcademicYearId !== "all" || contextSubmissionType !== "all" || contextWorkflowStatus !== "all";
+  const activeContextCount = useMemo(
+    () =>
+      Number(contextAcademicYearId !== "all") +
+      Number(contextSubmissionType !== "all") +
+      Number(contextWorkflowStatus !== "all"),
+    [contextAcademicYearId, contextSubmissionType, contextWorkflowStatus],
+  );
   const activeContextSummary = useMemo(() => {
     const pieces = [
       contextAcademicYearId === "all"
@@ -439,6 +469,12 @@ export function SchoolAdminDashboard() {
   );
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
+
+  useEffect(() => {
+    if (contextSubmissionType !== "all" && !showContextMoreFilters) {
+      setShowContextMoreFilters(true);
+    }
+  }, [contextSubmissionType, showContextMoreFilters]);
 
   useEffect(() => {
     if (requirements.length === 0) return;
@@ -835,9 +871,62 @@ export function SchoolAdminDashboard() {
     setContextAcademicYearId("all");
     setContextSubmissionType("all");
     setContextWorkflowStatus("all");
+    setShowContextMoreFilters(false);
     setSearch("");
     setStatusFilter("all");
     setFocusedSectionId(null);
+  };
+
+  const clearContextField = (field: "year" | "type" | "status") => {
+    if (field === "year") {
+      setContextAcademicYearId("all");
+      return;
+    }
+
+    if (field === "type") {
+      setContextSubmissionType("all");
+      return;
+    }
+
+    setContextWorkflowStatus("all");
+  };
+
+  const applyContextPreset = (preset: "current_year" | "needs_revision" | "indicator_focus" | "all_submission") => {
+    if (preset === "current_year") {
+      if (currentAcademicYearOption) {
+        setContextAcademicYearId(currentAcademicYearOption.id);
+      }
+      return;
+    }
+
+    if (preset === "needs_revision") {
+      setContextWorkflowStatus("returned");
+      return;
+    }
+
+    if (preset === "indicator_focus") {
+      setContextSubmissionType("indicator_package");
+      setShowContextMoreFilters(true);
+      return;
+    }
+
+    setContextAcademicYearId("all");
+    setContextSubmissionType("all");
+    setContextWorkflowStatus("all");
+    setShowContextMoreFilters(false);
+  };
+
+  const isContextPresetActive = (preset: "current_year" | "needs_revision" | "indicator_focus" | "all_submission") => {
+    if (preset === "current_year") {
+      return Boolean(currentAcademicYearOption && contextAcademicYearId === currentAcademicYearOption.id);
+    }
+    if (preset === "needs_revision") {
+      return contextWorkflowStatus === "returned";
+    }
+    if (preset === "indicator_focus") {
+      return contextSubmissionType === "indicator_package";
+    }
+    return !hasContextOverrides;
   };
 
   return (
@@ -1085,76 +1174,198 @@ export function SchoolAdminDashboard() {
 
       <section className="dashboard-shell sticky top-2 z-20 mb-5 rounded-sm border border-slate-200 bg-white/95">
         <div className="border-b border-slate-200 px-4 py-3">
-          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Context Bar</h2>
-              <p className="mt-0.5 text-xs text-slate-600">
-                Keep one context while switching modes to avoid re-filtering.
-              </p>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Context Bar</h2>
+                <span className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                  {activeContextCount} active
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-slate-600">Set once, apply across tasks, input, revisions, and history.</p>
+              <p className="mt-1 truncate text-[11px] font-medium text-slate-500">{activeContextSummary}</p>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                <CalendarDays className="h-3.5 w-3.5 text-slate-500" />
+                Deadline: {contextDeadline}
+              </span>
+              <button
+                type="button"
+                onClick={clearTopContext}
+                disabled={!hasContextOverrides}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FilterX className="h-3.5 w-3.5" />
+                Clear all
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-b border-slate-100 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Quick Presets
+            </span>
             <button
               type="button"
-              onClick={clearTopContext}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              onClick={() => applyContextPreset("current_year")}
+              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                isContextPresetActive("current_year")
+                  ? "border-primary-300 bg-primary-50 text-primary-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
             >
-              Clear all
+              Current Year
+            </button>
+            <button
+              type="button"
+              onClick={() => applyContextPreset("needs_revision")}
+              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                isContextPresetActive("needs_revision")
+                  ? "border-primary-300 bg-primary-50 text-primary-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              Needs Revision
+            </button>
+            <button
+              type="button"
+              onClick={() => applyContextPreset("indicator_focus")}
+              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                isContextPresetActive("indicator_focus")
+                  ? "border-primary-300 bg-primary-50 text-primary-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              Indicator Focus
+            </button>
+            <button
+              type="button"
+              onClick={() => applyContextPreset("all_submission")}
+              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                isContextPresetActive("all_submission")
+                  ? "border-primary-300 bg-primary-50 text-primary-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              All Submissions
             </button>
           </div>
         </div>
-        <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">School Year / Period</span>
-            <select
-              value={contextAcademicYearId}
-              onChange={(event) => setContextAcademicYearId(event.target.value)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            >
-              <option value="all">All school years (Annual)</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                  {year.isCurrent ? " (Current)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Submission Type</span>
-            <select
-              value={contextSubmissionType}
-              onChange={(event) => setContextSubmissionType(event.target.value as "all" | "school_record" | "indicator_package")}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            >
-              <option value="all">All submissions</option>
-              <option value="school_record">School record</option>
-              <option value="indicator_package">Indicator package</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Deadline</span>
-            <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{contextDeadline}</div>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Status</span>
-            <select
-              value={contextWorkflowStatus}
-              onChange={(event) =>
-                setContextWorkflowStatus(event.target.value as "all" | "draft" | "submitted" | "returned" | "validated" | "overdue")
-              }
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            >
-              <option value="all">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="submitted">Submitted</option>
-              <option value="returned">Needs Revision</option>
-              <option value="validated">Validated</option>
-              <option value="overdue">Overdue</option>
-            </select>
-          </label>
+
+        <div className="px-4 py-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">School Year</span>
+              <select
+                value={contextAcademicYearId}
+                onChange={(event) => setContextAcademicYearId(event.target.value)}
+                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              >
+                <option value="all">All school years</option>
+                {academicYears.map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.name}
+                    {year.isCurrent ? " (Current)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Status</span>
+              <select
+                value={contextWorkflowStatus}
+                onChange={(event) =>
+                  setContextWorkflowStatus(event.target.value as "all" | "draft" | "submitted" | "returned" | "validated" | "overdue")
+                }
+                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              >
+                <option value="all">All statuses</option>
+                <option value="draft">Draft</option>
+                <option value="submitted">Submitted</option>
+                <option value="returned">Needs Revision</option>
+                <option value="validated">Validated</option>
+                <option value="overdue">Overdue</option>
+              </select>
+            </label>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => setShowContextMoreFilters((current) => !current)}
+                className="inline-flex h-10 w-full items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 xl:w-auto"
+                aria-expanded={showContextMoreFilters}
+                aria-controls="school-head-context-more-filters"
+              >
+                {showContextMoreFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {showContextMoreFilters ? "Hide filters" : "More filters"}
+              </button>
+            </div>
+          </div>
+
+          <div
+            id="school-head-context-more-filters"
+            className={`overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-out ${
+              showContextMoreFilters ? "mt-3 max-h-40 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
+            }`}
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Submission Type</span>
+                <select
+                  value={contextSubmissionType}
+                  onChange={(event) => setContextSubmissionType(event.target.value as "all" | "school_record" | "indicator_package")}
+                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                >
+                  <option value="all">All submissions</option>
+                  <option value="school_record">School record</option>
+                  <option value="indicator_package">Indicator package</option>
+                </select>
+              </label>
+            </div>
+          </div>
         </div>
-        <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-600">
-          Active context: <span className="font-semibold text-slate-800">{activeContextSummary}</span>
-        </p>
+
+        <div className="border-t border-slate-100 px-4 py-2.5">
+          {!hasContextOverrides ? (
+            <p className="text-xs text-slate-600">No active context filters.</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {contextAcademicYearId !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => clearContextField("year")}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                >
+                  Year: {selectedAcademicYearLabel}
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {contextSubmissionType !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => clearContextField("type")}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                >
+                  Type: {selectedSubmissionTypeLabel}
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {contextWorkflowStatus !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => clearContextField("status")}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                >
+                  Status: {selectedWorkflowStatusLabel}
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </section>
 
       {activeTopNavigator === "first_glance" && (
