@@ -1265,7 +1265,7 @@ export function SchoolAdminDashboard() {
             </div>
             {isMobileViewport && renderQuickJumpChips(true)}
           </div>
-          <div className="grid gap-4 p-4 xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <div className="grid gap-4 p-4 2xl:grid-cols-[14rem_minmax(0,1fr)]">
             <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Section Checklist</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">{workspaceCompletion}% complete</p>
@@ -1292,7 +1292,7 @@ export function SchoolAdminDashboard() {
             </aside>
 
             <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_19rem]">
+              <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_19rem]">
                 <section className="surface-panel animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white">
                   {contextSubmissionType !== "indicator_package" ? (
                     <>
