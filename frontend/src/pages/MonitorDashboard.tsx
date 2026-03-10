@@ -2857,14 +2857,7 @@ export function MonitorDashboard() {
           <div className="flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
-                <div className={`flex items-center ${showNavigatorHeaderText ? "justify-between" : "justify-center"}`}>
-                  <h2
-                    className={`overflow-hidden whitespace-nowrap text-sm font-bold uppercase tracking-wide text-white transition-[max-width,opacity] duration-[700ms] ease-in-out ${
-                      showNavigatorHeaderText ? "max-w-[11rem] opacity-100" : "max-w-0 opacity-0"
-                    }`}
-                  >
-                    Navigator
-                  </h2>
+                <div className="flex items-center justify-center">
                   <button
                     type="button"
                     onClick={() => {
