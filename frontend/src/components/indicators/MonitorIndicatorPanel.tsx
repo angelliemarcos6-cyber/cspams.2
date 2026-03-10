@@ -849,6 +849,31 @@ export function MonitorIndicatorPanel({
     void ensureHistoryLoaded(row.submission.id);
   };
 
+  useEffect(() => {
+    if (!embedded) return;
+
+    if (filteredRows.length === 0) {
+      if (detailSubmissionId !== null) {
+        setDetailSubmissionId(null);
+      }
+      return;
+    }
+
+    if (detailSubmissionId && filteredRows.some((row) => row.submission.id === detailSubmissionId)) {
+      return;
+    }
+
+    const nextRow = filteredRows.find((row) => row.status === "submitted") ?? filteredRows[0];
+    if (!nextRow) return;
+
+    setDetailSubmissionId(nextRow.submission.id);
+    setDetailTab("overview");
+    if (nextRow.schoolKey !== "unknown") {
+      onSchoolFocusChange?.(nextRow.schoolKey, nextRow.schoolName);
+    }
+    void ensureHistoryLoaded(nextRow.submission.id);
+  }, [detailSubmissionId, embedded, filteredRows, onSchoolFocusChange, ensureHistoryLoaded]);
+
   const closeDetails = () => {
     setDetailSubmissionId(null);
   };
@@ -1791,13 +1816,21 @@ export function MonitorIndicatorPanel({
 
       {detailRow && (
         <>
-          <button
-            type="button"
-            onClick={closeDetails}
-            className="fixed inset-0 z-[72] bg-slate-900/35"
-            aria-label="Close submission details"
-          />
-          <aside className="fixed right-0 top-0 z-[73] h-screen w-[min(52rem,100vw)] overflow-y-auto border-l border-slate-200 bg-white shadow-2xl">
+          {!embedded && (
+            <button
+              type="button"
+              onClick={closeDetails}
+              className="fixed inset-0 z-[72] bg-slate-900/35"
+              aria-label="Close submission details"
+            />
+          )}
+          <aside
+            className={
+              embedded
+                ? "mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
+                : "fixed right-0 top-0 z-[73] h-screen w-[min(52rem,100vw)] overflow-y-auto border-l border-slate-200 bg-white shadow-2xl"
+            }
+          >
             <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1806,13 +1839,15 @@ export function MonitorIndicatorPanel({
                     {detailRow.schoolName} - Package #{detailRow.submission.id}
                   </h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={closeDetails}
-                  className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                {!embedded && (
+                  <button
+                    type="button"
+                    onClick={closeDetails}
+                    className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2033,12 +2068,19 @@ export function MonitorIndicatorPanel({
               </div>
             )}
 
-            {detailRow.status === "submitted" && (
+            {detailRow && (
               <div className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                    Quick Decision
-                  </p>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      Quick Decision
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      {detailRow.status === "submitted"
+                        ? "This package is ready for monitor action."
+                        : `Current status: ${workflowLabel(detailRow.status)} (read-only).`}
+                    </p>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -2052,7 +2094,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => openReviewAction(detailRow.submission, "returned")}
-                      disabled={isSaving || isLoading}
+                      disabled={detailRow.status !== "submitted" || isSaving || isLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <RotateCcw className="h-3 w-3" />
@@ -2061,7 +2103,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => openReviewAction(detailRow.submission, "validated")}
-                      disabled={isSaving || isLoading}
+                      disabled={detailRow.status !== "submitted" || isSaving || isLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <CheckCircle2 className="h-3 w-3" />

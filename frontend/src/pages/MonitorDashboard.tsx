@@ -56,7 +56,7 @@ type WorkflowStatus = Exclude<RequirementFilter, "all">;
 type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
 type MonitorTopNavigatorId = "action_queue" | "schools" | "compliance_review" | "reports";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
-type FilterChipId = "search" | "status" | "requirement" | "lane" | "school" | "student" | "teacher" | "date";
+type FilterChipId = "search" | "status" | "requirement" | "lane" | "school" | "student" | "teacher" | "date" | "context";
 type ToastTone = "success" | "info" | "warning";
 
 interface MonitorTopNavigatorItem {
@@ -209,7 +209,6 @@ interface PersistedMonitorFilters {
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "action_queue", label: "My Queue" },
-  { id: "compliance_review", label: "Review" },
   { id: "schools", label: "Schools" },
   { id: "reports", label: "Reports" },
 ];
@@ -1186,6 +1185,7 @@ export function MonitorDashboard() {
     const hasQueryFilters = ["q", "status", "workflow", "lane", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
       params.has(key),
     );
+    const requestedTab = params.get("tab");
 
     let persisted: PersistedMonitorFilters | null = null;
 
@@ -1236,9 +1236,12 @@ export function MonitorDashboard() {
       if (persisted.studentLookupId) {
         setPendingStudentLookupId(persisted.studentLookupId);
       }
-      if (isValidMonitorTopNavigator(persisted.activeTopNavigator)) {
-        setActiveTopNavigator(persisted.activeTopNavigator);
-      }
+    }
+
+    if (isValidMonitorTopNavigator(requestedTab)) {
+      setActiveTopNavigator(requestedTab === "compliance_review" ? "action_queue" : requestedTab);
+    } else {
+      setActiveTopNavigator("action_queue");
     }
 
     setFiltersHydrated(true);
@@ -1257,7 +1260,6 @@ export function MonitorDashboard() {
       teacherLookup: selectedTeacherLookup,
       filterDateFrom,
       filterDateTo,
-      activeTopNavigator,
     };
 
     try {
@@ -1284,13 +1286,11 @@ export function MonitorDashboard() {
     setOrDelete("teacher", selectedTeacherLookup ?? null);
     setOrDelete("from", filterDateFrom.trim() ? filterDateFrom.trim() : null);
     setOrDelete("to", filterDateTo.trim() ? filterDateTo.trim() : null);
-    setOrDelete("tab", activeTopNavigator !== "action_queue" ? activeTopNavigator : null);
 
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
   }, [
-    activeTopNavigator,
     filterDateFrom,
     filterDateTo,
     filtersHydrated,
@@ -1782,6 +1782,12 @@ export function MonitorDashboard() {
   }, [selectedTeacherLookup, teacherLookupOptions]);
 
   useEffect(() => {
+    if (!lockedSchoolContextKey) return;
+    if (selectedSchoolScopeKey === lockedSchoolContextKey) return;
+    setSelectedSchoolScopeKey(lockedSchoolContextKey);
+  }, [lockedSchoolContextKey, selectedSchoolScopeKey]);
+
+  useEffect(() => {
     if (!filterDateFrom || !filterDateTo) return;
     if (filterDateFrom <= filterDateTo) return;
 
@@ -2010,6 +2016,10 @@ export function MonitorDashboard() {
         : null;
 
     return scopedRequirementRows.filter((row) => {
+      if (lockedSchoolContextKey) {
+        return row.schoolKey === lockedSchoolContextKey;
+      }
+
       const record = scopedRecordBySchoolKey.get(row.schoolKey);
       const searchableText = [
         row.schoolName,
@@ -2036,6 +2046,7 @@ export function MonitorDashboard() {
   }, [
     filterDateFrom,
     filterDateTo,
+    lockedSchoolContextKey,
     requirementFilter,
     scopedRequirementRows,
     scopedRecordBySchoolKey,
@@ -2055,12 +2066,16 @@ export function MonitorDashboard() {
     Boolean(selectedStudentLookup) ||
     Boolean(selectedTeacherLookup);
   const filteredSchoolKeys = useMemo(() => {
+    if (lockedSchoolContextKey) {
+      return new Set([lockedSchoolContextKey]);
+    }
+
     if (!hasDashboardFilters && !scopedSchoolKeys) {
       return null;
     }
 
     return new Set(filteredRequirementRows.map((row) => row.schoolKey));
-  }, [filteredRequirementRows, hasDashboardFilters, scopedSchoolKeys]);
+  }, [filteredRequirementRows, hasDashboardFilters, lockedSchoolContextKey, scopedSchoolKeys]);
 
   const requirementCounts = useMemo(
     () => ({
@@ -2668,6 +2683,7 @@ export function MonitorDashboard() {
         label: `Date: ${filterDateFrom || "Any"} to ${filterDateTo || "Any"}`,
       });
     }
+    if (lockedSchoolContextKey) chips.push({ id: "context", label: "Context: Locked School" });
     if (selectedSchoolScope) chips.push({ id: "school", label: `School: ${selectedSchoolScope.code}` });
     if (selectedStudentLookup) chips.push({ id: "student", label: `Student: ${selectedStudentLookup.fullName}` });
     if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup}` });
@@ -2676,6 +2692,7 @@ export function MonitorDashboard() {
   }, [
     filterDateFrom,
     filterDateTo,
+    lockedSchoolContextKey,
     queueLane,
     requirementFilter,
     queueLane,
@@ -2719,7 +2736,7 @@ export function MonitorDashboard() {
     setFilterDateTo("");
     setRequirementFilter("all");
     setQueueLane("all");
-    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+    setSelectedSchoolScopeKey(lockedSchoolContextKey ?? ALL_SCHOOL_SCOPE);
     setSelectedStudentLookup(null);
     setPendingStudentLookupId(null);
     setSelectedTeacherLookup(null);
@@ -2771,6 +2788,9 @@ export function MonitorDashboard() {
         setSelectedTeacherLookup(null);
         setTeacherLookupQuery("");
         break;
+      case "context":
+        clearLockedSchoolContext();
+        break;
       default:
         break;
     }
@@ -2816,6 +2836,7 @@ export function MonitorDashboard() {
     }
 
     setLockedSchoolContextKey(summary.schoolKey);
+    setSelectedSchoolScopeKey(summary.schoolKey);
     openSchoolDrawer(summary.schoolKey);
     setActiveTopNavigator("action_queue");
     window.setTimeout(() => {
@@ -2826,6 +2847,7 @@ export function MonitorDashboard() {
 
   const handleOpenSchool = (summary: SchoolRequirementSummary) => {
     setLockedSchoolContextKey(summary.schoolKey);
+    setSelectedSchoolScopeKey(summary.schoolKey);
     setActiveTopNavigator("action_queue");
     openSchoolDrawer(summary.schoolKey);
     window.setTimeout(() => {
@@ -2852,6 +2874,7 @@ export function MonitorDashboard() {
     }
 
     setLockedSchoolContextKey(schoolKey);
+    setSelectedSchoolScopeKey(schoolKey);
     openSchoolDrawer(schoolKey);
     setActiveTopNavigator("action_queue");
     window.setTimeout(() => {
@@ -2867,12 +2890,13 @@ export function MonitorDashboard() {
       return;
     }
     setLockedSchoolContextKey(schoolKey);
-    setActiveTopNavigator("schools");
+    setSelectedSchoolScopeKey(schoolKey);
+    setActiveTopNavigator("action_queue");
     openSchoolDrawer(schoolKey);
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-school-records");
+      focusAndScrollTo("monitor-queue-workspace");
     }, 80);
-    pushToast(`Opened school details for ${record.schoolName}.`, "info");
+    pushToast(`Review workspace opened for ${record.schoolName}.`, "info");
   };
 
   const handleSendReminderRecord = (record: SchoolRecord) => {
@@ -2887,6 +2911,7 @@ export function MonitorDashboard() {
 
   const clearLockedSchoolContext = () => {
     setLockedSchoolContextKey(null);
+    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
     setSchoolDrawerKey(null);
     pushToast("School context cleared.", "info");
   };
@@ -2894,6 +2919,7 @@ export function MonitorDashboard() {
   const handleQueueSchoolFocus = (schoolKey: string) => {
     if (schoolKey === "unknown") return;
     setLockedSchoolContextKey(schoolKey);
+    setSelectedSchoolScopeKey(schoolKey);
     openSchoolDrawer(schoolKey);
     setActiveTopNavigator("action_queue");
   };
@@ -2918,6 +2944,7 @@ export function MonitorDashboard() {
 
     if (nextRow && nextRow.schoolKey !== lastReviewCompletion.schoolKey) {
       setLockedSchoolContextKey(nextRow.schoolKey);
+      setSelectedSchoolScopeKey(nextRow.schoolKey);
       openSchoolDrawer(nextRow.schoolKey);
       pushToast(`Auto-focused next school: ${nextRow.schoolName}.`, "info");
     }
@@ -2962,8 +2989,9 @@ export function MonitorDashboard() {
   };
 
   const handleMonitorTopNavigate = (id: MonitorTopNavigatorId) => {
+    const normalizedTarget = id === "compliance_review" ? "action_queue" : id;
     setShowNavigatorManual(false);
-    setActiveTopNavigator(id);
+    setActiveTopNavigator(normalizedTarget);
 
     if (typeof window !== "undefined") {
       const targetByNav: Record<MonitorTopNavigatorId, string> = {
@@ -2973,7 +3001,7 @@ export function MonitorDashboard() {
         reports: "monitor-overview-metrics",
       };
 
-      const targetId = targetByNav[id];
+      const targetId = targetByNav[normalizedTarget];
       if (targetId) {
         window.setTimeout(() => {
           focusAndScrollTo(targetId);
@@ -2999,19 +3027,33 @@ export function MonitorDashboard() {
 
   const renderSchoolScopeSelector = () => {
     const isOpen = schoolScopeDropdownSlot === "schools";
+    const isLockedByContext = Boolean(lockedSchoolContextKey);
 
     return (
       <div className="relative mt-3">
         <button
           type="button"
-          onClick={() => setSchoolScopeDropdownSlot((current) => (current === "schools" ? null : "schools"))}
-          className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+          onClick={() => {
+            if (isLockedByContext) return;
+            setSchoolScopeDropdownSlot((current) => (current === "schools" ? null : "schools"));
+          }}
+          disabled={isLockedByContext}
+          className={`inline-flex w-full items-center justify-between gap-2 border px-2.5 py-1.5 text-left text-xs font-semibold transition ${
+            isLockedByContext
+              ? "cursor-not-allowed border-primary-200 bg-primary-50 text-primary-700"
+              : "border-slate-200 bg-white text-slate-700 hover:border-primary-200 hover:text-primary-700"
+          }`}
         >
           <span className="truncate">
             {selectedSchoolScope ? `${selectedSchoolScope.code} - ${selectedSchoolScope.name}` : "All schools"}
           </span>
           <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
         </button>
+        {isLockedByContext && (
+          <p className="mt-1 text-[11px] text-primary-700">
+            School context is locked. Clear school context to change this filter.
+          </p>
+        )}
         {isOpen && (
           <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
             <div className="border-b border-slate-100 p-2">
@@ -4142,7 +4184,7 @@ export function MonitorDashboard() {
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
               <h2 className="text-base font-bold text-slate-900">Queue Review Workspace</h2>
               <p className="mt-1 text-xs text-slate-600">
-                Review submitted indicators, write notes, validate/return, and send reminders in one place.
+                Review submitted packages, indicator matrix, notes, and decisions in one place.
               </p>
             </div>
             {queueWorkspaceSchoolFilterKeys && queueWorkspaceSchoolFilterKeys.size > 0 ? (
@@ -4936,7 +4978,7 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {!showNavigatorManual && schoolDrawerKey && (
+      {!showNavigatorManual && schoolDrawerKey && activeTopNavigator !== "action_queue" && (
         <button
           type="button"
           onClick={closeSchoolDrawer}
@@ -4946,9 +4988,15 @@ export function MonitorDashboard() {
       )}
 
       <aside
-        className={`fixed right-0 top-24 z-[75] h-[calc(100vh-6rem)] w-[min(78rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
-          !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={
+          activeTopNavigator === "action_queue"
+            ? !showNavigatorManual && schoolDrawerKey
+              ? "surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
+              : "hidden"
+            : `fixed right-0 top-24 z-[75] h-[calc(100vh-6rem)] w-[min(78rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
+                !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
+              }`
+        }
       >
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
           <div>
@@ -4964,7 +5012,7 @@ export function MonitorDashboard() {
           </button>
         </div>
 
-        <div className="h-[calc(100%-3.5rem)] overflow-y-auto p-4">
+        <div className={activeTopNavigator === "action_queue" ? "p-4" : "h-[calc(100%-3.5rem)] overflow-y-auto p-4"}>
           {schoolDetail ? (
             <div className="space-y-3">
               <article className="rounded-sm border border-slate-200 bg-white p-3">
