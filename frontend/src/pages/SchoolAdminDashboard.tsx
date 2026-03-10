@@ -16,7 +16,6 @@ import {
   Filter,
   RefreshCw,
   CalendarDays,
-  SlidersHorizontal,
   FilterX,
   Save,
   Search,
@@ -422,25 +421,6 @@ export function SchoolAdminDashboard() {
       Number(contextWorkflowStatus !== "all"),
     [contextAcademicYearId, contextSubmissionType, contextWorkflowStatus],
   );
-  const activeContextSummary = useMemo(() => {
-    const pieces = [
-      contextAcademicYearId === "all"
-        ? "All school years"
-        : academicYears.find((year) => year.id === contextAcademicYearId)?.name ?? "Selected school year",
-      contextSubmissionType === "all"
-        ? "All submission types"
-        : contextSubmissionType === "school_record"
-          ? "School record"
-          : "Indicator package",
-      contextWorkflowStatus === "all"
-        ? "All statuses"
-        : contextWorkflowStatus === "returned"
-          ? "Needs Revision"
-          : contextWorkflowStatus.charAt(0).toUpperCase() + contextWorkflowStatus.slice(1),
-    ];
-
-    return pieces.join(" | ");
-  }, [academicYears, contextAcademicYearId, contextSubmissionType, contextWorkflowStatus]);
   const quickJumpItems = useMemo(
     () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
@@ -1174,21 +1154,19 @@ export function SchoolAdminDashboard() {
 
       <section className="dashboard-shell sticky top-2 z-20 mb-5 rounded-sm border border-slate-200 bg-white/95">
         <div className="border-b border-slate-200 px-4 py-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Top Context Bar</h2>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Context</h2>
+              {activeContextCount > 0 && (
                 <span className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                   {activeContextCount} active
                 </span>
-              </div>
-              <p className="mt-0.5 text-xs text-slate-600">Set once, apply across tasks, input, revisions, and history.</p>
-              <p className="mt-1 truncate text-[11px] font-medium text-slate-500">{activeContextSummary}</p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                 <CalendarDays className="h-3.5 w-3.5 text-slate-500" />
-                Deadline: {contextDeadline}
+                {contextDeadline === "Not set" ? "No due date" : contextDeadline}
               </span>
               <button
                 type="button"
@@ -1197,7 +1175,7 @@ export function SchoolAdminDashboard() {
                 className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <FilterX className="h-3.5 w-3.5" />
-                Clear all
+                Clear
               </button>
             </div>
           </div>
@@ -1205,10 +1183,6 @@ export function SchoolAdminDashboard() {
 
         <div className="border-b border-slate-100 px-4 py-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Quick Presets
-            </span>
             <button
               type="button"
               onClick={() => applyContextPreset("current_year")}
@@ -1218,7 +1192,7 @@ export function SchoolAdminDashboard() {
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
               }`}
             >
-              Current Year
+              Current
             </button>
             <button
               type="button"
@@ -1229,7 +1203,7 @@ export function SchoolAdminDashboard() {
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
               }`}
             >
-              Needs Revision
+              Revision
             </button>
             <button
               type="button"
@@ -1240,7 +1214,7 @@ export function SchoolAdminDashboard() {
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
               }`}
             >
-              Indicator Focus
+              Indicators
             </button>
             <button
               type="button"
@@ -1251,21 +1225,21 @@ export function SchoolAdminDashboard() {
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
               }`}
             >
-              All Submissions
+              All
             </button>
           </div>
         </div>
 
         <div className="px-4 py-3">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">School Year</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Year</span>
               <select
                 value={contextAcademicYearId}
                 onChange={(event) => setContextAcademicYearId(event.target.value)}
                 className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
-                <option value="all">All school years</option>
+                <option value="all">All years</option>
                 {academicYears.map((year) => (
                   <option key={year.id} value={year.id}>
                     {year.name}
@@ -1300,7 +1274,7 @@ export function SchoolAdminDashboard() {
                 aria-controls="school-head-context-more-filters"
               >
                 {showContextMoreFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                {showContextMoreFilters ? "Hide filters" : "More filters"}
+                {showContextMoreFilters ? "Less" : "More"}
               </button>
             </div>
           </div>
@@ -1308,18 +1282,18 @@ export function SchoolAdminDashboard() {
           <div
             id="school-head-context-more-filters"
             className={`overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-out ${
-              showContextMoreFilters ? "mt-3 max-h-40 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
+              showContextMoreFilters ? "mt-2 max-h-32 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
             }`}
           >
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2 md:grid-cols-2">
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Submission Type</span>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Type</span>
                 <select
                   value={contextSubmissionType}
                   onChange={(event) => setContextSubmissionType(event.target.value as "all" | "school_record" | "indicator_package")}
                   className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 >
-                  <option value="all">All submissions</option>
+                  <option value="all">All types</option>
                   <option value="school_record">School record</option>
                   <option value="indicator_package">Indicator package</option>
                 </select>
@@ -1328,10 +1302,8 @@ export function SchoolAdminDashboard() {
           </div>
         </div>
 
-        <div className="border-t border-slate-100 px-4 py-2.5">
-          {!hasContextOverrides ? (
-            <p className="text-xs text-slate-600">No active context filters.</p>
-          ) : (
+        {hasContextOverrides && (
+          <div className="border-t border-slate-100 px-4 py-2">
             <div className="flex flex-wrap items-center gap-2">
               {contextAcademicYearId !== "all" && (
                 <button
@@ -1339,7 +1311,7 @@ export function SchoolAdminDashboard() {
                   onClick={() => clearContextField("year")}
                   className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                 >
-                  Year: {selectedAcademicYearLabel}
+                  {selectedAcademicYearLabel}
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -1349,7 +1321,7 @@ export function SchoolAdminDashboard() {
                   onClick={() => clearContextField("type")}
                   className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                 >
-                  Type: {selectedSubmissionTypeLabel}
+                  {selectedSubmissionTypeLabel}
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -1359,13 +1331,13 @@ export function SchoolAdminDashboard() {
                   onClick={() => clearContextField("status")}
                   className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                 >
-                  Status: {selectedWorkflowStatusLabel}
+                  {selectedWorkflowStatusLabel}
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </section>
 
       {activeTopNavigator === "first_glance" && (
