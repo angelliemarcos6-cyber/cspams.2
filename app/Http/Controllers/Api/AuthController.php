@@ -20,7 +20,7 @@ class AuthController extends Controller
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
         $rawLogin = trim($request->string('login')->toString());
         $login = $role === UserRoleResolver::SCHOOL_HEAD
-            ? strtoupper($rawLogin)
+            ? (string) $this->normalizeSchoolCode($rawLogin)
             : $rawLogin;
         $password = $request->string('password')->toString();
 
@@ -60,7 +60,7 @@ class AuthController extends Controller
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
         $rawLogin = trim($request->string('login')->toString());
         $login = $role === UserRoleResolver::SCHOOL_HEAD
-            ? strtoupper($rawLogin)
+            ? (string) $this->normalizeSchoolCode($rawLogin)
             : $rawLogin;
         $currentPassword = $request->string('current_password')->toString();
         $newPassword = $request->string('new_password')->toString();
@@ -139,10 +139,15 @@ class AuthController extends Controller
     private function resolveUserForLogin(string $role, string $login): ?User
     {
         if ($role === UserRoleResolver::SCHOOL_HEAD) {
+            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
+            if ($normalizedSchoolCode === null) {
+                return null;
+            }
+
             return User::query()
                 ->with('school')
-                ->whereHas('school', function ($builder) use ($login): void {
-                    $builder->whereRaw('UPPER(school_code) = ?', [$login]);
+                ->whereHas('school', function ($builder) use ($normalizedSchoolCode): void {
+                    $builder->where('school_code', $normalizedSchoolCode);
                 })
                 ->get()
                 ->first(
@@ -180,5 +185,16 @@ class AuthController extends Controller
             'schoolName' => $user->school?->name,
             'mustResetPassword' => (bool) $user->must_reset_password,
         ];
+    }
+
+    private function normalizeSchoolCode(string $value): ?string
+    {
+        $normalized = trim($value);
+
+        if (preg_match('/^\d{6}$/', $normalized) !== 1) {
+            return null;
+        }
+
+        return $normalized;
     }
 }

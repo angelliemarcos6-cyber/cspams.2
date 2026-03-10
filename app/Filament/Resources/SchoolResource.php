@@ -31,7 +31,10 @@ class SchoolResource extends Resource
                 Forms\Components\TextInput::make('school_code')
                     ->label('School Code')
                     ->required()
-                    ->maxLength(50)
+                    ->helperText('Use a 6-digit numeric school code.')
+                    ->minLength(6)
+                    ->maxLength(6)
+                    ->regex('/^\d{6}$/')
                     ->unique(ignoreRecord: true),
 
                 Forms\Components\TextInput::make('name')

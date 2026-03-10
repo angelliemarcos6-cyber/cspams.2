@@ -227,6 +227,7 @@ export interface IndicatorMetric {
   inputSchema?: MetricInputSchema | null;
   unit?: string | null;
   sortOrder?: number;
+  isAutoCalculated?: boolean;
 }
 
 export interface AcademicYearOption {

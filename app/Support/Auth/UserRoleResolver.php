@@ -58,7 +58,7 @@ class UserRoleResolver
             ],
             self::SCHOOL_HEAD => [
                 'label' => 'School Head',
-                'note' => 'School Head account: sign in using your assigned school code, then encode and manage your school submissions.',
+                'note' => 'School Head account: sign in using your assigned 6-digit school code, then encode and manage your school submissions.',
                 'submit' => 'Sign in as School Head',
                 'forgot' => 'For School Heads: please request your Division Monitor or SMM&E unit to reset your password.',
             ],

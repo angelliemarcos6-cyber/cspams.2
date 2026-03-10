@@ -65,8 +65,8 @@ class CspamsLogin extends BaseLogin
             ->required()
             ->autocomplete('username')
             ->autofocus()
-            ->placeholder('Monitor email/name or School Code')
-            ->helperText('Division Monitor: email/name. School Head: school code.')
+            ->placeholder('Monitor email/name or 6-digit school code')
+            ->helperText('Division Monitor: email/name. School Head: 6-digit school code.')
             ->maxLength(255)
             ->dehydrateStateUsing(function (?string $state): ?string {
                 $normalized = trim((string) $state);
@@ -159,12 +159,15 @@ class CspamsLogin extends BaseLogin
     private function resolveUserForRole(string $role, string $login): ?User
     {
         if ($role === UserRoleResolver::SCHOOL_HEAD) {
-            $normalizedSchoolCode = strtoupper($login);
+            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
+            if ($normalizedSchoolCode === null) {
+                return null;
+            }
 
             return User::query()
                 ->with('school')
                 ->whereHas('school', function ($builder) use ($normalizedSchoolCode): void {
-                    $builder->whereRaw('UPPER(school_code) = ?', [$normalizedSchoolCode]);
+                    $builder->where('school_code', $normalizedSchoolCode);
                 })
                 ->get()
                 ->first(
@@ -196,5 +199,16 @@ class CspamsLogin extends BaseLogin
         throw ValidationException::withMessages([
             'data.login' => $message,
         ]);
+    }
+
+    private function normalizeSchoolCode(string $value): ?string
+    {
+        $normalized = trim($value);
+
+        if (preg_match('/^\d{6}$/', $normalized) !== 1) {
+            return null;
+        }
+
+        return $normalized;
     }
 }

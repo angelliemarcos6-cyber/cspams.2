@@ -123,9 +123,9 @@ class UpsertSchoolRecordRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'schoolId.size' => 'School ID must be exactly 6 digits.',
-            'schoolId.regex' => 'School ID must contain only digits.',
-            'schoolId.unique' => 'School ID already exists in active records.',
+            'schoolId.size' => 'School code must be exactly 6 digits.',
+            'schoolId.regex' => 'School code must contain only digits.',
+            'schoolId.unique' => 'School code already exists in active records.',
         ];
     }
 

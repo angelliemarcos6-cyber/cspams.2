@@ -14,18 +14,18 @@ class RollingIndicatorYearWindowTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_window_stays_anchored_to_2026_for_initial_five_year_span(): void
+    public function test_window_stays_anchored_to_2022_for_initial_five_year_span(): void
     {
         CarbonImmutable::setTestNow('2027-08-15 10:00:00');
 
         $window = (new RollingIndicatorYearWindow())->windowYears();
 
         $this->assertSame([
+            '2023-2024',
+            '2024-2025',
+            '2025-2026',
             '2026-2027',
             '2027-2028',
-            '2028-2029',
-            '2029-2030',
-            '2030-2031',
         ], $window);
     }
 
@@ -44,4 +44,3 @@ class RollingIndicatorYearWindowTest extends TestCase
         ], $window);
     }
 }
-

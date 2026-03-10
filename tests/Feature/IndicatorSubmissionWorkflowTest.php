@@ -37,6 +37,44 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             });
     }
 
+    public function test_auto_calculated_kpi_replaces_manual_payload_values(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $nerMetricId = (int) PerformanceMetric::query()->where('code', 'NER')->value('id');
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_id' => $nerMetricId,
+                    'target_value' => 999,
+                    'actual_value' => 1,
+                    'remarks' => 'Manual placeholder that should be overridden.',
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.summary.totalIndicators', 1);
+
+        /** @var array<string, mixed>|null $nerRow */
+        $nerRow = collect($created->json('data.indicators', []))
+            ->first(static fn (mixed $row): bool => is_array($row) && (($row['metric']['code'] ?? null) === 'NER'));
+
+        $this->assertIsArray($nerRow);
+        $this->assertNotSame(999.0, (float) ($nerRow['targetValue'] ?? 0));
+        $this->assertIsArray($nerRow['targetTypedValue']['values'] ?? null);
+        $this->assertIsArray($nerRow['actualTypedValue']['values'] ?? null);
+        $this->assertCount(5, $nerRow['targetTypedValue']['values']);
+        $this->assertCount(5, $nerRow['actualTypedValue']['values']);
+    }
+
     public function test_school_head_indicator_workflow_and_monitor_review(): void
     {
         $this->seed();
@@ -45,10 +83,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $metrics = PerformanceMetric::query()
-            ->where('is_active', true)
-            ->orderBy('id')
-            ->limit(3)
+            ->whereIn('code', ['SALO', 'PCR_K', 'WASH_RATIO'])
+            ->orderByRaw("CASE code WHEN 'SALO' THEN 1 WHEN 'PCR_K' THEN 2 WHEN 'WASH_RATIO' THEN 3 ELSE 4 END")
             ->get();
+        $this->assertCount(3, $metrics);
 
         $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
 

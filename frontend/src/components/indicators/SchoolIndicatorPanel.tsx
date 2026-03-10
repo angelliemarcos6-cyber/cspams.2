@@ -128,7 +128,7 @@ const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
 
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
-const BASE_SCHOOL_YEAR_START = 2026;
+const BASE_SCHOOL_YEAR_START = 2022;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
 const INDICATOR_DRAFT_STORAGE_KEY = "cspams.schoolhead.indicator.autosave.v1";
@@ -242,6 +242,10 @@ function metricYears(metric: IndicatorMetric): string[] {
 
 function metricDisplayLabel(metric: IndicatorMetric): string {
   return METRIC_LABEL_OVERRIDES[metric.code] ?? metric.name;
+}
+
+function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
+  return Boolean(metric.isAutoCalculated);
 }
 
 function categoryTabLabel(category: ComplianceCategory): string {
@@ -464,6 +468,11 @@ export function SchoolIndicatorPanel({
       const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
       const years = metricYears(metric);
       const effectiveYears = years.length > 0 ? years : schoolYears;
+      if (metricIsAutoCalculated(metric)) {
+        map.set(metric.id, true);
+        continue;
+      }
+
       const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
 
       const isComplete =
@@ -556,6 +565,22 @@ export function SchoolIndicatorPanel({
         const value = metricEntries[metric.id] ?? buildDefaultEntry(metric);
 
         const type = metricDataType(metric);
+        const isAutoCalculated = metricIsAutoCalculated(metric);
+
+        if (isAutoCalculated) {
+          return {
+            metricId: Number(metric.id),
+            targetValue: undefined,
+            actualValue: undefined,
+            target: undefined,
+            actual: undefined,
+            remarks: value.remarks.trim() || null,
+            type,
+            requiresTargetActual: false,
+            isAutoCalculated: true,
+          };
+        }
+
         const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
         let targetPayload: IndicatorTypedValuePayload | undefined;
         let actualPayload: IndicatorTypedValuePayload | undefined;
@@ -645,6 +670,7 @@ export function SchoolIndicatorPanel({
           remarks: value.remarks.trim() || null,
           type,
           requiresTargetActual,
+          isAutoCalculated: false,
         };
       });
 
@@ -654,6 +680,10 @@ export function SchoolIndicatorPanel({
     }
 
     const invalidEntry = entries.find((entry) => {
+      if (entry.isAutoCalculated) {
+        return false;
+      }
+
       if (entry.type === "number" || entry.type === "currency") {
         if (entry.requiresTargetActual) {
           return Number.isNaN(entry.targetValue ?? Number.NaN) || Number.isNaN(entry.actualValue ?? Number.NaN);
@@ -788,6 +818,9 @@ export function SchoolIndicatorPanel({
         <p className="mt-2 text-xs text-slate-500">
           {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced"} |{" "}
           {autosaveAt ? `Saved ${new Date(autosaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not saved"}
+        </p>
+        <p className="mt-1 text-xs text-primary-700">
+          KEY PERFORMANCE INDICATORS are auto-calculated from synchronized records during draft save.
         </p>
       </div>
 
@@ -951,6 +984,7 @@ export function SchoolIndicatorPanel({
                             : [];
                       const useSelectInput = selectOptions.length > 0;
                       const isComplete = metricCompletionById.get(metric.id) ?? false;
+                      const isAutoCalculated = metricIsAutoCalculated(metric);
                       const baseRowTone =
                         metric.code === "IMETA_HEAD_NAME"
                           ? "bg-primary-50"
@@ -968,6 +1002,11 @@ export function SchoolIndicatorPanel({
                             <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                               {isComplete ? "Complete" : "Pending"}
                             </p>
+                            {isAutoCalculated && (
+                              <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700">
+                                Auto-calculated
+                              </p>
+                            )}
                           </td>
                           {schoolYears.map((year) => {
                             const placeholder =
@@ -976,6 +1015,27 @@ export function SchoolIndicatorPanel({
                                 : valueType === "enum"
                                   ? enumOptions.join(" / ")
                                   : "";
+
+                            if (isAutoCalculated) {
+                              if (activeCategory.mode !== "target_actual") {
+                                return (
+                                  <td key={`${metric.id}-${year}-auto`} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-700">Auto</span>
+                                  </td>
+                                );
+                              }
+
+                              return (
+                                <Fragment key={`${metric.id}-${year}-auto`}>
+                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-700">Auto</span>
+                                  </td>
+                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-700">Auto</span>
+                                  </td>
+                                </Fragment>
+                              );
+                            }
 
                             if (activeCategory.mode !== "target_actual") {
                               return (

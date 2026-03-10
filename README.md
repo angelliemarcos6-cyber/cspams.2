@@ -100,10 +100,27 @@ After seeding:
   - Login: `monitor@cspams.local`
   - Password: set `CSPAMS_DEMO_PASSWORD` in `.env` before seeding, or use the deterministic password policy from `DemoDataSeeder`
 - School Head login:
-  - Login: assigned `school_code` (example: `SDO-SC-001`, `SDO-SC-002`, `SDO-SC-003`)
+  - Login: assigned 6-digit `school_code` (example: `900001`, `900002`, `900003`)
   - Password: set `CSPAMS_DEMO_PASSWORD` in `.env` before seeding, or use the deterministic password policy from `DemoDataSeeder`
 
 For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and must complete `/api/auth/reset-required-password` before dashboard access.
+
+## Realtime and Notifications (Production Baseline)
+
+Use these baseline environment values:
+
+- `BROADCAST_CONNECTION=reverb`
+- `QUEUE_CONNECTION=database`
+- `MAIL_MAILER=smtp`
+
+Required background services:
+
+1. Reverb server:
+   - `php artisan reverb:start`
+2. Queue worker:
+   - `php artisan queue:work --tries=3 --timeout=120`
+
+Queue tables are included in migrations (`jobs`, `job_batches`, `failed_jobs`) and reminder emails are queued via `SchoolSubmissionReminderNotification`.
 
 ## Additional Docs
 

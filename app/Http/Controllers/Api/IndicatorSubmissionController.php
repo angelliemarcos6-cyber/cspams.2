@@ -19,10 +19,12 @@ use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\RollingIndicatorYearWindow;
+use App\Support\Indicators\TargetsMetAutoCalculator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -51,6 +53,7 @@ class IndicatorSubmissionController extends Controller
     {
         $this->requireUser($request);
         $this->syncRollingIndicatorYears();
+        $autoMetricCodes = array_flip(app(TargetsMetAutoCalculator::class)->supportedCodes());
 
         $metrics = PerformanceMetric::query()
             ->where('is_active', true)
@@ -60,7 +63,7 @@ class IndicatorSubmissionController extends Controller
             ->get(['id', 'code', 'name', 'category', 'framework', 'data_type', 'input_schema', 'unit', 'sort_order']);
 
         return response()->json([
-            'data' => $metrics->map(static fn (PerformanceMetric $metric): array => [
+            'data' => $metrics->map(fn (PerformanceMetric $metric): array => [
                 'id' => (string) $metric->id,
                 'code' => $metric->code,
                 'name' => $metric->name,
@@ -74,6 +77,7 @@ class IndicatorSubmissionController extends Controller
                 'inputSchema' => $metric->input_schema,
                 'unit' => $metric->unit,
                 'sortOrder' => (int) ($metric->sort_order ?? 0),
+                'isAutoCalculated' => isset($autoMetricCodes[strtoupper((string) $metric->code)]),
             ])->values(),
         ]);
     }
@@ -138,6 +142,7 @@ class IndicatorSubmissionController extends Controller
             : null;
 
         $rawIndicatorRows = collect($request->input('indicators', []))->values();
+        $rawIndicatorRows = $this->mergeAutoCalculatedRows($rawIndicatorRows, $schoolId);
         $metricIds = $rawIndicatorRows
             ->pluck('metric_id')
             ->map(static fn (mixed $value): int => (int) $value)
@@ -957,5 +962,61 @@ class IndicatorSubmissionController extends Controller
         }
 
         return min($perPage, $max);
+    }
+
+    /**
+     * Merge auto-calculated KPI indicator rows so these metrics no longer rely
+     * on manual target/actual encoding.
+     *
+     * @param Collection<int, array<string, mixed>> $rawIndicatorRows
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function mergeAutoCalculatedRows(Collection $rawIndicatorRows, int $schoolId): Collection
+    {
+        $autoCalculator = app(TargetsMetAutoCalculator::class);
+        $derivedByCode = $autoCalculator->deriveMatricesForSchool($schoolId);
+
+        if ($derivedByCode === []) {
+            return $rawIndicatorRows;
+        }
+
+        $autoMetricsById = PerformanceMetric::query()
+            ->whereIn('code', array_keys($derivedByCode))
+            ->where('is_active', true)
+            ->get(['id', 'code'])
+            ->keyBy(static fn (PerformanceMetric $metric): string => (string) $metric->id);
+
+        if ($autoMetricsById->isEmpty()) {
+            return $rawIndicatorRows;
+        }
+
+        return $rawIndicatorRows
+            ->map(function (mixed $row) use ($autoMetricsById, $derivedByCode): mixed {
+                if (! is_array($row)) {
+                    return $row;
+                }
+
+                $metricId = (string) ((int) ($row['metric_id'] ?? 0));
+                /** @var PerformanceMetric|null $metric */
+                $metric = $autoMetricsById->get($metricId);
+                if (! $metric) {
+                    return $row;
+                }
+
+                /** @var array<string, mixed>|null $derived */
+                $derived = $derivedByCode[(string) $metric->code] ?? null;
+                if (! is_array($derived)) {
+                    return $row;
+                }
+
+                return array_merge($row, [
+                    'metric_id' => (int) $metric->id,
+                    'target' => $derived['target'] ?? null,
+                    'actual' => $derived['actual'] ?? null,
+                    'remarks' => $row['remarks'] ?? ($derived['remarks'] ?? null),
+                ]);
+            })
+            ->filter(static fn (mixed $row): bool => is_array($row))
+            ->values();
     }
 }

@@ -686,7 +686,7 @@ function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImportRowP
     }
 
     if (!/^\d{6}$/.test(schoolId)) {
-      errors.push(`Row ${rowIndex + 1}: School ID must be 6 digits.`);
+      errors.push(`Row ${rowIndex + 1}: School Code must be 6 digits.`);
       continue;
     }
 
@@ -1125,7 +1125,7 @@ export function MonitorDashboard() {
     const address = recordForm.address.trim();
 
     if (!/^\d{6}$/.test(schoolId)) {
-      formErrors.schoolId = "School ID must be exactly 6 digits.";
+      formErrors.schoolId = "School Code must be exactly 6 digits.";
     }
 
     if (!schoolName) formErrors.schoolName = "School name is required.";
@@ -3571,7 +3571,7 @@ export function MonitorDashboard() {
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">{editingRecordId ? "Edit School Record" : "Add School Record"}</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">School ID must be 6 digits. School name, level, type, and address are required. Students, teachers, and status are managed by School Head.</p>
+                  <p className="mt-0.5 text-xs text-slate-500">School Code must be 6 digits. School name, level, type, and address are required. Students, teachers, and status are managed by School Head.</p>
                 </div>
                 <button
                   type="button"
@@ -3585,7 +3585,7 @@ export function MonitorDashboard() {
               <form className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleRecordSubmit}>
                 <div>
                   <label htmlFor="monitor-school-id" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    School ID
+                    School Code
                   </label>
                   <input
                     id="monitor-school-id"
@@ -3954,7 +3954,7 @@ export function MonitorDashboard() {
                 <table className="min-w-full">
                   <thead className="table-head-sticky">
                     <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      <th className="px-5 py-3 text-left">School ID</th>
+                      <th className="px-5 py-3 text-left">School Code</th>
                       <th className="px-5 py-3 text-left">
                         <button
                           type="button"
@@ -4154,7 +4154,7 @@ export function MonitorDashboard() {
                       <table className="min-w-full">
                         <thead>
                           <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                            <th className="px-3 py-2 text-left">School ID</th>
+                            <th className="px-3 py-2 text-left">School Code</th>
                             <th className="px-3 py-2 text-left">School Name</th>
                             <th className="px-3 py-2 text-left">Last Updated</th>
                             <th className="px-3 py-2 text-center">Action</th>

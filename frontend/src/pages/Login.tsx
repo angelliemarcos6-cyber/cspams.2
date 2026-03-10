@@ -15,9 +15,9 @@ const ROLE_META: Record<
     label: "School Head",
     note: "",
     submit: "Sign In as School Head",
-    loginHint: "School code (e.g. SDO-SC-001)",
+    loginHint: "School code (6 digits, e.g. 103811)",
     loginLabel: "School Code",
-    emptyError: "Enter your school code.",
+    emptyError: "Enter your 6-digit school code.",
   },
   monitor: {
     label: "Division Monitor",
@@ -44,7 +44,9 @@ export function Login() {
     event.preventDefault();
 
     const normalizedLoginId =
-      activeRole === "school_head" ? loginId.trim().toUpperCase() : loginId.trim();
+      activeRole === "school_head"
+        ? loginId.replace(/\D/g, "").slice(0, 6)
+        : loginId.trim();
     if (!normalizedLoginId) {
       setError(roleMeta.emptyError);
       return;
@@ -161,10 +163,17 @@ export function Login() {
                 autoComplete="username"
                 value={loginId}
                 onChange={(event) => {
-                  setLoginId(event.target.value);
+                  const nextValue =
+                    activeRole === "school_head"
+                      ? event.target.value.replace(/\D/g, "").slice(0, 6)
+                      : event.target.value;
+                  setLoginId(nextValue);
                   setError("");
                 }}
                 placeholder={roleMeta.loginHint}
+                inputMode={activeRole === "school_head" ? "numeric" : "text"}
+                maxLength={activeRole === "school_head" ? 6 : 255}
+                pattern={activeRole === "school_head" ? "\\d{6}" : undefined}
                 className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               />
               {roleMeta.note && <p className="mt-1.5 text-xs text-slate-500">{roleMeta.note}</p>}

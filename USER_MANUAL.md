@@ -28,7 +28,7 @@ Prepare the following:
 
 Role login identity:
 
-- School Head: **School Code** + Password
+- School Head: **6-digit School Code** + Password
 - Division Monitor: **Email/Username** + Password
 
 ---
@@ -52,7 +52,7 @@ Role login identity:
 If login fails, verify:
 
 - Correct role tab
-- Correct school code (School Head accounts)
+- Correct 6-digit school code (School Head accounts)
 - Correct password
 
 If your account is marked for reset, complete required password reset through the admin/API reset flow before dashboard access.

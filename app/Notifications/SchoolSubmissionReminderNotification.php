@@ -5,10 +5,11 @@ namespace App\Notifications;
 use App\Models\School;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class SchoolSubmissionReminderNotification extends Notification
+class SchoolSubmissionReminderNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -38,7 +39,7 @@ class SchoolSubmissionReminderNotification extends Notification
             ->greeting('Hello ' . ((string) ($notifiable->name ?? 'School Head')) . ',')
             ->line("{$monitorName} sent a reminder to update and submit your school's latest CSPAMS records.")
             ->line("School: {$schoolName}")
-            ->line("School ID: {$schoolCode}");
+            ->line("School Code: {$schoolCode}");
 
         if ($this->notes !== null && $this->notes !== '') {
             $mail->line('Reminder note: ' . $this->notes);
@@ -49,4 +50,3 @@ class SchoolSubmissionReminderNotification extends Notification
             ->line('Please review your pending requirements and submit as soon as possible.');
     }
 }
-

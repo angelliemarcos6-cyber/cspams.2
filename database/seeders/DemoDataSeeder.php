@@ -36,29 +36,33 @@ class DemoDataSeeder extends Seeder
 
     private function seedAcademicYears(): AcademicYear
     {
-        $academicYears = [
-            [
-                'name' => '2025-2026',
-                'start_date' => '2025-06-01',
-                'end_date' => '2026-03-31',
-                'is_current' => true,
-            ],
-            [
-                'name' => '2024-2025',
-                'start_date' => '2024-06-01',
-                'end_date' => '2025-03-31',
-                'is_current' => false,
-            ],
-        ];
+        $windowYears = app(RollingIndicatorYearWindow::class)->windowYears();
+        $now = now();
+        $currentSchoolYearStart = $now->month >= 6
+            ? (int) $now->year
+            : ((int) $now->year - 1);
+        $currentSchoolYearName = "{$currentSchoolYearStart}-" . ($currentSchoolYearStart + 1);
+        if (! in_array($currentSchoolYearName, $windowYears, true)) {
+            $currentSchoolYearName = (string) collect($windowYears)->last();
+        }
 
-        foreach ($academicYears as $year) {
+        AcademicYear::query()->update(['is_current' => false]);
+
+        foreach ($windowYears as $schoolYearName) {
+            [$startYear, $endYear] = array_map('intval', explode('-', $schoolYearName));
+
             AcademicYear::query()->updateOrCreate(
-                ['name' => $year['name']],
-                $year,
+                ['name' => $schoolYearName],
+                [
+                    'name' => $schoolYearName,
+                    'start_date' => sprintf('%04d-06-01', $startYear),
+                    'end_date' => sprintf('%04d-03-31', $endYear),
+                    'is_current' => $schoolYearName === $currentSchoolYearName,
+                ],
             );
         }
 
-        return AcademicYear::query()->where('is_current', true)->firstOrFail();
+        return AcademicYear::query()->where('name', $currentSchoolYearName)->firstOrFail();
     }
 
     /**
@@ -68,7 +72,7 @@ class DemoDataSeeder extends Seeder
     {
         $schools = [
             [
-                'school_code' => 'SDO-SC-001',
+                'school_code' => '900001',
                 'name' => 'Santiago City National High School',
                 'district' => 'District 1',
                 'region' => 'Region II',
@@ -78,7 +82,7 @@ class DemoDataSeeder extends Seeder
                 'reported_teacher_count' => 144,
             ],
             [
-                'school_code' => 'SDO-SC-002',
+                'school_code' => '900002',
                 'name' => 'Santiago South Integrated School',
                 'district' => 'District 2',
                 'region' => 'Region II',
@@ -88,7 +92,7 @@ class DemoDataSeeder extends Seeder
                 'reported_teacher_count' => 103,
             ],
             [
-                'school_code' => 'SDO-SC-003',
+                'school_code' => '900003',
                 'name' => 'St. Matthew Academy',
                 'district' => 'District 3',
                 'region' => 'Region II',

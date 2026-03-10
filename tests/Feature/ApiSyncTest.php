@@ -32,7 +32,7 @@ class ApiSyncTest extends TestCase
         ]);
 
         $emailLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('message', 'Invalid school code or password.');
+            ->assertJsonValidationErrors(['login']);
 
         $codeLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -282,7 +282,7 @@ class ApiSyncTest extends TestCase
         $monitorToken = (string) $monitorLogin->json('token');
 
         /** @var School $school */
-        $school = School::query()->where('school_code', 'SDO-SC-001')->firstOrFail();
+        $school = School::query()->where('school_code', '900001')->firstOrFail();
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('school_id', $school->id)->firstOrFail();
 
@@ -291,7 +291,7 @@ class ApiSyncTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.schoolId', 'SDO-SC-001')
+            ->assertJsonPath('data.schoolId', '900001')
             ->assertJsonPath('data.schoolName', 'Santiago City National High School')
             ->assertJsonPath('data.recipientCount', 1)
             ->assertJsonStructure([

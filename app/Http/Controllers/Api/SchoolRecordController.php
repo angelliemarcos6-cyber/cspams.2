@@ -478,7 +478,7 @@ class SchoolRecordController extends Controller
 
         if ($existing && ! $existing->trashed()) {
             throw ValidationException::withMessages([
-                'schoolId' => 'School ID already exists in active records.',
+                'schoolId' => 'School code already exists in active records.',
             ]);
         }
 
@@ -638,7 +638,15 @@ class SchoolRecordController extends Controller
 
     private function normalizeSchoolCode(string $value): string
     {
-        return strtoupper(trim($value));
+        $normalized = trim($value);
+
+        if (preg_match('/^\d{6}$/', $normalized) !== 1) {
+            throw ValidationException::withMessages([
+                'schoolId' => 'School code must be exactly 6 digits.',
+            ]);
+        }
+
+        return $normalized;
     }
 
     private function deriveDistrictFromAddress(string $address): string
