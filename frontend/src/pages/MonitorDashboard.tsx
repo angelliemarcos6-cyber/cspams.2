@@ -182,6 +182,17 @@ interface IndicatorMatrixRow {
   valuesByYear: Record<string, IndicatorMatrixRowCell>;
 }
 
+interface SchoolIndicatorPackageRow {
+  id: string;
+  schoolYear: string;
+  reportingPeriod: string;
+  status: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  complianceRatePercent: number | null;
+  reviewedBy: string;
+}
+
 interface PersistedMonitorFilters {
   search?: string;
   statusFilter?: SchoolStatus | "all";
@@ -2595,6 +2606,26 @@ export function MonitorDashboard() {
     [schoolIndicatorMatrix.rows],
   );
 
+  const schoolIndicatorPackageRows = useMemo<SchoolIndicatorPackageRow[]>(
+    () =>
+      schoolIndicatorSubmissions.map((submission) => ({
+        id: submission.id,
+        schoolYear:
+          (submission.academicYear?.name ?? "").trim() ||
+          deriveSchoolYearLabel(submission.submittedAt ?? submission.updatedAt ?? submission.createdAt),
+        reportingPeriod: submission.reportingPeriod ?? "N/A",
+        status: submission.status ?? null,
+        submittedAt: submission.submittedAt ?? submission.updatedAt ?? submission.createdAt,
+        reviewedAt: submission.reviewedAt ?? null,
+        complianceRatePercent:
+          typeof submission.summary?.complianceRatePercent === "number" && Number.isFinite(submission.summary.complianceRatePercent)
+            ? submission.summary.complianceRatePercent
+            : null,
+        reviewedBy: submission.reviewedBy?.name?.trim() || "Unassigned",
+      })),
+    [schoolIndicatorSubmissions],
+  );
+
   const schoolDetail = useMemo<SchoolDetailSnapshot | null>(() => {
     if (!schoolDrawerKey) return null;
 
@@ -2836,10 +2867,10 @@ export function MonitorDashboard() {
       return;
     }
     setLockedSchoolContextKey(schoolKey);
-    setActiveTopNavigator("action_queue");
+    setActiveTopNavigator("schools");
     openSchoolDrawer(schoolKey);
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-queue-workspace");
+      focusAndScrollTo("monitor-school-records");
     }, 80);
     pushToast(`Opened school details for ${record.schoolName}.`, "info");
   };
@@ -4997,6 +5028,66 @@ export function MonitorDashboard() {
               <article className="rounded-sm border border-slate-200 bg-white p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Submitted Packages</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Indicator package history for this school.
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-slate-600">
+                    <p>
+                      Total packages:{" "}
+                      <span className="font-semibold text-slate-900">{schoolIndicatorPackageRows.length.toLocaleString()}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {schoolIndicatorPackageRows.length === 0 ? (
+                  <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
+                    No indicator package submitted yet for this school.
+                  </div>
+                ) : (
+                  <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200">
+                    <table className="min-w-[760px] w-full border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                          <th className="border border-slate-300 px-2 py-2 text-left">Package</th>
+                          <th className="border border-slate-300 px-2 py-2 text-left">School Year</th>
+                          <th className="border border-slate-300 px-2 py-2 text-left">Period</th>
+                          <th className="border border-slate-300 px-2 py-2 text-center">Status</th>
+                          <th className="border border-slate-300 px-2 py-2 text-right">Compliance</th>
+                          <th className="border border-slate-300 px-2 py-2 text-left">Submitted</th>
+                          <th className="border border-slate-300 px-2 py-2 text-left">Reviewed</th>
+                          <th className="border border-slate-300 px-2 py-2 text-left">Reviewer</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {schoolIndicatorPackageRows.map((row) => (
+                          <tr key={`monitor-school-package-${row.id}`} className="bg-white">
+                            <td className="border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-900">#{row.id}</td>
+                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.schoolYear}</td>
+                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reportingPeriod}</td>
+                            <td className="border border-slate-300 px-2 py-2 text-center">
+                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(row.status)}`}>
+                                {workflowLabel(row.status)}
+                              </span>
+                            </td>
+                            <td className="border border-slate-300 px-2 py-2 text-right text-xs text-slate-700">
+                              {row.complianceRatePercent === null ? "N/A" : `${row.complianceRatePercent.toFixed(2)}%`}
+                            </td>
+                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.submittedAt ? formatDateTime(row.submittedAt) : "N/A"}</td>
+                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reviewedAt ? formatDateTime(row.reviewedAt) : "N/A"}</td>
+                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reviewedBy}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </article>
+
+              <article className="rounded-sm border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Submitted Indicators Matrix</p>
                     <p className="mt-0.5 text-xs text-slate-500">
                       Same table layout as school head workspace, shown here in read-only mode.
@@ -5026,7 +5117,9 @@ export function MonitorDashboard() {
 
                 {schoolIndicatorMatrix.rows.length === 0 ? (
                   <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
-                    No submitted indicator rows found for this school yet.
+                    {schoolIndicatorSubmissions.length === 0
+                      ? "No indicator package submitted yet for this school."
+                      : "Indicator package exists, but no indicator rows were found in the latest submission."}
                   </div>
                 ) : (
                   <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200">
