@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\StudentRecordController;
+use App\Http\Controllers\Api\TeacherRecordController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
@@ -33,6 +34,12 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::put('/students/{student}', [StudentRecordController::class, 'update']);
     Route::patch('/students/{student}', [StudentRecordController::class, 'update']);
     Route::delete('/students/{student}', [StudentRecordController::class, 'destroy']);
+
+    Route::get('/teachers', [TeacherRecordController::class, 'index']);
+    Route::post('/teachers', [TeacherRecordController::class, 'store']);
+    Route::put('/teachers/{teacher}', [TeacherRecordController::class, 'update']);
+    Route::patch('/teachers/{teacher}', [TeacherRecordController::class, 'update']);
+    Route::delete('/teachers/{teacher}', [TeacherRecordController::class, 'destroy']);
 });
 
 Route::middleware('auth:sanctum')->prefix('indicators')->group(function (): void {

@@ -28,6 +28,7 @@ import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
 import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
+import { TeacherRecordsPanel } from "@/components/teachers/TeacherRecordsPanel";
 import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
@@ -156,7 +157,8 @@ const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
     { id: "requirement_cards", label: "Returned Items", targetId: "requirement-navigator", icon: ListChecks },
   ],
   records: [
-    { id: "student_records", label: "History Records", targetId: "school-records", icon: Users },
+    { id: "student_records", label: "Student History", targetId: "student-records-history", icon: Users },
+    { id: "teacher_records", label: "Teacher History", targetId: "teacher-records-history", icon: BookOpenText },
   ],
 };
 
@@ -1430,11 +1432,20 @@ export function SchoolAdminDashboard() {
           </div>
           {isMobileViewport && renderQuickJumpChips(true)}
         </div>
-        <StudentRecordsPanel
-          editable
-          title="Student Records History"
-          description="Manage learner records and review historical entries."
-        />
+        <div id="student-records-history" className={sectionFocusClass("student-records-history")}>
+          <StudentRecordsPanel
+            editable
+            title="Student Records History"
+            description="Manage learner records and review historical entries."
+          />
+        </div>
+        <div id="teacher-records-history" className={`mt-5 ${sectionFocusClass("teacher-records-history")}`}>
+          <TeacherRecordsPanel
+            editable
+            title="Teacher Records History"
+            description="Manage teacher records for student assignment."
+          />
+        </div>
       </section>
       )}
       </div>

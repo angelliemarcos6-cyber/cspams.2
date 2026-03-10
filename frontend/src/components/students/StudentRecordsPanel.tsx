@@ -1,6 +1,7 @@
-﻿import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useStudentData } from "@/context/StudentData";
+import { useTeacherData } from "@/context/TeacherData";
 import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload } from "@/types";
 
 interface StudentRecordsPanelProps {
@@ -25,6 +26,12 @@ interface StudentFormState {
   trackedFromLevel: string;
   status: StudentEnrollmentStatus;
   riskLevel: "none" | "low" | "medium" | "high";
+}
+
+interface TeacherSelectOption {
+  value: string;
+  label: string;
+  isLegacy: boolean;
 }
 
 const STATUS_OPTIONS: Array<{ value: StudentEnrollmentStatus; label: string }> = [
@@ -93,6 +100,7 @@ export function StudentRecordsPanel({
   externalSearchTerm = null,
 }: StudentRecordsPanelProps) {
   const { students, isLoading, isSaving, error, lastSyncedAt, refreshStudents, addStudent, updateStudent, deleteStudent } = useStudentData();
+  const { teachers } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StudentEnrollmentStatus | "all">("all");
@@ -124,6 +132,68 @@ export function StudentRecordsPanel({
       ),
     );
   }, [students, schoolFilterKeys]);
+
+  const scopedTeachers = useMemo(() => {
+    if (!schoolFilterKeys) {
+      return teachers;
+    }
+
+    if (schoolFilterKeys.size === 0) {
+      return [];
+    }
+
+    return teachers.filter((teacher) =>
+      schoolFilterKeys.has(
+        normalizeSchoolKey(teacher.school?.schoolCode ?? null, teacher.school?.name ?? null),
+      ),
+    );
+  }, [teachers, schoolFilterKeys]);
+
+  const teacherOptions = useMemo(() => {
+    const byName = new Map<string, { name: string; sex: "male" | "female" | null }>();
+
+    for (const teacher of scopedTeachers) {
+      const normalizedName = teacher.name.trim();
+      if (!normalizedName) continue;
+
+      const key = normalizedName.toLowerCase();
+      if (!byName.has(key)) {
+        byName.set(key, {
+          name: normalizedName,
+          sex: teacher.sex ?? null,
+        });
+      }
+    }
+
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [scopedTeachers]);
+
+  const teacherSelectOptions = useMemo<TeacherSelectOption[]>(() => {
+    const options: TeacherSelectOption[] = teacherOptions.map((teacher) => ({
+      value: teacher.name,
+      label: teacher.sex ? `${teacher.name} (${teacher.sex === "male" ? "M" : "F"})` : teacher.name,
+      isLegacy: false,
+    }));
+
+    const selectedTeacher = form.teacher.trim();
+    if (!selectedTeacher) {
+      return options;
+    }
+
+    const exists = options.some((option) => option.value.toLowerCase() === selectedTeacher.toLowerCase());
+    if (exists) {
+      return options;
+    }
+
+    return [
+      {
+        value: selectedTeacher,
+        label: `${selectedTeacher} (existing assignment)`,
+        isLegacy: true,
+      },
+      ...options,
+    ];
+  }, [teacherOptions, form.teacher]);
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -372,7 +442,21 @@ export function StudentRecordsPanel({
             </select>
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" type="date" value={form.birthDate} onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value }))} />
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" placeholder="Section" value={form.section} onChange={(event) => setForm((current) => ({ ...current, section: event.target.value }))} />
-            <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" placeholder="Teacher" value={form.teacher} onChange={(event) => setForm((current) => ({ ...current, teacher: event.target.value }))} />
+            <select
+              className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm"
+              value={form.teacher}
+              onChange={(event) => setForm((current) => ({ ...current, teacher: event.target.value }))}
+            >
+              <option value="">Teacher</option>
+              {teacherSelectOptions.map((option) => (
+                <option
+                  key={`${option.value.toLowerCase()}-${option.isLegacy ? "legacy" : "record"}`}
+                  value={option.value}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" placeholder="Current Level / Grade" value={form.currentLevel} onChange={(event) => setForm((current) => ({ ...current, currentLevel: event.target.value }))} />
             <select className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as StudentEnrollmentStatus }))}>
               {STATUS_OPTIONS.map((option) => (
@@ -559,5 +643,3 @@ export function StudentRecordsPanel({
     </section>
   );
 }
-
-

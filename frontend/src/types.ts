@@ -163,6 +163,24 @@ export interface StudentRecordPayload {
   trackedFromLevel?: string | null;
 }
 
+export interface TeacherRecord {
+  id: string;
+  school?: {
+    id: string;
+    schoolCode: string | null;
+    name: string | null;
+  };
+  name: string;
+  sex: "male" | "female" | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface TeacherRecordPayload {
+  name: string;
+  sex?: "male" | "female" | null;
+}
+
 export interface TargetsMetSnapshot {
   generatedAt: string;
   schoolsMonitored: number;

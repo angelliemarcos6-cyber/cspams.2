@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
 import { IndicatorDataProvider } from "@/context/IndicatorData";
 import { StudentDataProvider } from "@/context/StudentData";
+import { TeacherDataProvider } from "@/context/TeacherData";
 import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
@@ -97,11 +98,13 @@ export function App() {
     <AuthProvider>
       <DataProvider>
         <IndicatorDataProvider>
-          <StudentDataProvider>
-            <HashRouter>
-              <AppRoutes />
-            </HashRouter>
-          </StudentDataProvider>
+          <TeacherDataProvider>
+            <StudentDataProvider>
+              <HashRouter>
+                <AppRoutes />
+              </HashRouter>
+            </StudentDataProvider>
+          </TeacherDataProvider>
         </IndicatorDataProvider>
       </DataProvider>
     </AuthProvider>
