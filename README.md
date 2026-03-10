@@ -4,7 +4,7 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
 
 ## Implemented Scope
 
-- Role-based login (`monitor`, `school_head`) with custom Filament auth page.
+- Role-based authentication (`monitor`, `school_head`) with custom Filament auth page and SPA login.
 - Master data and learner management:
   - Schools
   - Academic Years
@@ -33,6 +33,18 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - Sanctum authentication
   - Dashboard records endpoints with sync metadata and ETag-based conditional refresh
 
+## Authentication and Session Flow
+
+- `monitor` can sign in using email or name.
+- `school_head` signs in using a **6-digit school code**.
+- If a school head account is marked `must_reset_password`, sign-in is blocked until password reset is completed via:
+  - `POST /api/auth/reset-required-password`
+- SPA login supports the reset-required flow in-page (current password + new password + confirmation).
+- Sign-out behavior:
+  - local session is cleared immediately for fast UI exit
+  - token revoke call is sent in the background (`POST /api/auth/logout`)
+  - auth state is synchronized across tabs/windows via browser storage events
+
 ## Indicator Compliance Workflow (API)
 
 Implemented API workflow for school-level indicator compliance packages:
@@ -48,6 +60,24 @@ Role flow:
 
 - `school_head`: encode indicators for own school and submit to monitor
 - `monitor`: division-wide visibility and validate/return indicator submissions
+
+## TARGETS-MET KPI Auto-Calculation
+
+- KPI indicators in TARGETS-MET are auto-calculated server-side from synchronized records (students, sections, teachers, school/resource context).
+- Auto-calculated KPI rows are enforced on save/submit; manual payload values for these KPIs are replaced by derived values.
+- KPI metric metadata includes `isAutoCalculated` so the frontend can render these rows as read-only.
+- Rolling school-year matrix window uses a 5-year range anchored from `2022-2023` and moves forward by school year.
+- Historical gaps are backfilled using nearest available values, and target values are derived from previous-year actuals.
+
+## School Code Policy
+
+- School code format is standardized system-wide as **exactly 6 digits**.
+- Applied consistently to:
+  - monitor CRUD validation
+  - bulk import validation
+  - API auth and Filament auth resolution for school heads
+  - login UI hints and docs/examples
+  - demo seed data
 
 ## Database and Seeders
 
@@ -85,6 +115,9 @@ Prerequisites:
    - `php artisan migrate --seed`
 5. Serve backend:
    - `php artisan serve`
+6. (Recommended for realtime/notifications) start worker and Reverb in separate terminals:
+   - `php artisan queue:work --tries=3 --timeout=120`
+   - `php artisan reverb:start`
 
 Frontend (new terminal):
 
@@ -124,5 +157,5 @@ Queue tables are included in migrations (`jobs`, `job_batches`, `failed_jobs`) a
 
 ## Additional Docs
 
-- [CAPSTONE_COMPLETION_GUIDE.md](C:/Users/Angie/Documents/New%20project/cspams.2/CAPSTONE_COMPLETION_GUIDE.md)
-- [USER_MANUAL.md](C:/Users/Angie/Documents/New%20project/cspams.2/USER_MANUAL.md)
+- [CAPSTONE_COMPLETION_GUIDE.md](CAPSTONE_COMPLETION_GUIDE.md)
+- [USER_MANUAL.md](USER_MANUAL.md)
