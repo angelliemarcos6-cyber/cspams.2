@@ -198,43 +198,43 @@ const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "action_queue",
     title: "Action Queue",
-    objective: "Handle schools that need immediate monitor action.",
+    objective: "Start with schools that need urgent monitor action.",
     actions: [
       "Check Missing, Returned, and For Review rows first.",
-      "Use Review, Open School, or Send Reminder on each row.",
+      "Use Review, Open School, or Send Reminder to move each item forward.",
     ],
-    doneWhen: "No urgent rows remain unassigned for action.",
+    doneWhen: "No urgent schools are left without an action.",
   },
   {
     id: "compliance_review",
     title: "Compliance Review",
-    objective: "Validate or return compliance submissions.",
+    objective: "Validate submissions or return them with clear feedback.",
     actions: [
-      "Review pending packages and decide validate or return.",
-      "Write clear notes when returning a submission.",
+      "Review pending packages and decide whether to validate or return.",
+      "Write specific notes so school heads know exactly what to fix.",
     ],
-    doneWhen: "No pending submissions remain without a validation decision.",
+    doneWhen: "Every pending submission has a review decision.",
   },
   {
     id: "schools",
     title: "Schools",
     objective: "Inspect school profile, status, learner records, and latest activity in one place.",
     actions: [
-      "Review school profile and activity updates.",
-      "Open learner records directly from Schools when needed.",
+      "Review school profile and activity updates before contacting schools.",
+      "Open learner records directly when deeper checks are needed.",
       "Use row actions for follow-up without leaving the page.",
     ],
-    doneWhen: "School details and latest updates are verified.",
+    doneWhen: "School details and recent updates are verified.",
   },
   {
     id: "reports",
     title: "Reports",
-    objective: "Check history and optional analytics only when needed.",
+    objective: "Review summaries, history, and analytics for decision support.",
     actions: [
-      "Review sync history and KPI snapshot.",
-      "Open analytics only when deeper trend checking is required.",
+      "Review sync history and KPI snapshot first.",
+      "Open advanced analytics only when deeper trend checks are needed.",
     ],
-    doneWhen: "History checks are complete and issues are documented.",
+    doneWhen: "Key trends are checked and notable issues are documented.",
   },
 ];
 
@@ -242,7 +242,7 @@ const MONITOR_MANUAL_STATUS_GUIDE = [
   "Missing: Requirement not yet submitted by school.",
   "For Review: Submitted and waiting for monitor review.",
   "Returned: Sent back to school head for correction.",
-  "Submitted: School package has been sent to monitor.",
+  "Submitted: Package was sent by school.",
   "Validated: Approved and closed.",
 ];
 
@@ -2969,15 +2969,23 @@ export function MonitorDashboard() {
               <div className={`border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
                 <button
                   type="button"
-                  onClick={() => setShowNavigatorManual((current) => !current)}
-                  className={`inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
+                  onClick={() => {
+                    setShowNavigatorManual((current) => !current);
+                    setFocusedSectionId(null);
+                    setSchoolDrawerKey(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-sm border text-white transition ${
+                    showNavigatorManual
+                      ? "border-primary-100 bg-primary-700"
+                      : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
+                  } ${
                     isNavigatorCompact ? "h-8 w-8 justify-center p-0" : "w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide"
                   }`}
-                  title="User Manual"
-                  aria-label="Open user manual"
+                  title={showNavigatorManual ? "Close User Manual" : "Open User Manual"}
+                  aria-label={showNavigatorManual ? "Close user manual" : "Open user manual"}
                 >
                   <BookOpenText className="h-3.5 w-3.5" />
-                  {!isNavigatorCompact && <span>Help</span>}
+                  {!isNavigatorCompact && <span>{showNavigatorManual ? "Back to Data" : "User Manual"}</span>}
                 </button>
               </div>
             </div>
@@ -2985,63 +2993,77 @@ export function MonitorDashboard() {
         </aside>
         <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
           {showNavigatorManual && (
-            <>
-            <button
-              type="button"
-              onClick={() => setShowNavigatorManual(false)}
-              className="fixed inset-0 z-[65] bg-slate-900/20"
-              aria-label="Close manual overlay"
-            />
-            <aside className="fixed right-4 top-24 z-[70] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl animate-fade-slide">
-              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Monitor Navigator Manual</p>
-                <button
-                  type="button"
-                  onClick={() => setShowNavigatorManual(false)}
-                  className="inline-flex items-center rounded-sm border border-slate-200 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                  aria-label="Close manual"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="max-h-[72vh] overflow-y-auto p-3">
-                <ol className="grid gap-2">
-                  {MONITOR_NAVIGATOR_MANUAL.map((step, index) => (
-                    <li key={step.id} className="dashboard-subtle-panel p-2.5">
-                      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-primary-100 text-[10px] text-primary-700">
-                          {index + 1}
-                        </span>
-                        {step.title}
-                      </p>
-                      <p className="mt-1 text-xs font-medium text-slate-700">Goal: {step.objective}</p>
-                      <ul className="mt-1 space-y-1">
-                        {step.actions.map((action) => (
-                          <li key={`${step.id}-${action}`} className="text-xs text-slate-600">
-                            - {action}
+            <section id="monitor-user-manual" className="dashboard-shell mb-5 overflow-hidden rounded-sm border border-slate-200 bg-white animate-fade-slide">
+              <div className="min-h-[72vh] p-4 md:p-6 xl:p-8">
+                <div className="mx-auto flex h-full w-full max-w-6xl flex-col justify-center gap-6">
+                  <header className="text-center">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary-700">Division Monitor Dashboard</p>
+                    <h2 className="mt-2 text-2xl font-bold text-slate-900 md:text-3xl">User Manual</h2>
+                    <p className="mx-auto mt-2 max-w-3xl text-sm text-slate-600 md:text-base">
+                      This guide appears in the main workspace so monitors can review process steps clearly before working on live data.
+                    </p>
+                  </header>
+
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+                    <article className="rounded-sm border border-slate-200 bg-slate-50 p-4 md:p-5">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Step-by-step Workflow</p>
+                      <ol className="mt-3 space-y-3">
+                        {MONITOR_NAVIGATOR_MANUAL.map((step, index) => (
+                          <li key={step.id} className="rounded-sm border border-slate-200 bg-white p-3">
+                            <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-sm bg-primary-100 text-xs font-bold text-primary-700">
+                                {index + 1}
+                              </span>
+                              {step.title}
+                            </p>
+                            <p className="mt-2 text-sm font-medium text-slate-700">{step.objective}</p>
+                            <ul className="mt-2 space-y-1">
+                              {step.actions.map((action) => (
+                                <li key={`${step.id}-${action}`} className="ml-5 list-disc text-sm text-slate-700">
+                                  {action}
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-2 text-sm font-semibold text-primary-700">Done when: {step.doneWhen}</p>
                           </li>
                         ))}
-                      </ul>
-                      <p className="mt-2 text-[11px] text-primary-700">Done when: {step.doneWhen}</p>
-                    </li>
-                  ))}
-                </ol>
-                <article className="dashboard-subtle-panel mt-3 p-2.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
-                  <ul className="mt-1 space-y-1">
-                    {MONITOR_MANUAL_STATUS_GUIDE.map((item) => (
-                      <li key={item} className="text-xs text-slate-600">
-                        - {item}
-                      </li>
-                    ))}
-                  </ul>
-                </article>
+                      </ol>
+                    </article>
+
+                    <aside className="space-y-4">
+                      <article className="rounded-sm border border-slate-200 bg-white p-4 md:p-5">
+                        <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
+                        <ul className="mt-3 space-y-2">
+                          {MONITOR_MANUAL_STATUS_GUIDE.map((item) => (
+                            <li key={item} className="ml-5 list-disc text-sm text-slate-700">
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </article>
+                      <article className="rounded-sm border border-primary-200 bg-primary-50 p-4 md:p-5">
+                        <p className="text-sm font-semibold uppercase tracking-wide text-primary-700">Quick Reminders</p>
+                        <ul className="mt-3 space-y-2">
+                          <li className="ml-5 list-disc text-sm text-primary-700">Review urgent schools first before routine checks.</li>
+                          <li className="ml-5 list-disc text-sm text-primary-700">Write clear return notes to reduce repeated revisions.</li>
+                          <li className="ml-5 list-disc text-sm text-primary-700">Use school and learner filters before sending reminders.</li>
+                        </ul>
+                      </article>
+                      <button
+                        type="button"
+                        onClick={() => setShowNavigatorManual(false)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                      >
+                        Return to Dashboard Data
+                      </button>
+                    </aside>
+                  </div>
+                </div>
               </div>
-            </aside>
-            </>
+            </section>
           )}
 
-          {(activeTopNavigator === "reports" || isMobileViewport) && (
+          {!showNavigatorManual && (activeTopNavigator === "reports" || isMobileViewport) && (
             <section className="dashboard-workflow-hero mb-5 rounded-sm p-3">
               <div className="flex flex-wrap items-center gap-2">
                 {activeTopNavigator === "reports" && (
@@ -3068,7 +3090,7 @@ export function MonitorDashboard() {
             </section>
           )}
 
-          {showSubmissionFilters && !isMobileViewport && (
+          {!showNavigatorManual && showSubmissionFilters && !isMobileViewport && (
             <section
               id="monitor-submission-filters"
               className={`surface-panel dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}
@@ -3079,7 +3101,7 @@ export function MonitorDashboard() {
             </section>
           )}
 
-          {showSubmissionFilters && isMobileViewport && (
+          {!showNavigatorManual && showSubmissionFilters && isMobileViewport && (
             <>
               <button
                 type="button"
@@ -3104,7 +3126,7 @@ export function MonitorDashboard() {
             </>
           )}
 
-          {isMobileViewport && !showAdvancedFilters && activeFilterChips.length > 0 && (
+          {!showNavigatorManual && isMobileViewport && !showAdvancedFilters && activeFilterChips.length > 0 && (
             <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Active Filters</p>
@@ -3132,7 +3154,7 @@ export function MonitorDashboard() {
             </section>
           )}
 
-      {activeTopNavigator === "reports" && (
+      {!showNavigatorManual && activeTopNavigator === "reports" && (
         <>
           <section className={`surface-panel dashboard-shell mb-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-reports-header")}`}>
             <div id="monitor-reports-header" className="border-b border-slate-200 bg-white px-4 py-4">
@@ -3233,7 +3255,7 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {activeTopNavigator === "action_queue" && (
+      {!showNavigatorManual && activeTopNavigator === "action_queue" && (
         <>
           <section id="monitor-action-queue" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-action-queue")}`}>
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -3456,7 +3478,7 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {activeTopNavigator === "compliance_review" && (
+      {!showNavigatorManual && activeTopNavigator === "compliance_review" && (
         <section
           id="monitor-indicators-queue"
           className={`surface-panel dashboard-shell animate-fade-slide overflow-hidden rounded-sm ${sectionFocusClass("monitor-indicators-queue")}`}
@@ -3481,7 +3503,7 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      {activeTopNavigator === "schools" && (
+      {!showNavigatorManual && activeTopNavigator === "schools" && (
         <>
         <section id="monitor-school-records" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}>
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -4226,7 +4248,7 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {schoolDrawerKey && (
+      {!showNavigatorManual && schoolDrawerKey && (
         <button
           type="button"
           onClick={closeSchoolDrawer}
@@ -4237,7 +4259,7 @@ export function MonitorDashboard() {
 
       <aside
         className={`fixed right-0 top-24 z-[75] h-[calc(100vh-6rem)] w-[min(27rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
-          schoolDrawerKey ? "translate-x-0" : "translate-x-full"
+          !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">

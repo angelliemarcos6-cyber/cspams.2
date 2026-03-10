@@ -101,51 +101,52 @@ const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "first_glance",
     title: "My Tasks",
-    objective: "Start with today’s high-priority items before entering full details.",
+    objective: "Start with the highest-priority tasks for today.",
     actions: [
-      "Check overdue, returned, and pending monitor items first.",
-      "Use quick jump chips to open the exact section that needs action.",
+      "Check overdue, returned, and for-review items first.",
+      "Use quick-jump chips to open the exact section that needs action.",
     ],
-    doneWhen: "You have a clear priority order for what to encode or revise next.",
+    doneWhen: "You have a clear order of what to encode or revise next.",
   },
   {
     id: "compliance",
     title: "Submission Workspace",
-    objective: "Encode required information in one focused working surface.",
+    objective: "Encode required data in one focused workspace.",
     actions: [
-      "Update school summary fields and then complete indicator tables.",
-      "Use Save Draft often, then submit package to monitor when complete.",
+      "Update School Summary first, then complete indicator tables.",
+      "Use Save Draft often, then submit when all required items are complete.",
     ],
-    doneWhen: "School summary and indicator package are updated and saved without errors.",
+    doneWhen: "School Summary and indicators are complete and saved without errors.",
   },
   {
     id: "requirements",
     title: "Returned & Revisions",
-    objective: "Resolve monitor feedback quickly and resubmit with confidence.",
+    objective: "Fix returned items quickly and resubmit with confidence.",
     actions: [
-      "Review returned items and monitor notes in the side panel.",
-      "Jump directly to the relevant field and fix missing information.",
+      "Review each returned item and read monitor notes carefully.",
+      "Jump to the related field, apply corrections, and validate your updates.",
     ],
-    doneWhen: "Returned items are fixed and ready to resubmit.",
+    doneWhen: "Returned items are corrected and ready to submit again.",
   },
   {
     id: "records",
     title: "History & Exports",
-    objective: "Track prior submissions and keep proof records ready.",
+    objective: "Review previous submissions and keep records ready for reporting.",
     actions: [
-      "Review student records and historical updates.",
-      "Validate status consistency before sharing reports.",
+      "Check student and teacher history for consistency.",
+      "Confirm status updates before sharing reports or evidence.",
     ],
-    doneWhen: "Historical records are accurate and review-ready.",
+    doneWhen: "Historical records are accurate and easy to verify.",
   },
 ];
 
 const SCHOOL_MANUAL_STATUS_GUIDE = [
-  "Draft: Saved but not yet sent to monitor.",
+  "Draft: Saved but not yet sent.",
   "Submitted: Sent to monitor and waiting for review.",
-  "Validated: Approved by monitor.",
-  "Needs Revision: Returned by monitor for corrections and resubmission.",
+  "Validated: Approved by monitor and closed.",
+  "Needs Revision: Returned by monitor; update and submit again.",
 ];
+
 
 const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
   first_glance: [
@@ -1073,15 +1074,22 @@ export function SchoolAdminDashboard() {
           <div className={`border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
               <button
                 type="button"
-                onClick={() => setShowNavigatorManual((current) => !current)}
-                className={`inline-flex items-center gap-1.5 rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
+                onClick={() => {
+                  setShowNavigatorManual((current) => !current);
+                  setFocusedSectionId(null);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-sm border text-white transition ${
+                  showNavigatorManual
+                    ? "border-primary-100 bg-primary-700"
+                    : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
+                } ${
                   isNavigatorCompact ? "h-8 w-8 justify-center p-0" : "w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide"
                 }`}
-                title="User Manual"
-                aria-label="Open user manual"
+                title={showNavigatorManual ? "Close User Manual" : "Open User Manual"}
+                aria-label={showNavigatorManual ? "Close user manual" : "Open user manual"}
               >
                 <BookOpenText className="h-3.5 w-3.5" />
-                {!isNavigatorCompact && <span>Help</span>}
+                {!isNavigatorCompact && <span>{showNavigatorManual ? "Back to Data" : "User Manual"}</span>}
               </button>
           </div>
         </div>
@@ -1090,62 +1098,77 @@ export function SchoolAdminDashboard() {
       <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
 
       {showNavigatorManual && (
-        <>
-        <button
-          type="button"
-          onClick={() => setShowNavigatorManual(false)}
-          className="fixed inset-0 z-[65] bg-slate-900/20"
-          aria-label="Close manual overlay"
-        />
-        <aside className="fixed right-4 top-24 z-[70] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl animate-fade-slide">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">School Head Navigator Manual</p>
-            <button
-              type="button"
-              onClick={() => setShowNavigatorManual(false)}
-              className="inline-flex items-center rounded-sm border border-slate-200 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-              aria-label="Close manual"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="max-h-[72vh] overflow-y-auto p-3">
-            <ol className="grid gap-2">
-              {SCHOOL_NAVIGATOR_MANUAL.map((step, index) => (
-                <li key={step.id} className="dashboard-subtle-panel p-2.5">
-                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-sm bg-primary-100 text-[10px] text-primary-700">
-                      {index + 1}
-                    </span>
-                    {step.title}
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-slate-700">Goal: {step.objective}</p>
-                  <ul className="mt-1 space-y-1">
-                    {step.actions.map((action) => (
-                      <li key={`${step.id}-${action}`} className="ml-4 list-disc text-xs text-slate-600">
-                        {action}
+        <section id="school-head-user-manual" className="dashboard-shell mb-5 overflow-hidden rounded-sm border border-slate-200 bg-white animate-fade-slide">
+          <div className="min-h-[72vh] p-4 md:p-6 xl:p-8">
+            <div className="mx-auto flex h-full w-full max-w-6xl flex-col justify-center gap-6">
+              <header className="text-center">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary-700">School Head Dashboard</p>
+                <h2 className="mt-2 text-2xl font-bold text-slate-900 md:text-3xl">User Manual</h2>
+                <p className="mx-auto mt-2 max-w-3xl text-sm text-slate-600 md:text-base">
+                  This guide is shown inside the main workspace so Head Teachers can read instructions clearly before encoding data.
+                </p>
+              </header>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+                <article className="rounded-sm border border-slate-200 bg-slate-50 p-4 md:p-5">
+                  <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Step-by-step Workflow</p>
+                  <ol className="mt-3 space-y-3">
+                    {SCHOOL_NAVIGATOR_MANUAL.map((step, index) => (
+                      <li key={step.id} className="rounded-sm border border-slate-200 bg-white p-3">
+                        <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-sm bg-primary-100 text-xs font-bold text-primary-700">
+                            {index + 1}
+                          </span>
+                          {step.title}
+                        </p>
+                        <p className="mt-2 text-sm font-medium text-slate-700">{step.objective}</p>
+                        <ul className="mt-2 space-y-1">
+                          {step.actions.map((action) => (
+                            <li key={`${step.id}-${action}`} className="ml-5 list-disc text-sm text-slate-700">
+                              {action}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-2 text-sm font-semibold text-primary-700">Done when: {step.doneWhen}</p>
                       </li>
                     ))}
-                  </ul>
-                  <p className="mt-2 text-[11px] text-primary-700">Done when: {step.doneWhen}</p>
-                </li>
-              ))}
-            </ol>
-            <article className="dashboard-subtle-panel mt-3 p-2.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
-              <ul className="mt-1 space-y-1">
-                {SCHOOL_MANUAL_STATUS_GUIDE.map((item) => (
-                  <li key={item} className="ml-4 list-disc text-xs text-slate-600">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </article>
+                  </ol>
+                </article>
+
+                <aside className="space-y-4">
+                  <article className="rounded-sm border border-slate-200 bg-white p-4 md:p-5">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
+                    <ul className="mt-3 space-y-2">
+                      {SCHOOL_MANUAL_STATUS_GUIDE.map((item) => (
+                        <li key={item} className="ml-5 list-disc text-sm text-slate-700">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                  <article className="rounded-sm border border-primary-200 bg-primary-50 p-4 md:p-5">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-primary-700">Quick Reminders</p>
+                    <ul className="mt-3 space-y-2">
+                      <li className="ml-5 list-disc text-sm text-primary-700">Complete required fields before optional details.</li>
+                      <li className="ml-5 list-disc text-sm text-primary-700">Save Draft first, then submit only after checking errors.</li>
+                      <li className="ml-5 list-disc text-sm text-primary-700">Use monitor notes directly to speed up revisions.</li>
+                    </ul>
+                  </article>
+                  <button
+                    type="button"
+                    onClick={() => setShowNavigatorManual(false)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Return to Dashboard Data
+                  </button>
+                </aside>
+              </div>
+            </div>
           </div>
-        </aside>
-        </>
+        </section>
       )}
 
+      {!showNavigatorManual && (
       <section className="dashboard-shell sticky top-2 z-20 mb-5 rounded-sm border border-slate-200 bg-white/95">
         <div className="border-b border-slate-200 px-4 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1333,8 +1356,9 @@ export function SchoolAdminDashboard() {
           </div>
         )}
       </section>
+      )}
 
-      {activeTopNavigator === "requirements" && (
+      {!showNavigatorManual && activeTopNavigator === "requirements" && (
       <section id="requirement-navigator" className={`dashboard-shell mb-5 overflow-hidden rounded-sm ${sectionFocusClass("requirement-navigator")}`}>
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -1419,7 +1443,7 @@ export function SchoolAdminDashboard() {
       </section>
       )}
 
-      {activeTopNavigator === "first_glance" && (
+      {!showNavigatorManual && activeTopNavigator === "first_glance" && (
       <>
       <section id="school-overview" className={`mb-5 animate-fade-slide grid gap-3 md:grid-cols-3 ${sectionFocusClass("school-overview")}`}>
         <article className="dashboard-subtle-panel px-4 py-3">
@@ -1444,7 +1468,7 @@ export function SchoolAdminDashboard() {
       </>
       )}
 
-      {activeTopNavigator === "compliance" && (
+      {!showNavigatorManual && activeTopNavigator === "compliance" && (
       <section id="compliance-records" className="grid gap-6">
         <section className="dashboard-shell overflow-hidden rounded-sm">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -1757,7 +1781,7 @@ export function SchoolAdminDashboard() {
       </section>
       )}
 
-      {activeTopNavigator === "records" && (
+      {!showNavigatorManual && activeTopNavigator === "records" && (
       <section id="school-records" className={sectionFocusClass("school-records")}>
         <div className="dashboard-shell mb-5 rounded-sm p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
