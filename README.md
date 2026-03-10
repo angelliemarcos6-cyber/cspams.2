@@ -109,21 +109,31 @@ Prerequisites:
    - `composer install`
 2. Prepare environment:
    - copy `.env.example` to `.env`
-3. Generate app key:
+   - set predictable local passwords before seeding (recommended):
+     - `CSPAMS_DEMO_PASSWORD=Demo@123456`
+     - `CSPAMS_SEED_TEMP_PASSWORD=Csp@123456`
+3. If using SQLite, create the database file first:
+   - Linux/macOS: `mkdir -p database && touch database/database.sqlite`
+   - Windows PowerShell: `if (-not (Test-Path database\\database.sqlite)) { New-Item -ItemType File database\\database.sqlite | Out-Null }`
+4. Generate app key:
    - `php artisan key:generate`
-4. Run migrations and seeders:
-   - `php artisan migrate --seed`
-5. Serve backend:
+5. Clear caches and run migrations/seeders:
+   - `php artisan optimize:clear`
+   - `php artisan migrate:fresh --seed`
+6. Serve backend:
    - `php artisan serve`
-6. (Recommended for realtime/notifications) start worker and Reverb in separate terminals:
+7. (Recommended for realtime/notifications) start worker and Reverb in separate terminals:
    - `php artisan queue:work --tries=3 --timeout=120`
    - `php artisan reverb:start`
 
 Frontend (new terminal):
 
 1. `cd frontend`
-2. `npm install`
-3. `npm run dev`
+2. copy `.env.example` to `.env`
+3. verify frontend API URL:
+   - `VITE_API_BASE_URL=http://127.0.0.1:8000`
+4. `npm install`
+5. `npm run dev`
 
 ## Demo Accounts
 
@@ -131,12 +141,28 @@ After seeding:
 
 - Division Monitor login:
   - Login: `monitor@cspams.local`
-  - Password: set `CSPAMS_DEMO_PASSWORD` in `.env` before seeding, or use the deterministic password policy from `DemoDataSeeder`
+  - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
 - School Head login:
   - Login: assigned 6-digit `school_code` (example: `900001`, `900002`, `900003`)
-  - Password: set `CSPAMS_DEMO_PASSWORD` in `.env` before seeding, or use the deterministic password policy from `DemoDataSeeder`
+  - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
 
-For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and must complete `/api/auth/reset-required-password` before dashboard access.
+For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and must complete `/api/auth/reset-required-password` before dashboard access. Their temporary password is `CSPAMS_SEED_TEMP_PASSWORD` when set.
+
+## Troubleshooting Sign-in on a Fresh Clone (Linux/Windows)
+
+If login fails after cloning:
+
+1. Ensure backend + frontend URLs match:
+   - backend: `php artisan serve` (default `http://127.0.0.1:8000`)
+   - frontend `.env`: `VITE_API_BASE_URL=http://127.0.0.1:8000`
+2. Ensure local dev origin is allowed:
+   - `.env` -> `CORS_ALLOWED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173`
+3. Rebuild seed data with known passwords:
+   - set `CSPAMS_DEMO_PASSWORD` and `CSPAMS_SEED_TEMP_PASSWORD` in `.env`
+   - run `php artisan migrate:fresh --seed`
+4. Clear stale config cache:
+   - `php artisan optimize:clear`
+5. If using School Head role, login must be a strict 6-digit school code.
 
 ## Realtime and Notifications (Production Baseline)
 
