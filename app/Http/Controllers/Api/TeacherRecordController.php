@@ -6,6 +6,7 @@ use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpsertTeacherRecordRequest;
 use App\Http\Resources\TeacherRecordResource;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
@@ -125,13 +126,37 @@ class TeacherRecordController extends Controller
             );
         }
 
+        $previousName = trim((string) $teacher->name);
         $this->applyPayload($teacher, $request);
+        $nextName = trim((string) $teacher->name);
+        $reassignedStudents = 0;
+
+        if ($previousName !== '' && strcasecmp($previousName, $nextName) !== 0) {
+            $reassignedStudents = Student::query()
+                ->where('school_id', $teacher->school_id)
+                ->whereRaw('LOWER(TRIM(teacher_name)) = ?', [strtolower($previousName)])
+                ->update([
+                    'teacher_name' => $nextName,
+                    'updated_at' => now(),
+                ]);
+
+            if ($reassignedStudents > 0) {
+                event(new CspamsUpdateBroadcast([
+                    'entity' => 'students',
+                    'eventType' => 'students.teacher_reassigned',
+                    'schoolId' => (string) $teacher->school_id,
+                    'teacherId' => (string) $teacher->id,
+                    'updatedCount' => $reassignedStudents,
+                ]));
+            }
+        }
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'teachers',
             'eventType' => 'teachers.updated',
             'teacherId' => (string) $teacher->id,
             'schoolId' => (string) $teacher->school_id,
+            'updatedStudentAssignments' => $reassignedStudents,
         ]));
 
         return response()->json([
@@ -139,6 +164,7 @@ class TeacherRecordController extends Controller
             'meta' => [
                 'syncedAt' => now()->toISOString(),
                 'scope' => 'school',
+                'updatedStudentAssignments' => $reassignedStudents,
             ],
         ]);
     }
@@ -151,6 +177,14 @@ class TeacherRecordController extends Controller
             return response()->json(
                 ['message' => 'You can only delete teacher records assigned to your school.'],
                 Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $assignedStudents = $this->countAssignedStudents($teacher);
+        if ($assignedStudents > 0) {
+            return response()->json(
+                ['message' => "Cannot delete this teacher. {$assignedStudents} student assignment(s) still reference this teacher."],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
 
@@ -172,6 +206,19 @@ class TeacherRecordController extends Controller
                 'scope' => 'school',
             ],
         ]);
+    }
+
+    private function countAssignedStudents(Teacher $teacher): int
+    {
+        $teacherName = trim((string) $teacher->name);
+        if ($teacherName === '') {
+            return 0;
+        }
+
+        return Student::query()
+            ->where('school_id', $teacher->school_id)
+            ->whereRaw('LOWER(TRIM(teacher_name)) = ?', [strtolower($teacherName)])
+            ->count();
     }
 
     private function requireSchoolHead(Request $request): User
@@ -197,4 +244,3 @@ class TeacherRecordController extends Controller
         $teacher->save();
     }
 }
-

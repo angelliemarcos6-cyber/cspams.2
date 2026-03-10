@@ -20,15 +20,59 @@ export interface ApiRawResponse<T> {
   headers: Headers;
 }
 
+export type ApiValidationErrors = Record<string, string[]>;
+
+function parseValidationErrors(payload: unknown): ApiValidationErrors | null {
+  if (!payload || typeof payload !== "object" || !("errors" in payload)) {
+    return null;
+  }
+
+  const rawErrors = (payload as { errors?: unknown }).errors;
+  if (!rawErrors || typeof rawErrors !== "object") {
+    return null;
+  }
+
+  const parsed: ApiValidationErrors = {};
+  for (const [field, rawValue] of Object.entries(rawErrors as Record<string, unknown>)) {
+    if (Array.isArray(rawValue)) {
+      const messages = rawValue.filter((entry): entry is string => typeof entry === "string");
+      if (messages.length > 0) {
+        parsed[field] = messages;
+      }
+      continue;
+    }
+
+    if (typeof rawValue === "string") {
+      parsed[field] = [rawValue];
+    }
+  }
+
+  return Object.keys(parsed).length > 0 ? parsed : null;
+}
+
+function firstValidationMessage(errors: ApiValidationErrors | null): string | null {
+  if (!errors) return null;
+
+  for (const messages of Object.values(errors)) {
+    if (messages.length > 0) {
+      return messages[0] ?? null;
+    }
+  }
+
+  return null;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly payload: unknown;
+  readonly validationErrors: ApiValidationErrors | null;
 
-  constructor(message: string, status: number, payload: unknown) {
+  constructor(message: string, status: number, payload: unknown, validationErrors: ApiValidationErrors | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.payload = payload;
+    this.validationErrors = validationErrors;
   }
 }
 
@@ -79,11 +123,21 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
       };
     }
 
-    const message =
-      (payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
+    const baseMessage =
+      payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
         ? payload.message
-        : null) ?? `Request failed with status ${response.status}.`;
-    throw new ApiError(message, response.status, payload);
+        : null;
+    const validationErrors = parseValidationErrors(payload);
+    const firstError = firstValidationMessage(validationErrors);
+
+    let message = baseMessage ?? `Request failed with status ${response.status}.`;
+    if (firstError) {
+      const isGenericValidationMessage =
+        !baseMessage || baseMessage.toLowerCase() === "the given data was invalid.";
+      message = isGenericValidationMessage ? firstError : `${message} ${firstError}`;
+    }
+
+    throw new ApiError(message, response.status, payload, validationErrors);
   }
 
   return {
