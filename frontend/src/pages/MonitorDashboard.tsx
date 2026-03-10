@@ -354,6 +354,20 @@ function isValidMonitorTopNavigator(value: string | null | undefined): value is 
   return value === "action_queue" || value === "schools" || value === "compliance_review" || value === "reports";
 }
 
+function normalizeDateInput(value: string | null | undefined): string {
+  const normalized = (value ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function parseDateBoundary(value: string | null | undefined, boundary: "start" | "end"): number | null {
+  const normalized = normalizeDateInput(value);
+  if (!normalized) return null;
+
+  const suffix = boundary === "start" ? "T00:00:00" : "T23:59:59.999";
+  const parsed = new Date(`${normalized}${suffix}`).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -765,7 +779,7 @@ export function MonitorDashboard() {
     bulkImportRecords,
   } = useData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
-  const { students } = useStudentData();
+  const { students, isLoading: isStudentDataLoading } = useStudentData();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
@@ -980,8 +994,8 @@ export function MonitorDashboard() {
         setSelectedTeacherLookup(persisted.teacherLookup);
         setTeacherLookupQuery(persisted.teacherLookup);
       }
-      setFilterDateFrom(persisted.filterDateFrom?.trim() ?? "");
-      setFilterDateTo(persisted.filterDateTo?.trim() ?? "");
+      setFilterDateFrom(normalizeDateInput(persisted.filterDateFrom));
+      setFilterDateTo(normalizeDateInput(persisted.filterDateTo));
       if (persisted.studentLookupId) {
         setPendingStudentLookupId(persisted.studentLookupId);
       }
@@ -1391,6 +1405,15 @@ export function MonitorDashboard() {
     [selectedSchoolScopeKey, schoolScopeOptions],
   );
 
+  useEffect(() => {
+    if (selectedSchoolScopeKey === ALL_SCHOOL_SCOPE) return;
+    if (schoolScopeOptions.length === 0) return;
+    if (selectedSchoolScope) return;
+
+    // Drop stale school scope keys restored from URL/local storage.
+    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+  }, [selectedSchoolScope, selectedSchoolScopeKey, schoolScopeOptions.length]);
+
   const filteredSchoolScopeOptions = useMemo(() => {
     const query = schoolScopeQuery.trim().toLowerCase();
     if (!query) return schoolScopeOptions;
@@ -1504,10 +1527,28 @@ export function MonitorDashboard() {
   }, [pendingStudentLookupId, studentLookupOptions]);
 
   useEffect(() => {
+    if (!pendingStudentLookupId) return;
+    if (isStudentDataLoading) return;
+    if (studentLookupOptions.some((option) => option.id === pendingStudentLookupId)) return;
+
+    // Remove stale student IDs so URL/filter state stays truthful.
+    setPendingStudentLookupId(null);
+  }, [isStudentDataLoading, pendingStudentLookupId, studentLookupOptions]);
+
+  useEffect(() => {
     if (!selectedTeacherLookup) return;
     if (teacherLookupOptions.includes(selectedTeacherLookup)) return;
     setSelectedTeacherLookup(null);
   }, [selectedTeacherLookup, teacherLookupOptions]);
+
+  useEffect(() => {
+    if (!filterDateFrom || !filterDateTo) return;
+    if (filterDateFrom <= filterDateTo) return;
+
+    // Keep a valid inclusive range even when one endpoint is edited out of order.
+    setFilterDateFrom(filterDateTo);
+    setFilterDateTo(filterDateFrom);
+  }, [filterDateFrom, filterDateTo]);
 
   useEffect(() => {
     if (!selectedStudentLookup && !selectedTeacherLookup) return;
@@ -1721,8 +1762,8 @@ export function MonitorDashboard() {
   const searchTerms = useMemo(() => normalizeSearchTerms(debouncedSearch), [debouncedSearch]);
 
   const filteredRequirementRows = useMemo(() => {
-    const fromTime = filterDateFrom ? new Date(`${filterDateFrom}T00:00:00`).getTime() : null;
-    const toTime = filterDateTo ? new Date(`${filterDateTo}T23:59:59.999`).getTime() : null;
+    const fromTime = parseDateBoundary(filterDateFrom, "start");
+    const toTime = parseDateBoundary(filterDateTo, "end");
     const selectedStudentSchoolKey =
       selectedStudentLookup?.schoolKey && selectedStudentLookup.schoolKey !== "unknown"
         ? selectedStudentLookup.schoolKey
@@ -1768,6 +1809,7 @@ export function MonitorDashboard() {
     searchTerms.length > 0 ||
     statusFilter !== "all" ||
     requirementFilter !== "all" ||
+    Boolean(selectedSchoolScope) ||
     filterDateFrom.length > 0 ||
     filterDateTo.length > 0 ||
     Boolean(selectedStudentLookup) ||
@@ -2066,8 +2108,8 @@ export function MonitorDashboard() {
   }, [quickJumpItems, shouldShowQuickJump, handleQuickJump, canResolveQuickJumpTarget]);
 
   const filteredRecords = useMemo(() => {
-    const fromTime = filterDateFrom ? new Date(`${filterDateFrom}T00:00:00`).getTime() : null;
-    const toTime = filterDateTo ? new Date(`${filterDateTo}T23:59:59.999`).getTime() : null;
+    const fromTime = parseDateBoundary(filterDateFrom, "start");
+    const toTime = parseDateBoundary(filterDateTo, "end");
     const base = filteredSchoolKeys
       ? scopedRecords.filter((record) =>
           filteredSchoolKeys.has(normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName)),
@@ -2265,6 +2307,12 @@ export function MonitorDashboard() {
         break;
       case "school":
         setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+        setSelectedStudentLookup(null);
+        setPendingStudentLookupId(null);
+        setSelectedTeacherLookup(null);
+        setSchoolScopeQuery("");
+        setStudentLookupQuery("");
+        setTeacherLookupQuery("");
         break;
       case "student":
         setSelectedStudentLookup(null);

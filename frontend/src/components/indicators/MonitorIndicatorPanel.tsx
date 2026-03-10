@@ -181,6 +181,20 @@ function matchesAllTerms(searchableText: string, terms: string[]): boolean {
   return terms.every((term) => searchableText.includes(term));
 }
 
+function normalizeDateInput(value: string | null | undefined): string {
+  const normalized = (value ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function parseDateBoundary(value: string | null | undefined, boundary: "start" | "end"): number | null {
+  const normalized = normalizeDateInput(value);
+  if (!normalized) return null;
+
+  const suffix = boundary === "start" ? "T00:00:00" : "T23:59:59.999";
+  const parsed = new Date(`${normalized}${suffix}`).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function extractLinks(...segments: Array<string | null | undefined>): string[] {
   const urlRegex = /https?:\/\/[^\s)]+/gi;
   const unique = new Set<string>();
@@ -595,9 +609,17 @@ export function MonitorIndicatorPanel({
 
   const searchTerms = useMemo(() => normalizeSearchTerms(search), [search]);
 
+  useEffect(() => {
+    if (!dateFrom || !dateTo) return;
+    if (dateFrom <= dateTo) return;
+
+    setDateFrom(dateTo);
+    setDateTo(dateFrom);
+  }, [dateFrom, dateTo]);
+
   const filteredRows = useMemo(() => {
-    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
-    const toTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+    const fromTime = parseDateBoundary(dateFrom, "start");
+    const toTime = parseDateBoundary(dateTo, "end");
 
     return [...reviewRows]
       .filter((row) => {
