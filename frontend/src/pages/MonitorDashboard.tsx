@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -167,6 +167,20 @@ interface SchoolDetailSnapshot {
   synchronizedTeachers: number;
 }
 
+interface IndicatorMatrixRowCell {
+  target: string;
+  actual: string;
+}
+
+interface IndicatorMatrixRow {
+  key: string;
+  code: string;
+  label: string;
+  category: string;
+  sortOrder: number;
+  valuesByYear: Record<string, IndicatorMatrixRowCell>;
+}
+
 interface PersistedMonitorFilters {
   search?: string;
   statusFilter?: SchoolStatus | "all";
@@ -301,11 +315,187 @@ const ADVANCED_ANALYTICS_HIDE_MS = 520;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
+const SCHOOL_YEAR_START_MONTH = 6;
+
+const SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL = "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES";
+const KEY_PERFORMANCE_CATEGORY_LABEL = "KEY PERFORMANCE INDICATORS";
+const KEY_PERFORMANCE_METRIC_CODES = new Set([
+  "NER",
+  "RR",
+  "DR",
+  "TR",
+  "NIR",
+  "PR",
+  "ALS_COMPLETER_PCT",
+  "GPI",
+  "IQR",
+  "CR",
+  "CSR",
+  "PLM_NEARLY_PROF",
+  "PLM_PROF",
+  "PLM_HIGH_PROF",
+  "AE_PASS_RATE",
+  "VIOLENCE_REPORT_RATE",
+  "LEARNER_SATISFACTION",
+  "RIGHTS_AWARENESS",
+  "RBE_MANIFEST",
+]);
+
+const METRIC_LABEL_OVERRIDES: Record<string, string> = {
+  IMETA_HEAD_NAME: "NAME OF SCHOOL HEAD",
+  IMETA_ENROLL_TOTAL: "TOTAL NUMBER OF ENROLMENT",
+  IMETA_SBM_LEVEL: "SBM LEVEL OF PRACTICE",
+  PCR_K: "Pupil/Student Classroom Ratio (Kindergarten)",
+  PCR_G1_3: "Pupil/Student Classroom Ratio (Grades 1 to 3)",
+  PCR_G4_6: "Pupil/Student Classroom Ratio (Grades 4 to 6)",
+  PCR_G7_10: "Pupil/Student Classroom Ratio (Grades 7 to 10)",
+  PCR_G11_12: "Pupil/Student Classroom Ratio (Grades 11 to 12)",
+  WASH_RATIO: "Water and Sanitation facility to pupil ratio",
+  COMFORT_ROOMS: "Number of Comfort rooms",
+  TOILET_BOWLS: "a. Toilet bowl",
+  URINALS: "b. Urinal",
+  HANDWASH_FAC: "Handwashing Facilities",
+  LEARNING_MAT_RATIO: "Ideal learning materials to learner ratio",
+  PSR_OVERALL: "Pupil/student seat ratio",
+  PSR_K: "a. Kindergarten",
+  PSR_G1_6: "b. Grades 1 - 6",
+  PSR_G7_10: "c. Grades 7 - 10",
+  PSR_G11_12: "d. Grades 11 - 12",
+  ICT_RATIO: "ICT Package/E-classroom package to sections ratio",
+  ICT_LAB: "a. ICT Laboratory",
+  SCIENCE_LAB: "Science Laboratory",
+  INTERNET_ACCESS: "Do you have internet access? (Y/N)",
+  ELECTRICITY: "Do you have electricity (Y/N)",
+  FENCE_STATUS: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)",
+  TEACHERS_TOTAL: "No. of Teachers",
+  TEACHERS_MALE: "a. Male",
+  TEACHERS_FEMALE: "b. Female",
+  TEACHERS_PWD_TOTAL: "Teachers with Physical Disability",
+  TEACHERS_PWD_MALE: "a. Male",
+  TEACHERS_PWD_FEMALE: "b. Female",
+  FUNCTIONAL_SGC: "Functional SGC",
+  FEEDING_BENEFICIARIES: "School-Based Feeding Program Beneficiaries",
+  CANTEEN_INCOME: "School-Managed Canteen (Annual income)",
+  TEACHER_COOP_INCOME: "Teachers Cooperative Managed Canteen - if there is (Annual income)",
+  SAFETY_PLAN: "Security and Safety (Contingency Plan)",
+  SAFETY_EARTHQUAKE: "a. Earthquake",
+  SAFETY_TYPHOON: "b. Typhoon",
+  SAFETY_COVID: "c. COVID-19",
+  SAFETY_POWER: "d. Power interruption",
+  SAFETY_IN_PERSON: "e. In-person classes",
+  TEACHERS_PFA: "No. of Teachers trained on Psychological First Aid (PFA)",
+  TEACHERS_OCC_FIRST_AID: "No. of Teachers trained on Occupational First Aid",
+  NER: "Net Enrollment Rate",
+  RR: "Retention Rate",
+  DR: "Drop-out Rate",
+  TR: "Transition Rate",
+  NIR: "Net Intake Rate",
+  PR: "Participation Rate",
+  ALS_COMPLETER_PCT: "ALS Completion Rate",
+  GPI: "Gender Parity Index (GPI)",
+  IQR: "Interquartile Ratio",
+  CR: "Completion Rate",
+  CSR: "Cohort Survival Rate",
+  PLM_NEARLY_PROF: "Learning Mastery: Nearly Proficient (50%-74%)",
+  PLM_PROF: "Learning Mastery: Proficient (75%-89%)",
+  PLM_HIGH_PROF: "Learning Mastery: Highly Proficient (90%-100%)",
+  AE_PASS_RATE: "A&E Test Pass Rate",
+  VIOLENCE_REPORT_RATE: "Learners Reporting School Violence",
+  LEARNER_SATISFACTION: "Learner Satisfaction",
+  RIGHTS_AWARENESS: "Learners Aware of Education Rights",
+  RBE_MANIFEST: "Schools/LCs Manifesting RBE Indicators",
+};
+
+function schoolYearStartValue(value: string): number | null {
+  const match = value.trim().match(/^(\d{4})-(\d{4})$/);
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end !== start + 1) {
+    return null;
+  }
+  return start;
+}
+
+function deriveSchoolYearLabel(dateInput: string | null | undefined): string {
+  const parsed = new Date(dateInput ?? "");
+  const now = Number.isFinite(parsed.getTime()) ? parsed : new Date();
+  const startYear = now.getMonth() + 1 >= SCHOOL_YEAR_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
+  return `${startYear}-${startYear + 1}`;
+}
+
+function toDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  const normalized = String(value).trim();
+  return normalized;
+}
+
+function typedYearValues(payload: Record<string, unknown> | null | undefined): Record<string, string> {
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+
+  const typed = payload as { values?: unknown };
+  if (!typed.values || typeof typed.values !== "object") {
+    return {};
+  }
+
+  const values: Record<string, string> = {};
+  for (const [year, value] of Object.entries(typed.values as Record<string, unknown>)) {
+    const normalized = toDisplayValue(value);
+    if (normalized.length > 0) {
+      values[year] = normalized;
+    }
+  }
+
+  return values;
+}
+
+function indicatorCategoryLabel(metricCode: string | null | undefined): string {
+  if (metricCode && KEY_PERFORMANCE_METRIC_CODES.has(metricCode)) {
+    return KEY_PERFORMANCE_CATEGORY_LABEL;
+  }
+  return SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL;
+}
+
+function indicatorDisplayLabel(metricCode: string | null | undefined, fallbackName: string): string {
+  if (metricCode && METRIC_LABEL_OVERRIDES[metricCode]) {
+    return METRIC_LABEL_OVERRIDES[metricCode];
+  }
+  return fallbackName;
+}
+
+function sortSchoolYears(years: Iterable<string>): string[] {
+  return [...new Set(Array.from(years, (year) => year.trim()).filter((year) => year.length > 0))]
+    .sort((a, b) => {
+      const aStart = schoolYearStartValue(a);
+      const bStart = schoolYearStartValue(b);
+      if (aStart !== null && bStart !== null) {
+        return aStart - bStart;
+      }
+      if (aStart !== null) return -1;
+      if (bStart !== null) return 1;
+      return a.localeCompare(b);
+    });
+}
 
 function statusTone(status: SchoolStatus) {
   if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "pending") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+}
+
+function isInteractiveTableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest(
+      "button, a, input, select, textarea, label, [role='button'], [contenteditable='true']",
+    ),
+  );
 }
 
 function schoolTypeLabel(value: string | null | undefined): string {
@@ -2017,6 +2207,11 @@ export function MonitorDashboard() {
     const scroller = schoolsTableScrollerRef.current;
     if (!scroller) return;
 
+    // Keep row/table actions clickable; only start drag on non-interactive surface.
+    if (isInteractiveTableTarget(event.target)) {
+      return;
+    }
+
     if (scroller.scrollWidth <= scroller.clientWidth) return;
 
     if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 2) {
@@ -2185,6 +2380,158 @@ export function MonitorDashboard() {
     const start = (safeRecordsPage - 1) * RECORD_PAGE_SIZE;
     return filteredRecords.slice(start, start + RECORD_PAGE_SIZE);
   }, [filteredRecords, safeRecordsPage]);
+
+  const schoolIndicatorSubmissions = useMemo(() => {
+    if (!schoolDrawerKey) return [] as IndicatorSubmission[];
+
+    return indicatorSubmissions
+      .filter(
+        (submission) =>
+          normalizeSchoolKey(submission.school?.schoolCode ?? null, submission.school?.name ?? null) === schoolDrawerKey,
+      )
+      .sort(
+        (a, b) =>
+          toTime(b.updatedAt, b.submittedAt, b.createdAt) - toTime(a.updatedAt, a.submittedAt, a.createdAt),
+      );
+  }, [indicatorSubmissions, schoolDrawerKey]);
+
+  const schoolIndicatorMatrix = useMemo(() => {
+    if (schoolIndicatorSubmissions.length === 0) {
+      return {
+        years: [] as string[],
+        rows: [] as IndicatorMatrixRow[],
+        latestSubmission: null as IndicatorSubmission | null,
+      };
+    }
+
+    const years = new Set<string>();
+    const rowMap = new Map<string, IndicatorMatrixRow>();
+
+    for (const submission of schoolIndicatorSubmissions) {
+      const fallbackYear =
+        (submission.academicYear?.name ?? "").trim() ||
+        deriveSchoolYearLabel(submission.submittedAt ?? submission.updatedAt ?? submission.createdAt);
+      years.add(fallbackYear);
+
+      for (const entry of submission.indicators) {
+        const schemaYears = Array.isArray(entry.metric?.inputSchema?.years)
+          ? entry.metric.inputSchema?.years ?? []
+          : [];
+        for (const schemaYear of schemaYears) {
+          const normalizedYear = String(schemaYear).trim();
+          if (normalizedYear.length > 0) {
+            years.add(normalizedYear);
+          }
+        }
+
+        const metricCode = entry.metric?.code?.trim() || "";
+        const metricName = entry.metric?.name?.trim() || metricCode || "Unknown Indicator";
+        const metricLabel = indicatorDisplayLabel(metricCode || null, metricName);
+        const rowKey = metricCode || entry.metric?.id?.trim() || entry.id;
+        const rowSortOrder =
+          typeof entry.metric?.sortOrder === "number" && Number.isFinite(entry.metric.sortOrder)
+            ? entry.metric.sortOrder
+            : Number.MAX_SAFE_INTEGER;
+
+        let row = rowMap.get(rowKey);
+        if (!row) {
+          row = {
+            key: rowKey,
+            code: metricCode || "N/A",
+            label: metricLabel,
+            category: indicatorCategoryLabel(metricCode || null),
+            sortOrder: rowSortOrder,
+            valuesByYear: {},
+          };
+          rowMap.set(rowKey, row);
+        } else if (row.sortOrder === Number.MAX_SAFE_INTEGER && rowSortOrder !== Number.MAX_SAFE_INTEGER) {
+          row.sortOrder = rowSortOrder;
+        }
+
+        const targetYears = typedYearValues(entry.targetTypedValue ?? null);
+        const actualYears = typedYearValues(entry.actualTypedValue ?? null);
+        const entryYears = new Set<string>([
+          ...Object.keys(targetYears),
+          ...Object.keys(actualYears),
+        ]);
+
+        if (entryYears.size === 0) {
+          entryYears.add(fallbackYear);
+        }
+
+        const hasSingleFallbackYear = entryYears.size === 1 && entryYears.has(fallbackYear);
+
+        for (const year of entryYears) {
+          const normalizedYear = year.trim();
+          if (normalizedYear.length === 0) continue;
+
+          years.add(normalizedYear);
+
+          if (!row.valuesByYear[normalizedYear]) {
+            row.valuesByYear[normalizedYear] = { target: "", actual: "" };
+          }
+
+          if (row.valuesByYear[normalizedYear].target.length === 0) {
+            const targetValue =
+              targetYears[normalizedYear] ||
+              (hasSingleFallbackYear
+                ? toDisplayValue(entry.targetDisplay) || toDisplayValue(entry.targetValue)
+                : "");
+            if (targetValue.length > 0) {
+              row.valuesByYear[normalizedYear].target = targetValue;
+            }
+          }
+
+          if (row.valuesByYear[normalizedYear].actual.length === 0) {
+            const actualValue =
+              actualYears[normalizedYear] ||
+              (hasSingleFallbackYear
+                ? toDisplayValue(entry.actualDisplay) || toDisplayValue(entry.actualValue)
+                : "");
+            if (actualValue.length > 0) {
+              row.valuesByYear[normalizedYear].actual = actualValue;
+            }
+          }
+        }
+      }
+    }
+
+    const sortedYears = sortSchoolYears(years);
+    const categoryRank = (category: string) => (category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL ? 0 : 1);
+
+    const sortedRows = [...rowMap.values()].sort((a, b) => {
+      const byCategory = categoryRank(a.category) - categoryRank(b.category);
+      if (byCategory !== 0) return byCategory;
+
+      const bySortOrder = a.sortOrder - b.sortOrder;
+      if (Number.isFinite(bySortOrder) && bySortOrder !== 0) {
+        return bySortOrder;
+      }
+
+      return a.label.localeCompare(b.label);
+    });
+
+    return {
+      years: sortedYears,
+      rows: sortedRows,
+      latestSubmission: schoolIndicatorSubmissions[0] ?? null,
+    };
+  }, [schoolIndicatorSubmissions]);
+
+  const schoolIndicatorRowsByCategory = useMemo(
+    () =>
+      schoolIndicatorMatrix.rows.reduce<Array<{ category: string; rows: IndicatorMatrixRow[] }>>((groups, row) => {
+        const existing = groups.find((group) => group.category === row.category);
+        if (existing) {
+          existing.rows.push(row);
+          return groups;
+        }
+
+        groups.push({ category: row.category, rows: [row] });
+        return groups;
+      }, []),
+    [schoolIndicatorMatrix.rows],
+  );
 
   const schoolDetail = useMemo<SchoolDetailSnapshot | null>(() => {
     if (!schoolDrawerKey) return null;
@@ -2395,7 +2742,10 @@ export function MonitorDashboard() {
 
   const handleReviewRecord = (record: SchoolRecord) => {
     const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-    if (schoolKey === "unknown") return;
+    if (schoolKey === "unknown") {
+      pushToast(`Unable to open review for ${record.schoolName}: school key is missing.`, "warning");
+      return;
+    }
     const summary = schoolRequirementByKey.get(schoolKey);
 
     if (summary) {
@@ -2413,7 +2763,10 @@ export function MonitorDashboard() {
 
   const handleOpenSchoolRecord = (record: SchoolRecord) => {
     const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-    if (schoolKey === "unknown") return;
+    if (schoolKey === "unknown") {
+      pushToast(`Unable to open school details for ${record.schoolName}: school key is missing.`, "warning");
+      return;
+    }
     setSelectedSchoolScopeKey(schoolKey);
     setActiveTopNavigator("schools");
     openSchoolDrawer(schoolKey);
@@ -4306,7 +4659,7 @@ export function MonitorDashboard() {
       )}
 
       <aside
-        className={`fixed right-0 top-24 z-[75] h-[calc(100vh-6rem)] w-[min(27rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
+        className={`fixed right-0 top-24 z-[75] h-[calc(100vh-6rem)] w-[min(78rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
           !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -4383,6 +4736,103 @@ export function MonitorDashboard() {
                     <p className="font-semibold text-slate-900">{schoolDetail.synchronizedTeachers.toLocaleString()}</p>
                   </div>
                 </div>
+              </article>
+
+              <article className="rounded-sm border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Submitted Indicators Matrix</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Same table layout as school head workspace, shown here in read-only mode.
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-slate-600">
+                    <p>
+                      Latest package:{" "}
+                      <span className="font-semibold text-slate-900">
+                        {schoolIndicatorMatrix.latestSubmission ? `#${schoolIndicatorMatrix.latestSubmission.id}` : "N/A"}
+                      </span>
+                    </p>
+                    <p>
+                      Updated:{" "}
+                      <span className="font-semibold text-slate-900">
+                        {(() => {
+                          const latestTimestamp =
+                            schoolIndicatorMatrix.latestSubmission?.updatedAt ??
+                            schoolIndicatorMatrix.latestSubmission?.submittedAt ??
+                            schoolIndicatorMatrix.latestSubmission?.createdAt;
+                          return latestTimestamp ? formatDateTime(latestTimestamp) : "N/A";
+                        })()}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                {schoolIndicatorMatrix.rows.length === 0 ? (
+                  <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
+                    No submitted indicator rows found for this school yet.
+                  </div>
+                ) : (
+                  <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200">
+                    <table className="min-w-[1240px] w-full border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                          <th rowSpan={2} className="sticky left-0 z-20 min-w-[320px] border border-slate-300 bg-slate-100 px-3 py-2 text-left">
+                            Indicators
+                          </th>
+                          {schoolIndicatorMatrix.years.map((year) => (
+                            <th key={`monitor-indicator-year-${year}`} colSpan={2} className="border border-slate-300 px-2 py-2 text-center">
+                              {year}
+                            </th>
+                          ))}
+                        </tr>
+                        <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                          {schoolIndicatorMatrix.years.map((year) => (
+                            <Fragment key={`monitor-indicator-year-columns-${year}`}>
+                              <th className="border border-slate-300 px-2 py-2 text-center">Target</th>
+                              <th className="border border-slate-300 px-2 py-2 text-center">Actual</th>
+                            </Fragment>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {schoolIndicatorRowsByCategory.map((group) => (
+                          <Fragment key={`monitor-indicator-category-${group.category}`}>
+                            <tr className="bg-primary-50/70">
+                              <td
+                                colSpan={schoolIndicatorMatrix.years.length * 2 + 1}
+                                className="border border-slate-300 px-3 py-2 text-xs font-bold uppercase tracking-wide text-primary-800"
+                              >
+                                {group.category}
+                              </td>
+                            </tr>
+                            {group.rows.map((row) => (
+                              <tr key={`monitor-indicator-row-${row.key}`} className="bg-white">
+                                <td className="sticky left-0 z-10 min-w-[320px] border border-slate-300 bg-white px-3 py-2 align-top">
+                                  <p className="text-[13px] font-semibold leading-5 text-slate-900 break-words">{row.label}</p>
+                                  <p className="mt-0.5 text-[11px] text-slate-500">{row.code}</p>
+                                </td>
+                                {schoolIndicatorMatrix.years.map((year) => {
+                                  const values = row.valuesByYear[year] ?? { target: "", actual: "" };
+                                  return (
+                                    <Fragment key={`monitor-indicator-cell-${row.key}-${year}`}>
+                                      <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
+                                        {values.target || "-"}
+                                      </td>
+                                      <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
+                                        {values.actual || "-"}
+                                      </td>
+                                    </Fragment>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </article>
             </div>
           ) : (
