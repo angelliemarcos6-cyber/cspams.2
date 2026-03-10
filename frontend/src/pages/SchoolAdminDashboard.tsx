@@ -272,7 +272,7 @@ function submissionStatusLabel(status: string | null | undefined): "Draft" | "Ne
 
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
-  const { records, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
+  const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
   const { submissions: indicatorSubmissions, academicYears } = useIndicatorData();
   const { students } = useStudentData();
   const { teachers } = useTeacherData();
@@ -908,6 +908,7 @@ export function SchoolAdminDashboard() {
     }
     return !hasContextOverrides;
   };
+  const isIndicatorWorkspaceActive = activeTopNavigator === "compliance" && activeSubmissionSection === "indicators";
 
   return (
     <Shell
@@ -1340,59 +1341,6 @@ export function SchoolAdminDashboard() {
         )}
       </section>
 
-      {activeTopNavigator === "first_glance" && (
-      <section id="first-glance" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("first-glance")}`}>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">My Tasks</h2>
-            <p className="mt-1 text-xs text-slate-600">
-              Missing requirements: <span className="font-bold text-slate-900">{missingRequirements.length}</span> of{" "}
-              <span className="font-bold text-slate-900">{requirements.length}</span>
-            </p>
-            {isMobileViewport && renderQuickJumpChips(true)}
-          </div>
-          <div className="flex flex-col items-start gap-2 lg:items-end">
-            {missingRequirements.length === 0 ? (
-              <span className="inline-flex items-center gap-1.5 border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                No urgent task right now
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Action needed before monitor review
-              </span>
-            )}
-            {!isMobileViewport && renderQuickJumpChips(false)}
-          </div>
-        </div>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          {missingRequirements.length === 0 ? (
-            <article className="dashboard-subtle-panel px-3 py-3 text-sm text-slate-700">
-              No missing submissions right now.
-            </article>
-          ) : (
-            missingRequirements.map((item) => (
-              <article key={item.id} className="dashboard-subtle-panel px-3 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{item.summary}</p>
-                <p className="mt-1 text-xs text-slate-700">{item.detail}</p>
-              </article>
-            ))
-          )}
-
-          {syncAlerts.slice(0, 2).map((alert) => (
-            <article key={alert.id} className="dashboard-subtle-panel px-3 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{alert.level}</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{alert.title}</p>
-              <p className="mt-1 text-xs text-slate-600">{alert.message}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-      )}
-
       {activeTopNavigator === "requirements" && (
       <section id="requirement-navigator" className={`dashboard-shell mb-5 overflow-hidden rounded-sm ${sectionFocusClass("requirement-navigator")}`}>
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -1539,7 +1487,9 @@ export function SchoolAdminDashboard() {
 
           <div
             className={`grid gap-6 p-4 ${
-              focusMode ? "2xl:grid-cols-[14rem_minmax(0,1fr)]" : "2xl:grid-cols-[14rem_minmax(0,1fr)_18rem]"
+              focusMode || isIndicatorWorkspaceActive
+                ? "2xl:grid-cols-[14rem_minmax(0,1fr)]"
+                : "2xl:grid-cols-[14rem_minmax(0,1fr)_18rem]"
             }`}
           >
             <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
@@ -1724,7 +1674,7 @@ export function SchoolAdminDashboard() {
               )}
             </section>
 
-            {!focusMode && (
+            {!focusMode && !isIndicatorWorkspaceActive && (
               <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Details</p>
                 <div className="mt-2 grid grid-cols-3 gap-1">
