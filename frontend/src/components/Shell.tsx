@@ -11,13 +11,14 @@ interface ShellProps {
 }
 
 export function Shell({ title, subtitle, children, actions }: ShellProps) {
-  const { role, username, logout } = useAuth();
+  const { role, username, logout, isLoggingOut } = useAuth();
   const navigate = useNavigate();
   const signInHref = "#/";
 
   const roleLabel = role === "school_head" ? "School Head" : "Division Monitor";
 
   const handleSignOut = async () => {
+    if (isLoggingOut) return;
     await logout();
     navigate("/");
   };
@@ -47,10 +48,11 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
             <button
               type="button"
               onClick={handleSignOut}
-              className="inline-flex items-center gap-1.5 border border-white/35 bg-white/12 px-3 py-2 text-xs font-semibold transition hover:bg-white/20"
+              disabled={isLoggingOut}
+              className="inline-flex items-center gap-1.5 border border-white/35 bg-white/12 px-3 py-2 text-xs font-semibold transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <LogOut className="h-3.5 w-3.5" />
-              Sign Out
+              {isLoggingOut ? "Signing Out..." : "Sign Out"}
             </button>
           </div>
         </div>

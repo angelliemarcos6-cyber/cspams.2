@@ -1,4 +1,4 @@
-﻿import { useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight, LockKeyhole } from "lucide-react";
 import { useAuth } from "@/context/Auth";
@@ -31,24 +31,37 @@ const ROLE_META: Record<
 
 export function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, resetRequiredPassword, isAuthenticating } = useAuth();
 
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
   const [showPasscode, setShowPasscode] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const roleMeta = ROLE_META[activeRole];
+
+  const clearResetState = () => {
+    setRequiresPasswordReset(false);
+    setNewPassword("");
+    setConfirmPassword("");
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedLoginId =
-      activeRole === "school_head"
-        ? loginId.replace(/\D/g, "").slice(0, 6)
-        : loginId.trim();
+    const normalizedLoginId = activeRole === "school_head" ? loginId.replace(/\D/g, "").slice(0, 6) : loginId.trim();
     if (!normalizedLoginId) {
       setError(roleMeta.emptyError);
+      return;
+    }
+
+    if (activeRole === "school_head" && normalizedLoginId.length !== 6) {
+      setError("School code must be exactly 6 digits.");
       return;
     }
 
@@ -57,28 +70,59 @@ export function Login() {
       return;
     }
 
+    if (requiresPasswordReset) {
+      if (!newPassword || !confirmPassword) {
+        setError("Enter and confirm your new passcode.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setError("New passcode and confirmation do not match.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setError("");
 
     try {
-      await login({
-        role: activeRole,
-        login: normalizedLoginId,
-        password,
-      });
+      if (requiresPasswordReset) {
+        await resetRequiredPassword({
+          role: activeRole,
+          login: normalizedLoginId,
+          password,
+          newPassword,
+          confirmPassword,
+        });
+      } else {
+        await login({
+          role: activeRole,
+          login: normalizedLoginId,
+          password,
+        });
+      }
+
       navigate(activeRole === "school_head" ? "/school-admin" : "/monitor");
     } catch (err) {
       if (isApiError(err)) {
-        setError(err.message);
+        const requiresReset =
+          err.status === 403 &&
+          Boolean((err.payload as { requiresPasswordReset?: boolean } | null)?.requiresPasswordReset);
+
+        if (requiresReset) {
+          setRequiresPasswordReset(true);
+          setError("Password reset required. Set a new passcode to continue.");
+        } else {
+          clearResetState();
+          setError(err.message);
+        }
       } else {
+        clearResetState();
         setError("Unable to sign in. Check your network and try again.");
       }
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  const roleMeta = ROLE_META[activeRole];
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page-bg px-4 py-8">
@@ -111,7 +155,7 @@ export function Login() {
           <div className="mb-5 border border-primary-100 bg-primary-50/60 px-3 py-2.5">
             <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
               <LockKeyhole className="h-3.5 w-3.5 text-primary-700" />
-              Sign in
+              {requiresPasswordReset ? "Reset and Sign In" : "Sign in"}
             </p>
           </div>
 
@@ -121,6 +165,7 @@ export function Login() {
               onClick={() => {
                 setActiveRole("school_head");
                 setError("");
+                clearResetState();
               }}
               className={`border px-3 py-3 text-left transition ${
                 activeRole === "school_head"
@@ -138,6 +183,7 @@ export function Login() {
               onClick={() => {
                 setActiveRole("monitor");
                 setError("");
+                clearResetState();
               }}
               className={`border px-3 py-3 text-left transition ${
                 activeRole === "monitor"
@@ -169,6 +215,7 @@ export function Login() {
                       : event.target.value;
                   setLoginId(nextValue);
                   setError("");
+                  clearResetState();
                 }}
                 placeholder={roleMeta.loginHint}
                 inputMode={activeRole === "school_head" ? "numeric" : "text"}
@@ -181,7 +228,7 @@ export function Login() {
 
             <div>
               <label htmlFor="passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Passcode
+                {requiresPasswordReset ? "Current Passcode" : "Passcode"}
               </label>
               <div className="relative">
                 <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -208,16 +255,64 @@ export function Login() {
               </div>
             </div>
 
+            {requiresPasswordReset && (
+              <>
+                <div>
+                  <label htmlFor="new-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    New Passcode
+                  </label>
+                  <input
+                    id="new-passcode"
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(event) => {
+                      setNewPassword(event.target.value);
+                      setError("");
+                    }}
+                    placeholder="Create a new passcode"
+                    className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Minimum 10 characters with letters, numbers, and symbols.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="confirm-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Confirm New Passcode
+                  </label>
+                  <input
+                    id="confirm-passcode"
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(event) => {
+                      setConfirmPassword(event.target.value);
+                      setError("");
+                    }}
+                    placeholder="Confirm your new passcode"
+                    className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+              </>
+            )}
+
             {error && <p className="border border-primary-200 bg-primary-50 px-3 py-2 text-sm text-primary-700">{error}</p>}
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isAuthenticating}
               className="inline-flex w-full items-center justify-center gap-2 bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <ShieldCheck className="h-4 w-4" />
-              {isSubmitting ? "Signing In..." : roleMeta.submit}
-              {!isSubmitting && <ArrowRight className="h-4 w-4" />}
+              {isSubmitting || isAuthenticating
+                ? requiresPasswordReset
+                  ? "Updating Passcode..."
+                  : "Signing In..."
+                : requiresPasswordReset
+                  ? "Update Passcode and Sign In"
+                  : roleMeta.submit}
+              {!isSubmitting && !isAuthenticating && <ArrowRight className="h-4 w-4" />}
             </button>
           </form>
         </section>
@@ -225,5 +320,3 @@ export function Login() {
     </div>
   );
 }
-
-
