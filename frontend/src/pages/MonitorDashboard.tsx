@@ -1157,7 +1157,8 @@ export function MonitorDashboard() {
       if (!shortcutItem) return;
 
       event.preventDefault();
-      setActiveTopNavigator(shortcutItem.id === "compliance_review" ? "action_queue" : shortcutItem.id);
+      setShowNavigatorManual(false);
+      setActiveTopNavigator(shortcutItem.id);
       if (isMobileViewport) {
         setIsNavigatorVisible(false);
       }
@@ -1225,7 +1226,7 @@ export function MonitorDashboard() {
         setPendingStudentLookupId(persisted.studentLookupId);
       }
       if (isValidMonitorTopNavigator(persisted.activeTopNavigator)) {
-        setActiveTopNavigator(persisted.activeTopNavigator === "compliance_review" ? "action_queue" : persisted.activeTopNavigator);
+        setActiveTopNavigator(persisted.activeTopNavigator);
       }
     }
 
@@ -2930,8 +2931,25 @@ export function MonitorDashboard() {
   };
 
   const handleMonitorTopNavigate = (id: MonitorTopNavigatorId) => {
-    const normalizedTarget = id === "compliance_review" ? "action_queue" : id;
-    setActiveTopNavigator(normalizedTarget);
+    setShowNavigatorManual(false);
+    setActiveTopNavigator(id);
+
+    if (typeof window !== "undefined") {
+      const targetByNav: Record<MonitorTopNavigatorId, string> = {
+        action_queue: "monitor-action-queue",
+        compliance_review: "monitor-indicators-queue",
+        schools: "monitor-school-records",
+        reports: "monitor-overview-metrics",
+      };
+
+      const targetId = targetByNav[id];
+      if (targetId) {
+        window.setTimeout(() => {
+          focusAndScrollTo(targetId);
+        }, 70);
+      }
+    }
+
     if (isMobileViewport) {
       setIsNavigatorVisible(false);
     }
@@ -3388,7 +3406,7 @@ export function MonitorDashboard() {
           <div className="flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
-                <div className="flex items-center justify-center">
+                <div className="flex items-center">
                   <button
                     type="button"
                     onClick={() => {
@@ -3398,7 +3416,11 @@ export function MonitorDashboard() {
                       }
                       setIsNavigatorCompact((current) => !current);
                     }}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
+                    className={`inline-flex shrink-0 items-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
+                      showNavigatorHeaderText
+                        ? "h-11 w-full justify-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wide"
+                        : "h-11 w-11 justify-center"
+                    }`}
                     aria-label={
                       isMobileViewport
                         ? isNavigatorVisible
@@ -3424,6 +3446,17 @@ export function MonitorDashboard() {
                       <ChevronRight className="h-3.5 w-3.5" />
                     ) : (
                       <ChevronLeft className="h-3.5 w-3.5" />
+                    )}
+                    {showNavigatorHeaderText && (
+                      <span>
+                        {isMobileViewport
+                          ? isNavigatorVisible
+                            ? "Hide Menu"
+                            : "Show Menu"
+                          : isNavigatorCompact
+                            ? "Expand Menu"
+                            : "Collapse Menu"}
+                      </span>
                     )}
                   </button>
                 </div>
@@ -3510,7 +3543,7 @@ export function MonitorDashboard() {
                       ? "border-primary-100 bg-primary-700"
                       : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
                   } ${
-                    isNavigatorCompact ? "h-8 w-8 justify-center p-0" : "w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide"
+                    isNavigatorCompact ? "h-11 w-11 justify-center p-0" : "h-11 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
                   }`}
                   title={showNavigatorManual ? "Close User Manual" : "Open User Manual"}
                   aria-label={showNavigatorManual ? "Close user manual" : "Open user manual"}
