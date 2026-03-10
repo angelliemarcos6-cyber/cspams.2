@@ -260,6 +260,14 @@ function buildWorkflowDetail(label: string, submission: IndicatorSubmission | nu
   return `${label} is still draft and not yet submitted.`;
 }
 
+function submissionStatusLabel(status: string | null | undefined): "Draft" | "Needs Revision" | "Submitted" | "Validated" | "Overdue" {
+  if (status === "validated") return "Validated";
+  if (status === "submitted") return "Submitted";
+  if (status === "returned") return "Needs Revision";
+  if (status === "overdue") return "Overdue";
+  return "Draft";
+}
+
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
@@ -289,6 +297,10 @@ export function SchoolAdminDashboard() {
   const [contextSubmissionType, setContextSubmissionType] = useState<"all" | "school_record" | "indicator_package">("all");
   const [contextWorkflowStatus, setContextWorkflowStatus] = useState<"all" | "draft" | "submitted" | "returned" | "validated" | "overdue">("all");
   const [selectedRequirementId, setSelectedRequirementId] = useState<RequirementItem["id"]>("school_record");
+  const [activeSubmissionSection, setActiveSubmissionSection] = useState<RequirementItem["id"]>("school_record");
+  const [showSubmissionAdvanced, setShowSubmissionAdvanced] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [submissionDetailTab, setSubmissionDetailTab] = useState<"notes" | "history" | "cycle">("notes");
 
   const assignedRecord = records[0] ?? null;
   const syncedStudentCount = students.length;
@@ -297,6 +309,13 @@ export function SchoolAdminDashboard() {
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
   const latestIndicators = useMemo(() => latestSubmission(indicatorSubmissions), [indicatorSubmissions]);
+  const recentSubmissionPreview = useMemo(
+    () =>
+      [...indicatorSubmissions]
+        .sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime())
+        .slice(0, 4),
+    [indicatorSubmissions],
+  );
 
   const requirements = useMemo<RequirementItem[]>(
     () => [
@@ -357,6 +376,13 @@ export function SchoolAdminDashboard() {
   const selectedRequirement = useMemo(
     () => requirements.find((item) => item.id === selectedRequirementId) ?? requirements[0] ?? null,
     [requirements, selectedRequirementId],
+  );
+  const summaryErrorItems = useMemo(
+    () =>
+      (Object.entries(formErrors) as Array<[keyof FormState, string | undefined]>)
+        .filter(([, value]) => Boolean(value))
+        .map(([field, message]) => ({ field, message: message ?? "" })),
+    [formErrors],
   );
   const contextDeadline = useMemo(() => {
     if (!latestIndicators?.updatedAt && !latestIndicators?.createdAt) {
@@ -551,6 +577,12 @@ export function SchoolAdminDashboard() {
     });
   }, [syncedStudentCount, syncedTeacherCount]);
 
+  useEffect(() => {
+    setSubmitError("");
+    setSaveMessage("");
+    setFormErrors({});
+  }, [activeSubmissionSection]);
+
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -588,6 +620,7 @@ export function SchoolAdminDashboard() {
 
   const handleRequirementNavigate = (item: RequirementItem) => {
     setActiveTopNavigator(item.navigatorId);
+    setActiveSubmissionSection(item.id);
     if (isMobileViewport) {
       setIsNavigatorVisible(false);
     }
@@ -720,11 +753,20 @@ export function SchoolAdminDashboard() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const focusSummaryField = (field: keyof FormState) => {
+    if (typeof document === "undefined") return;
 
+    const fieldId = field === "status" ? "schoolStatus" : field;
+    const element = document.getElementById(fieldId) as HTMLInputElement | HTMLSelectElement | null;
+    if (!element) return;
+    element.focus();
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const persistSummary = async (mode: "draft" | "submit") => {
     if (!validateForm()) {
-      return;
+      setSubmitError("Please fix the required fields before proceeding.");
+      return false;
     }
 
     const payload: SchoolRecordPayload = {
@@ -736,19 +778,45 @@ export function SchoolAdminDashboard() {
     try {
       if (editingId) {
         await updateRecord(editingId, payload);
-        setSaveMessage("Record updated successfully.");
       } else {
         await addRecord(payload);
-        setSaveMessage("Record submitted successfully.");
       }
+
+      setSubmitError("");
+      setSaveMessage(mode === "draft" ? "Draft saved." : returnedCount > 0 ? "Resubmission saved." : "Submission saved.");
+      return true;
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to save record.");
+      return false;
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    await persistSummary("draft");
+  };
+
+  const handleValidateSummary = () => {
+    if (!validateForm()) {
+      setSubmitError("Please fix the required fields before proceeding.");
       return;
     }
+
+    setSubmitError("");
+    setSaveMessage("Validated and ready to submit.");
+  };
+
+  const handleSubmitOrResubmit = async () => {
+    await persistSummary("submit");
+  };
+
+  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await handleSubmitOrResubmit();
   };
 
   const handleComplianceAction = () => {
     setActiveTopNavigator("compliance");
+    setActiveSubmissionSection("school_record");
     if (typeof window !== "undefined") {
       window.setTimeout(() => scrollToSection("compliance-input"), 60);
     }
@@ -1253,19 +1321,44 @@ export function SchoolAdminDashboard() {
       )}
 
       {activeTopNavigator === "compliance" && (
-      <section id="compliance-records" className="grid gap-5">
+      <section id="compliance-records" className="grid gap-6">
         <section className="dashboard-shell overflow-hidden rounded-sm">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Workspace</h2>
-                <p className="mt-0.5 text-xs text-slate-600">Checklist and summary form on top, full-width compliance indicators below.</p>
+                <p className="mt-0.5 text-xs text-slate-600">Step Header, Active Form, and Sticky Actions.</p>
               </div>
-              {!isMobileViewport && renderQuickJumpChips(false)}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSubmissionAdvanced((current) => !current)}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  {showSubmissionAdvanced ? "Hide advanced" : "Show advanced"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFocusMode((current) => !current)}
+                  className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition ${
+                    focusMode
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {focusMode ? "Exit focus mode" : "Focus mode"}
+                </button>
+                {!focusMode && !isMobileViewport && renderQuickJumpChips(false)}
+              </div>
             </div>
-            {isMobileViewport && renderQuickJumpChips(true)}
+            {!focusMode && isMobileViewport && renderQuickJumpChips(true)}
           </div>
-          <div className="grid gap-4 p-4 2xl:grid-cols-[14rem_minmax(0,1fr)]">
+
+          <div
+            className={`grid gap-6 p-4 ${
+              focusMode ? "2xl:grid-cols-[14rem_minmax(0,1fr)]" : "2xl:grid-cols-[14rem_minmax(0,1fr)_18rem]"
+            }`}
+          >
             <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Section Checklist</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">{workspaceCompletion}% complete</p>
@@ -1273,174 +1366,265 @@ export function SchoolAdminDashboard() {
                 <div className="h-1.5 rounded-full bg-primary transition-[width] duration-300" style={{ width: `${workspaceCompletion}%` }} />
               </div>
               <div className="mt-3 space-y-2">
-                {requirements.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleRequirementNavigate(item)}
-                    className={`w-full rounded-sm border px-2.5 py-2 text-left text-xs transition ${
-                      item.isComplete
-                        ? "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
-                        : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                    }`}
-                  >
-                    <p className="font-semibold uppercase tracking-wide">{item.label}</p>
-                    <p className="mt-1 text-[11px]">{item.isComplete ? "Passed to monitor" : "Needs action"}</p>
-                  </button>
-                ))}
+                {requirements.map((item) => {
+                  const status =
+                    item.id === "school_record"
+                      ? assignedRecord
+                        ? "Submitted"
+                        : "Draft"
+                      : submissionStatusLabel(latestIndicators?.status);
+                  const isActive = activeSubmissionSection === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveSubmissionSection(item.id)}
+                      className={`w-full rounded-sm border px-2.5 py-2 text-left text-xs transition ${
+                        isActive
+                          ? "border-primary-300 bg-primary-50"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
+                        <span className="rounded-sm border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                          {status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-600">{item.summary}</p>
+                    </button>
+                  );
+                })}
               </div>
             </aside>
 
-            <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
-              <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_19rem]">
-                <section className="surface-panel animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white">
-                  {contextSubmissionType !== "indicator_package" ? (
-                    <>
-                      <div className="border-b border-slate-200 px-5 py-4">
-                        <h3 className="text-base font-bold text-slate-900">School Summary Input</h3>
-                        <p className="mt-0.5 text-xs text-slate-500">Student and teacher totals are auto-synced from your records history.</p>
-                      </div>
-                      <form className="grid gap-4 p-5 md:grid-cols-3" onSubmit={handleFormSubmit}>
-                        <div>
-                          <label htmlFor="studentCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Students
-                          </label>
-                          <input
-                            id="studentCount"
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={form.studentCount}
-                            readOnly
-                            placeholder="0"
-                            className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
-                          />
-                          {formErrors.studentCount && <p className="mt-1 text-xs text-primary-700">{formErrors.studentCount}</p>}
-                        </div>
-
-                        <div>
-                          <label htmlFor="teacherCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Teachers
-                          </label>
-                          <input
-                            id="teacherCount"
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={form.teacherCount}
-                            readOnly
-                            placeholder="0"
-                            className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
-                          />
-                          {formErrors.teacherCount && <p className="mt-1 text-xs text-primary-700">{formErrors.teacherCount}</p>}
-                        </div>
-
-                        <div>
-                          <label htmlFor="schoolStatus" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Status
-                          </label>
-                          <select
-                            id="schoolStatus"
-                            value={form.status}
-                            onChange={(event) => {
-                              setForm((current) => ({ ...current, status: event.target.value as SchoolStatus }));
-                            }}
-                            className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                          >
-                            <option value="active">{statusLabel("active")}</option>
-                            <option value="inactive">{statusLabel("inactive")}</option>
-                            <option value="pending">{statusLabel("pending")}</option>
-                          </select>
-                        </div>
-
-                        <div className="md:col-span-3">
-                          {saveMessage && (
-                            <div className="mb-3 inline-flex items-center gap-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                              <CheckCircle2 className="h-4 w-4" />
-                              {saveMessage}
-                            </div>
-                          )}
-                          {submitError && (
-                            <div className="mb-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                              {submitError}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="submit"
-                              disabled={isSaving}
-                              className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              <Save className="h-4 w-4" />
-                              {isSaving ? "Saving..." : editingId ? "Save Changes" : "Save School Record"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={resetForm}
-                              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                            >
-                              <X className="h-4 w-4" />
-                              Reset Fields
-                            </button>
-                          </div>
-                        </div>
-                      </form>
-                    </>
-                  ) : (
-                    <div className="border-b border-slate-200 px-5 py-4">
-                      <h3 className="text-base font-bold text-slate-900">Indicator Package Focus</h3>
-                      <p className="mt-0.5 text-xs text-slate-500">School summary form is hidden while submission type is set to indicator package.</p>
+            <section className="min-w-0 space-y-6">
+              {activeSubmissionSection === "school_record" ? (
+                <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
+                  <section className="surface-panel animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 px-4 py-3">
+                      <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">School Summary</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Required fields first
+                        <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-600" title="Optional details are available under Show advanced.">
+                          i
+                        </span>
+                      </p>
                     </div>
-                  )}
+
+                    {(summaryErrorItems.length > 0 || submitError || saveMessage) && (
+                      <div className="mx-4 mt-4 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
+                        {summaryErrorItems.length > 0 ? (
+                          <>
+                            <p className="text-xs font-semibold text-rose-700">Fix these fields:</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {summaryErrorItems.map((item) => (
+                                <button
+                                  key={`jump-${item.field}`}
+                                  type="button"
+                                  onClick={() => focusSummaryField(item.field)}
+                                  className="rounded-sm border border-rose-200 bg-white px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                >
+                                  {item.message}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        ) : submitError ? (
+                          <p className="text-xs font-semibold text-rose-700">{submitError}</p>
+                        ) : (
+                          <p className="text-xs font-semibold text-primary-700">{saveMessage}</p>
+                        )}
+                      </div>
+                    )}
+
+                    <form className="grid gap-4 p-4 md:grid-cols-3" onSubmit={handleFormSubmit}>
+                      <div>
+                        <label htmlFor="studentCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Students
+                        </label>
+                        <input
+                          id="studentCount"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={form.studentCount}
+                          readOnly
+                          placeholder="0"
+                          className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="teacherCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Teachers
+                        </label>
+                        <input
+                          id="teacherCount"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={form.teacherCount}
+                          readOnly
+                          placeholder="0"
+                          className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="schoolStatus" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          Status
+                        </label>
+                        <select
+                          id="schoolStatus"
+                          value={form.status}
+                          onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as SchoolStatus }))}
+                          className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        >
+                          <option value="active">{statusLabel("active")}</option>
+                          <option value="inactive">{statusLabel("inactive")}</option>
+                          <option value="pending">{statusLabel("pending")}</option>
+                        </select>
+                      </div>
+
+                      {showSubmissionAdvanced && (
+                        <div className="md:col-span-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Advanced</p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            Latest package: {latestIndicators ? `#${latestIndicators.id}` : "N/A"}.
+                          </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            Compliance: {latestIndicators ? `${latestIndicators.summary.complianceRatePercent.toFixed(2)}%` : "N/A"}.
+                          </p>
+                        </div>
+                      )}
+                    </form>
+                  </section>
+
+                  <div className="sticky bottom-2 mt-4 rounded-sm border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveDraft()}
+                        disabled={isSaving}
+                        className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        Save Draft
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleValidateSummary}
+                        disabled={isSaving}
+                        className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        Validate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitOrResubmit()}
+                        disabled={isSaving}
+                        className="rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {returnedCount > 0 ? "Submit / Resubmit" : "Submit"}
+                      </button>
+                    </div>
+                  </div>
                 </section>
+              ) : (
+                <section id="indicator-workflow" className={sectionFocusClass("indicator-workflow")}>
+                  <SchoolIndicatorPanel
+                    statusFilter={contextWorkflowStatus}
+                    academicYearFilter={contextAcademicYearId}
+                  />
+                </section>
+              )}
+            </section>
 
-                <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Guidance Drawer</p>
-                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Monitor Notes</p>
-                  <p className="mt-1 text-xs text-slate-700">{latestIndicators?.reviewNotes || "No monitor note for the latest package."}</p>
-
-                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Missing Fields</p>
-                  {Object.keys(formErrors).length === 0 ? (
-                    <p className="mt-1 text-xs text-slate-600">No missing required fields in school summary.</p>
-                  ) : (
-                    <ul className="mt-1 space-y-1">
-                      {Object.values(formErrors).filter(Boolean).map((entry) => (
-                        <li key={entry} className="text-xs text-rose-700">
-                          {entry}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Previous Cycle</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {latestIndicators
-                      ? `Latest package #${latestIndicators.id} is ${latestIndicators.statusLabel} with ${latestIndicators.summary.complianceRatePercent.toFixed(2)}% compliance.`
-                      : "No previous indicator package yet."}
-                  </p>
-
+            {!focusMode && (
+              <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Details</p>
+                <div className="mt-2 grid grid-cols-3 gap-1">
                   <button
                     type="button"
-                    onClick={() => setActiveTopNavigator("requirements")}
-                    className="mt-3 inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    onClick={() => setSubmissionDetailTab("notes")}
+                    className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
+                      submissionDetailTab === "notes"
+                        ? "border-primary-300 bg-primary-50 text-primary-700"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
                   >
-                    Open Returned & Revisions
+                    Notes
                   </button>
-                </aside>
-              </div>
-            </section>
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionDetailTab("history")}
+                    className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
+                      submissionDetailTab === "history"
+                        ? "border-primary-300 bg-primary-50 text-primary-700"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    History
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionDetailTab("cycle")}
+                    className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
+                      submissionDetailTab === "cycle"
+                        ? "border-primary-300 bg-primary-50 text-primary-700"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    Cycle
+                  </button>
+                </div>
 
-          <div id="indicator-workflow" className={`border-t border-slate-200 ${sectionFocusClass("indicator-workflow")}`}>
-            {contextSubmissionType === "school_record" ? (
-              <div className="px-5 py-4 text-sm text-slate-600">
-                Indicator workflow is hidden while submission type is set to school record.
-              </div>
-            ) : (
-              <SchoolIndicatorPanel
-                statusFilter={contextWorkflowStatus}
-                academicYearFilter={contextAcademicYearId}
-              />
+                {submissionDetailTab === "notes" && (
+                  <div className="mt-3 rounded-sm border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Monitor Notes</p>
+                    <p className="mt-1 text-xs text-slate-700">{latestIndicators?.reviewNotes || "No monitor note for the latest package."}</p>
+                  </div>
+                )}
+
+                {submissionDetailTab === "history" && (
+                  <div className="mt-3 space-y-2">
+                    {recentSubmissionPreview.length === 0 ? (
+                      <p className="rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">No submission history yet.</p>
+                    ) : (
+                      recentSubmissionPreview.map((submission) => (
+                        <article key={submission.id} className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+                          <p className="text-xs font-semibold text-slate-900">Package #{submission.id}</p>
+                          <p className="mt-1 text-[11px] text-slate-600">
+                            {submissionStatusLabel(submission.status)} |{" "}
+                            {submission.updatedAt || submission.createdAt
+                              ? formatDateTime((submission.updatedAt ?? submission.createdAt) as string)
+                              : "N/A"}
+                          </p>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {submissionDetailTab === "cycle" && (
+                  <div className="mt-3 rounded-sm border border-slate-200 bg-white px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Previous Cycle Comparison</p>
+                    <p className="mt-1 text-xs text-slate-700">
+                      Students: <span className="font-semibold">{syncedStudentCount.toLocaleString()}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-slate-700">
+                      Teachers: <span className="font-semibold">{syncedTeacherCount.toLocaleString()}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-slate-700">
+                      Latest compliance:{" "}
+                      <span className="font-semibold">
+                        {latestIndicators ? `${latestIndicators.summary.complianceRatePercent.toFixed(2)}%` : "N/A"}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </aside>
             )}
           </div>
         </section>
