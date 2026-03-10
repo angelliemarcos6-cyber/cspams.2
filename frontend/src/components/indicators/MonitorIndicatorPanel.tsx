@@ -54,6 +54,9 @@ interface ReviewQueueRow {
   priority: Exclude<PriorityFilter, "all">;
   overdue: boolean;
   reviewDurationHours: number | null;
+  indicatorCount: number;
+  metIndicatorCount: number;
+  complianceRatePercent: number;
   missingFields: string[];
   evidenceLinks: string[];
   previousSubmission: IndicatorSubmission | null;
@@ -296,6 +299,8 @@ function toExportRows(rows: ReviewQueueRow[]): string[][] {
     "Submission Type",
     "Period",
     "Submitted At",
+    "Indicators (Met/Total)",
+    "Compliance Rate",
     "Status",
     "Days Pending",
     "Priority",
@@ -309,6 +314,8 @@ function toExportRows(rows: ReviewQueueRow[]): string[][] {
     row.submissionType,
     row.submission.reportingPeriod ?? "N/A",
     row.submittedAt ? formatDateTime(row.submittedAt) : "N/A",
+    `${row.metIndicatorCount}/${row.indicatorCount}`,
+    `${row.complianceRatePercent.toFixed(2)}%`,
     workflowLabel(row.status),
     String(row.daysPending),
     priorityLabel(row.priority),
@@ -491,6 +498,28 @@ export function MonitorIndicatorPanel({
           ? Math.max(0, (reviewedAtValue - submittedAtValue) / (1000 * 60 * 60))
           : null;
 
+      const fallbackIndicatorCount = submission.indicators.length;
+      const fallbackMetIndicatorCount = submission.indicators.filter((entry) => entry.complianceStatus === "met").length;
+
+      const summaryTotalIndicators = submission.summary?.totalIndicators;
+      const summaryMetIndicators = submission.summary?.metIndicators;
+      const summaryComplianceRate = submission.summary?.complianceRatePercent;
+
+      const indicatorCount =
+        typeof summaryTotalIndicators === "number" && Number.isFinite(summaryTotalIndicators)
+          ? summaryTotalIndicators
+          : fallbackIndicatorCount;
+      const metIndicatorCount =
+        typeof summaryMetIndicators === "number" && Number.isFinite(summaryMetIndicators)
+          ? summaryMetIndicators
+          : fallbackMetIndicatorCount;
+      const complianceRatePercent =
+        typeof summaryComplianceRate === "number" && Number.isFinite(summaryComplianceRate)
+          ? summaryComplianceRate
+          : indicatorCount > 0
+            ? (metIndicatorCount / indicatorCount) * 100
+            : 0;
+
       const missingFields: string[] = [];
       if (!submission.reportingPeriod) {
         missingFields.push("Reporting period is missing.");
@@ -559,6 +588,9 @@ export function MonitorIndicatorPanel({
         priority,
         overdue,
         reviewDurationHours,
+        indicatorCount,
+        metIndicatorCount,
+        complianceRatePercent,
         missingFields,
         evidenceLinks,
         previousSubmission: previousSubmissionById.get(submission.id) ?? null,
@@ -782,9 +814,9 @@ export function MonitorIndicatorPanel({
     }
   };
 
-  const openDetails = (row: ReviewQueueRow) => {
+  const openDetails = (row: ReviewQueueRow, initialTab: DetailTab = "overview") => {
     setDetailSubmissionId(row.submission.id);
-    setDetailTab("overview");
+    setDetailTab(initialTab);
     void ensureHistoryLoaded(row.submission.id);
   };
 
@@ -1509,6 +1541,7 @@ export function MonitorIndicatorPanel({
                 <th className="px-2 py-2 text-left">Submission Type</th>
                 <th className="px-2 py-2 text-left">Period</th>
                 <th className="px-2 py-2 text-left">Submitted At</th>
+                <th className="px-2 py-2 text-center">Indicators</th>
                 <th className="px-2 py-2 text-center">Status</th>
                 <th className="px-2 py-2 text-center">Days Pending</th>
                 <th className="px-2 py-2 text-center">Priority</th>
@@ -1544,6 +1577,12 @@ export function MonitorIndicatorPanel({
                     <td className="px-2 py-2 text-sm text-slate-700">{row.submissionType}</td>
                     <td className="px-2 py-2 text-sm text-slate-700">{row.submission.reportingPeriod || "N/A"}</td>
                     <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(row.submittedAt)}</td>
+                    <td className="px-2 py-2 text-center text-sm text-slate-700">
+                      <p className="font-semibold">
+                        {row.metIndicatorCount}/{row.indicatorCount}
+                      </p>
+                      <p className="text-xs text-slate-500">{row.complianceRatePercent.toFixed(2)}%</p>
+                    </td>
                     <td className="px-2 py-2 text-center">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(row.status)}`}>
                         {workflowLabel(row.status)}
@@ -1618,6 +1657,13 @@ export function MonitorIndicatorPanel({
                           <Eye className="h-3 w-3" />
                           Details
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => openDetails(row, "checklist")}
+                          className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
+                        >
+                          Checklist
+                        </button>
                         {isSubmitted && !isSelected && (
                           <span className="text-[10px] font-medium text-slate-500">Select row for more actions</span>
                         )}
@@ -1628,7 +1674,7 @@ export function MonitorIndicatorPanel({
               })}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-2 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={12} className="px-2 py-8 text-center text-sm text-slate-500">
                     No review queue rows match your current filters.
                   </td>
                 </tr>
@@ -1727,6 +1773,8 @@ export function MonitorIndicatorPanel({
                       <p className="text-xs text-slate-700"><span className="font-semibold">Period:</span> {detailRow.submission.reportingPeriod ?? "N/A"}</p>
                       <p className="text-xs text-slate-700"><span className="font-semibold">Submitted:</span> {formatDateTime(detailRow.submittedAt)}</p>
                       <p className="text-xs text-slate-700"><span className="font-semibold">Reviewed:</span> {formatDateTime(detailRow.reviewedAt)}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Indicators:</span> {detailRow.metIndicatorCount}/{detailRow.indicatorCount}</p>
+                      <p className="text-xs text-slate-700"><span className="font-semibold">Compliance:</span> {detailRow.complianceRatePercent.toFixed(2)}%</p>
                       <p className="text-xs text-slate-700"><span className="font-semibold">Status:</span> {workflowLabel(detailRow.status)}</p>
                       <p className="text-xs text-slate-700"><span className="font-semibold">Reviewer:</span> {detailRow.assignedReviewer}</p>
                     </div>
@@ -1811,6 +1859,10 @@ export function MonitorIndicatorPanel({
               <div className="px-5 py-4">
                 <article className="rounded-sm border border-slate-200 bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Indicator Checklist</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Submitted indicators: <span className="font-semibold text-slate-700">{detailRow.metIndicatorCount}/{detailRow.indicatorCount}</span> met
+                    {" "}({detailRow.complianceRatePercent.toFixed(2)}% compliance)
+                  </p>
                   <div className="mt-2 overflow-x-auto">
                     <table className="min-w-full">
                       <thead className="table-head-sticky">
