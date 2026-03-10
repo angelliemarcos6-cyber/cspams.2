@@ -1315,7 +1315,6 @@ export function SchoolAdminDashboard() {
                             placeholder="0"
                             className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
                           />
-                          <p className="mt-1 text-[11px] text-slate-500">Auto-synced from Student Records History.</p>
                           {formErrors.studentCount && <p className="mt-1 text-xs text-primary-700">{formErrors.studentCount}</p>}
                         </div>
 
@@ -1333,7 +1332,6 @@ export function SchoolAdminDashboard() {
                             placeholder="0"
                             className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
                           />
-                          <p className="mt-1 text-[11px] text-slate-500">Auto-synced from Teacher Records History.</p>
                           {formErrors.teacherCount && <p className="mt-1 text-xs text-primary-700">{formErrors.teacherCount}</p>}
                         </div>
 
