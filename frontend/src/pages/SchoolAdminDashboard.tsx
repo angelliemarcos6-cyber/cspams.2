@@ -32,6 +32,8 @@ import { TeacherRecordsPanel } from "@/components/teachers/TeacherRecordsPanel";
 import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
+import { useStudentData } from "@/context/StudentData";
+import { useTeacherData } from "@/context/TeacherData";
 import type { IndicatorSubmission, SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 import {
   formatDateTime,
@@ -262,6 +264,8 @@ export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, syncAlerts, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
   const { submissions: indicatorSubmissions, academicYears } = useIndicatorData();
+  const { students } = useStudentData();
+  const { teachers } = useTeacherData();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -287,6 +291,8 @@ export function SchoolAdminDashboard() {
   const [selectedRequirementId, setSelectedRequirementId] = useState<RequirementItem["id"]>("school_record");
 
   const assignedRecord = records[0] ?? null;
+  const syncedStudentCount = students.length;
+  const syncedTeacherCount = teachers.length;
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
@@ -495,26 +501,55 @@ export function SchoolAdminDashboard() {
   const syncComplianceForm = (record: SchoolRecord | null) => {
     if (record) {
       setEditingId(record.id);
-      setForm({
-        studentCount: record.studentCount.toString(),
-        teacherCount: record.teacherCount.toString(),
+      setForm((current) => ({
+        ...current,
         status: record.status,
-      });
+      }));
       return;
     }
 
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm((current) => ({
+      ...current,
+      status: EMPTY_FORM.status,
+    }));
   };
 
   useEffect(() => {
     syncComplianceForm(assignedRecord);
   }, [
     assignedRecord?.id,
-    assignedRecord?.studentCount,
-    assignedRecord?.teacherCount,
     assignedRecord?.status,
   ]);
+
+  useEffect(() => {
+    const nextStudentCount = syncedStudentCount.toString();
+    const nextTeacherCount = syncedTeacherCount.toString();
+
+    setForm((current) => {
+      if (current.studentCount === nextStudentCount && current.teacherCount === nextTeacherCount) {
+        return current;
+      }
+
+      return {
+        ...current,
+        studentCount: nextStudentCount,
+        teacherCount: nextTeacherCount,
+      };
+    });
+
+    setFormErrors((current) => {
+      if (!current.studentCount && !current.teacherCount) {
+        return current;
+      }
+
+      return {
+        ...current,
+        studentCount: undefined,
+        teacherCount: undefined,
+      };
+    });
+  }, [syncedStudentCount, syncedTeacherCount]);
 
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -671,12 +706,12 @@ export function SchoolAdminDashboard() {
   const validateForm = () => {
     const errors: Partial<Record<keyof FormState, string>> = {};
 
-    const students = Number(form.studentCount);
+    const students = syncedStudentCount;
     if (!Number.isFinite(students) || students < 0 || !Number.isInteger(students)) {
       errors.studentCount = "Use a valid non-negative whole number.";
     }
 
-    const teachers = Number(form.teacherCount);
+    const teachers = syncedTeacherCount;
     if (!Number.isFinite(teachers) || teachers < 0 || !Number.isInteger(teachers)) {
       errors.teacherCount = "Use a valid non-negative whole number.";
     }
@@ -693,8 +728,8 @@ export function SchoolAdminDashboard() {
     }
 
     const payload: SchoolRecordPayload = {
-      studentCount: Number(form.studentCount),
-      teacherCount: Number(form.teacherCount),
+      studentCount: syncedStudentCount,
+      teacherCount: syncedTeacherCount,
       status: form.status,
     };
 
@@ -1263,7 +1298,7 @@ export function SchoolAdminDashboard() {
                     <>
                       <div className="border-b border-slate-200 px-5 py-4">
                         <h3 className="text-base font-bold text-slate-900">School Summary Input</h3>
-                        <p className="mt-0.5 text-xs text-slate-500">Complete required fields first, then continue to indicators below.</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Student and teacher totals are auto-synced from your records history.</p>
                       </div>
                       <form className="grid gap-4 p-5 md:grid-cols-3" onSubmit={handleFormSubmit}>
                         <div>
@@ -1276,14 +1311,11 @@ export function SchoolAdminDashboard() {
                             min={0}
                             step={1}
                             value={form.studentCount}
-                            onChange={(event) => {
-                              setForm((current) => ({ ...current, studentCount: event.target.value }));
-                              setFormErrors((current) => ({ ...current, studentCount: undefined }));
-                              setSubmitError("");
-                            }}
+                            readOnly
                             placeholder="0"
-                            className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                            className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
                           />
+                          <p className="mt-1 text-[11px] text-slate-500">Auto-synced from Student Records History.</p>
                           {formErrors.studentCount && <p className="mt-1 text-xs text-primary-700">{formErrors.studentCount}</p>}
                         </div>
 
@@ -1297,14 +1329,11 @@ export function SchoolAdminDashboard() {
                             min={0}
                             step={1}
                             value={form.teacherCount}
-                            onChange={(event) => {
-                              setForm((current) => ({ ...current, teacherCount: event.target.value }));
-                              setFormErrors((current) => ({ ...current, teacherCount: undefined }));
-                              setSubmitError("");
-                            }}
+                            readOnly
                             placeholder="0"
-                            className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                            className="w-full rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none"
                           />
+                          <p className="mt-1 text-[11px] text-slate-500">Auto-synced from Teacher Records History.</p>
                           {formErrors.teacherCount && <p className="mt-1 text-xs text-primary-700">{formErrors.teacherCount}</p>}
                         </div>
 
