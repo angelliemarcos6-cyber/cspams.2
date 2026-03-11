@@ -51,5 +51,16 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(12)->by('auth-reset-ip:' . $request->ip()),
             ];
         });
+
+        RateLimiter::for('auth-token-refresh', function (Request $request): array {
+            $key = $request->user()?->id
+                ? 'auth-refresh-user:' . $request->user()->id
+                : 'auth-refresh-ip:' . $request->ip();
+
+            return [
+                Limit::perMinute(10)->by($key),
+                Limit::perMinute(30)->by('auth-refresh-ip:' . $request->ip()),
+            ];
+        });
     }
 }
