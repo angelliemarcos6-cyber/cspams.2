@@ -1,6 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
-import { getApiBaseUrl } from "@/lib/api";
+import { ensureCsrfCookie, getApiBaseUrl, readXsrfToken } from "@/lib/api";
 
 declare global {
   interface Window {
@@ -18,6 +18,12 @@ export interface CspamsRealtimePayload {
   notes?: string | null;
   timestamp?: string;
   [key: string]: unknown;
+}
+
+interface ChannelAuthResponse {
+  auth: string;
+  channel_data?: string;
+  shared_secret?: string;
 }
 
 let realtimeEcho: Echo<"reverb"> | null = null;
@@ -39,6 +45,28 @@ function numberFromEnv(value: string | undefined, fallback: number): number {
 
 function dispatchRealtimePayload(payload: CspamsRealtimePayload) {
   window.dispatchEvent(new CustomEvent<CspamsRealtimePayload>("cspams:update", { detail: payload }));
+}
+
+function isChannelAuthResponse(payload: unknown): payload is ChannelAuthResponse {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "auth" in payload &&
+    typeof (payload as { auth: unknown }).auth === "string"
+  );
+}
+
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "message" in payload &&
+    typeof (payload as { message: unknown }).message === "string"
+  ) {
+    return (payload as { message: string }).message;
+  }
+
+  return fallback;
 }
 
 export function startRealtimeBridge(token: string) {
@@ -80,14 +108,49 @@ export function startRealtimeBridge(token: string) {
     wsPort,
     wssPort,
     forceTLS,
-    authEndpoint: `${getApiBaseUrl()}/api/broadcasting/auth`,
-    auth: {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${normalizedToken}`,
-      },
-    },
     enabledTransports: ["ws", "wss"],
+    authorizer: (channel) => ({
+      authorize: (socketId, callback) => {
+        ensureCsrfCookie()
+          .then(async () => {
+            const xsrfToken = readXsrfToken();
+            const response = await fetch(`${getApiBaseUrl()}/api/broadcasting/auth`, {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                ...(xsrfToken ? { "X-XSRF-TOKEN": xsrfToken } : {}),
+              },
+              body: JSON.stringify({
+                socket_id: socketId,
+                channel_name: channel.name,
+              }),
+            });
+
+            const payload = await response.json().catch(() => null);
+
+            if (!response.ok) {
+              const message = extractErrorMessage(payload, "Realtime authorization failed.");
+              callback(new Error(message), null);
+              return;
+            }
+
+            if (!isChannelAuthResponse(payload)) {
+              callback(new Error("Realtime authorization returned an invalid payload."), null);
+              return;
+            }
+
+            callback(null, payload);
+          })
+          .catch((error: unknown) => {
+            callback(
+              error instanceof Error ? error : new Error("Realtime authorization failed."),
+              null,
+            );
+          });
+      },
+    }),
   });
 
   realtimeEcho

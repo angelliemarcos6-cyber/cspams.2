@@ -10,6 +10,7 @@ use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -47,6 +48,12 @@ class AuthController extends Controller
             );
         }
 
+        if ($request->hasSession()) {
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+        }
+
+        // Keep token response for backward-compatible non-SPA clients.
         $token = $user->createToken('cspams-dashboard-' . now()->timestamp)->plainTextToken;
 
         return response()->json([
@@ -99,6 +106,10 @@ class AuthController extends Controller
         ])->save();
 
         $user->tokens()->delete();
+        if ($request->hasSession()) {
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+        }
         $token = $user->createToken('cspams-dashboard-' . now()->timestamp)->plainTextToken;
 
         return response()->json([
@@ -131,6 +142,12 @@ class AuthController extends Controller
         $user = ApiUserResolver::fromRequest($request);
         if ($user) {
             $user->currentAccessToken()?->delete();
+        }
+
+        Auth::guard('web')->logout();
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
         }
 
         return response()->json([], Response::HTTP_NO_CONTENT);

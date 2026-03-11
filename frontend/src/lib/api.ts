@@ -5,6 +5,8 @@ function sanitizeBaseUrl(baseUrl: string): string {
 }
 
 const API_BASE_URL = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL);
+export const COOKIE_SESSION_TOKEN = "__cookie_session__";
+let csrfBootstrapPromise: Promise<void> | null = null;
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
@@ -84,16 +86,89 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const escapedName = name.replace(/[-[\]/{}()*+?.\\^$|]/g, "\\$&");
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escapedName}=([^;]*)`));
+  if (!match || match.length < 2) {
+    return null;
+  }
+
+  return match[1] ?? null;
+}
+
+export function readXsrfToken(): string | null {
+  const encoded = readCookie("XSRF-TOKEN");
+  if (!encoded) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+}
+
+function isMutatingMethod(method: string): boolean {
+  const normalized = method.toUpperCase();
+  return normalized === "POST" || normalized === "PUT" || normalized === "PATCH" || normalized === "DELETE";
+}
+
+export async function ensureCsrfCookie(): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (readXsrfToken()) {
+    return;
+  }
+
+  if (!csrfBootstrapPromise) {
+    csrfBootstrapPromise = fetch(`${API_BASE_URL}/sanctum/csrf-cookie`, {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Unable to initialize CSRF protection (status ${response.status}).`);
+        }
+      })
+      .finally(() => {
+        csrfBootstrapPromise = null;
+      });
+  }
+
+  await csrfBootstrapPromise;
+}
+
 export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiRawResponse<T>> {
   const { method = "GET", token, body, signal, extraHeaders } = options;
+  const mutating = isMutatingMethod(method);
+
+  if (mutating) {
+    await ensureCsrfCookie();
+  }
 
   const headers = new Headers();
   headers.set("Accept", "application/json");
   if (body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
-  if (token) {
+  if (token && token !== COOKIE_SESSION_TOKEN) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (mutating) {
+    const xsrfToken = readXsrfToken();
+    if (xsrfToken) {
+      headers.set("X-XSRF-TOKEN", xsrfToken);
+    }
   }
   if (extraHeaders) {
     for (const [key, value] of Object.entries(extraHeaders)) {
@@ -103,6 +178,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
+    credentials: "include",
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,

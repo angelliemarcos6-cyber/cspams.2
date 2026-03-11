@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, COOKIE_SESSION_TOKEN } from "@/lib/api";
 import type { SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -30,12 +30,11 @@ interface AuthContextType {
 }
 
 interface StoredSession {
-  token: string;
   user: SessionUser;
 }
 
 interface LoginResponse {
-  token: string;
+  token?: string;
   user: SessionUser;
 }
 
@@ -44,7 +43,7 @@ interface MeResponse {
 }
 
 interface ResetRequiredPasswordResponse {
-  token: string;
+  token?: string;
   user: SessionUser;
 }
 
@@ -67,13 +66,12 @@ function readStoredSession(): StoredSession | null {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
 
-    const parsed = JSON.parse(raw) as StoredSession;
-    if (!parsed || typeof parsed.token !== "string" || typeof parsed.user !== "object" || !parsed.user) {
+    const parsed = JSON.parse(raw) as { user?: SessionUser };
+    if (!parsed || typeof parsed.user !== "object" || !parsed.user) {
       return null;
     }
 
     return {
-      token: parsed.token,
       user: normalizeUser(parsed.user),
     };
   } catch {
@@ -113,14 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const restoreSession = async () => {
       try {
         const payload = await apiRequest<MeResponse>("/api/auth/me", {
-          token: initialSession.token,
           signal: controller.signal,
         });
 
         if (!active) return;
 
         const normalizedSession: StoredSession = {
-          token: initialSession.token,
           user: normalizeUser(payload.user),
         };
 
@@ -169,7 +165,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       const nextSession: StoredSession = {
-        token: payload.token,
         user: normalizeUser(payload.user),
       };
 
@@ -202,7 +197,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         const nextSession: StoredSession = {
-          token: payload.token,
           user: normalizeUser(payload.user),
         };
 
@@ -216,21 +210,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    const tokenToRevoke = session?.token ?? "";
     clearSession();
     setIsLoggingOut(true);
-
-    if (tokenToRevoke === "") {
-      setIsLoggingOut(false);
-      return;
-    }
 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 3000);
 
     void apiRequest("/api/auth/logout", {
       method: "POST",
-      token: tokenToRevoke,
       signal: controller.signal,
     })
       .catch(() => {
@@ -240,13 +227,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.clearTimeout(timeout);
         setIsLoggingOut(false);
       });
-  }, [clearSession, session?.token]);
+  }, [clearSession]);
 
   const value = useMemo<AuthContextType>(
     () => ({
       role: session?.user.role ?? null,
       username: session?.user.name ?? "",
-      token: session?.token ?? "",
+      token: session?.user ? COOKIE_SESSION_TOKEN : "",
       user: session?.user ?? null,
       isLoading,
       isAuthenticating,

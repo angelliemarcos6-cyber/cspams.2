@@ -27,7 +27,6 @@ return [
 
     'max_age' => 0,
 
-    // The API uses bearer tokens, so cookies are not required across origins.
-    'supports_credentials' => false,
+    // Cookie-based Sanctum SPA auth requires credentialed cross-origin requests.
+    'supports_credentials' => true,
 ];
-
