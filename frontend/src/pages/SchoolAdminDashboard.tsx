@@ -12,6 +12,7 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  Download,
   Edit2,
   Filter,
   RefreshCw,
@@ -36,7 +37,7 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
-import type { IndicatorSubmission, SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
+import type { IndicatorSubmission, SchoolRecord, SchoolRecordPayload, SchoolStatus, StudentRecord, TeacherRecord } from "@/types";
 import {
   formatDateTime,
   statusLabel,
@@ -271,6 +272,138 @@ function submissionStatusLabel(status: string | null | undefined): "Draft" | "Ne
   return "Draft";
 }
 
+function csvEscape(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function toCsvValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value);
+}
+
+function toIsoOrRaw(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toISOString();
+}
+
+function downloadCsv(filename: string, csvRows: string[][]): void {
+  if (typeof window === "undefined") return;
+
+  const lines = csvRows.map((row) => row.map((value) => csvEscape(value)).join(","));
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function fileToken(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized.length > 0 ? normalized : "school";
+}
+
+function timestampToken(date = new Date()): string {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hour = pad(date.getHours());
+  const minute = pad(date.getMinutes());
+  const second = pad(date.getSeconds());
+
+  return `${year}${month}${day}-${hour}${minute}${second}`;
+}
+
+function buildStudentExportRows(records: StudentRecord[]): string[][] {
+  const header = [
+    "School Code",
+    "School Name",
+    "LRN",
+    "First Name",
+    "Middle Name",
+    "Last Name",
+    "Full Name",
+    "Sex",
+    "Birth Date",
+    "Age",
+    "Status",
+    "Risk Level",
+    "Section",
+    "Teacher",
+    "Current Level",
+    "Tracked From Level",
+    "Last Status At",
+    "Created At",
+    "Updated At",
+  ];
+
+  const body = records.map((record) => [
+    toCsvValue(record.school?.schoolCode ?? ""),
+    toCsvValue(record.school?.name ?? ""),
+    toCsvValue(record.lrn),
+    toCsvValue(record.firstName),
+    toCsvValue(record.middleName ?? ""),
+    toCsvValue(record.lastName),
+    toCsvValue(record.fullName),
+    toCsvValue(record.sex ?? ""),
+    toCsvValue(record.birthDate ?? ""),
+    toCsvValue(record.age ?? ""),
+    toCsvValue(record.statusLabel),
+    toCsvValue(record.riskLevel),
+    toCsvValue(record.section ?? ""),
+    toCsvValue(record.teacher ?? ""),
+    toCsvValue(record.currentLevel ?? ""),
+    toCsvValue(record.trackedFromLevel ?? ""),
+    toCsvValue(toIsoOrRaw(record.lastStatusAt)),
+    toCsvValue(toIsoOrRaw(record.createdAt)),
+    toCsvValue(toIsoOrRaw(record.updatedAt)),
+  ]);
+
+  return [header, ...body];
+}
+
+function buildTeacherExportRows(records: TeacherRecord[]): string[][] {
+  const header = [
+    "School Code",
+    "School Name",
+    "Teacher Name",
+    "Sex",
+    "Created At",
+    "Updated At",
+  ];
+
+  const body = records.map((record) => [
+    toCsvValue(record.school?.schoolCode ?? ""),
+    toCsvValue(record.school?.name ?? ""),
+    toCsvValue(record.name),
+    toCsvValue(record.sex ?? ""),
+    toCsvValue(toIsoOrRaw(record.createdAt)),
+    toCsvValue(toIsoOrRaw(record.updatedAt)),
+  ]);
+
+  return [header, ...body];
+}
+
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
@@ -305,6 +438,8 @@ export function SchoolAdminDashboard() {
   const [showSubmissionAdvanced, setShowSubmissionAdvanced] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [submissionDetailTab, setSubmissionDetailTab] = useState<"notes" | "history" | "cycle">("notes");
+  const [recordsExportMessage, setRecordsExportMessage] = useState("");
+  const [recordsExportError, setRecordsExportError] = useState("");
 
   const assignedRecord = records[0] ?? null;
   const syncedStudentCount = students.length;
@@ -312,6 +447,10 @@ export function SchoolAdminDashboard() {
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
+  const exportToken = useMemo(
+    () => fileToken((schoolCode && schoolCode !== "N/A" ? schoolCode : schoolName) || "school"),
+    [schoolCode, schoolName],
+  );
   const latestIndicators = useMemo(() => latestSubmission(indicatorSubmissions), [indicatorSubmissions]);
   const recentSubmissionPreview = useMemo(
     () =>
@@ -450,6 +589,34 @@ export function SchoolAdminDashboard() {
   );
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
+
+  const handleExportStudentsCsv = () => {
+    setRecordsExportMessage("");
+    setRecordsExportError("");
+
+    if (students.length === 0) {
+      setRecordsExportError("No student records available to export.");
+      return;
+    }
+
+    const filename = `student-records-${exportToken}-${timestampToken()}.csv`;
+    downloadCsv(filename, buildStudentExportRows(students));
+    setRecordsExportMessage(`Exported ${students.length} student record${students.length === 1 ? "" : "s"} to CSV.`);
+  };
+
+  const handleExportTeachersCsv = () => {
+    setRecordsExportMessage("");
+    setRecordsExportError("");
+
+    if (teachers.length === 0) {
+      setRecordsExportError("No teacher records available to export.");
+      return;
+    }
+
+    const filename = `teacher-records-${exportToken}-${timestampToken()}.csv`;
+    downloadCsv(filename, buildTeacherExportRows(teachers));
+    setRecordsExportMessage(`Exported ${teachers.length} teacher record${teachers.length === 1 ? "" : "s"} to CSV.`);
+  };
 
   useEffect(() => {
     if (contextSubmissionType !== "all" && !showContextMoreFilters) {
@@ -1789,8 +1956,35 @@ export function SchoolAdminDashboard() {
               <h2 className="text-base font-bold text-slate-900">History & Exports</h2>
               <p className="mt-1 text-xs text-slate-600">Review records and prepare export-ready history.</p>
             </div>
-            {!isMobileViewport && renderQuickJumpChips(false)}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportStudentsCsv}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export Students CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleExportTeachersCsv}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export Teachers CSV
+              </button>
+              {!isMobileViewport && renderQuickJumpChips(false)}
+            </div>
           </div>
+          {recordsExportError ? (
+            <p className="mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+              {recordsExportError}
+            </p>
+          ) : recordsExportMessage ? (
+            <p className="mt-3 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+              {recordsExportMessage}
+            </p>
+          ) : null}
           {isMobileViewport && renderQuickJumpChips(true)}
         </div>
         <div id="student-records-history" className={sectionFocusClass("student-records-history")}>
