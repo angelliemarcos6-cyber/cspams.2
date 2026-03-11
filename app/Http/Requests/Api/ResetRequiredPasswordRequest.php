@@ -29,6 +29,10 @@ class ResetRequiredPasswordRequest extends FormRequest
                     UserRoleResolver::normalizeLoginRole($this->input('role')) === UserRoleResolver::SCHOOL_HEAD,
                     ['size:6', 'regex:/^\d{6}$/'],
                 ),
+                Rule::when(
+                    UserRoleResolver::normalizeLoginRole($this->input('role')) === UserRoleResolver::MONITOR,
+                    ['email'],
+                ),
             ],
             'current_password' => ['required', 'string', 'max:255'],
             'new_password' => [
@@ -48,6 +52,7 @@ class ResetRequiredPasswordRequest extends FormRequest
         return [
             'login.size' => 'School code must be exactly 6 digits.',
             'login.regex' => 'School code must contain only digits.',
+            'login.email' => 'Monitor login must be a valid email address.',
         ];
     }
 }

@@ -44,6 +44,32 @@ class ApiSyncTest extends TestCase
             ->assertJsonPath('user.role', 'school_head');
     }
 
+    public function test_monitor_login_requires_email_identifier(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+
+        $nameLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => $monitor->name,
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+
+        $nameLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['login']);
+
+        $emailLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+
+        $emailLogin->assertOk()
+            ->assertJsonPath('user.role', 'monitor');
+    }
+
     public function test_monitor_login_and_conditional_sync_work(): void
     {
         $this->seed();

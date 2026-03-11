@@ -212,15 +212,13 @@ class AuthController extends Controller
                 );
         }
 
+        $normalizedEmail = strtolower(trim($login));
         $query = User::query()
             ->with('school')
-            ->where(function ($builder) use ($login): void {
-                $builder->where('email', $login)
-                    ->orWhere('name', $login);
-            });
+            ->whereRaw('LOWER(email) = ?', [$normalizedEmail]);
 
         /** @var \Illuminate\Support\Collection<int, User> $candidates */
-        $candidates = $query->limit(10)->get();
+        $candidates = $query->limit(5)->get();
 
         return $candidates->first(
             fn (User $candidate): bool => UserRoleResolver::has($candidate, $role),

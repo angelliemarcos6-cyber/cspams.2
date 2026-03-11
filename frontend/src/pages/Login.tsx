@@ -23,9 +23,9 @@ const ROLE_META: Record<
     label: "Division Monitor",
     note: "",
     submit: "Sign In as Division Monitor",
-    loginHint: "Monitor email or name",
-    loginLabel: "Account ID",
-    emptyError: "Enter your account ID.",
+    loginHint: "Monitor email (e.g. monitor@cspams.local)",
+    loginLabel: "Email",
+    emptyError: "Enter your monitor email.",
   },
 };
 
@@ -62,6 +62,11 @@ export function Login() {
 
     if (activeRole === "school_head" && normalizedLoginId.length !== 6) {
       setError("School code must be exactly 6 digits.");
+      return;
+    }
+
+    if (activeRole === "monitor" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedLoginId)) {
+      setError("Monitor login must be a valid email address.");
       return;
     }
 
