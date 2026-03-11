@@ -24,6 +24,8 @@ use Illuminate\Support\Str;
 
 class DemoDataSeeder extends Seeder
 {
+    private ?bool $syncSeedPasswords = null;
+
     public function run(): void
     {
         $currentYear = $this->seedAcademicYears();
@@ -116,7 +118,7 @@ class DemoDataSeeder extends Seeder
         $monitorWasRecentlyCreated = ! $monitor->exists;
         $monitor->name = 'Division Monitor';
 
-        if ($monitorWasRecentlyCreated) {
+        if ($monitorWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
             $monitor->password = Hash::make($this->demoPasswordForKey('monitor'));
             $monitor->must_reset_password = false;
             $monitor->password_changed_at = now();
@@ -131,7 +133,7 @@ class DemoDataSeeder extends Seeder
             $head->name = 'School Head ' . ($index + 1);
             $head->school_id = $school->id;
 
-            if ($headWasRecentlyCreated) {
+            if ($headWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
                 $head->password = Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code)));
                 $head->must_reset_password = false;
                 $head->password_changed_at = now();
@@ -420,6 +422,18 @@ class DemoDataSeeder extends Seeder
         $fingerprint = strtoupper(substr(hash_hmac('sha256', $key, $appKey), 0, 10));
 
         return 'Demo@' . $fingerprint . '!';
+    }
+
+    private function shouldSyncSeedPasswords(): bool
+    {
+        if ($this->syncSeedPasswords !== null) {
+            return $this->syncSeedPasswords;
+        }
+
+        $raw = strtolower(trim((string) env('CSPAMS_SYNC_SEEDED_PASSWORDS', 'true')));
+        $this->syncSeedPasswords = ! in_array($raw, ['0', 'false', 'off', 'no'], true);
+
+        return $this->syncSeedPasswords;
     }
 }
 

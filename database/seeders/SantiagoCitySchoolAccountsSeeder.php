@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 
 class SantiagoCitySchoolAccountsSeeder extends Seeder
 {
+    private ?bool $syncSeedPasswords = null;
+
     public function run(): void
     {
         foreach ($this->schools() as $entry) {
@@ -35,7 +37,7 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
             $schoolHead->name = 'School Head - ' . $entry['name'];
             $schoolHead->school_id = $school->id;
 
-            if ($schoolHeadWasRecentlyCreated) {
+            if ($schoolHeadWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
                 $schoolHead->password = Hash::make($this->temporaryPasswordForSchoolCode($entry['school_code']));
                 $schoolHead->must_reset_password = true;
                 $schoolHead->password_changed_at = null;
@@ -75,6 +77,18 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
         $normalized = trim($normalized, '-');
 
         return 'schoolhead.' . $normalized . '@cspams.local';
+    }
+
+    private function shouldSyncSeedPasswords(): bool
+    {
+        if ($this->syncSeedPasswords !== null) {
+            return $this->syncSeedPasswords;
+        }
+
+        $raw = strtolower(trim((string) env('CSPAMS_SYNC_SEEDED_PASSWORDS', 'true')));
+        $this->syncSeedPasswords = ! in_array($raw, ['0', 'false', 'off', 'no'], true);
+
+        return $this->syncSeedPasswords;
     }
 
     /**

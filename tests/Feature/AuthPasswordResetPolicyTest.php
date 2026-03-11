@@ -51,6 +51,11 @@ class AuthPasswordResetPolicyTest extends TestCase
 
     private function temporaryPasswordForSchoolCode(string $schoolCode): string
     {
+        $configured = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD'));
+        if ($configured !== '') {
+            return $configured;
+        }
+
         $appKey = (string) config('app.key');
 
         if ($appKey === '') {

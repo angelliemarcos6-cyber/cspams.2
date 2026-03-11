@@ -112,6 +112,7 @@ Prerequisites:
    - set predictable local passwords before seeding (recommended):
      - `CSPAMS_DEMO_PASSWORD=Demo@123456`
      - `CSPAMS_SEED_TEMP_PASSWORD=Csp@123456`
+     - `CSPAMS_SYNC_SEEDED_PASSWORDS=true`
 3. If using SQLite, create the database file first:
    - Linux/macOS: `mkdir -p database && touch database/database.sqlite`
    - Windows PowerShell: `if (-not (Test-Path database\\database.sqlite)) { New-Item -ItemType File database\\database.sqlite | Out-Null }`
@@ -146,7 +147,7 @@ After seeding:
   - Login: assigned 6-digit `school_code` (example: `900001`, `900002`, `900003`)
   - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
 
-For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and must complete `/api/auth/reset-required-password` before dashboard access. Their temporary password is `CSPAMS_SEED_TEMP_PASSWORD` when set.
+For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and must complete `/api/auth/reset-required-password` before dashboard access. Their temporary password is `CSPAMS_SEED_TEMP_PASSWORD` (default: `Csp@123456`).
 
 ## Troubleshooting Sign-in on a Fresh Clone (Linux/Windows)
 
@@ -159,6 +160,7 @@ If login fails after cloning:
    - `.env` -> `CORS_ALLOWED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173`
 3. Rebuild seed data with known passwords:
    - set `CSPAMS_DEMO_PASSWORD` and `CSPAMS_SEED_TEMP_PASSWORD` in `.env`
+   - keep `CSPAMS_SYNC_SEEDED_PASSWORDS=true` so existing accounts are reset to known credentials
    - run `php artisan migrate:fresh --seed`
 4. Clear stale config cache:
    - `php artisan optimize:clear`
