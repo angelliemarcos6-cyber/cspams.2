@@ -1,5 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
+import { getApiBaseUrl } from "@/lib/api";
 
 declare global {
   interface Window {
@@ -21,6 +22,7 @@ export interface CspamsRealtimePayload {
 
 let realtimeEcho: Echo<"reverb"> | null = null;
 let isStarted = false;
+let activeToken = "";
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (!value) return fallback;
@@ -39,8 +41,22 @@ function dispatchRealtimePayload(payload: CspamsRealtimePayload) {
   window.dispatchEvent(new CustomEvent<CspamsRealtimePayload>("cspams:update", { detail: payload }));
 }
 
-export function startRealtimeBridge() {
-  if (isStarted || typeof window === "undefined") return;
+export function startRealtimeBridge(token: string) {
+  if (typeof window === "undefined") return;
+
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    stopRealtimeBridge();
+    return;
+  }
+
+  if (isStarted && activeToken === normalizedToken) {
+    return;
+  }
+
+  if (isStarted) {
+    stopRealtimeBridge();
+  }
 
   const appKey =
     import.meta.env.VITE_REVERB_APP_KEY ||
@@ -64,21 +80,31 @@ export function startRealtimeBridge() {
     wsPort,
     wssPort,
     forceTLS,
+    authEndpoint: `${getApiBaseUrl()}/api/broadcasting/auth`,
+    auth: {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${normalizedToken}`,
+      },
+    },
     enabledTransports: ["ws", "wss"],
   });
 
   realtimeEcho
-    .channel("cspams-updates")
+    .private("cspams-updates")
     .listen(".cspams.update", (payload: CspamsRealtimePayload) => {
       dispatchRealtimePayload(payload);
     });
 
   isStarted = true;
+  activeToken = normalizedToken;
 }
 
 export function stopRealtimeBridge() {
-  if (!realtimeEcho) return;
-  realtimeEcho.disconnect();
+  if (realtimeEcho) {
+    realtimeEcho.disconnect();
+  }
   realtimeEcho = null;
   isStarted = false;
+  activeToken = "";
 }

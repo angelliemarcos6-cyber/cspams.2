@@ -6,6 +6,10 @@ function sanitizeBaseUrl(baseUrl: string): string {
 
 const API_BASE_URL = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL);
 
+export function getApiBaseUrl(): string {
+  return API_BASE_URL;
+}
+
 interface ApiRequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   token?: string;

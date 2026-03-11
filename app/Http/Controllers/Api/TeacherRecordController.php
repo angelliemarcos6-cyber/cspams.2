@@ -14,12 +14,12 @@ use App\Support\Auth\UserRoleResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\Response;
 
 class TeacherRecordController extends Controller
 {
-    public function index(Request $request): AnonymousResourceCollection|JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $user = ApiUserResolver::fromRequest($request);
         if (! $user) {
@@ -53,6 +53,13 @@ class TeacherRecordController extends Controller
             });
         }
 
+        $schoolCodes = $this->parseSchoolCodes($request);
+        if ($schoolCodes->isNotEmpty() && $isMonitor) {
+            $query->whereHas('school', function (Builder $builder) use ($schoolCodes): void {
+                $builder->whereIn('school_code', $schoolCodes->all());
+            });
+        }
+
         $sex = trim((string) $request->query('sex', ''));
         if ($sex !== '' && in_array(strtolower($sex), ['male', 'female'], true)) {
             $query->where('sex', strtolower($sex));
@@ -73,13 +80,23 @@ class TeacherRecordController extends Controller
             });
         }
 
-        $teachers = $query->get();
+        $perPage = $this->resolvePerPage($request);
+        $teachers = $query->paginate($perPage)->appends($request->query());
+        $teacherRows = collect($teachers->items());
 
-        return TeacherRecordResource::collection($teachers)->additional([
+        return response()->json([
+            'data' => TeacherRecordResource::collection($teacherRows)->resolve(),
             'meta' => [
                 'syncedAt' => now()->toISOString(),
                 'scope' => $isSchoolHead ? 'school' : 'division',
-                'recordCount' => $teachers->count(),
+                'recordCount' => $teachers->total(),
+                'currentPage' => $teachers->currentPage(),
+                'lastPage' => $teachers->lastPage(),
+                'perPage' => $teachers->perPage(),
+                'total' => $teachers->total(),
+                'from' => $teachers->firstItem(),
+                'to' => $teachers->lastItem(),
+                'hasMorePages' => $teachers->hasMorePages(),
             ],
         ]);
     }
@@ -242,5 +259,32 @@ class TeacherRecordController extends Controller
         ]);
 
         $teacher->save();
+    }
+
+    private function resolvePerPage(Request $request, int $default = 25, int $max = 200): int
+    {
+        $perPage = $request->integer('per_page');
+
+        if ($perPage <= 0) {
+            return $default;
+        }
+
+        return min($perPage, $max);
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function parseSchoolCodes(Request $request): Collection
+    {
+        $rawSchoolCodes = trim((string) $request->query('schoolCodes', ''));
+        if ($rawSchoolCodes === '') {
+            return collect();
+        }
+
+        return collect(explode(',', $rawSchoolCodes))
+            ->map(static fn (string $value): string => strtoupper(trim($value)))
+            ->filter(static fn (string $value): bool => $value !== '')
+            ->values();
     }
 }

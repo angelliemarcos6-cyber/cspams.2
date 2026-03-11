@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useTeacherData } from "@/context/TeacherData";
 import type { TeacherRecord, TeacherRecordPayload } from "@/types";
@@ -39,6 +39,24 @@ function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: s
   return "unknown";
 }
 
+function extractSchoolCodes(filterKeys: Set<string> | null | undefined): string[] {
+  if (!filterKeys || filterKeys.size === 0) {
+    return [];
+  }
+
+  const codes = new Set<string>();
+  for (const key of filterKeys) {
+    if (!key.startsWith("code:")) continue;
+
+    const code = key.slice(5).trim().toUpperCase();
+    if (code) {
+      codes.add(code);
+    }
+  }
+
+  return [...codes];
+}
+
 export function TeacherRecordsPanel({
   editable,
   title = "Teacher Records History",
@@ -46,7 +64,17 @@ export function TeacherRecordsPanel({
   showSchoolColumn = false,
   schoolFilterKeys = null,
 }: TeacherRecordsPanelProps) {
-  const { teachers, isLoading, isSaving, error, lastSyncedAt, refreshTeachers, addTeacher, updateTeacher, deleteTeacher } = useTeacherData();
+  const {
+    isLoading,
+    isSaving,
+    error,
+    lastSyncedAt,
+    refreshTeachers,
+    listTeachers,
+    addTeacher,
+    updateTeacher,
+    deleteTeacher,
+  } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const [sexFilter, setSexFilter] = useState<"all" | "male" | "female">("all");
@@ -57,55 +85,72 @@ export function TeacherRecordsPanel({
   const [formMessage, setFormMessage] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pagedTeachers, setPagedTeachers] = useState<TeacherRecord[]>([]);
+  const [totalTeachers, setTotalTeachers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
 
-  const scopedTeachers = useMemo(() => {
-    if (!schoolFilterKeys) {
-      return teachers;
-    }
+  const loadTeachersPage = useCallback(
+    async (nextPage: number, silent = false) => {
+      if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
+        setPagedTeachers([]);
+        setTotalTeachers(0);
+        setTotalPages(1);
+        setPageError("");
+        if (nextPage !== 1) {
+          setPage(1);
+        }
+        return;
+      }
 
-    if (schoolFilterKeys.size === 0) {
-      return [];
-    }
+      if (!silent) {
+        setIsPageLoading(true);
+      }
 
-    return teachers.filter((teacher) =>
-      schoolFilterKeys.has(
-        normalizeSchoolKey(teacher.school?.schoolCode ?? null, teacher.school?.name ?? null),
-      ),
-    );
-  }, [teachers, schoolFilterKeys]);
+      setPageError("");
 
-  const filteredTeachers = useMemo(() => {
-    const query = search.trim().toLowerCase();
+      try {
+        const result = await listTeachers({
+          page: nextPage,
+          perPage: TEACHER_PAGE_SIZE,
+          search: search.trim() || null,
+          sex: sexFilter === "all" ? null : sexFilter,
+          schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
+        });
 
-    return scopedTeachers
-      .filter((teacher) => {
-        const matchesSearch =
-          query.length === 0 ||
-          teacher.name.toLowerCase().includes(query) ||
-          (teacher.school?.schoolCode ?? "").toLowerCase().includes(query) ||
-          (teacher.school?.name ?? "").toLowerCase().includes(query);
-        const matchesSex = sexFilter === "all" || teacher.sex === sexFilter;
-        return matchesSearch && matchesSex;
-      })
-      .sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime());
-  }, [scopedTeachers, search, sexFilter]);
+        setPagedTeachers(result.data);
+        setTotalTeachers(result.meta.total);
+        setTotalPages(Math.max(1, result.meta.lastPage));
 
-  const totalPages = Math.max(1, Math.ceil(filteredTeachers.length / TEACHER_PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginatedTeachers = useMemo(() => {
-    const start = (safePage - 1) * TEACHER_PAGE_SIZE;
-    return filteredTeachers.slice(start, start + TEACHER_PAGE_SIZE);
-  }, [filteredTeachers, safePage]);
+        if (result.meta.currentPage !== nextPage) {
+          setPage(result.meta.currentPage);
+        }
+      } catch (err) {
+        setPagedTeachers([]);
+        setTotalTeachers(0);
+        setTotalPages(1);
+        setPageError(err instanceof Error ? err.message : "Unable to load teacher records.");
+      } finally {
+        if (!silent) {
+          setIsPageLoading(false);
+        }
+      }
+    },
+    [listTeachers, schoolFilterKeys, scopedSchoolCodes, search, sexFilter],
+  );
+
+  const safePage = Math.max(1, Math.min(page, totalPages));
+  const paginatedTeachers = pagedTeachers;
 
   useEffect(() => {
     setPage(1);
-  }, [search, sexFilter, schoolFilterKeys]);
+  }, [search, sexFilter, schoolFilterKeys, scopedSchoolCodes]);
 
   useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
+    void loadTeachersPage(page, false);
+  }, [page, loadTeachersPage]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -159,9 +204,12 @@ export function TeacherRecordsPanel({
     try {
       if (editingId) {
         await updateTeacher(editingId, payload);
+        await loadTeachersPage(page, true);
         setFormMessage("Teacher record updated.");
       } else {
         await addTeacher(payload);
+        await loadTeachersPage(1, true);
+        setPage(1);
         setFormMessage("Teacher record added.");
       }
 
@@ -181,11 +229,17 @@ export function TeacherRecordsPanel({
     setFormMessage("");
     try {
       await deleteTeacher(teacher.id);
+      await loadTeachersPage(page, true);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Unable to delete teacher record.");
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleRefresh = async () => {
+    await refreshTeachers();
+    await loadTeachersPage(page, true);
   };
 
   return (
@@ -199,7 +253,7 @@ export function TeacherRecordsPanel({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => void refreshTeachers()}
+              onClick={() => void handleRefresh()}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -246,13 +300,13 @@ export function TeacherRecordsPanel({
           </select>
         </label>
         <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-          Showing {filteredTeachers.length} of {scopedTeachers.length}
+          Showing {paginatedTeachers.length} of {totalTeachers}
         </div>
       </div>
 
-      {(error || formError) && (
+      {(error || pageError || formError) && (
         <div className="mx-5 mt-4 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-          {formError || error}
+          {formError || pageError || error}
         </div>
       )}
       {formMessage && (
@@ -304,7 +358,7 @@ export function TeacherRecordsPanel({
         </section>
       )}
 
-      {isLoading && teachers.length === 0 ? (
+      {(isLoading || isPageLoading) && paginatedTeachers.length === 0 ? (
         <div className="space-y-3 px-5 py-5">
           <div className="skeleton-line h-4 w-48" />
           <div className="grid gap-2">
@@ -313,7 +367,7 @@ export function TeacherRecordsPanel({
             <div className="skeleton-line h-12 w-full" />
           </div>
         </div>
-      ) : filteredTeachers.length === 0 ? (
+      ) : paginatedTeachers.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
           <AlertCircle className="h-9 w-9 text-slate-400" />
           <p className="text-sm font-semibold">
@@ -439,4 +493,3 @@ export function TeacherRecordsPanel({
     </section>
   );
 }
-

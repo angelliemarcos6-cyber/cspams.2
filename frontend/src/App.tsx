@@ -4,6 +4,7 @@ import { LoaderCircle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
 import { IndicatorDataProvider } from "@/context/IndicatorData";
+import { NotificationProvider } from "@/context/Notifications";
 import { StudentDataProvider } from "@/context/StudentData";
 import { TeacherDataProvider } from "@/context/TeacherData";
 import type { UserRole } from "@/types";
@@ -86,27 +87,42 @@ function AppRoutes() {
   );
 }
 
-export function App() {
+function RealtimeBridge() {
+  const { token } = useAuth();
+
   useEffect(() => {
-    startRealtimeBridge();
+    if (!token) {
+      stopRealtimeBridge();
+      return;
+    }
+
+    startRealtimeBridge(token);
+
     return () => {
       stopRealtimeBridge();
     };
-  }, []);
+  }, [token]);
 
+  return null;
+}
+
+export function App() {
   return (
     <AuthProvider>
-      <DataProvider>
-        <IndicatorDataProvider>
-          <TeacherDataProvider>
-            <StudentDataProvider>
-              <HashRouter>
-                <AppRoutes />
-              </HashRouter>
-            </StudentDataProvider>
-          </TeacherDataProvider>
-        </IndicatorDataProvider>
-      </DataProvider>
+      <RealtimeBridge />
+      <NotificationProvider>
+        <DataProvider>
+          <IndicatorDataProvider>
+            <TeacherDataProvider>
+              <StudentDataProvider>
+                <HashRouter>
+                  <AppRoutes />
+                </HashRouter>
+              </StudentDataProvider>
+            </TeacherDataProvider>
+          </IndicatorDataProvider>
+        </DataProvider>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

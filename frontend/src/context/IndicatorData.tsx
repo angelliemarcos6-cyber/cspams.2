@@ -50,6 +50,7 @@ interface IndicatorDataContextType {
   lastSyncedAt: string | null;
   refreshSubmissions: () => Promise<void>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
+  updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
   reviewSubmission: (id: string, decision: ReviewDecision, notes?: string) => Promise<IndicatorSubmission>;
   loadHistory: (id: string) => Promise<FormSubmissionHistoryEntry[]>;
@@ -228,6 +229,46 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [token, syncSubmissions, handleApiError],
   );
 
+  const updateSubmission = useCallback(
+    async (id: string, payload: IndicatorSubmissionPayload): Promise<IndicatorSubmission> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
+          method: "PUT",
+          token,
+          body: {
+            academic_year_id: payload.academicYearId,
+            reporting_period: payload.reportingPeriod ?? null,
+            notes: payload.notes ?? null,
+            indicators: payload.indicators.map((entry) => ({
+              metric_id: entry.metricId,
+              target_value: entry.targetValue ?? null,
+              actual_value: entry.actualValue ?? null,
+              target: entry.target ?? null,
+              actual: entry.actual ?? null,
+              remarks: entry.remarks ?? null,
+            })),
+          },
+        });
+
+        await syncSubmissions(true);
+        return response.data;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, syncSubmissions, handleApiError],
+  );
+
   const reviewSubmission = useCallback(
     async (id: string, decision: ReviewDecision, notes?: string): Promise<IndicatorSubmission> => {
       if (!token) {
@@ -321,6 +362,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       refreshSubmissions,
       createSubmission,
+      updateSubmission,
       submitSubmission,
       reviewSubmission,
       loadHistory,
@@ -335,6 +377,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       refreshSubmissions,
       createSubmission,
+      updateSubmission,
       submitSubmission,
       reviewSubmission,
       loadHistory,

@@ -304,6 +304,9 @@ class ApiSyncTest extends TestCase
         Notification::assertSentTo(
             [$schoolHead],
             SchoolSubmissionReminderNotification::class,
+            static function (SchoolSubmissionReminderNotification $notification, array $channels): bool {
+                return in_array('mail', $channels, true) && in_array('database', $channels, true);
+            },
         );
     }
 

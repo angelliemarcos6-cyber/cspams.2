@@ -2,19 +2,27 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/reset-required-password', [AuthController::class, 'resetRequiredPassword']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
+    Route::post('/reset-required-password', [AuthController::class, 'resetRequiredPassword'])
+        ->middleware('throttle:auth-password-reset');
 
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
     });
+});
+
+Route::middleware('auth:sanctum')->post('/broadcasting/auth', static function (Request $request) {
+    return Broadcast::auth($request);
 });
 
 Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void {
@@ -48,7 +56,15 @@ Route::middleware('auth:sanctum')->prefix('indicators')->group(function (): void
     Route::get('/submissions', [IndicatorSubmissionController::class, 'index']);
     Route::post('/submissions', [IndicatorSubmissionController::class, 'store']);
     Route::get('/submissions/{submission}', [IndicatorSubmissionController::class, 'show']);
+    Route::put('/submissions/{submission}', [IndicatorSubmissionController::class, 'update']);
+    Route::patch('/submissions/{submission}', [IndicatorSubmissionController::class, 'update']);
     Route::post('/submissions/{submission}/submit', [IndicatorSubmissionController::class, 'submit']);
     Route::post('/submissions/{submission}/review', [IndicatorSubmissionController::class, 'review']);
     Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
+});
+
+Route::middleware('auth:sanctum')->prefix('notifications')->group(function (): void {
+    Route::get('/', [NotificationController::class, 'index']);
+    Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);
 });

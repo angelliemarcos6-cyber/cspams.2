@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
-import { CheckCircle2, ChevronDown, ChevronUp, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
   FormSubmissionHistoryEntry,
   IndicatorMetric,
   IndicatorSubmission,
+  IndicatorSubmissionItem,
   IndicatorSubmissionPayload,
   IndicatorTypedValuePayload,
   MetricDataType,
@@ -313,6 +314,102 @@ function buildInitialMetricEntries(metrics: IndicatorMetric[], current: MetricEn
   return next;
 }
 
+function normalizeBooleanInput(value: unknown): "" | "yes" | "no" {
+  if (typeof value === "boolean") {
+    return value ? "yes" : "no";
+  }
+
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["yes", "y", "true", "1"].includes(normalized)) {
+    return "yes";
+  }
+  if (["no", "n", "false", "0"].includes(normalized)) {
+    return "no";
+  }
+
+  return "";
+}
+
+function extractTypedScalar(value: Record<string, unknown> | null | undefined): string {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+
+  const scalar = (value as { value?: unknown }).value;
+  if (scalar === null || scalar === undefined) {
+    return "";
+  }
+
+  return String(scalar);
+}
+
+function extractTypedMatrix(value: Record<string, unknown> | null | undefined): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const values = (value as { values?: unknown }).values;
+  if (!values || typeof values !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(values as Record<string, unknown>).map(([year, entry]) => [year, String(entry ?? "")]),
+  );
+}
+
+function buildEntryFromSubmission(metric: IndicatorMetric, indicator: IndicatorSubmissionItem): MetricEntryValue {
+  const entry = buildDefaultEntry(metric);
+  entry.remarks = indicator.remarks ?? "";
+
+  const dataType = metricDataType(metric);
+
+  if (dataType === "yearly_matrix") {
+    const targetByYear = extractTypedMatrix(indicator.targetTypedValue ?? null);
+    const actualByYear = extractTypedMatrix(indicator.actualTypedValue ?? null);
+    const metricYearList = metricYears(metric);
+    const fallbackYears = [...new Set([...Object.keys(targetByYear), ...Object.keys(actualByYear)])];
+    const years = metricYearList.length > 0 ? metricYearList : fallbackYears;
+
+    for (const year of years) {
+      entry.targetMatrix[year] = targetByYear[year] ?? "";
+      entry.actualMatrix[year] = actualByYear[year] ?? "";
+    }
+
+    return entry;
+  }
+
+  if (dataType === "yes_no") {
+    entry.targetBoolean = normalizeBooleanInput(
+      (indicator.targetTypedValue as { value?: unknown } | null | undefined)?.value
+        ?? indicator.targetDisplay
+        ?? indicator.targetValue,
+    );
+    entry.actualBoolean = normalizeBooleanInput(
+      (indicator.actualTypedValue as { value?: unknown } | null | undefined)?.value
+        ?? indicator.actualDisplay
+        ?? indicator.actualValue,
+    );
+    return entry;
+  }
+
+  if (dataType === "enum") {
+    entry.targetEnum = extractTypedScalar(indicator.targetTypedValue ?? null) || String(indicator.targetDisplay ?? "");
+    entry.actualEnum = extractTypedScalar(indicator.actualTypedValue ?? null) || String(indicator.actualDisplay ?? "");
+    return entry;
+  }
+
+  if (dataType === "text") {
+    entry.targetText = extractTypedScalar(indicator.targetTypedValue ?? null) || String(indicator.targetDisplay ?? "");
+    entry.actualText = extractTypedScalar(indicator.actualTypedValue ?? null) || String(indicator.actualDisplay ?? "");
+    return entry;
+  }
+
+  entry.targetValue = Number.isFinite(Number(indicator.targetValue)) ? String(indicator.targetValue) : "";
+  entry.actualValue = Number.isFinite(Number(indicator.actualValue)) ? String(indicator.actualValue) : "";
+  return entry;
+}
+
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
@@ -327,6 +424,7 @@ export function SchoolIndicatorPanel({
     lastSyncedAt,
     refreshSubmissions,
     createSubmission,
+    updateSubmission,
     submitSubmission,
     loadHistory,
   } = useIndicatorData();
@@ -345,6 +443,7 @@ export function SchoolIndicatorPanel({
   const [indicatorSearch, setIndicatorSearch] = useState("");
   const [showOnlyMissingRows, setShowOnlyMissingRows] = useState(false);
   const [autosaveAt, setAutosaveAt] = useState<string | null>(null);
+  const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null);
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -542,12 +641,38 @@ export function SchoolIndicatorPanel({
   }, [activeCategory, activeCategoryId]);
 
   const resetForm = () => {
+    setEditingSubmissionId(null);
     setNotes("");
     setMetricEntries(() => buildInitialMetricEntries(complianceMetrics, {}));
     setAutosaveAt(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(INDICATOR_DRAFT_STORAGE_KEY);
     }
+  };
+
+  const handleEditDraft = (submission: IndicatorSubmission) => {
+    const nextAcademicYearId = submission.academicYear?.id ?? "";
+    const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
+    const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
+
+    for (const indicator of submission.indicators) {
+      const metricId = indicator.metric?.id;
+      if (!metricId) continue;
+
+      const metric = metricsById.get(metricId);
+      if (!metric) continue;
+
+      nextEntries[metricId] = buildEntryFromSubmission(metric, indicator);
+    }
+
+    setEditingSubmissionId(submission.id);
+    setAcademicYearId(nextAcademicYearId);
+    setNotes(submission.notes ?? "");
+    setMetricEntries(nextEntries);
+    setSubmitError("");
+    setSaveMessage(`Editing package #${submission.id}.`);
+    setExpandedSubmissionId(null);
+    setAutosaveAt(null);
   };
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
@@ -743,11 +868,16 @@ export function SchoolIndicatorPanel({
     };
 
     try {
-      const created = await createSubmission(payload);
-      setSaveMessage(`Indicator package #${created.id} created as draft.`);
-      resetForm();
+      if (editingSubmissionId) {
+        const updated = await updateSubmission(editingSubmissionId, payload);
+        setSaveMessage(`Draft package #${updated.id} updated.`);
+      } else {
+        const created = await createSubmission(payload);
+        setSaveMessage(`Indicator package #${created.id} created as draft.`);
+        resetForm();
+      }
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Unable to create indicator package.");
+      setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
     }
   };
 
@@ -1234,15 +1364,31 @@ export function SchoolIndicatorPanel({
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">{saveMessage}</p>
         )}
         {error && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p>}
+        {editingSubmissionId && (
+          <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+            Editing package #{editingSubmissionId}. Save draft to update this package.
+          </p>
+        )}
 
-        <button
-          type="submit"
-          disabled={isSaving || isLoading || complianceMetrics.length === 0}
-          className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <Target className="h-4 w-4" />
-          {isSaving ? "Saving..." : "Save Draft"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="submit"
+            disabled={isSaving || isLoading || complianceMetrics.length === 0}
+            className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Target className="h-4 w-4" />
+            {isSaving ? "Saving..." : editingSubmissionId ? "Update Draft" : "Save Draft"}
+          </button>
+          {editingSubmissionId && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Cancel Edit
+            </button>
+          )}
+        </div>
       </form>
 
       <div className="px-5 py-4">
@@ -1288,15 +1434,30 @@ export function SchoolIndicatorPanel({
                       <td className="px-2 py-2 text-center">
                         <div className="inline-flex items-center gap-2">
                           {submission.status === "draft" || submission.status === "returned" ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleSubmitToMonitor(submission)}
-                              disabled={isSaving}
-                              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              <Send className="h-3.5 w-3.5" />
-                              Submit
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleEditDraft(submission)}
+                                disabled={isSaving}
+                                className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                                  editingSubmissionId === submission.id
+                                    ? "border-primary-300 bg-primary-100 text-primary-800"
+                                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                }`}
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                                {editingSubmissionId === submission.id ? "Editing" : "Edit Draft"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleSubmitToMonitor(submission)}
+                                disabled={isSaving}
+                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                                Submit
+                              </button>
+                            </>
                           ) : submission.status === "validated" ? (
                             <span className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700">
                               <CheckCircle2 className="h-3.5 w-3.5" />

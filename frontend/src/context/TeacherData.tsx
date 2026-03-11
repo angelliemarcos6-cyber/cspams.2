@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -17,6 +18,13 @@ interface TeacherSyncMeta {
   syncedAt?: string;
   scope?: string;
   recordCount?: number;
+  currentPage?: number;
+  lastPage?: number;
+  perPage?: number;
+  total?: number;
+  from?: number | null;
+  to?: number | null;
+  hasMorePages?: boolean;
 }
 
 interface TeacherRecordsResponse {
@@ -36,6 +44,33 @@ interface TeacherRecordDeleteResponse {
   meta?: TeacherSyncMeta;
 }
 
+export interface TeacherListParams {
+  page?: number;
+  perPage?: number;
+  search?: string | null;
+  sex?: "all" | "male" | "female" | string | null;
+  schoolCode?: string | null;
+  schoolCodes?: string[] | null;
+}
+
+export interface TeacherListMeta {
+  syncedAt: string | null;
+  scope: TeacherSyncScope;
+  recordCount: number;
+  currentPage: number;
+  lastPage: number;
+  perPage: number;
+  total: number;
+  from: number | null;
+  to: number | null;
+  hasMorePages: boolean;
+}
+
+export interface TeacherListResult {
+  data: TeacherRecord[];
+  meta: TeacherListMeta;
+}
+
 interface TeacherDataContextType {
   teachers: TeacherRecord[];
   isLoading: boolean;
@@ -43,18 +78,143 @@ interface TeacherDataContextType {
   error: string;
   lastSyncedAt: string | null;
   syncScope: TeacherSyncScope;
+  totalCount: number;
   refreshTeachers: () => Promise<void>;
+  listTeachers: (params?: TeacherListParams) => Promise<TeacherListResult>;
   addTeacher: (payload: TeacherRecordPayload) => Promise<void>;
   updateTeacher: (id: string, payload: TeacherRecordPayload) => Promise<void>;
   deleteTeacher: (id: string) => Promise<void>;
 }
 
-const TeacherDataContext = createContext<TeacherDataContextType | undefined>(undefined);
+interface NormalizedTeacherListParams {
+  page: number;
+  perPage: number;
+  search: string;
+  sex: string;
+  schoolCode: string;
+  schoolCodes: string[];
+}
+
+const DataContext = createContext<TeacherDataContextType | undefined>(undefined);
 const AUTO_SYNC_INTERVAL_MS = 12_000;
+const SNAPSHOT_PER_PAGE = 100;
+const DEFAULT_PER_PAGE = 25;
+const MAX_PER_PAGE = 200;
+
+const EMPTY_META: TeacherListMeta = {
+  syncedAt: null,
+  scope: null,
+  recordCount: 0,
+  currentPage: 1,
+  lastPage: 1,
+  perPage: DEFAULT_PER_PAGE,
+  total: 0,
+  from: null,
+  to: null,
+  hasMorePages: false,
+};
 
 function normalizeScope(value: string | undefined): TeacherSyncScope {
   if (value === "division" || value === "school") return value;
   return null;
+}
+
+function toPositiveInt(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallback;
+  }
+
+  return Math.trunc(numeric);
+}
+
+function sanitizeSex(value: TeacherListParams["sex"]): string {
+  const normalized = (value ?? "").toString().trim().toLowerCase();
+  if (normalized === "male" || normalized === "female") {
+    return normalized;
+  }
+
+  return "";
+}
+
+function sanitizeSchoolCode(value: string | null | undefined): string {
+  return (value ?? "").trim().toUpperCase();
+}
+
+function sanitizeSchoolCodes(values: string[] | null | undefined): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const normalized = values
+    .map((value) => value.trim().toUpperCase())
+    .filter((value) => value.length > 0);
+
+  return [...new Set(normalized)];
+}
+
+function sanitizeParams(params?: TeacherListParams): NormalizedTeacherListParams {
+  const page = toPositiveInt(params?.page, 1);
+  const perPage = Math.min(toPositiveInt(params?.perPage, DEFAULT_PER_PAGE), MAX_PER_PAGE);
+  const search = (params?.search ?? "").trim();
+  const sex = sanitizeSex(params?.sex);
+  const schoolCode = sanitizeSchoolCode(params?.schoolCode);
+  const schoolCodes = sanitizeSchoolCodes(params?.schoolCodes);
+
+  return {
+    page,
+    perPage,
+    search,
+    sex,
+    schoolCode,
+    schoolCodes,
+  };
+}
+
+function buildListPath(params: NormalizedTeacherListParams): string {
+  const query = new URLSearchParams();
+  query.set("page", String(params.page));
+  query.set("per_page", String(params.perPage));
+
+  if (params.search) {
+    query.set("search", params.search);
+  }
+
+  if (params.sex) {
+    query.set("sex", params.sex);
+  }
+
+  if (params.schoolCodes.length > 0) {
+    query.set("schoolCodes", params.schoolCodes.join(","));
+  } else if (params.schoolCode) {
+    query.set("schoolCode", params.schoolCode);
+  }
+
+  const serialized = query.toString();
+  return serialized ? `/api/dashboard/teachers?${serialized}` : "/api/dashboard/teachers";
+}
+
+function normalizeMeta(meta: TeacherSyncMeta | undefined, params: NormalizedTeacherListParams, dataLength: number): TeacherListMeta {
+  const perPage = toPositiveInt(meta?.perPage, params.perPage);
+  const total = toPositiveInt(meta?.total, dataLength);
+  const lastPage = Math.max(1, toPositiveInt(meta?.lastPage, Math.ceil(Math.max(total, 1) / perPage)));
+  const currentPage = Math.min(Math.max(1, toPositiveInt(meta?.currentPage, params.page)), lastPage);
+  const recordCount = toPositiveInt(meta?.recordCount, total);
+  const from = meta?.from ?? (dataLength > 0 ? (currentPage - 1) * perPage + 1 : null);
+  const to = meta?.to ?? (dataLength > 0 ? (from ?? 1) + dataLength - 1 : null);
+
+  return {
+    syncedAt: meta?.syncedAt ?? new Date().toISOString(),
+    scope: normalizeScope(meta?.scope),
+    recordCount,
+    currentPage,
+    lastPage,
+    perPage,
+    total,
+    from,
+    to,
+    hasMorePages: Boolean(meta?.hasMorePages ?? currentPage < lastPage),
+  };
 }
 
 export function TeacherDataProvider({ children }: { children: ReactNode }) {
@@ -66,6 +226,12 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncScope, setSyncScope] = useState<TeacherSyncScope>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [snapshotMeta, setSnapshotMeta] = useState<TeacherListMeta>(EMPTY_META);
+
+  const snapshotParamsRef = useRef<NormalizedTeacherListParams>(
+    sanitizeParams({ page: 1, perPage: SNAPSHOT_PER_PAGE }),
+  );
 
   const handleApiError = useCallback(
     async (err: unknown) => {
@@ -79,6 +245,20 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     [logout],
   );
 
+  const requestTeachers = useCallback(
+    async (tokenValue: string, params: NormalizedTeacherListParams): Promise<TeacherListResult> => {
+      const response = await apiRequestRaw<TeacherRecordsResponse>(buildListPath(params), { token: tokenValue });
+      const data = Array.isArray(response.data?.data) ? response.data.data : [];
+      const meta = normalizeMeta(response.data?.meta, params, data.length);
+
+      return {
+        data,
+        meta,
+      };
+    },
+    [],
+  );
+
   const syncTeachers = useCallback(
     async (silent = false) => {
       if (!token) {
@@ -88,6 +268,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setError("");
         setLastSyncedAt(null);
         setSyncScope(null);
+        setTotalCount(0);
+        setSnapshotMeta(EMPTY_META);
         return;
       }
 
@@ -98,12 +280,12 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        const response = await apiRequestRaw<TeacherRecordsResponse>("/api/dashboard/teachers", { token });
-        const payload = response.data;
-
-        setTeachers(Array.isArray(payload?.data) ? payload.data : []);
-        setLastSyncedAt(payload?.meta?.syncedAt ?? new Date().toISOString());
-        setSyncScope(normalizeScope(payload?.meta?.scope));
+        const result = await requestTeachers(token, snapshotParamsRef.current);
+        setTeachers(result.data);
+        setSnapshotMeta(result.meta);
+        setTotalCount(result.meta.total);
+        setLastSyncedAt(result.meta.syncedAt ?? new Date().toISOString());
+        setSyncScope(result.meta.scope);
       } catch (err) {
         await handleApiError(err);
       } finally {
@@ -112,12 +294,30 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [token, handleApiError],
+    [token, requestTeachers, handleApiError],
   );
 
   const refreshTeachers = useCallback(async () => {
     await syncTeachers(false);
   }, [syncTeachers]);
+
+  const listTeachers = useCallback(
+    async (params?: TeacherListParams): Promise<TeacherListResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const normalized = sanitizeParams(params);
+
+      try {
+        return await requestTeachers(token, normalized);
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, requestTeachers, handleApiError],
+  );
 
   const addTeacher = useCallback(
     async (payload: TeacherRecordPayload) => {
@@ -139,11 +339,9 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
         const nextRecord = response.data?.data;
         if (nextRecord) {
-          setTeachers((current) => [nextRecord, ...current.filter((item) => item.id !== nextRecord.id)]);
+          setTeachers((current) => [nextRecord, ...current.filter((item) => item.id !== nextRecord.id)].slice(0, SNAPSHOT_PER_PAGE));
         }
 
-        setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
-        setSyncScope(normalizeScope(response.data?.meta?.scope));
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -178,8 +376,6 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           setTeachers((current) => current.map((item) => (item.id === nextRecord.id ? nextRecord : item)));
         }
 
-        setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
-        setSyncScope(normalizeScope(response.data?.meta?.scope));
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -203,14 +399,12 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        const response = await apiRequestRaw<TeacherRecordDeleteResponse>(`/api/dashboard/teachers/${id}`, {
+        await apiRequestRaw<TeacherRecordDeleteResponse>(`/api/dashboard/teachers/${id}`, {
           method: "DELETE",
           token,
         });
 
         setTeachers((current) => current.filter((item) => item.id !== id));
-        setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
-        setSyncScope(normalizeScope(response.data?.meta?.scope));
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -264,22 +458,36 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       error,
       lastSyncedAt,
       syncScope,
+      totalCount,
       refreshTeachers,
+      listTeachers,
       addTeacher,
       updateTeacher,
       deleteTeacher,
     }),
-    [teachers, isLoading, isSaving, error, lastSyncedAt, syncScope, refreshTeachers, addTeacher, updateTeacher, deleteTeacher],
+    [
+      teachers,
+      isLoading,
+      isSaving,
+      error,
+      lastSyncedAt,
+      syncScope,
+      totalCount,
+      refreshTeachers,
+      listTeachers,
+      addTeacher,
+      updateTeacher,
+      deleteTeacher,
+    ],
   );
 
-  return <TeacherDataContext.Provider value={value}>{children}</TeacherDataContext.Provider>;
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
 
 export function useTeacherData() {
-  const context = useContext(TeacherDataContext);
+  const context = useContext(DataContext);
   if (!context) {
     throw new Error("useTeacherData must be used within TeacherDataProvider");
   }
   return context;
 }
-

@@ -337,3 +337,22 @@ export interface FormSubmissionHistoryEntry {
   };
   createdAt: string | null;
 }
+
+export interface AppNotification {
+  id: string;
+  type: string;
+  eventType: string;
+  title: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string | null;
+  data: Record<string, unknown>;
+}
+
+export interface AppNotificationListMeta {
+  currentPage: number;
+  lastPage: number;
+  perPage: number;
+  total: number;
+  unreadCount: number;
+}

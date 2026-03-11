@@ -1,5 +1,6 @@
 import { CalendarDays, LogOut, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { NotificationCenter } from "@/components/NotificationCenter";
 import { useAuth } from "@/context/Auth";
 import type { ReactNode } from "react";
 
@@ -45,6 +46,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
               <p className="font-semibold">{roleLabel}</p>
               <p className="text-primary-100">{username}</p>
             </div>
+            <NotificationCenter />
             <button
               type="button"
               onClick={handleSignOut}

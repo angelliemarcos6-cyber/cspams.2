@@ -13,6 +13,7 @@ use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\User;
+use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
@@ -140,49 +141,7 @@ class IndicatorSubmissionController extends Controller
         $notes = $request->filled('notes')
             ? trim($request->string('notes')->toString())
             : null;
-
-        $rawIndicatorRows = collect($request->input('indicators', []))->values();
-        $rawIndicatorRows = $this->mergeAutoCalculatedRows($rawIndicatorRows, $schoolId);
-        $metricIds = $rawIndicatorRows
-            ->pluck('metric_id')
-            ->map(static fn (mixed $value): int => (int) $value)
-            ->filter(static fn (int $value): bool => $value > 0)
-            ->unique()
-            ->values();
-
-        $metricsById = PerformanceMetric::query()
-            ->whereIn('id', $metricIds)
-            ->get()
-            ->keyBy('id');
-
-        $indicatorRows = $rawIndicatorRows
-            ->map(function (array $row, int $index) use ($metricsById): array {
-                $metricId = (int) ($row['metric_id'] ?? 0);
-                /** @var PerformanceMetric|null $metric */
-                $metric = $metricsById->get($metricId);
-
-                if (! $metric) {
-                    throw ValidationException::withMessages([
-                        "indicators.{$index}.metric_id" => 'Selected indicator metric does not exist.',
-                    ]);
-                }
-
-                $normalized = $this->normalizeMetricValues($metric, $row, $index);
-
-                return [
-                    'performance_metric_id' => $metricId,
-                    'target_value' => $normalized['target_value'],
-                    'target_typed_value' => $normalized['target_typed_value'],
-                    'actual_value' => $normalized['actual_value'],
-                    'actual_typed_value' => $normalized['actual_typed_value'],
-                    'variance_value' => $normalized['variance_value'],
-                    'target_display' => $normalized['target_display'],
-                    'actual_display' => $normalized['actual_display'],
-                    'compliance_status' => $normalized['compliance_status'],
-                    'remarks' => isset($row['remarks']) ? trim((string) $row['remarks']) : null,
-                ];
-            })
-            ->values();
+        $indicatorRows = $this->buildIndicatorRows($request, $schoolId);
 
         /** @var IndicatorSubmission $submission */
         $submission = DB::transaction(function () use (
@@ -246,6 +205,90 @@ class IndicatorSubmissionController extends Controller
         return response()->json([
             'data' => (new IndicatorSubmissionResource($submission))->resolve(),
         ], Response::HTTP_CREATED);
+    }
+
+    public function update(UpsertIndicatorSubmissionRequest $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanSubmit($user, $submission->school_id);
+        $this->syncRollingIndicatorYears();
+
+        $currentStatus = $this->statusValue($submission->status);
+        if (! in_array($currentStatus, [
+            FormSubmissionStatus::DRAFT->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only draft or returned indicator submissions can be updated.',
+            ]);
+        }
+
+        $academicYearId = $request->integer('academic_year_id');
+        $reportingPeriod = $request->filled('reporting_period')
+            ? $request->string('reporting_period')->toString()
+            : null;
+        $notes = $request->filled('notes')
+            ? trim($request->string('notes')->toString())
+            : null;
+        $indicatorRows = $this->buildIndicatorRows($request, (int) $submission->school_id);
+
+        DB::transaction(function () use (
+            $submission,
+            $user,
+            $academicYearId,
+            $reportingPeriod,
+            $notes,
+            $indicatorRows,
+            $currentStatus,
+        ): void {
+            $submission->forceFill([
+                'academic_year_id' => $academicYearId,
+                'reporting_period' => $reportingPeriod,
+                'notes' => $notes,
+            ])->save();
+
+            $submission->items()->delete();
+            $submission->items()->createMany($indicatorRows->all());
+
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $submission->id,
+                schoolId: $submission->school_id,
+                academicYearId: $submission->academic_year_id,
+                action: 'updated',
+                fromStatus: $currentStatus,
+                toStatus: $currentStatus,
+                actorId: $user->id,
+                notes: 'Indicator package draft updated by school head.',
+                metadata: [
+                    'indicator_count' => $indicatorRows->count(),
+                    'met_count' => $indicatorRows->where('compliance_status', 'met')->count(),
+                    'below_target_count' => $indicatorRows->where('compliance_status', 'below_target')->count(),
+                ],
+            );
+
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'indicators',
+                'eventType' => 'indicators.updated',
+                'submissionId' => (string) $submission->id,
+                'schoolId' => (string) $submission->school_id,
+                'academicYearId' => (string) $submission->academic_year_id,
+                'status' => $currentStatus,
+            ]));
+        });
+
+        $submission->load([
+            'school:id,school_code,name',
+            'academicYear:id,name',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'createdBy:id,name,email',
+            'submittedBy:id,name,email',
+            'reviewedBy:id,name,email',
+        ]);
+
+        return response()->json([
+            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
+        ]);
     }
 
     public function submit(Request $request, IndicatorSubmission $submission): JsonResponse
@@ -343,6 +386,24 @@ class IndicatorSubmissionController extends Controller
             actorId: $user->id,
             notes: $notes,
         );
+
+        $schoolHeads = User::query()
+            ->with('roles')
+            ->where('school_id', $submission->school_id)
+            ->get()
+            ->filter(
+                static fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
+            )
+            ->values();
+
+        foreach ($schoolHeads as $schoolHead) {
+            $schoolHead->notify(new IndicatorReviewOutcomeNotification(
+                $submission,
+                $user,
+                $decision,
+                $notes,
+            ));
+        }
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'indicators',
@@ -469,6 +530,66 @@ class IndicatorSubmissionController extends Controller
             Response::HTTP_FORBIDDEN,
             'Only School Heads can encode indicator submissions.',
         );
+    }
+
+    /**
+     * @return Collection<int, array{
+     *     performance_metric_id: int,
+     *     target_value: float,
+     *     target_typed_value: array<string, mixed>,
+     *     actual_value: float,
+     *     actual_typed_value: array<string, mixed>,
+     *     variance_value: float,
+     *     target_display: string,
+     *     actual_display: string,
+     *     compliance_status: string,
+     *     remarks: string|null
+     * }>
+     */
+    private function buildIndicatorRows(UpsertIndicatorSubmissionRequest $request, int $schoolId): Collection
+    {
+        $rawIndicatorRows = collect($request->input('indicators', []))->values();
+        $rawIndicatorRows = $this->mergeAutoCalculatedRows($rawIndicatorRows, $schoolId);
+        $metricIds = $rawIndicatorRows
+            ->pluck('metric_id')
+            ->map(static fn (mixed $value): int => (int) $value)
+            ->filter(static fn (int $value): bool => $value > 0)
+            ->unique()
+            ->values();
+
+        $metricsById = PerformanceMetric::query()
+            ->whereIn('id', $metricIds)
+            ->get()
+            ->keyBy('id');
+
+        return $rawIndicatorRows
+            ->map(function (array $row, int $index) use ($metricsById): array {
+                $metricId = (int) ($row['metric_id'] ?? 0);
+                /** @var PerformanceMetric|null $metric */
+                $metric = $metricsById->get($metricId);
+
+                if (! $metric) {
+                    throw ValidationException::withMessages([
+                        "indicators.{$index}.metric_id" => 'Selected indicator metric does not exist.',
+                    ]);
+                }
+
+                $normalized = $this->normalizeMetricValues($metric, $row, $index);
+
+                return [
+                    'performance_metric_id' => $metricId,
+                    'target_value' => $normalized['target_value'],
+                    'target_typed_value' => $normalized['target_typed_value'],
+                    'actual_value' => $normalized['actual_value'],
+                    'actual_typed_value' => $normalized['actual_typed_value'],
+                    'variance_value' => $normalized['variance_value'],
+                    'target_display' => $normalized['target_display'],
+                    'actual_display' => $normalized['actual_display'],
+                    'compliance_status' => $normalized['compliance_status'],
+                    'remarks' => isset($row['remarks']) ? trim((string) $row['remarks']) : null,
+                ];
+            })
+            ->values();
     }
 
     /**

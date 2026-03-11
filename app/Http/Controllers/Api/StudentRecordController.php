@@ -17,12 +17,12 @@ use App\Support\Domain\StudentStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\Response;
 
 class StudentRecordController extends Controller
 {
-    public function index(Request $request): AnonymousResourceCollection|JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $user = ApiUserResolver::fromRequest($request);
         if (! $user) {
@@ -61,6 +61,13 @@ class StudentRecordController extends Controller
             });
         }
 
+        $schoolCodes = $this->parseSchoolCodes($request);
+        if ($schoolCodes->isNotEmpty() && $isMonitor) {
+            $query->whereHas('school', function (Builder $builder) use ($schoolCodes): void {
+                $builder->whereIn('school_code', $schoolCodes->all());
+            });
+        }
+
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(function (Builder $builder) use ($search): void {
@@ -81,13 +88,23 @@ class StudentRecordController extends Controller
             });
         }
 
-        $students = $query->get();
+        $perPage = $this->resolvePerPage($request);
+        $students = $query->paginate($perPage)->appends($request->query());
+        $studentRows = collect($students->items());
 
-        return StudentRecordResource::collection($students)->additional([
+        return response()->json([
+            'data' => StudentRecordResource::collection($studentRows)->resolve(),
             'meta' => [
                 'syncedAt' => now()->toISOString(),
                 'scope' => $isSchoolHead ? 'school' : 'division',
-                'recordCount' => $students->count(),
+                'recordCount' => $students->total(),
+                'currentPage' => $students->currentPage(),
+                'lastPage' => $students->lastPage(),
+                'perPage' => $students->perPage(),
+                'total' => $students->total(),
+                'from' => $students->firstItem(),
+                'to' => $students->lastItem(),
+                'hasMorePages' => $students->hasMorePages(),
             ],
         ]);
     }
@@ -277,5 +294,32 @@ class StudentRecordController extends Controller
                 'changed_at' => now(),
             ]);
         }
+    }
+
+    private function resolvePerPage(Request $request, int $default = 25, int $max = 200): int
+    {
+        $perPage = $request->integer('per_page');
+
+        if ($perPage <= 0) {
+            return $default;
+        }
+
+        return min($perPage, $max);
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    private function parseSchoolCodes(Request $request): Collection
+    {
+        $rawSchoolCodes = trim((string) $request->query('schoolCodes', ''));
+        if ($rawSchoolCodes === '') {
+            return collect();
+        }
+
+        return collect(explode(',', $rawSchoolCodes))
+            ->map(static fn (string $value): string => strtoupper(trim($value)))
+            ->filter(static fn (string $value): bool => $value !== '')
+            ->values();
     }
 }

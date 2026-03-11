@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -408,8 +408,8 @@ export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
   const { submissions: indicatorSubmissions, academicYears } = useIndicatorData();
-  const { students } = useStudentData();
-  const { teachers } = useTeacherData();
+  const { listStudents, totalCount: syncedStudentCount } = useStudentData();
+  const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -440,10 +440,9 @@ export function SchoolAdminDashboard() {
   const [submissionDetailTab, setSubmissionDetailTab] = useState<"notes" | "history" | "cycle">("notes");
   const [recordsExportMessage, setRecordsExportMessage] = useState("");
   const [recordsExportError, setRecordsExportError] = useState("");
+  const [isExportingRecords, setIsExportingRecords] = useState(false);
 
   const assignedRecord = records[0] ?? null;
-  const syncedStudentCount = students.length;
-  const syncedTeacherCount = teachers.length;
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
@@ -590,33 +589,89 @@ export function SchoolAdminDashboard() {
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
 
-  const handleExportStudentsCsv = () => {
-    setRecordsExportMessage("");
-    setRecordsExportError("");
+  const fetchAllStudentsForExport = useCallback(async (): Promise<StudentRecord[]> => {
+    const allRows: StudentRecord[] = [];
+    let currentPage = 1;
 
-    if (students.length === 0) {
-      setRecordsExportError("No student records available to export.");
-      return;
+    while (true) {
+      const result = await listStudents({ page: currentPage, perPage: 200 });
+      allRows.push(...result.data);
+
+      if (!result.meta.hasMorePages || currentPage >= result.meta.lastPage) {
+        break;
+      }
+
+      currentPage += 1;
     }
 
-    const filename = `student-records-${exportToken}-${timestampToken()}.csv`;
-    downloadCsv(filename, buildStudentExportRows(students));
-    setRecordsExportMessage(`Exported ${students.length} student record${students.length === 1 ? "" : "s"} to CSV.`);
-  };
+    return allRows;
+  }, [listStudents]);
 
-  const handleExportTeachersCsv = () => {
-    setRecordsExportMessage("");
-    setRecordsExportError("");
+  const fetchAllTeachersForExport = useCallback(async (): Promise<TeacherRecord[]> => {
+    const allRows: TeacherRecord[] = [];
+    let currentPage = 1;
 
-    if (teachers.length === 0) {
-      setRecordsExportError("No teacher records available to export.");
-      return;
+    while (true) {
+      const result = await listTeachers({ page: currentPage, perPage: 200 });
+      allRows.push(...result.data);
+
+      if (!result.meta.hasMorePages || currentPage >= result.meta.lastPage) {
+        break;
+      }
+
+      currentPage += 1;
     }
 
-    const filename = `teacher-records-${exportToken}-${timestampToken()}.csv`;
-    downloadCsv(filename, buildTeacherExportRows(teachers));
-    setRecordsExportMessage(`Exported ${teachers.length} teacher record${teachers.length === 1 ? "" : "s"} to CSV.`);
-  };
+    return allRows;
+  }, [listTeachers]);
+
+  const handleExportStudentsCsv = useCallback(async () => {
+    setRecordsExportMessage("");
+    setRecordsExportError("");
+    setIsExportingRecords(true);
+
+    try {
+      const studentRows = await fetchAllStudentsForExport();
+      if (studentRows.length === 0) {
+        setRecordsExportError("No student records available to export.");
+        return;
+      }
+
+      const filename = `student-records-${exportToken}-${timestampToken()}.csv`;
+      downloadCsv(filename, buildStudentExportRows(studentRows));
+      setRecordsExportMessage(
+        `Exported ${studentRows.length} student record${studentRows.length === 1 ? "" : "s"} to CSV.`,
+      );
+    } catch (err) {
+      setRecordsExportError(err instanceof Error ? err.message : "Unable to export student records.");
+    } finally {
+      setIsExportingRecords(false);
+    }
+  }, [exportToken, fetchAllStudentsForExport]);
+
+  const handleExportTeachersCsv = useCallback(async () => {
+    setRecordsExportMessage("");
+    setRecordsExportError("");
+    setIsExportingRecords(true);
+
+    try {
+      const teacherRows = await fetchAllTeachersForExport();
+      if (teacherRows.length === 0) {
+        setRecordsExportError("No teacher records available to export.");
+        return;
+      }
+
+      const filename = `teacher-records-${exportToken}-${timestampToken()}.csv`;
+      downloadCsv(filename, buildTeacherExportRows(teacherRows));
+      setRecordsExportMessage(
+        `Exported ${teacherRows.length} teacher record${teacherRows.length === 1 ? "" : "s"} to CSV.`,
+      );
+    } catch (err) {
+      setRecordsExportError(err instanceof Error ? err.message : "Unable to export teacher records.");
+    } finally {
+      setIsExportingRecords(false);
+    }
+  }, [exportToken, fetchAllTeachersForExport]);
 
   useEffect(() => {
     if (contextSubmissionType !== "all" && !showContextMoreFilters) {
@@ -1959,19 +2014,21 @@ export function SchoolAdminDashboard() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={handleExportStudentsCsv}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                onClick={() => void handleExportStudentsCsv()}
+                disabled={isExportingRecords}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Download className="h-3.5 w-3.5" />
-                Export Students CSV
+                {isExportingRecords ? "Exporting..." : "Export Students CSV"}
               </button>
               <button
                 type="button"
-                onClick={handleExportTeachersCsv}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                onClick={() => void handleExportTeachersCsv()}
+                disabled={isExportingRecords}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Download className="h-3.5 w-3.5" />
-                Export Teachers CSV
+                {isExportingRecords ? "Exporting..." : "Export Teachers CSV"}
               </button>
               {!isMobileViewport && renderQuickJumpChips(false)}
             </div>

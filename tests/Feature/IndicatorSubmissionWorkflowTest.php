@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AcademicYear;
 use App\Models\PerformanceMetric;
 use App\Models\User;
+use App\Notifications\IndicatorReviewOutcomeNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -140,6 +141,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $reviewed->assertOk()
             ->assertJsonPath('data.status', 'validated');
+
+        $this->assertDatabaseHas('notifications', [
+            'type' => IndicatorReviewOutcomeNotification::class,
+            'notifiable_type' => User::class,
+            'notifiable_id' => $schoolHead->id,
+        ]);
 
         $history = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}/history");
         $history->assertOk()
@@ -315,6 +322,105 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.summary.metIndicators', 4)
             ->assertJsonPath('data.summary.belowTargetIndicators', 0)
             ->assertJsonPath('data.indicators.0.targetDisplay', fn (?string $value): bool => is_string($value) && $value !== '');
+    }
+
+    public function test_school_head_can_update_existing_draft_submission(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $metricId = (int) PerformanceMetric::query()->where('is_active', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'notes' => 'Original draft note.',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 80,
+                    'actual_value' => 81,
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.status', 'draft');
+
+        $submissionId = (string) $created->json('data.id');
+
+        $updated = $this->withToken($token)->putJson("/api/indicators/submissions/{$submissionId}", [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'notes' => 'Updated draft note.',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 90,
+                    'actual_value' => 92,
+                ],
+            ],
+        ]);
+
+        $updated->assertOk()
+            ->assertJsonPath('data.id', $submissionId)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.notes', 'Updated draft note.')
+            ->assertJsonPath('data.indicators.0.targetValue', 90)
+            ->assertJsonPath('data.indicators.0.actualValue', 92);
+
+        $history = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}/history");
+        $history->assertOk()
+            ->assertJsonPath('data.0.action', 'updated');
+    }
+
+    public function test_submitted_indicator_submission_cannot_be_updated(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $metricId = (int) PerformanceMetric::query()->where('is_active', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 80,
+                    'actual_value' => 81,
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->withToken($token)
+            ->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk();
+
+        $forbiddenUpdate = $this->withToken($token)->putJson("/api/indicators/submissions/{$submissionId}", [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'notes' => 'Should fail.',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 90,
+                    'actual_value' => 91,
+                ],
+            ],
+        ]);
+
+        $forbiddenUpdate->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('errors.submission.0', 'Only draft or returned indicator submissions can be updated.');
     }
 
     private function loginToken(string $role, string $login): string

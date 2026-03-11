@@ -25,7 +25,7 @@ class SchoolSubmissionReminderNotification extends Notification implements Shoul
      */
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -48,5 +48,27 @@ class SchoolSubmissionReminderNotification extends Notification implements Shoul
         return $mail
             ->action('Open CSPAMS', url('/'))
             ->line('Please review your pending requirements and submit as soon as possible.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(object $notifiable): array
+    {
+        $schoolCode = (string) ($this->school->school_code ?? 'N/A');
+        $schoolName = (string) ($this->school->name ?? 'Your school');
+        $monitorName = (string) ($this->monitor->name ?? 'Division Monitor');
+
+        return [
+            'eventType' => 'reminder_sent',
+            'title' => 'Submission reminder',
+            'message' => "{$monitorName} sent a reminder to update and submit your school's latest CSPAMS records.",
+            'schoolId' => (string) $this->school->id,
+            'schoolCode' => $schoolCode,
+            'schoolName' => $schoolName,
+            'monitorName' => $monitorName,
+            'notes' => $this->notes,
+            'createdAt' => now()->toISOString(),
+        ];
     }
 }

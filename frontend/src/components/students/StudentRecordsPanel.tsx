@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
@@ -91,6 +91,24 @@ function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: s
   return "unknown";
 }
 
+function extractSchoolCodes(filterKeys: Set<string> | null | undefined): string[] {
+  if (!filterKeys || filterKeys.size === 0) {
+    return [];
+  }
+
+  const codes = new Set<string>();
+  for (const key of filterKeys) {
+    if (!key.startsWith("code:")) continue;
+
+    const code = key.slice(5).trim().toUpperCase();
+    if (code) {
+      codes.add(code);
+    }
+  }
+
+  return [...codes];
+}
+
 export function StudentRecordsPanel({
   editable,
   title = "Student Records",
@@ -99,7 +117,17 @@ export function StudentRecordsPanel({
   schoolFilterKeys = null,
   externalSearchTerm = null,
 }: StudentRecordsPanelProps) {
-  const { students, isLoading, isSaving, error, lastSyncedAt, refreshStudents, addStudent, updateStudent, deleteStudent } = useStudentData();
+  const {
+    isLoading,
+    isSaving,
+    error,
+    lastSyncedAt,
+    refreshStudents,
+    listStudents,
+    addStudent,
+    updateStudent,
+    deleteStudent,
+  } = useStudentData();
   const { teachers } = useTeacherData();
 
   const [search, setSearch] = useState("");
@@ -111,27 +139,66 @@ export function StudentRecordsPanel({
   const [formMessage, setFormMessage] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pagedStudents, setPagedStudents] = useState<StudentRecord[]>([]);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
 
   useEffect(() => {
     if (externalSearchTerm === null) return;
     setSearch(externalSearchTerm);
   }, [externalSearchTerm]);
 
-  const scopedStudents = useMemo(() => {
-    if (!schoolFilterKeys) {
-      return students;
-    }
+  const loadStudentsPage = useCallback(
+    async (nextPage: number, silent = false) => {
+      if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
+        setPagedStudents([]);
+        setTotalStudents(0);
+        setTotalPages(1);
+        setPageError("");
+        if (nextPage !== 1) {
+          setPage(1);
+        }
+        return;
+      }
 
-    if (schoolFilterKeys.size === 0) {
-      return [];
-    }
+      if (!silent) {
+        setIsPageLoading(true);
+      }
 
-    return students.filter((student) =>
-      schoolFilterKeys.has(
-        normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null),
-      ),
-    );
-  }, [students, schoolFilterKeys]);
+      setPageError("");
+
+      try {
+        const result = await listStudents({
+          page: nextPage,
+          perPage: STUDENT_PAGE_SIZE,
+          search: search.trim() || null,
+          status: statusFilter === "all" ? null : statusFilter,
+          schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
+        });
+
+        setPagedStudents(result.data);
+        setTotalStudents(result.meta.total);
+        setTotalPages(Math.max(1, result.meta.lastPage));
+
+        if (result.meta.currentPage !== nextPage) {
+          setPage(result.meta.currentPage);
+        }
+      } catch (err) {
+        setPagedStudents([]);
+        setTotalStudents(0);
+        setTotalPages(1);
+        setPageError(err instanceof Error ? err.message : "Unable to load student records.");
+      } finally {
+        if (!silent) {
+          setIsPageLoading(false);
+        }
+      }
+    },
+    [listStudents, schoolFilterKeys, scopedSchoolCodes, search, statusFilter],
+  );
 
   const scopedTeachers = useMemo(() => {
     if (!schoolFilterKeys) {
@@ -195,41 +262,16 @@ export function StudentRecordsPanel({
     ];
   }, [teacherOptions, form.teacher]);
 
-  const filteredStudents = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return scopedStudents
-      .filter((student) => {
-        const matchesSearch =
-          query.length === 0 ||
-          student.lrn.toLowerCase().includes(query) ||
-          student.fullName.toLowerCase().includes(query) ||
-          (student.section ?? "").toLowerCase().includes(query) ||
-          (student.teacher ?? "").toLowerCase().includes(query) ||
-          (student.school?.schoolCode ?? "").toLowerCase().includes(query) ||
-          (student.school?.name ?? "").toLowerCase().includes(query);
-        const matchesStatus = statusFilter === "all" || student.status === statusFilter;
-        return matchesSearch && matchesStatus;
-      })
-      .sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime());
-  }, [scopedStudents, search, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredStudents.length / STUDENT_PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginatedStudents = useMemo(() => {
-    const start = (safePage - 1) * STUDENT_PAGE_SIZE;
-    return filteredStudents.slice(start, start + STUDENT_PAGE_SIZE);
-  }, [filteredStudents, safePage]);
+  const safePage = Math.max(1, Math.min(page, totalPages));
+  const paginatedStudents = pagedStudents;
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, schoolFilterKeys]);
+  }, [search, statusFilter, schoolFilterKeys, scopedSchoolCodes]);
 
   useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
+    void loadStudentsPage(page, false);
+  }, [page, loadStudentsPage]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -312,9 +354,12 @@ export function StudentRecordsPanel({
     try {
       if (editingId) {
         await updateStudent(editingId, payload);
+        await loadStudentsPage(page, true);
         setFormMessage("Student record updated.");
       } else {
         await addStudent(payload);
+        await loadStudentsPage(1, true);
+        setPage(1);
         setFormMessage("Student record added.");
       }
 
@@ -334,11 +379,17 @@ export function StudentRecordsPanel({
     setFormMessage("");
     try {
       await deleteStudent(student.id);
+      await loadStudentsPage(page, true);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Unable to delete student record.");
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleRefresh = async () => {
+    await refreshStudents();
+    await loadStudentsPage(page, true);
   };
 
   return (
@@ -352,7 +403,7 @@ export function StudentRecordsPanel({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => void refreshStudents()}
+              onClick={() => void handleRefresh()}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -402,13 +453,13 @@ export function StudentRecordsPanel({
           </select>
         </label>
         <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-          Showing {filteredStudents.length} of {scopedStudents.length}
+          Showing {paginatedStudents.length} of {totalStudents}
         </div>
       </div>
 
-      {(error || formError) && (
+      {(error || pageError || formError) && (
         <div className="mx-5 mt-4 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-          {formError || error}
+          {formError || pageError || error}
         </div>
       )}
       {formMessage && (
@@ -486,7 +537,7 @@ export function StudentRecordsPanel({
         </section>
       )}
 
-      {isLoading && students.length === 0 ? (
+      {(isLoading || isPageLoading) && paginatedStudents.length === 0 ? (
         <div className="space-y-3 px-5 py-5">
           <div className="skeleton-line h-4 w-48" />
           <div className="grid gap-2">
@@ -495,7 +546,7 @@ export function StudentRecordsPanel({
             <div className="skeleton-line h-12 w-full" />
           </div>
         </div>
-      ) : filteredStudents.length === 0 ? (
+      ) : paginatedStudents.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
           <AlertCircle className="h-9 w-9 text-slate-400" />
           <p className="text-sm font-semibold">
