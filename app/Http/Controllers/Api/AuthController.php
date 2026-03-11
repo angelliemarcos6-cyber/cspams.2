@@ -8,6 +8,7 @@ use App\Http\Requests\Api\ResetRequiredPasswordRequest;
 use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Audit\AuthAuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -30,6 +31,16 @@ class AuthController extends Controller
         $user = $this->resolveUserForLogin($role, $login);
 
         if (! $user || ! Hash::check($password, $user->password) || ! UserRoleResolver::has($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.login.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'invalid_credentials'],
+            );
+
             $message = $role === UserRoleResolver::SCHOOL_HEAD
                 ? 'Invalid school code or password.'
                 : 'Invalid credentials for the selected role.';
@@ -41,6 +52,16 @@ class AuthController extends Controller
         }
 
         if ($user->must_reset_password) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.login.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'password_reset_required'],
+            );
+
             return response()->json(
                 [
                     'message' => 'Password reset is required before dashboard access.',
@@ -57,6 +78,19 @@ class AuthController extends Controller
 
         // Keep bearer token response for backward-compatible non-SPA clients.
         $tokenPayload = $this->issueDashboardToken($user, $role, true);
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.login.success',
+            'success',
+            $user,
+            $role,
+            $login,
+            [
+                'token_expires_at' => $tokenPayload['expiresAt'],
+                'token_refresh_after' => $tokenPayload['refreshAfter'],
+            ],
+        );
 
         return response()->json([
             'token' => $tokenPayload['token'],
@@ -80,6 +114,16 @@ class AuthController extends Controller
         $user = $this->resolveUserForLogin($role, $login);
 
         if (! $user || ! Hash::check($currentPassword, $user->password) || ! UserRoleResolver::has($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.password_reset.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'invalid_credentials'],
+            );
+
             $message = $role === UserRoleResolver::SCHOOL_HEAD
                 ? 'Invalid school code or password.'
                 : 'Invalid credentials for the selected role.';
@@ -91,6 +135,16 @@ class AuthController extends Controller
         }
 
         if (! $user->must_reset_password) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.password_reset.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'reset_not_required'],
+            );
+
             return response()->json(
                 ['message' => 'Password reset is not required for this account.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -98,6 +152,16 @@ class AuthController extends Controller
         }
 
         if (Hash::check($newPassword, $user->password)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.password_reset.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'password_reuse_blocked'],
+            );
+
             return response()->json(
                 ['message' => 'New password must be different from your current password.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -118,6 +182,19 @@ class AuthController extends Controller
         }
         $tokenPayload = $this->issueDashboardToken($user, $role, false);
 
+        AuthAuditLogger::record(
+            $request,
+            'auth.password_reset.success',
+            'success',
+            $user,
+            $role,
+            $login,
+            [
+                'token_expires_at' => $tokenPayload['expiresAt'],
+                'token_refresh_after' => $tokenPayload['refreshAfter'],
+            ],
+        );
+
         return response()->json([
             'token' => $tokenPayload['token'],
             'tokenType' => 'Bearer',
@@ -132,11 +209,31 @@ class AuthController extends Controller
         $user = ApiUserResolver::fromRequest($request);
 
         if (! $user) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.token_refresh.failed',
+                'failure',
+                null,
+                null,
+                null,
+                ['reason' => 'unauthenticated'],
+            );
+
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
         }
 
         $currentToken = $user->currentAccessToken();
         if (! $currentToken) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.token_refresh.failed',
+                'failure',
+                $user,
+                $this->resolveRoleForUser($user),
+                $user->email,
+                ['reason' => 'bearer_token_required'],
+            );
+
             return response()->json(
                 ['message' => 'Token refresh is only available for bearer-token clients.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -148,6 +245,19 @@ class AuthController extends Controller
 
         // Rotate by revoking the old token immediately after issuing a replacement.
         $currentToken->delete();
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.token_refresh.success',
+            'success',
+            $user,
+            $role,
+            $user->email,
+            [
+                'token_expires_at' => $tokenPayload['expiresAt'],
+                'token_refresh_after' => $tokenPayload['refreshAfter'],
+            ],
+        );
 
         return response()->json([
             'token' => $tokenPayload['token'],
@@ -179,8 +289,15 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
+        $role = null;
+        $identifier = null;
         $user = ApiUserResolver::fromRequest($request);
         if ($user) {
+            $role = $this->resolveRoleForUser($user);
+            $user->loadMissing('school');
+            $identifier = $role === UserRoleResolver::SCHOOL_HEAD
+                ? (string) $user->school?->school_code
+                : $user->email;
             $user->currentAccessToken()?->delete();
         }
 
@@ -189,6 +306,16 @@ class AuthController extends Controller
             $request->session()->invalidate();
             $request->session()->regenerateToken();
         }
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.logout.success',
+            'success',
+            $user,
+            $role,
+            $identifier,
+            ['session_invalidated' => $request->hasSession()],
+        );
 
         return response()->json([], Response::HTTP_NO_CONTENT);
     }
