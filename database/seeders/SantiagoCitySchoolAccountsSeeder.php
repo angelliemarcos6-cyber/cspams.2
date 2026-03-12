@@ -20,6 +20,7 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
     {
         /** @var SchoolHeadAccountSetupService $setupService */
         $setupService = app(SchoolHeadAccountSetupService::class);
+        $requiresSetupLinkFlow = $this->requiresSetupLinkFlow();
 
         foreach ($this->schools() as $entry) {
             $school = School::query()->updateOrCreate(
@@ -44,19 +45,27 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
             $schoolHead->name = 'School Head - ' . $entry['name'];
             $schoolHead->school_id = $school->id;
             if ($shouldRefreshSetup) {
-                $schoolHead->account_status = AccountStatus::PENDING_SETUP->value;
+                $schoolHead->account_status = $requiresSetupLinkFlow
+                    ? AccountStatus::PENDING_SETUP->value
+                    : AccountStatus::ACTIVE->value;
             }
 
             if ($shouldRefreshSetup) {
-                $schoolHead->password = Hash::make(Str::password(40));
-                $schoolHead->must_reset_password = true;
-                $schoolHead->password_changed_at = null;
+                if ($requiresSetupLinkFlow) {
+                    $schoolHead->password = Hash::make(Str::password(40));
+                    $schoolHead->must_reset_password = true;
+                    $schoolHead->password_changed_at = null;
+                } else {
+                    $schoolHead->password = Hash::make($this->seedTempPassword());
+                    $schoolHead->must_reset_password = false;
+                    $schoolHead->password_changed_at = now();
+                }
             }
 
             $schoolHead->save();
             $schoolHead->syncRoles([UserRoleResolver::SCHOOL_HEAD]);
 
-            if ($shouldRefreshSetup) {
+            if ($shouldRefreshSetup && $requiresSetupLinkFlow) {
                 $setupService->issue($schoolHead);
             }
 
@@ -85,6 +94,24 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
         $this->syncSeedPasswords = ! in_array($raw, ['0', 'false', 'off', 'no'], true);
 
         return $this->syncSeedPasswords;
+    }
+
+    private function requiresSetupLinkFlow(): bool
+    {
+        if (app()->environment('testing')) {
+            return true;
+        }
+
+        $raw = strtolower(trim((string) env('CSPAMS_REQUIRE_SETUP_LINK_FOR_SEEDED_SCHOOL_HEADS', 'true')));
+
+        return ! in_array($raw, ['0', 'false', 'off', 'no'], true);
+    }
+
+    private function seedTempPassword(): string
+    {
+        $password = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD', 'Csp@123456'));
+
+        return $password !== '' ? $password : 'Csp@123456';
     }
 
     /**
