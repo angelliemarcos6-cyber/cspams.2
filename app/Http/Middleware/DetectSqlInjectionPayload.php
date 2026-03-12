@@ -1,0 +1,149 @@
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response;
+
+class DetectSqlInjectionPayload
+{
+    /**
+     * @param \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response) $next
+     */
+    public function handle(Request $request, Closure $next): Response
+    {
+        if (! $this->guardEnabled()) {
+            return $next($request);
+        }
+
+        $suspicious = $this->scanInput([
+            'query' => $request->query(),
+            'body' => $request->except($this->excludedKeys()),
+            'route' => $request->route()?->parameters() ?? [],
+        ]);
+
+        if ($suspicious === null) {
+            return $next($request);
+        }
+
+        Log::warning('Blocked suspicious request payload pattern.', [
+            'category' => 'security',
+            'event' => 'request.blocked.sql_injection_pattern',
+            'path' => $request->path(),
+            'method' => $request->method(),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'detected_field' => $suspicious['field'],
+            'detected_pattern' => $suspicious['pattern'],
+        ]);
+
+        return $this->blockedResponse();
+    }
+
+    private function blockedResponse(): JsonResponse
+    {
+        return response()->json(
+            [
+                'message' => 'Request blocked by security policy.',
+                'error' => 'suspicious_input_detected',
+            ],
+            Response::HTTP_FORBIDDEN,
+        );
+    }
+
+    private function guardEnabled(): bool
+    {
+        return (bool) config('security_guard.sql_injection_guard.enabled', true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function excludedKeys(): array
+    {
+        $keys = config('security_guard.sql_injection_guard.excluded_keys', []);
+        if (! is_array($keys)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(static fn (mixed $value): string => strtolower(trim((string) $value)), $keys)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function patterns(): array
+    {
+        $configured = config('security_guard.sql_injection_guard.patterns', []);
+        if (! is_array($configured)) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                array_map(static fn (mixed $pattern): string => trim((string) $pattern), $configured),
+                static fn (string $pattern): bool => $pattern !== '',
+            ),
+        );
+    }
+
+    private function maxInputLength(): int
+    {
+        return max(64, (int) config('security_guard.sql_injection_guard.max_input_length', 4000));
+    }
+
+    /**
+     * @param mixed $value
+     * @return array{field: string, pattern: string}|null
+     */
+    private function scanInput(mixed $value, string $path = ''): ?array
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $nestedValue) {
+                $segment = strtolower(trim((string) $key));
+                if ($segment !== '' && in_array($segment, $this->excludedKeys(), true)) {
+                    continue;
+                }
+
+                $nestedPath = $path === '' ? (string) $key : $path . '.' . $key;
+                $result = $this->scanInput($nestedValue, $nestedPath);
+                if ($result !== null) {
+                    return $result;
+                }
+            }
+
+            return null;
+        }
+
+        if (! is_scalar($value) && $value !== null) {
+            return null;
+        }
+
+        $candidate = trim((string) $value);
+        if ($candidate === '') {
+            return null;
+        }
+
+        if (mb_strlen($candidate) > $this->maxInputLength()) {
+            return null;
+        }
+
+        $decoded = rawurldecode($candidate);
+        foreach ($this->patterns() as $pattern) {
+            $matched = @preg_match($pattern, $decoded);
+            if ($matched === false || $matched === 0) {
+                continue;
+            }
+
+            return [
+                'field' => $path !== '' ? $path : 'input',
+                'pattern' => $pattern,
+            ];
+        }
+
+        return null;
+    }
+}

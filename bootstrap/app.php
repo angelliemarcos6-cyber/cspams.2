@@ -16,6 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
         $middleware->throttleApi('api');
+        $middleware->appendToGroup('api', [
+            \App\Http\Middleware\DetectSqlInjectionPayload::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
