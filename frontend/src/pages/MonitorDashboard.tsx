@@ -39,6 +39,7 @@ import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
+import { useTeacherData } from "@/context/TeacherData";
 import { isApiError } from "@/lib/api";
 import type { IndicatorSubmission, SchoolBulkImportResult, SchoolBulkImportRowPayload, SchoolRecord, SchoolStatus } from "@/types";
 import {
@@ -1002,7 +1003,12 @@ export function MonitorDashboard() {
     bulkImportRecords,
   } = useData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
-  const { students, isLoading: isStudentDataLoading } = useStudentData();
+  const {
+    students,
+    isLoading: isStudentDataLoading,
+    listStudents,
+  } = useStudentData();
+  const { listTeachers } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
@@ -1048,6 +1054,11 @@ export function MonitorDashboard() {
     action: "validated" | "returned";
   } | null>(null);
   const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
+  const [accurateSyncedCountsBySchoolKey, setAccurateSyncedCountsBySchoolKey] = useState<
+    Record<string, { students: number; teachers: number }>
+  >({});
+  const [syncedCountsLoadingSchoolKey, setSyncedCountsLoadingSchoolKey] = useState<string | null>(null);
+  const [syncedCountsError, setSyncedCountsError] = useState("");
   const [toasts, setToasts] = useState<DashboardToast[]>([]);
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -2647,6 +2658,7 @@ export function MonitorDashboard() {
     const summary = schoolRequirementByKey.get(schoolDrawerKey);
     const record = recordBySchoolKey.get(schoolDrawerKey);
     const studentStats = studentStatsBySchoolKey.get(schoolDrawerKey);
+    const accurateCounts = accurateSyncedCountsBySchoolKey[schoolDrawerKey];
 
     if (!summary && !record) return null;
 
@@ -2665,10 +2677,89 @@ export function MonitorDashboard() {
       lastActivityAt: summary?.lastActivityAt ?? record?.lastUpdated ?? null,
       reportedStudents: record?.studentCount ?? 0,
       reportedTeachers: record?.teacherCount ?? 0,
-      synchronizedStudents: studentStats?.students ?? 0,
-      synchronizedTeachers: studentStats?.teachers.size ?? 0,
+      synchronizedStudents: accurateCounts?.students ?? studentStats?.students ?? 0,
+      synchronizedTeachers: accurateCounts?.teachers ?? studentStats?.teachers.size ?? 0,
     };
-  }, [schoolDrawerKey, schoolRequirementByKey, recordBySchoolKey, studentStatsBySchoolKey]);
+  }, [schoolDrawerKey, schoolRequirementByKey, recordBySchoolKey, studentStatsBySchoolKey, accurateSyncedCountsBySchoolKey]);
+
+  const schoolDetailKey = schoolDetail?.schoolKey ?? null;
+  const schoolDetailCode = schoolDetail?.schoolCode ?? "";
+
+  useEffect(() => {
+    if (!schoolDetailKey) {
+      setSyncedCountsLoadingSchoolKey(null);
+      setSyncedCountsError("");
+      return;
+    }
+
+    const normalizedSchoolCode = schoolDetailCode.trim();
+    if (!/^\d+$/.test(normalizedSchoolCode)) {
+      setSyncedCountsLoadingSchoolKey(null);
+      setSyncedCountsError("");
+      return;
+    }
+
+    let active = true;
+    setSyncedCountsLoadingSchoolKey(schoolDetailKey);
+    setSyncedCountsError("");
+
+    const hydrateAccurateSyncedCounts = async () => {
+      try {
+        const [studentsResult, teachersResult] = await Promise.all([
+          listStudents({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode }),
+          listTeachers({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode }),
+        ]);
+
+        if (!active) {
+          return;
+        }
+
+        setAccurateSyncedCountsBySchoolKey((current) => ({
+          ...current,
+          [schoolDetailKey]: {
+            students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? studentsResult.data.length ?? 0),
+            teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? teachersResult.data.length ?? 0),
+          },
+        }));
+      } catch (err) {
+        if (!active) {
+          return;
+        }
+
+        setSyncedCountsError(err instanceof Error ? err.message : "Unable to refresh synced counts.");
+      } finally {
+        if (active) {
+          setSyncedCountsLoadingSchoolKey((current) => (current === schoolDetailKey ? null : current));
+        }
+      }
+    };
+
+    void hydrateAccurateSyncedCounts();
+
+    const handleRealtimeCountsRefresh = (event: Event) => {
+      const payload = (event as CustomEvent<{ entity?: string; schoolId?: string }>).detail;
+      if (!payload) {
+        return;
+      }
+
+      if (payload.entity !== "students" && payload.entity !== "teachers" && payload.entity !== "dashboard") {
+        return;
+      }
+
+      if (payload.schoolId && payload.schoolId !== normalizedSchoolCode) {
+        return;
+      }
+
+      void hydrateAccurateSyncedCounts();
+    };
+
+    window.addEventListener("cspams:update", handleRealtimeCountsRefresh);
+
+    return () => {
+      active = false;
+      window.removeEventListener("cspams:update", handleRealtimeCountsRefresh);
+    };
+  }, [schoolDetailKey, schoolDetailCode, listStudents, listTeachers]);
 
   const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
     const chips: Array<{ id: FilterChipId; label: string }> = [];
@@ -2695,7 +2786,6 @@ export function MonitorDashboard() {
     lockedSchoolContextKey,
     queueLane,
     requirementFilter,
-    queueLane,
     search,
     selectedSchoolScope,
     selectedStudentLookup,
@@ -5053,6 +5143,11 @@ export function MonitorDashboard() {
 
               <article className="rounded-sm border border-slate-200 bg-white p-3">
                 <p className="text-xs font-semibold text-slate-700">Counts</p>
+                {syncedCountsLoadingSchoolKey === schoolDetail.schoolKey ? (
+                  <p className="mt-1 text-[11px] text-slate-500">Refreshing synced totals...</p>
+                ) : syncedCountsError ? (
+                  <p className="mt-1 text-[11px] text-amber-700">{syncedCountsError}</p>
+                ) : null}
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
                     <p className="text-slate-600">Reported Students</p>
