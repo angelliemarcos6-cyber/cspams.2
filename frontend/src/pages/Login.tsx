@@ -42,16 +42,16 @@ const ROLE_META: Record<
   school_head: {
     label: "School Head",
     note: "",
-    submit: "Sign In as School Head",
-    loginHint: "School code (6 digits, e.g. 103811)",
+    submit: "Sign In",
+    loginHint: "6-digit school code",
     loginLabel: "School Code",
     emptyError: "Enter your 6-digit school code.",
   },
   monitor: {
     label: "Division Monitor",
     note: "",
-    submit: "Sign In as Division Monitor",
-    loginHint: "Monitor email (e.g. monitor@cspams.local)",
+    submit: "Sign In",
+    loginHint: "Monitor email",
     loginLabel: "Email",
     emptyError: "Enter your monitor email.",
   },
@@ -216,233 +216,262 @@ export function Login() {
     }
   };
 
+  const isBusy = isSubmitting || isAuthenticating;
+  const loginFieldIcon =
+    activeRole === "school_head" ? <UserCog className="h-4 w-4 text-slate-400" /> : <Radar className="h-4 w-4 text-slate-400" />;
+  const flowLabel = pendingMfa ? "Verify Sign In" : requiresPasswordReset ? "Reset and Sign In" : "Secure Sign In";
+  const flowSupportText = pendingMfa
+    ? "Enter your one-time code."
+    : requiresPasswordReset
+      ? "Set a new passcode to continue."
+      : "Use your account credentials.";
+  const formInputClass =
+    "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.45)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
+
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page-bg px-4 py-8">
-      <div className="login-grid-overlay pointer-events-none absolute inset-0 opacity-35" />
+    <div className="relative min-h-screen overflow-hidden bg-[linear-gradient(160deg,#eef4fb_0%,#e5edf7_48%,#dbe6f4_100%)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_12%,rgba(100,157,216,0.26),transparent_32%),radial-gradient(circle_at_88%_20%,rgba(4,80,140,0.18),transparent_34%),radial-gradient(circle_at_52%_88%,rgba(47,125,196,0.16),transparent_38%)]" />
+      <div className="pointer-events-none absolute left-1/2 top-[-13rem] h-[24rem] w-[24rem] -translate-x-1/2 rounded-full border border-primary-200/45 bg-white/40 blur-3xl" />
 
-      <div className="login-glass-card relative grid w-full max-w-6xl overflow-hidden border lg:grid-cols-[1.08fr_1fr]">
-        <section className="hidden border-r border-white/15 bg-primary-800 p-10 text-white lg:block">
-          <div className="flex items-center gap-3">
-            <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto bg-white px-2 py-1.5" />
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary-100">CSPAMS</p>
-              <p className="text-lg font-extrabold leading-tight">Centralized Student Performance Analytics and Monitoring System</p>
-            </div>
-          </div>
+      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid w-full overflow-hidden rounded-[30px] border border-slate-200/85 bg-white/85 shadow-[0_30px_70px_-40px_rgba(2,46,80,0.64)] backdrop-blur-sm lg:grid-cols-[1.12fr_0.88fr]">
+          <section className="relative hidden overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 p-10 text-white lg:block">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.26),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.16),transparent_50%)]" />
+            <div className="relative flex h-full flex-col">
+              <div className="flex items-start gap-4">
+                <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto rounded-md bg-white px-2 py-1.5" />
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary-100">CSPAMS</p>
+                  <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">Sign In Portal</h1>
+                </div>
+              </div>
 
-          <p className="mt-8 border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-primary-50">
-            Worked with TARGET'S MET and SMM&E.
-          </p>
-        </section>
-
-        <section className="bg-white/90 p-6 sm:p-8 lg:p-10">
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <img src="/depedlogo.png" alt="Department of Education logo" className="h-11 w-auto bg-primary-50 px-1.5 py-1" />
-            <div>
-              <p className="text-sm font-bold text-primary-800">CSPAMS Dashboard</p>
-              <p className="text-xs text-slate-600">School Management, Monitoring and Evaluation</p>
-            </div>
-          </div>
-
-          <div className="mb-5 border border-primary-100 bg-primary-50/60 px-3 py-2.5">
-            <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
-              <LockKeyhole className="h-3.5 w-3.5 text-primary-700" />
-              {pendingMfa ? "Verify Sign In" : requiresPasswordReset ? "Reset and Sign In" : "Sign in"}
-            </p>
-          </div>
-
-          <div className="mb-5 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveRole("school_head");
-                setError("");
-                clearResetState();
-                clearMfaState();
-              }}
-              className={`border px-3 py-3 text-left transition ${
-                activeRole === "school_head"
-                  ? "border-primary-300 bg-primary-50 text-primary-800"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-primary-200"
-              }`}
-            >
-              <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                <UserCog className="h-4 w-4" />
-                School Head
+              <p className="mt-8 max-w-xl text-sm leading-relaxed text-primary-100/95">
+                Secure access for school heads and division monitors.
               </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveRole("monitor");
-                setError("");
-                clearResetState();
-                clearMfaState();
-              }}
-              className={`border px-3 py-3 text-left transition ${
-                activeRole === "monitor"
-                  ? "border-primary-300 bg-primary-50 text-primary-800"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-primary-200"
-              }`}
-            >
-              <p className="inline-flex items-center gap-2 text-sm font-semibold">
-                <Radar className="h-4 w-4" />
-                Division Monitor
-              </p>
-            </button>
-          </div>
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="login-id" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                {roleMeta.loginLabel}
-              </label>
-              <input
-                id="login-id"
-                type="text"
-                autoComplete="username"
-                value={loginId}
-                onChange={(event) => {
-                  const nextValue =
-                    activeRole === "school_head"
-                      ? event.target.value.replace(/\D/g, "").slice(0, 6)
-                      : event.target.value;
-                  setLoginId(nextValue);
-                  setError("");
-                  clearResetState();
-                  clearMfaState();
-                }}
-                placeholder={roleMeta.loginHint}
-                inputMode={activeRole === "school_head" ? "numeric" : "text"}
-                maxLength={activeRole === "school_head" ? 6 : 255}
-                pattern={activeRole === "school_head" ? "\\d{6}" : undefined}
-                className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-              {roleMeta.note && <p className="mt-1.5 text-xs text-slate-500">{roleMeta.note}</p>}
+              <p className="mt-auto inline-flex w-fit rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-primary-100">
+                Authorized Users Only
+              </p>
+            </div>
+          </section>
+
+          <section className="bg-white/94 p-6 sm:p-8 lg:p-10">
+            <div className="mb-6 flex items-center gap-3 lg:hidden">
+              <img src="/depedlogo.png" alt="Department of Education logo" className="h-11 w-auto rounded-md bg-primary-50 px-1.5 py-1" />
+              <div>
+                <p className="text-sm font-bold text-primary-800">CSPAMS Dashboard</p>
+                <p className="text-xs text-slate-600">Secure login</p>
+              </div>
             </div>
 
-            <div>
-              <label htmlFor="passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                {requiresPasswordReset ? "Current Passcode" : "Passcode"}
-              </label>
-              <div className="relative">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="passcode"
-                  type={showPasscode ? "text" : "password"}
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => {
-                    setPassword(event.target.value);
-                    setError("");
-                    clearMfaState();
-                  }}
-                  placeholder="Enter passcode"
-                  className="w-full border border-slate-200 bg-white py-2.5 pl-10 pr-11 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
+            <div className="mb-5 rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-white px-4 py-3.5">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <LockKeyhole className="h-4 w-4 text-primary-700" />
+                {flowLabel}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">{flowSupportText}</p>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-2">
+              <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sign In Role</p>
+              <div className="grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => setShowPasscode((current) => !current)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                  aria-label={showPasscode ? "Hide passcode" : "Show passcode"}
+                  onClick={() => {
+                    setActiveRole("school_head");
+                    setError("");
+                    clearResetState();
+                    clearMfaState();
+                  }}
+                  className={`rounded-xl border px-3 py-3 text-left transition ${
+                    activeRole === "school_head"
+                      ? "border-primary-300 bg-white text-primary-800 shadow-[0_14px_28px_-24px_rgba(2,46,80,0.65)]"
+                      : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
+                  }`}
                 >
-                  {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                    <UserCog className="h-4 w-4" />
+                    School Head
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">Use school code</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveRole("monitor");
+                    setError("");
+                    clearResetState();
+                    clearMfaState();
+                  }}
+                  className={`rounded-xl border px-3 py-3 text-left transition ${
+                    activeRole === "monitor"
+                      ? "border-primary-300 bg-white text-primary-800 shadow-[0_14px_28px_-24px_rgba(2,46,80,0.65)]"
+                      : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
+                  }`}
+                >
+                  <p className="inline-flex items-center gap-2 text-sm font-semibold">
+                    <Radar className="h-4 w-4" />
+                    Division Monitor
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">Use monitor email</p>
                 </button>
               </div>
             </div>
 
-            {pendingMfa && (
+            <form className="space-y-4" onSubmit={handleSubmit}>
               <div>
-                <label htmlFor="mfa-code" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Verification Code
+                <label htmlFor="login-id" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  {roleMeta.loginLabel}
                 </label>
-                <input
-                  id="mfa-code"
-                  type="text"
-                  inputMode="text"
-                  autoComplete="one-time-code"
-                  value={mfaCode}
-                  onChange={(event) => {
-                    setMfaCode(normalizeMfaCodeInput(event.target.value));
-                    setError("");
-                  }}
-                  placeholder="Enter 6-digit or backup code"
-                  maxLength={9}
-                  pattern="(?:\d{6}|[A-Z0-9]{4}-[A-Z0-9]{4})"
-                  className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-                <p className="mt-1.5 text-xs text-slate-500">
-                  Enter the code sent to your monitor email, or use a backup code (XXXX-XXXX). Expires at{" "}
-                  {formatMfaExpiry(pendingMfa.expiresAt)}.
-                </p>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">{loginFieldIcon}</span>
+                  <input
+                    id="login-id"
+                    type="text"
+                    autoComplete="username"
+                    value={loginId}
+                    onChange={(event) => {
+                      const nextValue =
+                        activeRole === "school_head"
+                          ? event.target.value.replace(/\D/g, "").slice(0, 6)
+                          : event.target.value;
+                      setLoginId(nextValue);
+                      setError("");
+                      clearResetState();
+                      clearMfaState();
+                    }}
+                    placeholder={roleMeta.loginHint}
+                    inputMode={activeRole === "school_head" ? "numeric" : "text"}
+                    maxLength={activeRole === "school_head" ? 6 : 255}
+                    pattern={activeRole === "school_head" ? "\\d{6}" : undefined}
+                    className={`${formInputClass} pl-10`}
+                  />
+                </div>
+                {roleMeta.note && <p className="mt-1.5 text-xs text-slate-500">{roleMeta.note}</p>}
               </div>
-            )}
 
-            {requiresPasswordReset && !pendingMfa && (
-              <>
-                <div>
-                  <label htmlFor="new-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    New Passcode
+              <div>
+                <label htmlFor="passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  {requiresPasswordReset ? "Current Passcode" : "Passcode"}
+                </label>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="passcode"
+                    type={showPasscode ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setError("");
+                      clearMfaState();
+                    }}
+                    placeholder="Enter passcode"
+                    className={`${formInputClass} py-3 pl-10 pr-11`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasscode((current) => !current)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    aria-label={showPasscode ? "Hide passcode" : "Show passcode"}
+                  >
+                    {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {pendingMfa && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/75 p-3.5">
+                  <label htmlFor="mfa-code" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Verification Code
                   </label>
                   <input
-                    id="new-passcode"
-                    type="password"
-                    autoComplete="new-password"
-                    value={newPassword}
+                    id="mfa-code"
+                    type="text"
+                    inputMode="text"
+                    autoComplete="one-time-code"
+                    value={mfaCode}
                     onChange={(event) => {
-                      setNewPassword(event.target.value);
+                      setMfaCode(normalizeMfaCodeInput(event.target.value));
                       setError("");
                     }}
-                    placeholder="Create a new passcode"
-                    className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    placeholder="Enter 6-digit or backup code"
+                    maxLength={9}
+                    pattern="(?:\d{6}|[A-Z0-9]{4}-[A-Z0-9]{4})"
+                    className={formInputClass}
                   />
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Minimum 10 characters with letters, numbers, and symbols.
+                  <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
+                    Enter the code sent to your monitor email, or a backup code (XXXX-XXXX). Expires at{" "}
+                    {formatMfaExpiry(pendingMfa.expiresAt)}.
                   </p>
                 </div>
-                <div>
-                  <label htmlFor="confirm-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Confirm New Passcode
-                  </label>
-                  <input
-                    id="confirm-passcode"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(event) => {
-                      setConfirmPassword(event.target.value);
-                      setError("");
-                    }}
-                    placeholder="Confirm your new passcode"
-                    className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  />
-                </div>
-              </>
-            )}
+              )}
 
-            {error && <p className="border border-primary-200 bg-primary-50 px-3 py-2 text-sm text-primary-700">{error}</p>}
+              {requiresPasswordReset && !pendingMfa && (
+                <>
+                  <div>
+                    <label htmlFor="new-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      New Passcode
+                    </label>
+                    <input
+                      id="new-passcode"
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(event) => {
+                        setNewPassword(event.target.value);
+                        setError("");
+                      }}
+                      placeholder="Create a new passcode"
+                      className={formInputClass}
+                    />
+                    <p className="mt-1.5 text-xs text-slate-500">Minimum 10 characters with letters, numbers, and symbols.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="confirm-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      Confirm New Passcode
+                    </label>
+                    <input
+                      id="confirm-passcode"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(event) => {
+                        setConfirmPassword(event.target.value);
+                        setError("");
+                      }}
+                      placeholder="Confirm your new passcode"
+                      className={formInputClass}
+                    />
+                  </div>
+                </>
+              )}
 
-            <button
-              type="submit"
-              disabled={isSubmitting || isAuthenticating}
-              className="inline-flex w-full items-center justify-center gap-2 bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <ShieldCheck className="h-4 w-4" />
-              {isSubmitting || isAuthenticating
-                ? pendingMfa
-                  ? "Verifying..."
-                  : requiresPasswordReset
-                  ? "Updating Passcode..."
-                  : "Signing In..."
-                : pendingMfa
-                  ? "Verify and Sign In"
-                : requiresPasswordReset
-                  ? "Update Passcode and Sign In"
-                  : roleMeta.submit}
-              {!isSubmitting && !isAuthenticating && <ArrowRight className="h-4 w-4" />}
-            </button>
-          </form>
-        </section>
+              {error && <p className="rounded-xl border border-primary-200 bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={isBusy}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_-24px_rgba(2,46,80,0.85)] transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {isBusy
+                  ? pendingMfa
+                    ? "Verifying..."
+                    : requiresPasswordReset
+                      ? "Updating Passcode..."
+                      : "Signing In..."
+                  : pendingMfa
+                    ? "Verify and Sign In"
+                    : requiresPasswordReset
+                      ? "Update Passcode and Sign In"
+                      : roleMeta.submit}
+                {!isBusy && <ArrowRight className="h-4 w-4" />}
+              </button>
+            </form>
+          </section>
+        </div>
       </div>
     </div>
   );
