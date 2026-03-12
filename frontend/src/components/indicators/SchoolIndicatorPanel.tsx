@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type FormEvent } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
@@ -54,6 +54,14 @@ interface MissingFieldTarget {
   year: string;
   inputKind: "target" | "actual" | "value";
   cellId: string;
+}
+
+interface LocalDraftSnapshot {
+  academicYearId: string;
+  notes: string;
+  metricEntries: MetricEntryState;
+  savedAt: string | null;
+  editingSubmissionId: string | null;
 }
 
 const SCHOOL_ACHIEVEMENTS_METRIC_CODES = [
@@ -335,6 +343,23 @@ function buildInitialMetricEntries(metrics: IndicatorMetric[], current: MetricEn
   return next;
 }
 
+function hasMeaningfulMetricEntries(entries: MetricEntryState | undefined): boolean {
+  if (!entries || typeof entries !== "object") {
+    return false;
+  }
+
+  return Object.values(entries).some((entry) => {
+    if (entry.targetValue.trim() !== "" || entry.actualValue.trim() !== "") return true;
+    if (entry.targetText.trim() !== "" || entry.actualText.trim() !== "") return true;
+    if (entry.targetBoolean !== "" || entry.actualBoolean !== "") return true;
+    if (entry.targetEnum.trim() !== "" || entry.actualEnum.trim() !== "") return true;
+    if (entry.remarks.trim() !== "") return true;
+    if (Object.values(entry.targetMatrix).some((value) => String(value ?? "").trim() !== "")) return true;
+    if (Object.values(entry.actualMatrix).some((value) => String(value ?? "").trim() !== "")) return true;
+    return false;
+  });
+}
+
 function normalizeBooleanInput(value: unknown): "" | "yes" | "no" {
   if (typeof value === "boolean") {
     return value ? "yes" : "no";
@@ -526,6 +551,12 @@ function buildMissingReason(
   return `${missingCount} missing required cells. Most are in ${top.categoryLabel} (${top.count}).`;
 }
 
+function missingFieldMessage(inputKind: MissingFieldTarget["inputKind"]): string {
+  if (inputKind === "target") return "Target is required.";
+  if (inputKind === "actual") return "Actual is required.";
+  return "Value is required.";
+}
+
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
@@ -537,7 +568,6 @@ export function SchoolIndicatorPanel({
     isLoading,
     isSaving,
     error,
-    lastSyncedAt,
     refreshSubmissions,
     createSubmission,
     updateSubmission,
@@ -565,6 +595,14 @@ export function SchoolIndicatorPanel({
   const [pendingFocusCellId, setPendingFocusCellId] = useState<string | null>(null);
   const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
   const [autoMissingAppliedForSubmissionId, setAutoMissingAppliedForSubmissionId] = useState<string | null>(null);
+  const [pendingLocalDraft, setPendingLocalDraft] = useState<LocalDraftSnapshot | null>(null);
+  const [restoreBannerDismissed, setRestoreBannerDismissed] = useState(false);
+  const [serverAutosaveAt, setServerAutosaveAt] = useState<string | null>(null);
+  const [autosaveError, setAutosaveError] = useState("");
+  const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
+
+  const autosaveInFlightRef = useRef(false);
+  const lastAutosaveFingerprintRef = useRef("");
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -629,17 +667,24 @@ export function SchoolIndicatorPanel({
         notes?: string;
         metricEntries?: MetricEntryState;
         savedAt?: string;
+        editingSubmissionId?: string;
       };
 
-      if (persisted.academicYearId) {
-        setAcademicYearId(persisted.academicYearId);
+      const hasDraft =
+        Boolean(persisted.academicYearId)
+        || Boolean((persisted.notes ?? "").trim())
+        || hasMeaningfulMetricEntries(persisted.metricEntries);
+
+      if (hasDraft) {
+        setPendingLocalDraft({
+          academicYearId: persisted.academicYearId ?? "",
+          notes: typeof persisted.notes === "string" ? persisted.notes : "",
+          metricEntries: persisted.metricEntries && typeof persisted.metricEntries === "object" ? persisted.metricEntries : {},
+          savedAt: persisted.savedAt ?? null,
+          editingSubmissionId: typeof persisted.editingSubmissionId === "string" ? persisted.editingSubmissionId : null,
+        });
       }
-      if (typeof persisted.notes === "string") {
-        setNotes(persisted.notes);
-      }
-      if (persisted.metricEntries && typeof persisted.metricEntries === "object") {
-        setMetricEntries((current) => ({ ...current, ...persisted.metricEntries }));
-      }
+
       if (persisted.savedAt) {
         setAutosaveAt(persisted.savedAt);
       }
@@ -657,7 +702,7 @@ export function SchoolIndicatorPanel({
       try {
         localStorage.setItem(
           INDICATOR_DRAFT_STORAGE_KEY,
-          JSON.stringify({ academicYearId, notes, metricEntries, savedAt }),
+          JSON.stringify({ academicYearId, notes, metricEntries, editingSubmissionId, savedAt }),
         );
         setAutosaveAt(savedAt);
       } catch {
@@ -666,7 +711,7 @@ export function SchoolIndicatorPanel({
     }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [academicYearId, notes, metricEntries, complianceMetrics.length]);
+  }, [academicYearId, notes, metricEntries, editingSubmissionId, complianceMetrics.length]);
 
   const sortedSubmissions = useMemo(
     () =>
@@ -689,6 +734,21 @@ export function SchoolIndicatorPanel({
         return matchesYear && matchesStatus;
       }),
     [academicYearFilter, sortedSubmissions, statusFilter],
+  );
+  const latestServerDraft = useMemo(
+    () =>
+      sortedSubmissions.find((submission) => {
+        const status = String(submission.status ?? "").toLowerCase();
+        return status === "draft" || status === "returned";
+      }) ?? null,
+    [sortedSubmissions],
+  );
+  const latestValidatedSubmission = useMemo(
+    () =>
+      sortedSubmissions.find(
+        (submission) => String(submission.status ?? "").toLowerCase() === "validated",
+      ) ?? null,
+    [sortedSubmissions],
   );
   const visibleCategoryMetrics = showAdvancedInputs ? categoryMetrics : categoryMetrics.slice(0, 1);
   const metricCompletionById = useMemo(() => {
@@ -768,6 +828,13 @@ export function SchoolIndicatorPanel({
 
     return targets;
   }, [categoryLookupByMetricId, metricEntries, orderedComplianceMetrics, schoolYears]);
+  const missingFieldByCellId = useMemo(() => {
+    const map = new Map<string, MissingFieldTarget>();
+    for (const target of missingFieldTargets) {
+      map.set(target.cellId, target);
+    }
+    return map;
+  }, [missingFieldTargets]);
   const missingCountByCategory = useMemo(() => {
     const map = new Map<string, { categoryId: string; categoryLabel: string; count: number }>();
 
@@ -873,11 +940,6 @@ export function SchoolIndicatorPanel({
 
     return summary;
   }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, schoolYears, sortedSubmissions]);
-  const wizardStep = useMemo(() => {
-    if (!academicYearId) return 1;
-    if (missingFieldTargets.length > 0) return 2;
-    return 3;
-  }, [academicYearId, missingFieldTargets.length]);
   const activeCategory = useMemo(
     () => visibleCategoryMetrics.find((category) => category.id === activeCategoryId) ?? visibleCategoryMetrics[0] ?? null,
     [activeCategoryId, visibleCategoryMetrics],
@@ -951,9 +1013,15 @@ export function SchoolIndicatorPanel({
     setNotes("");
     setMetricEntries(() => buildInitialMetricEntries(complianceMetrics, {}));
     setAutosaveAt(null);
+    setServerAutosaveAt(null);
+    setAutosaveError("");
+    setIsAutosavingDraft(false);
+    setPendingLocalDraft(null);
+    setRestoreBannerDismissed(false);
     setShowMissingFields(false);
     setMissingJumpIndex(0);
     setPendingFocusCellId(null);
+    lastAutosaveFingerprintRef.current = "";
     if (typeof window !== "undefined") {
       localStorage.removeItem(INDICATOR_DRAFT_STORAGE_KEY);
     }
@@ -982,6 +1050,11 @@ export function SchoolIndicatorPanel({
     setSaveMessage(`Editing package #${submission.id}.`);
     setExpandedSubmissionId(null);
     setAutosaveAt(null);
+    setServerAutosaveAt(submission.updatedAt ?? null);
+    setPendingLocalDraft(null);
+    setRestoreBannerDismissed(true);
+    setAutosaveError("");
+    lastAutosaveFingerprintRef.current = "";
     if (String(submission.status ?? "").toLowerCase() === "returned") {
       setShowOnlyMissingRows(true);
       setAutoMissingAppliedForSubmissionId(submission.id);
@@ -1108,19 +1181,17 @@ export function SchoolIndicatorPanel({
     return () => window.removeEventListener("keydown", handleMissingShortcuts);
   }, [handleJumpToNextMissing, handleJumpToPreviousMissing]);
 
-  const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmitError("");
-    setSaveMessage("");
-
+  const buildSubmissionPayload = useCallback((): { payload: IndicatorSubmissionPayload | null; reason: string; fingerprint: string } => {
     if (!academicYearId) {
-      setSubmitError("Select an academic year.");
-      return;
+      return { payload: null, reason: "Select an academic year.", fingerprint: "" };
     }
 
     if (missingFieldTargets.length > 0) {
-      setSubmitError(submitBlockedReason || "Complete all required indicator cells before saving.");
-      return;
+      return {
+        payload: null,
+        reason: submitBlockedReason || "Complete all required indicator cells before saving.",
+        fingerprint: "",
+      };
     }
 
     const entries = orderedComplianceMetrics
@@ -1238,8 +1309,7 @@ export function SchoolIndicatorPanel({
       });
 
     if (entries.length === 0) {
-      setSubmitError("No required compliance indicators are available for this school.");
-      return;
+      return { payload: null, reason: "No required compliance indicators are available for this school.", fingerprint: "" };
     }
 
     const invalidEntry = entries.find((entry) => {
@@ -1287,8 +1357,11 @@ export function SchoolIndicatorPanel({
     });
 
     if (invalidEntry) {
-      setSubmitError(submitBlockedReason || "Complete all required indicator cells before saving.");
-      return;
+      return {
+        payload: null,
+        reason: submitBlockedReason || "Complete all required indicator cells before saving.",
+        fingerprint: "",
+      };
     }
 
     const payload: IndicatorSubmissionPayload = {
@@ -1305,15 +1378,270 @@ export function SchoolIndicatorPanel({
       })),
     };
 
-    try {
-      if (editingSubmissionId) {
-        const updated = await updateSubmission(editingSubmissionId, payload);
-        setSaveMessage(`Draft package #${updated.id} updated.`);
-      } else {
-        const created = await createSubmission(payload);
-        setSaveMessage(`Indicator package #${created.id} created as draft.`);
-        resetForm();
+    return { payload, reason: "", fingerprint: JSON.stringify(payload) };
+  }, [academicYearId, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, submitBlockedReason]);
+
+  const persistDraftPayload = useCallback(
+    async (payload: IndicatorSubmissionPayload, mode: "manual" | "autosave"): Promise<IndicatorSubmission> => {
+      const result = editingSubmissionId
+        ? await updateSubmission(editingSubmissionId, payload)
+        : await createSubmission(payload);
+
+      setEditingSubmissionId(result.id);
+      setPendingLocalDraft(null);
+      setAutosaveError("");
+
+      const savedAt = new Date().toISOString();
+      setServerAutosaveAt(savedAt);
+      lastAutosaveFingerprintRef.current = `${result.id}:${JSON.stringify(payload)}`;
+
+      if (mode === "manual") {
+        setSaveMessage(`Draft package #${result.id} saved.`);
       }
+
+      return result;
+    },
+    [createSubmission, editingSubmissionId, updateSubmission],
+  );
+
+  const triggerServerAutosave = useCallback(async () => {
+    if (autosaveInFlightRef.current) {
+      return;
+    }
+
+    const prepared = buildSubmissionPayload();
+    if (!prepared.payload) {
+      return;
+    }
+
+    const currentFingerprint = `${editingSubmissionId ?? "new"}:${prepared.fingerprint}`;
+    if (currentFingerprint === lastAutosaveFingerprintRef.current) {
+      return;
+    }
+
+    autosaveInFlightRef.current = true;
+    setIsAutosavingDraft(true);
+    try {
+      await persistDraftPayload(prepared.payload, "autosave");
+    } catch (err) {
+      setAutosaveError(err instanceof Error ? err.message : "Server autosave failed. Draft is still kept locally.");
+    } finally {
+      autosaveInFlightRef.current = false;
+      setIsAutosavingDraft(false);
+    }
+  }, [buildSubmissionPayload, editingSubmissionId, persistDraftPayload]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || complianceMetrics.length === 0) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void triggerServerAutosave();
+    }, 25_000);
+
+    return () => window.clearInterval(interval);
+  }, [complianceMetrics.length, triggerServerAutosave]);
+
+  const handleFormBlurAutosave = useCallback((event: FocusEvent<HTMLFormElement>) => {
+    if (!isTypingTarget(event.target)) {
+      return;
+    }
+
+    void triggerServerAutosave();
+  }, [triggerServerAutosave]);
+
+  const handleCopyPreviousYearValues = useCallback(() => {
+    let copiedCount = 0;
+
+    setMetricEntries((entries) => {
+      const next = { ...entries };
+
+      for (const metric of orderedComplianceMetrics) {
+        if (metricIsAutoCalculated(metric)) {
+          continue;
+        }
+
+        const current = next[metric.id] ?? buildDefaultEntry(metric);
+        const updated: MetricEntryValue = {
+          ...current,
+          targetMatrix: { ...current.targetMatrix },
+          actualMatrix: { ...current.actualMatrix },
+        };
+        const years = metricYears(metric);
+        const effectiveYears = years.length > 0 ? years : schoolYears;
+        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+
+        for (let index = 1; index < effectiveYears.length; index += 1) {
+          const previousYear = effectiveYears[index - 1];
+          const year = effectiveYears[index];
+
+          if (requiresTargetActual) {
+            const previousTarget = String(updated.targetMatrix[previousYear] ?? "").trim();
+            const previousActual = String(updated.actualMatrix[previousYear] ?? "").trim();
+
+            if (String(updated.targetMatrix[year] ?? "").trim() === "" && previousTarget !== "") {
+              updated.targetMatrix[year] = previousTarget;
+              copiedCount += 1;
+            }
+            if (String(updated.actualMatrix[year] ?? "").trim() === "" && previousActual !== "") {
+              updated.actualMatrix[year] = previousActual;
+              copiedCount += 1;
+            }
+            continue;
+          }
+
+          const currentValue = String(updated.actualMatrix[year] ?? updated.targetMatrix[year] ?? "").trim();
+          const previousValue = String(updated.actualMatrix[previousYear] ?? updated.targetMatrix[previousYear] ?? "").trim();
+          if (currentValue === "" && previousValue !== "") {
+            updated.actualMatrix[year] = previousValue;
+            updated.targetMatrix[year] = previousValue;
+            copiedCount += 1;
+          }
+        }
+
+        next[metric.id] = updated;
+      }
+
+      return next;
+    });
+
+    setSubmitError("");
+    if (copiedCount > 0) {
+      setSaveMessage(`Copied previous-year values into ${copiedCount} empty cell${copiedCount === 1 ? "" : "s"}.`);
+      return;
+    }
+
+    setSaveMessage("No empty cells were eligible for previous-year copy.");
+  }, [orderedComplianceMetrics, schoolYears]);
+
+  const handleCopyFromLatestValidated = useCallback(() => {
+    if (!latestValidatedSubmission) {
+      setSubmitError("No validated package is available to copy from.");
+      return;
+    }
+
+    const sourceByMetricId = new Map(
+      latestValidatedSubmission.indicators
+        .map((indicator) => [indicator.metric?.id ?? "", indicator] as const)
+        .filter(([metricId]) => metricId.length > 0),
+    );
+    let copiedCount = 0;
+
+    setMetricEntries((entries) => {
+      const next = { ...entries };
+
+      for (const metric of orderedComplianceMetrics) {
+        if (metricIsAutoCalculated(metric)) {
+          continue;
+        }
+
+        const sourceIndicator = sourceByMetricId.get(metric.id);
+        if (!sourceIndicator) {
+          continue;
+        }
+
+        const sourceEntry = buildEntryFromSubmission(metric, sourceIndicator);
+        const current = next[metric.id] ?? buildDefaultEntry(metric);
+        const updated: MetricEntryValue = {
+          ...current,
+          targetMatrix: { ...current.targetMatrix },
+          actualMatrix: { ...current.actualMatrix },
+        };
+        const years = metricYears(metric);
+        const effectiveYears = years.length > 0 ? years : schoolYears;
+        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+
+        for (const year of effectiveYears) {
+          if (requiresTargetActual) {
+            const sourceTarget = String(sourceEntry.targetMatrix[year] ?? "").trim();
+            const sourceActual = String(sourceEntry.actualMatrix[year] ?? "").trim();
+
+            if (String(updated.targetMatrix[year] ?? "").trim() === "" && sourceTarget !== "") {
+              updated.targetMatrix[year] = sourceTarget;
+              copiedCount += 1;
+            }
+            if (String(updated.actualMatrix[year] ?? "").trim() === "" && sourceActual !== "") {
+              updated.actualMatrix[year] = sourceActual;
+              copiedCount += 1;
+            }
+            continue;
+          }
+
+          const sourceValue = String(sourceEntry.actualMatrix[year] ?? sourceEntry.targetMatrix[year] ?? "").trim();
+          const currentValue = String(updated.actualMatrix[year] ?? updated.targetMatrix[year] ?? "").trim();
+          if (currentValue === "" && sourceValue !== "") {
+            updated.actualMatrix[year] = sourceValue;
+            updated.targetMatrix[year] = sourceValue;
+            copiedCount += 1;
+          }
+        }
+
+        next[metric.id] = updated;
+      }
+
+      return next;
+    });
+
+    setSubmitError("");
+    if (copiedCount > 0) {
+      setSaveMessage(`Copied ${copiedCount} empty cell${copiedCount === 1 ? "" : "s"} from package #${latestValidatedSubmission.id}.`);
+      return;
+    }
+
+    setSaveMessage(`No empty cells could be copied from package #${latestValidatedSubmission.id}.`);
+  }, [latestValidatedSubmission, orderedComplianceMetrics, schoolYears]);
+
+  const handleRestoreLocalDraft = useCallback(() => {
+    if (!pendingLocalDraft) {
+      return;
+    }
+
+    if (pendingLocalDraft.academicYearId) {
+      setAcademicYearId(pendingLocalDraft.academicYearId);
+    }
+    setNotes(pendingLocalDraft.notes);
+    setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, { ...current, ...pendingLocalDraft.metricEntries }));
+    setEditingSubmissionId(pendingLocalDraft.editingSubmissionId);
+    setAutosaveAt(pendingLocalDraft.savedAt);
+    setPendingLocalDraft(null);
+    setRestoreBannerDismissed(true);
+    setSubmitError("");
+    setSaveMessage("Local draft restored.");
+    setAutosaveError("");
+    lastAutosaveFingerprintRef.current = "";
+  }, [complianceMetrics, pendingLocalDraft]);
+
+  const handleRestoreServerDraft = useCallback(() => {
+    if (!latestServerDraft) {
+      return;
+    }
+
+    handleEditDraft(latestServerDraft);
+    setPendingLocalDraft(null);
+    setRestoreBannerDismissed(true);
+    setAutosaveError("");
+    lastAutosaveFingerprintRef.current = "";
+  }, [handleEditDraft, latestServerDraft]);
+
+  const showRestoreBanner = !restoreBannerDismissed && (
+    Boolean(pendingLocalDraft)
+    || Boolean(latestServerDraft && latestServerDraft.id !== editingSubmissionId)
+  );
+
+  const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitError("");
+    setSaveMessage("");
+
+    const prepared = buildSubmissionPayload();
+    if (!prepared.payload) {
+      setSubmitError(prepared.reason);
+      return;
+    }
+
+    try {
+      await persistDraftPayload(prepared.payload, "manual");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
     }
@@ -1389,43 +1717,6 @@ export function SchoolIndicatorPanel({
             </button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
-          {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced"} |{" "}
-          {autosaveAt ? `Saved ${new Date(autosaveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not saved"}
-        </p>
-        <p className="mt-1 text-xs text-primary-700">
-          Key performance indicators are auto-calculated from synchronized school records. Review entries, then save draft.
-        </p>
-      </div>
-
-      <div className="border-b border-slate-200 bg-white px-5 py-3">
-        <div className="grid gap-2 md:grid-cols-3">
-          {[
-            { id: 1, label: "Step 1: Context", detail: "School year and submission note" },
-            { id: 2, label: "Step 2: Encode", detail: "Fill all required indicator cells" },
-            { id: 3, label: "Step 3: Review & Submit", detail: "Check gaps then submit package" },
-          ].map((step) => {
-            const isActive = wizardStep === step.id;
-            const isComplete = wizardStep > step.id;
-            return (
-              <article
-                key={step.id}
-                className={`rounded-sm border px-3 py-2 ${
-                  isActive
-                    ? "border-primary-300 bg-primary-50"
-                    : isComplete
-                      ? "border-primary-200 bg-primary-50/60"
-                      : "border-slate-200 bg-slate-50"
-                }`}
-              >
-                <p className={`text-xs font-semibold uppercase tracking-wide ${isActive || isComplete ? "text-primary-700" : "text-slate-600"}`}>
-                  {step.label}
-                </p>
-                <p className="mt-0.5 text-[11px] text-slate-600">{step.detail}</p>
-              </article>
-            );
-          })}
-        </div>
       </div>
 
       {returnedSubmission && returnedSubmissionNotes && (
@@ -1465,7 +1756,58 @@ export function SchoolIndicatorPanel({
         </div>
       )}
 
-      <form className="space-y-4 border-b border-slate-100 px-5 py-4" onSubmit={handleCreateSubmission}>
+      {showRestoreBanner && (
+        <div className="border-b border-primary-200 bg-primary-50 px-5 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary-800">Restore Latest Draft</p>
+          <div className="mt-1 space-y-1 text-xs text-primary-900">
+            {pendingLocalDraft && (
+              <p>
+                Local draft detected
+                {pendingLocalDraft.savedAt
+                  ? ` (saved ${new Date(pendingLocalDraft.savedAt).toLocaleString()})`
+                  : ""}.
+              </p>
+            )}
+            {latestServerDraft && latestServerDraft.id !== editingSubmissionId && (
+              <p>
+                Server draft available: package #{latestServerDraft.id}
+                {latestServerDraft.updatedAt
+                  ? ` (updated ${new Date(latestServerDraft.updatedAt).toLocaleString()})`
+                  : ""}.
+              </p>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {pendingLocalDraft && (
+              <button
+                type="button"
+                onClick={handleRestoreLocalDraft}
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-primary-800 transition hover:bg-primary-100"
+              >
+                Restore Local Draft
+              </button>
+            )}
+            {latestServerDraft && latestServerDraft.id !== editingSubmissionId && (
+              <button
+                type="button"
+                onClick={handleRestoreServerDraft}
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-primary-800 transition hover:bg-primary-100"
+              >
+                Restore Server Draft
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setRestoreBannerDismissed(true)}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      <form className="space-y-4 border-b border-slate-100 px-5 py-4" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -1558,6 +1900,25 @@ export function SchoolIndicatorPanel({
               }`}
             >
               {showOnlyMissingRows ? "All rows" : "Missing only"}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyPreviousYearValues}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Copy Previous Year Values
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyFromLatestValidated}
+              disabled={!latestValidatedSubmission}
+              title={latestValidatedSubmission ? `Copy from package #${latestValidatedSubmission.id}` : "No validated package available"}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Copy from Latest Validated
             </button>
           </div>
 
@@ -1798,6 +2159,25 @@ export function SchoolIndicatorPanel({
                             const valueCellId = indicatorCellId(metric.id, year, "value");
                             const targetCellId = indicatorCellId(metric.id, year, "target");
                             const actualCellId = indicatorCellId(metric.id, year, "actual");
+                            const valueMissing = missingFieldByCellId.get(valueCellId);
+                            const targetMissing = missingFieldByCellId.get(targetCellId);
+                            const actualMissing = missingFieldByCellId.get(actualCellId);
+
+                            const valueInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
+                              valueMissing
+                                ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
+                            }`;
+                            const targetInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
+                              targetMissing
+                                ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
+                            }`;
+                            const actualInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
+                              actualMissing
+                                ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
+                            }`;
 
                             if (isAutoCalculated) {
                               if (activeCategory.mode !== "target_actual") {
@@ -1843,7 +2223,7 @@ export function SchoolIndicatorPanel({
                                           },
                                         }))
                                       }
-                                      className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                      className={valueInputClass}
                                     >
                                       <option value="">Select</option>
                                       {selectOptions.map((option) => (
@@ -1876,8 +2256,11 @@ export function SchoolIndicatorPanel({
                                           },
                                         }))
                                       }
-                                      className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                      className={valueInputClass}
                                     />
+                                  )}
+                                  {valueMissing && (
+                                    <p className="mt-1 text-[10px] font-semibold text-amber-700">{missingFieldMessage(valueMissing.inputKind)}</p>
                                   )}
                                 </td>
                               );
@@ -1902,7 +2285,7 @@ export function SchoolIndicatorPanel({
                                           },
                                         }))
                                       }
-                                      className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                      className={targetInputClass}
                                     >
                                       <option value="">Select</option>
                                       {selectOptions.map((option) => (
@@ -1931,8 +2314,11 @@ export function SchoolIndicatorPanel({
                                           },
                                         }))
                                       }
-                                      className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                      className={targetInputClass}
                                     />
+                                  )}
+                                  {targetMissing && (
+                                    <p className="mt-1 text-[10px] font-semibold text-amber-700">{missingFieldMessage(targetMissing.inputKind)}</p>
                                   )}
                                 </td>
                                 <td className="border border-slate-300 p-1.5 align-middle">
@@ -1952,7 +2338,7 @@ export function SchoolIndicatorPanel({
                                           },
                                         }))
                                       }
-                                      className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                      className={actualInputClass}
                                     >
                                       <option value="">Select</option>
                                       {selectOptions.map((option) => (
@@ -1981,8 +2367,11 @@ export function SchoolIndicatorPanel({
                                           },
                                         }))
                                       }
-                                      className="w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                      className={actualInputClass}
                                     />
+                                  )}
+                                  {actualMissing && (
+                                    <p className="mt-1 text-[10px] font-semibold text-amber-700">{missingFieldMessage(actualMissing.inputKind)}</p>
                                   )}
                                 </td>
                               </Fragment>
