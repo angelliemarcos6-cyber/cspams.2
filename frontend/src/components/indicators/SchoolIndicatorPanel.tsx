@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Focus
 import { CheckCircle2, ChevronDown, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
+  AcademicYearOption,
   FormSubmissionHistoryEntry,
   IndicatorMetric,
   IndicatorSubmission,
@@ -551,12 +552,6 @@ function buildMissingReason(
   return `${missingCount} missing required cells. Most are in ${top.categoryLabel} (${top.count}).`;
 }
 
-function missingFieldMessage(inputKind: MissingFieldTarget["inputKind"]): string {
-  if (inputKind === "target") return "Target is required.";
-  if (inputKind === "actual") return "Actual is required.";
-  return "Value is required.";
-}
-
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
@@ -595,6 +590,7 @@ export function SchoolIndicatorPanel({
   const [pendingFocusCellId, setPendingFocusCellId] = useState<string | null>(null);
   const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
   const [autoMissingAppliedForSubmissionId, setAutoMissingAppliedForSubmissionId] = useState<string | null>(null);
+  const [showAllAcademicYears, setShowAllAcademicYears] = useState(false);
   const [pendingLocalDraft, setPendingLocalDraft] = useState<LocalDraftSnapshot | null>(null);
   const [restoreBannerDismissed, setRestoreBannerDismissed] = useState(false);
   const [serverAutosaveAt, setServerAutosaveAt] = useState<string | null>(null);
@@ -750,6 +746,27 @@ export function SchoolIndicatorPanel({
       ) ?? null,
     [sortedSubmissions],
   );
+  const compactAcademicYears = useMemo(() => {
+    if (showAllAcademicYears || academicYears.length <= 3) {
+      return academicYears;
+    }
+
+    const selectedYear = academicYears.find((year) => year.id === academicYearId) ?? null;
+    const currentYear = academicYears.find((year) => year.isCurrent) ?? null;
+    const candidates = [selectedYear, currentYear, ...academicYears].filter(
+      (year): year is AcademicYearOption => Boolean(year),
+    );
+
+    const seen = new Set<string>();
+    const unique = candidates.filter((year) => {
+      if (seen.has(year.id)) return false;
+      seen.add(year.id);
+      return true;
+    });
+
+    return unique.slice(0, 3);
+  }, [academicYearId, academicYears, showAllAcademicYears]);
+  const hiddenAcademicYearCount = Math.max(0, academicYears.length - compactAcademicYears.length);
   const visibleCategoryMetrics = showAdvancedInputs ? categoryMetrics : categoryMetrics.slice(0, 1);
   const metricCompletionById = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -1757,49 +1774,47 @@ export function SchoolIndicatorPanel({
       )}
 
       {showRestoreBanner && (
-        <div className="border-b border-primary-200 bg-primary-50 px-5 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary-800">Restore Latest Draft</p>
-          <div className="mt-1 space-y-1 text-xs text-primary-900">
+        <div className="border-b border-primary-200 bg-primary-50/70 px-5 py-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-primary-900">
+            <span className="font-semibold uppercase tracking-wide text-primary-800">Draft Found</span>
             {pendingLocalDraft && (
-              <p>
-                Local draft detected
+              <span>
+                Local
                 {pendingLocalDraft.savedAt
-                  ? ` (saved ${new Date(pendingLocalDraft.savedAt).toLocaleString()})`
-                  : ""}.
-              </p>
+                  ? ` (${new Date(pendingLocalDraft.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`
+                  : ""}
+              </span>
             )}
             {latestServerDraft && latestServerDraft.id !== editingSubmissionId && (
-              <p>
-                Server draft available: package #{latestServerDraft.id}
+              <span>
+                Server #{latestServerDraft.id}
                 {latestServerDraft.updatedAt
-                  ? ` (updated ${new Date(latestServerDraft.updatedAt).toLocaleString()})`
-                  : ""}.
-              </p>
+                  ? ` (${new Date(latestServerDraft.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`
+                  : ""}
+              </span>
             )}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
             {pendingLocalDraft && (
               <button
                 type="button"
                 onClick={handleRestoreLocalDraft}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-primary-800 transition hover:bg-primary-100"
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[11px] font-semibold text-primary-800 transition hover:bg-primary-100"
               >
-                Restore Local Draft
+                Restore Local
               </button>
             )}
             {latestServerDraft && latestServerDraft.id !== editingSubmissionId && (
               <button
                 type="button"
                 onClick={handleRestoreServerDraft}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-primary-800 transition hover:bg-primary-100"
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[11px] font-semibold text-primary-800 transition hover:bg-primary-100"
               >
-                Restore Server Draft
+                Restore Server
               </button>
             )}
             <button
               type="button"
               onClick={() => setRestoreBannerDismissed(true)}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Dismiss
             </button>
@@ -1807,19 +1822,19 @@ export function SchoolIndicatorPanel({
         </div>
       )}
 
-      <form className="space-y-4 border-b border-slate-100 px-5 py-4" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
-        <div className="grid gap-3 md:grid-cols-2">
+      <form className="space-y-3 border-b border-slate-100 px-5 py-3" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
+        <div className="grid gap-2.5 md:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               Academic Year
             </label>
-            <div className="flex flex-wrap gap-2">
-              {academicYears.map((year) => (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {compactAcademicYears.map((year) => (
                 <button
                   key={year.id}
                   type="button"
                   onClick={() => setAcademicYearId(year.id)}
-                  className={`rounded-sm border px-3 py-2 text-xs font-semibold transition ${
+                  className={`rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition ${
                     academicYearId === year.id
                       ? "border-primary bg-primary-50 text-primary-800"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -1829,20 +1844,38 @@ export function SchoolIndicatorPanel({
                   {year.isCurrent ? " (Current)" : ""}
                 </button>
               ))}
+              {hiddenAcademicYearCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllAcademicYears(true)}
+                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                >
+                  +{hiddenAcademicYearCount} more
+                </button>
+              )}
+              {showAllAcademicYears && academicYears.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllAcademicYears(false)}
+                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                >
+                  Show less
+                </button>
+              )}
             </div>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               Reporting Period
             </label>
-            <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800">
+            <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
               Annual
             </p>
           </div>
 
           <div className="md:col-span-2">
-            <label htmlFor="indicator-notes" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <label htmlFor="indicator-notes" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               Notes
             </label>
             <input
@@ -1851,12 +1884,12 @@ export function SchoolIndicatorPanel({
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               placeholder="Optional note"
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2 lg:hidden">
             {visibleCategoryMetrics.map((category) => {
               const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
@@ -1882,18 +1915,18 @@ export function SchoolIndicatorPanel({
             })}
           </div>
 
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_auto]">
             <input
               type="search"
               value={indicatorSearch}
               onChange={(event) => setIndicatorSearch(event.target.value)}
               placeholder="Search indicator"
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
             <button
               type="button"
               onClick={() => setShowOnlyMissingRows((current) => !current)}
-              className={`rounded-sm border px-3 py-2 text-xs font-semibold transition ${
+              className={`rounded-sm border px-3 py-1.5 text-xs font-semibold transition ${
                 showOnlyMissingRows
                   ? "border-amber-300 bg-amber-50 text-amber-700"
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -1903,34 +1936,39 @@ export function SchoolIndicatorPanel({
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCopyPreviousYearValues}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              Copy Previous Year Values
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyFromLatestValidated}
-              disabled={!latestValidatedSubmission}
-              title={latestValidatedSubmission ? `Copy from package #${latestValidatedSubmission.id}` : "No validated package available"}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Copy from Latest Validated
-            </button>
-          </div>
+          <details className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+            <summary className="cursor-pointer list-none text-xs font-semibold text-slate-700">
+              Quick Fill
+            </summary>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleCopyPreviousYearValues}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Prev Year
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyFromLatestValidated}
+                disabled={!latestValidatedSubmission}
+                title={latestValidatedSubmission ? `Copy from package #${latestValidatedSubmission.id}` : "No validated package available"}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Latest Validated
+              </button>
+            </div>
+          </details>
 
-          <div className="sticky top-2 z-30 rounded-sm border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700">
-                Category: {activeCategory ? categoryTabLabel(activeCategory) : "N/A"}
+          <div className="sticky top-1 z-30 rounded-sm border border-slate-200 bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
+                Cat: {activeCategory ? categoryTabLabel(activeCategory) : "N/A"}
               </span>
-              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700">
-                Progress: {completeIndicators}/{totalIndicators}
+              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
+                Done: {completeIndicators}/{totalIndicators}
               </span>
-              <span className={`rounded-sm border px-2 py-1 font-semibold ${
+              <span className={`rounded-sm border px-2 py-0.5 font-semibold ${
                 missingFieldTargets.length > 0
                   ? "border-amber-300 bg-amber-50 text-amber-700"
                   : "border-primary-300 bg-primary-50 text-primary-700"
@@ -1942,30 +1980,27 @@ export function SchoolIndicatorPanel({
                 onClick={handleJumpToPreviousMissing}
                 disabled={missingFieldTargets.length === 0}
                 title="Previous missing (Alt+Shift+P)"
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Previous missing
+                Prev
               </button>
               <button
                 type="button"
                 onClick={handleJumpToNextMissing}
                 disabled={missingFieldTargets.length === 0}
                 title="Next missing (Alt+Shift+N)"
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Jump to next missing
+                Next
               </button>
               <button
                 type="button"
                 onClick={() => setShowMissingFields((current) => !current)}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100"
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100"
               >
-                {showMissingFields ? "Hide Missing Fields" : "Missing Fields"}
+                {showMissingFields ? "Hide List" : "List"}
               </button>
             </div>
-            {missingFieldTargets.length > 0 && (
-              <p className="mt-1 text-[11px] font-semibold text-amber-700">{submitBlockedReason}</p>
-            )}
           </div>
 
           {showMissingFields && (
@@ -1998,9 +2033,9 @@ export function SchoolIndicatorPanel({
           )}
 
           {activeCategory && (
-            <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+            <div className="grid gap-2.5 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
               <aside className="hidden lg:block lg:sticky lg:top-20">
-                <div className="space-y-2 rounded-sm border border-slate-200 bg-slate-50 p-2">
+                <div className="space-y-1.5 rounded-sm border border-slate-200 bg-slate-50 p-2">
                   <h4 className="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Categories</h4>
                   {visibleCategoryMetrics.map((category) => {
                     const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
@@ -2009,11 +2044,11 @@ export function SchoolIndicatorPanel({
                     const hasMissing = missingCount > 0;
 
                     return (
-                      <div key={`rail-${category.id}`} className="rounded-sm border border-slate-200 bg-white p-2">
+                      <div key={`rail-${category.id}`} className="rounded-sm border border-slate-200 bg-white p-1.5">
                         <button
                           type="button"
                           onClick={() => setActiveCategoryId(category.id)}
-                          className={`w-full rounded-sm border px-2 py-2 text-left text-xs font-semibold transition ${
+                          className={`w-full rounded-sm border px-2 py-1.5 text-left text-xs font-semibold transition ${
                             isActive
                               ? "border-primary-300 bg-primary-50 text-primary-700"
                               : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -2024,7 +2059,7 @@ export function SchoolIndicatorPanel({
                             {progress.complete}/{progress.total} complete
                           </p>
                         </button>
-                        <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="mt-1.5 flex items-center justify-between gap-1.5">
                           <span
                             className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
                               hasMissing
@@ -2038,9 +2073,9 @@ export function SchoolIndicatorPanel({
                             type="button"
                             disabled={!hasMissing}
                             onClick={() => handleGoToAffectedCategory(category.id)}
-                            className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-sm border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            Quick jump
+                            Jump
                           </button>
                         </div>
                       </div>
@@ -2049,9 +2084,9 @@ export function SchoolIndicatorPanel({
                 </div>
               </aside>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{activeCategory.label}</h3>
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{categoryTabLabel(activeCategory)}</h3>
                   <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
                     {activeCategoryProgress.complete}/{activeCategoryProgress.total} complete
                   </span>
@@ -2139,13 +2174,10 @@ export function SchoolIndicatorPanel({
                       return (
                         <tr key={`${activeCategory.id}-${metric.id}`} className={rowTone}>
                           <td className={`sticky left-0 z-20 min-w-[280px] max-w-[320px] border border-slate-300 px-3 py-2 align-top ${stickyTone}`}>
-                            <p className="text-[13px] font-semibold leading-5 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
-                            <p className="mt-1 text-[11px] font-medium text-slate-600">
-                              Status: {isComplete ? "Complete" : "Pending"}
-                            </p>
+                            <p className="text-[12px] font-semibold leading-5 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
                             {isAutoCalculated && (
                               <p className="mt-0.5 text-[11px] font-medium text-primary-700">
-                                Value source: Auto-calculated
+                                Auto-calculated
                               </p>
                             )}
                           </td>
@@ -2165,17 +2197,17 @@ export function SchoolIndicatorPanel({
 
                             const valueInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
                               valueMissing
-                                ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
                             }`;
                             const targetInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
                               targetMissing
-                                ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
                             }`;
                             const actualInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
                               actualMissing
-                                ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
                             }`;
 
@@ -2202,7 +2234,7 @@ export function SchoolIndicatorPanel({
 
                             if (activeCategory.mode !== "target_actual") {
                               return (
-                                <td key={`${metric.id}-${year}`} className="border border-slate-300 p-1.5 align-middle">
+                                <td key={`${metric.id}-${year}`} className="relative border border-slate-300 p-1.5 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={valueCellId}
@@ -2260,7 +2292,9 @@ export function SchoolIndicatorPanel({
                                     />
                                   )}
                                   {valueMissing && (
-                                    <p className="mt-1 text-[10px] font-semibold text-amber-700">{missingFieldMessage(valueMissing.inputKind)}</p>
+                                    <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
+                                      Req
+                                    </span>
                                   )}
                                 </td>
                               );
@@ -2268,7 +2302,7 @@ export function SchoolIndicatorPanel({
 
                             return (
                               <Fragment key={`${metric.id}-${year}`}>
-                                <td className="border border-slate-300 p-1.5 align-middle">
+                                <td className="relative border border-slate-300 p-1.5 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={targetCellId}
@@ -2318,10 +2352,12 @@ export function SchoolIndicatorPanel({
                                     />
                                   )}
                                   {targetMissing && (
-                                    <p className="mt-1 text-[10px] font-semibold text-amber-700">{missingFieldMessage(targetMissing.inputKind)}</p>
+                                    <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
+                                      Req
+                                    </span>
                                   )}
                                 </td>
-                                <td className="border border-slate-300 p-1.5 align-middle">
+                                <td className="relative border border-slate-300 p-1.5 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={actualCellId}
@@ -2371,7 +2407,9 @@ export function SchoolIndicatorPanel({
                                     />
                                   )}
                                   {actualMissing && (
-                                    <p className="mt-1 text-[10px] font-semibold text-amber-700">{missingFieldMessage(actualMissing.inputKind)}</p>
+                                    <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
+                                      Req
+                                    </span>
                                   )}
                                 </td>
                               </Fragment>
