@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest, COOKIE_SESSION_TOKEN } from "@/lib/api";
+import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -260,7 +260,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       writePendingRemoteLogout(null);
       return true;
-    } catch {
+    } catch (error) {
+      // If the server already considers this client logged out,
+      // clear the queue so stale retries cannot revoke a new session later.
+      if (isApiError(error) && (error.status === 401 || error.status === 419)) {
+        writePendingRemoteLogout(null);
+        return true;
+      }
+
       writePendingRemoteLogout({
         queuedAt: pending.queuedAt,
         attempts: pending.attempts + 1,
@@ -408,6 +415,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setSession(nextSession);
       writeStoredSession(nextSession);
+      writePendingRemoteLogout(null);
+      clearLogoutRetryTimer();
       return {
         status: "authenticated",
         user: nextSession.user,
@@ -415,7 +424,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [clearLogoutRetryTimer]);
 
   const verifyMfa = useCallback(
     async ({ role, login: loginValue, challengeId, code }: VerifyMonitorMfaInput) => {
@@ -437,11 +446,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setSession(nextSession);
         writeStoredSession(nextSession);
+        writePendingRemoteLogout(null);
+        clearLogoutRetryTimer();
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearLogoutRetryTimer],
   );
 
   const resetRequiredPassword = useCallback(
@@ -471,11 +482,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setSession(nextSession);
         writeStoredSession(nextSession);
+        writePendingRemoteLogout(null);
+        clearLogoutRetryTimer();
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearLogoutRetryTimer],
   );
 
   const completeAccountSetup = useCallback(
@@ -497,11 +510,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setSession(nextSession);
         writeStoredSession(nextSession);
+        writePendingRemoteLogout(null);
+        clearLogoutRetryTimer();
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearLogoutRetryTimer],
   );
 
   const logout = useCallback(async () => {

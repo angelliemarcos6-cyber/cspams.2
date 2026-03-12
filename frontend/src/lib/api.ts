@@ -1,10 +1,16 @@
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
+function defaultApiBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:8000";
+  }
+
+  return `${window.location.protocol}//${window.location.hostname}:8000`;
+}
 
 function sanitizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
 
-const API_BASE_URL = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL);
+const API_BASE_URL = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl());
 export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
 
@@ -118,12 +124,12 @@ function isMutatingMethod(method: string): boolean {
   return normalized === "POST" || normalized === "PUT" || normalized === "PATCH" || normalized === "DELETE";
 }
 
-export async function ensureCsrfCookie(): Promise<void> {
+export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
   if (typeof window === "undefined") {
     return;
   }
 
-  if (readXsrfToken()) {
+  if (!forceRefresh && readXsrfToken()) {
     return;
   }
 
@@ -176,13 +182,23 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
     }
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    credentials: "include",
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
-  });
+  const fetchRequest = () =>
+    fetch(`${API_BASE_URL}${path}`, {
+      method,
+      credentials: "include",
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    });
+
+  let response = await fetchRequest();
+
+  // Session-bound CSRF tokens can become stale after long idle periods.
+  // Retry once with a fresh csrf-cookie before surfacing a 419 to the UI.
+  if (mutating && response.status === 419) {
+    await ensureCsrfCookie(true);
+    response = await fetchRequest();
+  }
 
   const rawText = await response.text();
   let payload: unknown = null;
