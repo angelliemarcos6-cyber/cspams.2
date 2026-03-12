@@ -85,10 +85,10 @@ interface QuickJumpItem {
 
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
-  { id: "first_glance", label: "My Tasks" },
-  { id: "compliance", label: "Submission Workspace" },
-  { id: "requirements", label: "Returned & Revisions" },
-  { id: "records", label: "History & Exports" },
+  { id: "first_glance", label: "My Queue" },
+  { id: "compliance", label: "School Workspace" },
+  { id: "requirements", label: "Revisions" },
+  { id: "records", label: "Reports" },
 ];
 
 const SCHOOL_NAVIGATOR_ICONS: Record<TopNavigatorItem["id"], NavigatorIcon> = {
@@ -163,9 +163,25 @@ const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
     { id: "requirement_cards", label: "Returned Items", targetId: "requirement-navigator", icon: ListChecks },
   ],
   records: [
+    { id: "reports_summary", label: "Reports Summary", targetId: "school-records", icon: LayoutDashboard },
     { id: "student_records", label: "Student History", targetId: "student-records-history", icon: Users },
     { id: "teacher_records", label: "Teacher History", targetId: "teacher-records-history", icon: BookOpenText },
   ],
+};
+
+const SCHOOL_QUICK_JUMP_TARGETS: Record<
+  string,
+  { navigatorId: TopNavigatorItem["id"]; submissionSection?: RequirementItem["id"] }
+> = {
+  "first-glance": { navigatorId: "first_glance" },
+  "school-overview": { navigatorId: "first_glance" },
+  "overview-metrics": { navigatorId: "first_glance" },
+  "requirement-navigator": { navigatorId: "requirements" },
+  "compliance-input": { navigatorId: "compliance", submissionSection: "school_record" },
+  "indicator-workflow": { navigatorId: "compliance", submissionSection: "indicators" },
+  "school-records": { navigatorId: "records" },
+  "student-records-history": { navigatorId: "records" },
+  "teacher-records-history": { navigatorId: "records" },
 };
 
 const EMPTY_FORM: FormState = {
@@ -753,6 +769,7 @@ export function SchoolAdminDashboard() {
       if (!shortcutItem) return;
 
       event.preventDefault();
+      setShowNavigatorManual(false);
       setActiveTopNavigator(shortcutItem.id);
       if (isMobileViewport) {
         setIsNavigatorVisible(false);
@@ -858,6 +875,7 @@ export function SchoolAdminDashboard() {
   };
 
   const handleRequirementNavigate = (item: RequirementItem) => {
+    setShowNavigatorManual(false);
     setActiveTopNavigator(item.navigatorId);
     setActiveSubmissionSection(item.id);
     if (isMobileViewport) {
@@ -870,6 +888,7 @@ export function SchoolAdminDashboard() {
   };
 
   const handleTopNavigate = (item: TopNavigatorItem) => {
+    setShowNavigatorManual(false);
     setActiveTopNavigator(item.id);
     if (isMobileViewport) {
       setIsNavigatorVisible(false);
@@ -899,10 +918,47 @@ export function SchoolAdminDashboard() {
       return true;
     }
 
-    return Boolean(document.getElementById(targetId));
+    if (document.getElementById(targetId)) {
+      return true;
+    }
+
+    const targetConfig = SCHOOL_QUICK_JUMP_TARGETS[targetId];
+    if (!targetConfig) {
+      return false;
+    }
+
+    if (targetConfig.navigatorId !== activeTopNavigator) {
+      return true;
+    }
+
+    if (
+      targetConfig.navigatorId === "compliance" &&
+      targetConfig.submissionSection &&
+      targetConfig.submissionSection !== activeSubmissionSection
+    ) {
+      return true;
+    }
+
+    return false;
   };
 
   const handleQuickJump = (targetId: string) => {
+    const targetConfig = SCHOOL_QUICK_JUMP_TARGETS[targetId];
+    if (targetConfig) {
+      setShowNavigatorManual(false);
+      setActiveTopNavigator(targetConfig.navigatorId);
+      if (targetConfig.navigatorId === "compliance" && targetConfig.submissionSection) {
+        setActiveSubmissionSection(targetConfig.submissionSection);
+      }
+      if (isMobileViewport) {
+        setIsNavigatorVisible(false);
+      }
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => scrollToSection(targetId), 80);
+      }
+      return;
+    }
+
     scrollToSection(targetId);
   };
 
@@ -1054,6 +1110,7 @@ export function SchoolAdminDashboard() {
   };
 
   const handleComplianceAction = () => {
+    setShowNavigatorManual(false);
     setActiveTopNavigator("compliance");
     setActiveSubmissionSection("school_record");
     if (typeof window !== "undefined") {
@@ -1062,6 +1119,7 @@ export function SchoolAdminDashboard() {
   };
 
   const handleContinuePendingRequirements = () => {
+    setShowNavigatorManual(false);
     if (returnedCount > 0) {
       setActiveTopNavigator("requirements");
       return;
@@ -1136,7 +1194,7 @@ export function SchoolAdminDashboard() {
   return (
     <Shell
       title="School Head Dashboard"
-      subtitle="My tasks, submission workspace, revisions, and history."
+      subtitle="My Queue workspace for tasks, submissions, revisions, and reports."
       actions={
         <div className="flex min-w-0 flex-col gap-2 lg:items-end">
           <div className="flex flex-wrap items-center gap-2">
@@ -1154,7 +1212,7 @@ export function SchoolAdminDashboard() {
               className="inline-flex h-9 items-center gap-2 rounded-sm border border-primary-300/50 bg-primary px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-600"
             >
               <ListChecks className="h-3.5 w-3.5" />
-              Open Returned & Revisions
+              Continue Pending Requirements
             </button>
             <button
               type="button"
@@ -1189,7 +1247,7 @@ export function SchoolAdminDashboard() {
         <div className="flex min-h-full flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
-            <div className="flex items-center justify-center">
+            <div className="flex items-center">
               <button
                 type="button"
                 onClick={() => {
@@ -1199,7 +1257,11 @@ export function SchoolAdminDashboard() {
                   }
                   setIsNavigatorCompact((current) => !current);
                 }}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700"
+                className={`inline-flex shrink-0 items-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
+                  showNavigatorHeaderText
+                    ? "h-11 w-full justify-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wide"
+                    : "h-11 w-11 justify-center"
+                }`}
                 aria-label={
                   isMobileViewport
                     ? isNavigatorVisible
@@ -1225,6 +1287,17 @@ export function SchoolAdminDashboard() {
                   <ChevronRight className="h-3.5 w-3.5" />
                 ) : (
                   <ChevronLeft className="h-3.5 w-3.5" />
+                )}
+                {showNavigatorHeaderText && (
+                  <span>
+                    {isMobileViewport
+                      ? isNavigatorVisible
+                        ? "Hide Menu"
+                        : "Show Menu"
+                      : isNavigatorCompact
+                        ? "Expand Menu"
+                        : "Collapse Menu"}
+                  </span>
                 )}
               </button>
             </div>
@@ -1666,8 +1739,8 @@ export function SchoolAdminDashboard() {
       )}
 
       {!showNavigatorManual && activeTopNavigator === "first_glance" && (
-      <>
-      <section id="school-overview" className={`mb-5 animate-fade-slide grid gap-3 md:grid-cols-3 ${sectionFocusClass("school-overview")}`}>
+      <section id="first-glance" className={`space-y-5 ${sectionFocusClass("first-glance")}`}>
+      <section id="school-overview" className={`animate-fade-slide grid gap-3 md:grid-cols-3 ${sectionFocusClass("school-overview")}`}>
         <article className="dashboard-subtle-panel px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
           <p className="mt-1 text-sm font-bold text-slate-900">{schoolName}</p>
@@ -1687,7 +1760,7 @@ export function SchoolAdminDashboard() {
         <StatCard label="Needs Revision" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
         <StatCard label="Validated / Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
       </section>
-      </>
+      </section>
       )}
 
       {!showNavigatorManual && activeTopNavigator === "compliance" && (
