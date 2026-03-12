@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\ResetRequiredPasswordRequest;
+use App\Http\Requests\Api\VerifyMonitorMfaRequest;
 use App\Models\User;
+use App\Notifications\MonitorMfaCodeNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Audit\AuthAuditLogger;
@@ -13,7 +15,9 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -68,6 +72,35 @@ class AuthController extends Controller
                     'requiresPasswordReset' => true,
                 ],
                 Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        if ($role === UserRoleResolver::MONITOR && $this->monitorMfaEnabled()) {
+            $mfaChallenge = $this->issueMonitorMfaChallenge($user, $login);
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.login.mfa_challenge_issued',
+                'challenge',
+                $user,
+                $role,
+                $login,
+                [
+                    'mfa_challenge_id' => $mfaChallenge['challengeId'],
+                    'mfa_expires_at' => $mfaChallenge['expiresAt'],
+                ],
+            );
+
+            return response()->json(
+                [
+                    'requiresMfa' => true,
+                    'mfa' => [
+                        'challengeId' => $mfaChallenge['challengeId'],
+                        'expiresAt' => $mfaChallenge['expiresAt'],
+                    ],
+                    'message' => 'A verification code was sent to your email.',
+                ],
+                Response::HTTP_ACCEPTED,
             );
         }
 
@@ -190,6 +223,167 @@ class AuthController extends Controller
             $role,
             $login,
             [
+                'token_expires_at' => $tokenPayload['expiresAt'],
+                'token_refresh_after' => $tokenPayload['refreshAfter'],
+            ],
+        );
+
+        return response()->json([
+            'token' => $tokenPayload['token'],
+            'tokenType' => 'Bearer',
+            'expiresAt' => $tokenPayload['expiresAt'],
+            'refreshAfter' => $tokenPayload['refreshAfter'],
+            'user' => $this->serializeUser($user->fresh('school'), $role),
+        ]);
+    }
+
+    public function verifyMonitorMfa(VerifyMonitorMfaRequest $request): JsonResponse
+    {
+        if (! $this->monitorMfaEnabled()) {
+            return response()->json(
+                ['message' => 'MFA verification is not required for this environment.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $role = UserRoleResolver::MONITOR;
+        $login = strtolower(trim($request->string('login')->toString()));
+        $challengeId = trim($request->string('challenge_id')->toString());
+        $code = trim($request->string('code')->toString());
+
+        $user = $this->resolveUserForLogin($role, $login);
+
+        if (! $user || ! UserRoleResolver::has($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_verify.failed',
+                'failure',
+                null,
+                $role,
+                $login,
+                ['reason' => 'invalid_credentials'],
+            );
+
+            return response()->json(
+                ['message' => 'Invalid credentials for the selected role.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $challenge = $this->readMonitorMfaChallenge($challengeId);
+        if (! $challenge || $this->monitorMfaChallengeExpired($challenge)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_verify.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'challenge_missing_or_expired'],
+            );
+
+            Cache::forget($this->monitorMfaCacheKey($challengeId));
+
+            return response()->json(
+                ['message' => 'Verification challenge expired. Please sign in again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (
+            (int) ($challenge['user_id'] ?? 0) !== (int) $user->id ||
+            (string) ($challenge['role'] ?? '') !== $role ||
+            (string) ($challenge['login'] ?? '') !== $login
+        ) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_verify.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                [
+                    'reason' => 'challenge_identity_mismatch',
+                    'mfa_challenge_id' => $challengeId,
+                ],
+            );
+
+            Cache::forget($this->monitorMfaCacheKey($challengeId));
+
+            return response()->json(
+                ['message' => 'Verification challenge is invalid. Please sign in again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (! Hash::check($code, (string) ($challenge['code_hash'] ?? ''))) {
+            $attempts = (int) ($challenge['attempts'] ?? 0) + 1;
+            $maxAttempts = (int) ($challenge['max_attempts'] ?? $this->monitorMfaMaxAttempts());
+
+            if ($attempts >= $maxAttempts) {
+                Cache::forget($this->monitorMfaCacheKey($challengeId));
+
+                AuthAuditLogger::record(
+                    $request,
+                    'auth.mfa_verify.locked_out',
+                    'lockout',
+                    $user,
+                    $role,
+                    $login,
+                    [
+                        'reason' => 'max_attempts_exceeded',
+                        'mfa_challenge_id' => $challengeId,
+                    ],
+                );
+
+                return response()->json(
+                    ['message' => 'Too many invalid verification attempts. Please sign in again.'],
+                    Response::HTTP_TOO_MANY_REQUESTS,
+                );
+            }
+
+            $challenge['attempts'] = $attempts;
+            $this->storeMonitorMfaChallenge($challengeId, $challenge);
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_verify.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                [
+                    'reason' => 'invalid_code',
+                    'mfa_challenge_id' => $challengeId,
+                    'attempts' => $attempts,
+                    'attempts_remaining' => max(0, $maxAttempts - $attempts),
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'Invalid verification code.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        Cache::forget($this->monitorMfaCacheKey($challengeId));
+
+        if ($request->hasSession()) {
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+        }
+
+        $tokenPayload = $this->issueDashboardToken($user, $role, true);
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.mfa_verify.success',
+            'success',
+            $user,
+            $role,
+            $login,
+            [
+                'mfa_challenge_id' => $challengeId,
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
             ],
@@ -464,6 +658,113 @@ class AuthController extends Controller
     private function dashboardTokenName(string $role): string
     {
         return $this->dashboardTokenNamePrefix() . $role . '-' . now()->timestamp;
+    }
+
+    /**
+     * @return array{challengeId: string, expiresAt: string}
+     */
+    private function issueMonitorMfaChallenge(User $user, string $login): array
+    {
+        $challengeId = (string) Str::uuid();
+        $ttlMinutes = $this->monitorMfaTtlMinutes();
+        $expiresAt = CarbonImmutable::now()->addMinutes($ttlMinutes);
+        $testCode = $this->monitorMfaTestCode();
+        $code = $testCode !== null
+            ? $testCode
+            : str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        $challenge = [
+            'user_id' => (int) $user->id,
+            'role' => UserRoleResolver::MONITOR,
+            'login' => strtolower(trim($login)),
+            'code_hash' => Hash::make($code),
+            'attempts' => 0,
+            'max_attempts' => $this->monitorMfaMaxAttempts(),
+            'expires_at' => $expiresAt->toISOString(),
+        ];
+
+        $this->storeMonitorMfaChallenge($challengeId, $challenge);
+        $user->notify(new MonitorMfaCodeNotification($code, $expiresAt->toDateTimeString()));
+
+        return [
+            'challengeId' => $challengeId,
+            'expiresAt' => $expiresAt->toISOString(),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $challenge
+     */
+    private function storeMonitorMfaChallenge(string $challengeId, array $challenge): void
+    {
+        $expiresAt = $this->parseMfaExpiry($challenge['expires_at'] ?? null);
+        $ttlSeconds = max(1, $expiresAt->getTimestamp() - time());
+
+        Cache::put($this->monitorMfaCacheKey($challengeId), $challenge, now()->addSeconds($ttlSeconds));
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function readMonitorMfaChallenge(string $challengeId): ?array
+    {
+        $cached = Cache::get($this->monitorMfaCacheKey($challengeId));
+        if (! is_array($cached)) {
+            return null;
+        }
+
+        return $cached;
+    }
+
+    /**
+     * @param array<string, mixed> $challenge
+     */
+    private function monitorMfaChallengeExpired(array $challenge): bool
+    {
+        return $this->parseMfaExpiry($challenge['expires_at'] ?? null)->lte(CarbonImmutable::now());
+    }
+
+    private function monitorMfaCacheKey(string $challengeId): string
+    {
+        return 'auth:mfa:monitor:' . $challengeId;
+    }
+
+    private function monitorMfaEnabled(): bool
+    {
+        return (bool) config('auth_mfa.monitor.enabled', false);
+    }
+
+    private function monitorMfaTtlMinutes(): int
+    {
+        return max(1, (int) config('auth_mfa.monitor.code_ttl_minutes', 10));
+    }
+
+    private function monitorMfaMaxAttempts(): int
+    {
+        return max(1, (int) config('auth_mfa.monitor.max_attempts', 5));
+    }
+
+    private function monitorMfaTestCode(): ?string
+    {
+        $configured = trim((string) config('auth_mfa.monitor.test_code', ''));
+        if ($configured === '') {
+            return null;
+        }
+
+        return preg_match('/^\d{6}$/', $configured) === 1 ? $configured : null;
+    }
+
+    private function parseMfaExpiry(mixed $value): CarbonImmutable
+    {
+        if (is_string($value) && trim($value) !== '') {
+            try {
+                return CarbonImmutable::parse($value);
+            } catch (\Throwable) {
+                // Fall through to default expiry.
+            }
+        }
+
+        return CarbonImmutable::now()->addMinutes($this->monitorMfaTtlMinutes());
     }
 
     private function resolveRoleForUser(User $user): string

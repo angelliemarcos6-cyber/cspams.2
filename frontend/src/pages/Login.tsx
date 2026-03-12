@@ -7,6 +7,21 @@ import type { UserRole } from "@/types";
 
 type LoginRole = Exclude<UserRole, null>;
 
+interface PendingMfaChallenge {
+  challengeId: string;
+  expiresAt: string;
+  login: string;
+}
+
+function formatMfaExpiry(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "soon";
+  }
+
+  return date.toLocaleString();
+}
+
 const ROLE_META: Record<
   LoginRole,
   { label: string; note: string; submit: string; loginHint: string; loginLabel: string; emptyError: string }
@@ -31,11 +46,13 @@ const ROLE_META: Record<
 
 export function Login() {
   const navigate = useNavigate();
-  const { login, resetRequiredPassword, isAuthenticating } = useAuth();
+  const { login, verifyMfa, resetRequiredPassword, isAuthenticating } = useAuth();
 
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [pendingMfa, setPendingMfa] = useState<PendingMfaChallenge | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
@@ -49,6 +66,11 @@ export function Login() {
     setRequiresPasswordReset(false);
     setNewPassword("");
     setConfirmPassword("");
+  };
+
+  const clearMfaState = () => {
+    setPendingMfa(null);
+    setMfaCode("");
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -70,12 +92,19 @@ export function Login() {
       return;
     }
 
+    if (pendingMfa) {
+      if (!/^\d{6}$/.test(mfaCode.trim())) {
+        setError("Enter the 6-digit verification code sent to your email.");
+        return;
+      }
+    }
+
     if (!password) {
       setError("Enter your passcode.");
       return;
     }
 
-    if (requiresPasswordReset) {
+    if (requiresPasswordReset && !pendingMfa) {
       if (!newPassword || !confirmPassword) {
         setError("Enter and confirm your new passcode.");
         return;
@@ -90,6 +119,18 @@ export function Login() {
     setError("");
 
     try {
+      if (pendingMfa) {
+        await verifyMfa({
+          role: "monitor",
+          login: pendingMfa.login,
+          challengeId: pendingMfa.challengeId,
+          code: mfaCode.trim(),
+        });
+        clearMfaState();
+        navigate("/monitor");
+        return;
+      }
+
       if (requiresPasswordReset) {
         await resetRequiredPassword({
           role: activeRole,
@@ -99,29 +140,54 @@ export function Login() {
           confirmPassword,
         });
       } else {
-        await login({
+        const result = await login({
           role: activeRole,
           login: normalizedLoginId,
           password,
         });
+
+        if (result.status === "mfa_required") {
+          setPendingMfa({
+            challengeId: result.challengeId,
+            expiresAt: result.expiresAt,
+            login: normalizedLoginId.toLowerCase(),
+          });
+          setMfaCode("");
+          setError("");
+          return;
+        }
       }
 
       navigate(activeRole === "school_head" ? "/school-admin" : "/monitor");
     } catch (err) {
       if (isApiError(err)) {
+        const shouldRestartMfa =
+          pendingMfa !== null &&
+          (err.status === 429 || (err.status === 422 && err.message.toLowerCase().includes("sign in again")));
+
+        if (shouldRestartMfa) {
+          clearMfaState();
+        }
+
         const requiresReset =
+          pendingMfa === null &&
           err.status === 403 &&
           Boolean((err.payload as { requiresPasswordReset?: boolean } | null)?.requiresPasswordReset);
 
         if (requiresReset) {
+          clearMfaState();
           setRequiresPasswordReset(true);
           setError("Password reset required. Set a new passcode to continue.");
         } else {
-          clearResetState();
+          if (pendingMfa === null) {
+            clearResetState();
+          }
           setError(err.message);
         }
       } else {
-        clearResetState();
+        if (pendingMfa === null) {
+          clearResetState();
+        }
         setError("Unable to sign in. Check your network and try again.");
       }
     } finally {
@@ -160,7 +226,7 @@ export function Login() {
           <div className="mb-5 border border-primary-100 bg-primary-50/60 px-3 py-2.5">
             <p className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
               <LockKeyhole className="h-3.5 w-3.5 text-primary-700" />
-              {requiresPasswordReset ? "Reset and Sign In" : "Sign in"}
+              {pendingMfa ? "Verify Sign In" : requiresPasswordReset ? "Reset and Sign In" : "Sign in"}
             </p>
           </div>
 
@@ -171,6 +237,7 @@ export function Login() {
                 setActiveRole("school_head");
                 setError("");
                 clearResetState();
+                clearMfaState();
               }}
               className={`border px-3 py-3 text-left transition ${
                 activeRole === "school_head"
@@ -189,6 +256,7 @@ export function Login() {
                 setActiveRole("monitor");
                 setError("");
                 clearResetState();
+                clearMfaState();
               }}
               className={`border px-3 py-3 text-left transition ${
                 activeRole === "monitor"
@@ -221,6 +289,7 @@ export function Login() {
                   setLoginId(nextValue);
                   setError("");
                   clearResetState();
+                  clearMfaState();
                 }}
                 placeholder={roleMeta.loginHint}
                 inputMode={activeRole === "school_head" ? "numeric" : "text"}
@@ -245,6 +314,7 @@ export function Login() {
                   onChange={(event) => {
                     setPassword(event.target.value);
                     setError("");
+                    clearMfaState();
                   }}
                   placeholder="Enter passcode"
                   className="w-full border border-slate-200 bg-white py-2.5 pl-10 pr-11 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
@@ -260,7 +330,33 @@ export function Login() {
               </div>
             </div>
 
-            {requiresPasswordReset && (
+            {pendingMfa && (
+              <div>
+                <label htmlFor="mfa-code" className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Verification Code
+                </label>
+                <input
+                  id="mfa-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={(event) => {
+                    setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                    setError("");
+                  }}
+                  placeholder="Enter 6-digit code"
+                  maxLength={6}
+                  pattern="\d{6}"
+                  className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Enter the code sent to your monitor email. Expires at {formatMfaExpiry(pendingMfa.expiresAt)}.
+                </p>
+              </div>
+            )}
+
+            {requiresPasswordReset && !pendingMfa && (
               <>
                 <div>
                   <label htmlFor="new-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -311,9 +407,13 @@ export function Login() {
             >
               <ShieldCheck className="h-4 w-4" />
               {isSubmitting || isAuthenticating
-                ? requiresPasswordReset
+                ? pendingMfa
+                  ? "Verifying..."
+                  : requiresPasswordReset
                   ? "Updating Passcode..."
                   : "Signing In..."
+                : pendingMfa
+                  ? "Verify and Sign In"
                 : requiresPasswordReset
                   ? "Update Passcode and Sign In"
                   : roleMeta.submit}
