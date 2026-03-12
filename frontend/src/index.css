@@ -1,10 +1,13 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Commissioner:wght@700&family=Inter:wght@400;500&display=swap");
 @import "tailwindcss";
 
 @theme {
   --font-sans:
-    "Plus Jakarta Sans", "Segoe UI", "Helvetica Neue", "Arial", ui-sans-serif,
-    system-ui, sans-serif;
+    "Inter", "Commissioner", "Segoe UI", "Helvetica Neue", "Arial",
+    ui-sans-serif, system-ui, sans-serif;
+  --font-display:
+    "Commissioner", "Inter", "Segoe UI", "Helvetica Neue", "Arial",
+    ui-sans-serif, system-ui, sans-serif;
 
   --color-page-bg: #edf3f9;
   --color-primary: #04508c;
@@ -34,7 +37,42 @@ body {
   background-color: #e8eef6;
   color: #0f172a;
   font-family: var(--font-sans);
-  line-height: 1.45;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.section-title,
+.dashboard-card-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+button,
+input,
+select,
+textarea,
+th,
+td {
+  font-family: var(--font-sans);
+}
+
+button,
+th {
+  font-weight: 500;
 }
 
 #root {
