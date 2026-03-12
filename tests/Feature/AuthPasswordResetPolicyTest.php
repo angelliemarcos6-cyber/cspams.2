@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
+use App\Support\Auth\SchoolHeadAccountSetupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
@@ -10,33 +13,46 @@ class AuthPasswordResetPolicyTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_school_head_account_marked_for_reset_must_change_password_before_login(): void
+    public function test_school_head_account_must_complete_setup_link_before_login(): void
     {
         $this->seed();
 
         $schoolCode = '103811';
-        $temporaryPassword = $this->temporaryPasswordForSchoolCode($schoolCode);
-        $newPassword = 'NewSchool@2026!';
+        $newPassword = 'NewSchool@2026!123';
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->whereHas('school', static fn ($query) => $query->where('school_code', $schoolCode))
+            ->firstOrFail();
+        $schoolHead->forceFill([
+            'password' => Hash::make('TempSetup@123'),
+            'must_reset_password' => true,
+            'password_changed_at' => null,
+            'account_status' => 'pending_setup',
+        ])->save();
+
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $issuedSetup = $setupService->issue($schoolHead);
 
         $blockedLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => $schoolCode,
-            'password' => $temporaryPassword,
+            'password' => 'TempSetup@123',
         ]);
 
         $blockedLogin->assertStatus(Response::HTTP_FORBIDDEN)
-            ->assertJsonPath('requiresPasswordReset', true);
+            ->assertJsonPath('requiresAccountSetup', true);
 
-        $reset = $this->postJson('/api/auth/reset-required-password', [
-            'role' => 'school_head',
-            'login' => $schoolCode,
-            'current_password' => $temporaryPassword,
-            'new_password' => $newPassword,
-            'new_password_confirmation' => $newPassword,
+        $setup = $this->postJson('/api/auth/setup-account', [
+            'token' => $issuedSetup['plainToken'],
+            'password' => $newPassword,
+            'password_confirmation' => $newPassword,
         ]);
 
-        $reset->assertOk()
-            ->assertJsonPath('user.mustResetPassword', false);
+        $setup->assertOk()
+            ->assertJsonPath('user.mustResetPassword', false)
+            ->assertJsonPath('user.accountStatus', 'active');
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -47,23 +63,5 @@ class AuthPasswordResetPolicyTest extends TestCase
         $login->assertOk()
             ->assertJsonPath('user.role', 'school_head')
             ->assertJsonPath('user.mustResetPassword', false);
-    }
-
-    private function temporaryPasswordForSchoolCode(string $schoolCode): string
-    {
-        $configured = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD'));
-        if ($configured !== '') {
-            return $configured;
-        }
-
-        $appKey = (string) config('app.key');
-
-        if ($appKey === '') {
-            return 'invalid-missing-app-key';
-        }
-
-        $fingerprint = strtoupper(substr(hash_hmac('sha256', $schoolCode, $appKey), 0, 10));
-
-        return 'Csp@' . $fingerprint . '!';
     }
 }

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Support\Auth\SchoolHeadAccountSetupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -58,7 +59,7 @@ class AuthSessionSecurityTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('user.role', 'school_head');
 
-        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $legacyTokenId]);
+        $this->assertDatabaseMissing('personal_access_tokens', ['name' => 'legacy-reset-token']);
         $this->assertDatabaseMissing('sessions', ['id' => $legacySessionId]);
 
         /** @var AuditLog $suspiciousAudit */
@@ -77,7 +78,6 @@ class AuthSessionSecurityTest extends TestCase
         $this->seed();
 
         $schoolCode = '103811';
-        $temporaryPassword = $this->temporaryPasswordForSchoolCode($schoolCode);
         $newPassword = 'Updated@Password2026';
 
         /** @var User $schoolHead */
@@ -85,8 +85,11 @@ class AuthSessionSecurityTest extends TestCase
             ->whereHas('school', static fn ($query) => $query->where('school_code', $schoolCode))
             ->firstOrFail();
 
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $issuedSetup = $setupService->issue($schoolHead);
+
         $legacyToken = $schoolHead->createToken('legacy-reset-token');
-        $legacyTokenId = $legacyToken->accessToken->id;
         $legacySessionId = 'reset-' . Str::lower(Str::random(16));
 
         DB::table('sessions')->insert([
@@ -98,29 +101,26 @@ class AuthSessionSecurityTest extends TestCase
             'last_activity' => now()->subHour()->getTimestamp(),
         ]);
 
-        $response = $this->postJson('/api/auth/reset-required-password', [
-            'role' => 'school_head',
-            'login' => $schoolCode,
-            'current_password' => $temporaryPassword,
-            'new_password' => $newPassword,
-            'new_password_confirmation' => $newPassword,
+        $response = $this->postJson('/api/auth/setup-account', [
+            'token' => $issuedSetup['plainToken'],
+            'password' => $newPassword,
+            'password_confirmation' => $newPassword,
         ]);
 
         $response->assertOk()
             ->assertJsonPath('user.mustResetPassword', false);
 
-        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $legacyTokenId]);
+        $this->assertDatabaseMissing('personal_access_tokens', ['name' => 'legacy-reset-token']);
         $this->assertDatabaseMissing('sessions', ['id' => $legacySessionId]);
 
         /** @var AuditLog $resetAudit */
         $resetAudit = AuditLog::query()
-            ->where('action', 'auth.password_reset.success')
+            ->where('action', 'auth.account_setup.completed')
             ->where('user_id', $schoolHead->id)
             ->latest('id')
             ->firstOrFail();
 
-        $this->assertGreaterThanOrEqual(1, (int) data_get($resetAudit->metadata, 'revoked_tokens'));
-        $this->assertGreaterThanOrEqual(1, (int) data_get($resetAudit->metadata, 'revoked_web_sessions'));
+        $this->assertSame('active', data_get($resetAudit->metadata, 'new_account_status'));
     }
 
     public function test_active_sessions_endpoint_lists_devices_and_can_revoke_others(): void
@@ -183,21 +183,4 @@ class AuthSessionSecurityTest extends TestCase
         $this->assertDatabaseMissing('sessions', ['id' => $legacySessionId]);
     }
 
-    private function temporaryPasswordForSchoolCode(string $schoolCode): string
-    {
-        $configured = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD'));
-        if ($configured !== '') {
-            return $configured;
-        }
-
-        $appKey = (string) config('app.key');
-
-        if ($appKey === '') {
-            return 'invalid-missing-app-key';
-        }
-
-        $fingerprint = strtoupper(substr(hash_hmac('sha256', $schoolCode, $appKey), 0, 10));
-
-        return 'Csp@' . $fingerprint . '!';
-    }
 }

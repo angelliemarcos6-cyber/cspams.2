@@ -82,6 +82,7 @@ class AuthAccountStatusPolicyTest extends TestCase
     public static function blockedStatusesProvider(): array
     {
         return [
+            'pending_setup' => [AccountStatus::PENDING_SETUP->value],
             'suspended' => [AccountStatus::SUSPENDED->value],
             'locked' => [AccountStatus::LOCKED->value],
             'archived' => [AccountStatus::ARCHIVED->value],

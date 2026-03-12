@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ApproveMonitorMfaResetRequest;
 use App\Http\Requests\Api\CompleteMonitorMfaResetRequest;
+use App\Http\Requests\Api\CompleteAccountSetupRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegenerateMonitorMfaBackupCodesRequest;
 use App\Http\Requests\Api\RequestMonitorMfaResetRequest;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
 use App\Notifications\MonitorMfaResetApprovedNotification;
 use App\Support\Auth\ApiUserResolver;
+use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Audit\AuthAuditLogger;
 use App\Support\Domain\AccountStatus;
@@ -33,6 +35,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
+    ) {
+    }
+
     public function login(LoginRequest $request): JsonResponse
     {
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
@@ -483,6 +490,134 @@ class AuthController extends Controller
             'expiresAt' => $tokenPayload['expiresAt'],
             'refreshAfter' => $tokenPayload['refreshAfter'],
             'user' => $this->serializeUser($user->fresh('school'), $role),
+        ]);
+    }
+
+    public function completeAccountSetup(CompleteAccountSetupRequest $request): JsonResponse
+    {
+        $plainToken = trim($request->string('token')->toString());
+        $newPassword = $request->string('password')->toString();
+        $role = UserRoleResolver::SCHOOL_HEAD;
+
+        $setupToken = $this->schoolHeadAccountSetupService->resolve($plainToken);
+        if (! $setupToken) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.account_setup.failed',
+                'failure',
+                null,
+                $role,
+                null,
+                ['reason' => 'invalid_or_expired_setup_token'],
+            );
+
+            return response()->json(
+                ['message' => 'The setup link is invalid or expired. Request a new link from your Division Monitor.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $user = $setupToken->user()->with('school')->first();
+        if (! $user || ! UserRoleResolver::has($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.account_setup.failed',
+                'failure',
+                $user,
+                $role,
+                null,
+                ['reason' => 'account_not_supported'],
+            );
+
+            return response()->json(
+                ['message' => 'This setup link is no longer valid for account activation.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $identifier = (string) ($user->school?->school_code ?? '');
+        $status = $user->accountStatus();
+        if (in_array($status, [AccountStatus::SUSPENDED, AccountStatus::LOCKED, AccountStatus::ARCHIVED], true)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.account_setup.failed',
+                'failure',
+                $user,
+                $role,
+                $identifier !== '' ? $identifier : null,
+                [
+                    'reason' => 'account_not_active',
+                    'account_status' => $status->value,
+                ],
+            );
+
+            return response()->json(
+                ['message' => $this->inactiveAccountMessage($status)],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        if (Hash::check($newPassword, $user->password)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.account_setup.failed',
+                'failure',
+                $user,
+                $role,
+                $identifier !== '' ? $identifier : null,
+                ['reason' => 'password_reuse_blocked'],
+            );
+
+            return response()->json(
+                ['message' => 'New password must be different from the current password.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $previousStatus = $status->value;
+        $this->schoolHeadAccountSetupService->consume($setupToken, $request->ip(), $request->userAgent());
+
+        $user->forceFill([
+            'password' => Hash::make($newPassword),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+        ])->save();
+
+        $revocationSummary = $this->revokeUserSessionsAndTokens($user);
+
+        if ($request->hasSession()) {
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+        }
+
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $this->recordSuccessfulLoginTelemetry($user, $request);
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.account_setup.completed',
+            'success',
+            $user,
+            $role,
+            $identifier !== '' ? $identifier : null,
+            [
+                'previous_account_status' => $previousStatus,
+                'new_account_status' => AccountStatus::ACTIVE->value,
+                'token_expires_at' => $tokenPayload['expiresAt'],
+                'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+            ],
+        );
+
+        return response()->json([
+            'token' => $tokenPayload['token'],
+            'tokenType' => 'Bearer',
+            'expiresAt' => $tokenPayload['expiresAt'],
+            'refreshAfter' => $tokenPayload['refreshAfter'],
+            'user' => $this->serializeUser($user->fresh('school'), $role),
+            'message' => 'Account setup completed successfully.',
         ]);
     }
 
@@ -1578,8 +1713,17 @@ class AuthController extends Controller
             ],
         );
 
+        $payload = [
+            'message' => $this->inactiveAccountMessage($status),
+            'accountStatus' => $status->value,
+        ];
+
+        if ($status === AccountStatus::PENDING_SETUP) {
+            $payload['requiresAccountSetup'] = true;
+        }
+
         return response()->json(
-            ['message' => $this->inactiveAccountMessage($status)],
+            $payload,
             Response::HTTP_FORBIDDEN,
         );
     }
@@ -1587,6 +1731,7 @@ class AuthController extends Controller
     private function inactiveAccountMessage(AccountStatus $status): string
     {
         return match ($status) {
+            AccountStatus::PENDING_SETUP => 'Your account setup is not complete yet. Use your one-time setup link to activate your account.',
             AccountStatus::SUSPENDED => 'Your account is suspended. Please contact your administrator.',
             AccountStatus::LOCKED => 'Your account is locked. Please contact your administrator.',
             AccountStatus::ARCHIVED => 'Your account is archived and can no longer sign in.',

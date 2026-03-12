@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\SchoolRecordController;
+use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
 use Illuminate\Http\Request;
@@ -14,6 +15,8 @@ Route::prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/reset-required-password', [AuthController::class, 'resetRequiredPassword'])
         ->middleware('throttle:auth-password-reset');
+    Route::post('/setup-account', [AuthController::class, 'completeAccountSetup'])
+        ->middleware('throttle:auth-account-setup');
     Route::post('/verify-mfa', [AuthController::class, 'verifyMonitorMfa'])
         ->middleware('throttle:auth-mfa-verify');
     Route::post('/mfa/reset/request', [AuthController::class, 'requestMonitorMfaReset'])
@@ -51,6 +54,10 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::get('/records/archived', [SchoolRecordController::class, 'archived']);
     Route::get('/records/{school}/delete-preview', [SchoolRecordController::class, 'deletePreview']);
     Route::post('/records/{school}/send-reminder', [SchoolRecordController::class, 'sendReminder']);
+    Route::patch('/records/{school}/school-head-account', [SchoolHeadAccountController::class, 'update'])
+        ->middleware('throttle:auth-account-management');
+    Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])
+        ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/restore', [SchoolRecordController::class, 'restore']);
     Route::put('/records/{school}', [SchoolRecordController::class, 'update']);
     Route::patch('/records/{school}', [SchoolRecordController::class, 'update']);

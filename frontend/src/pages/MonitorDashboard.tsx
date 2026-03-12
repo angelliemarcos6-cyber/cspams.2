@@ -41,7 +41,14 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { isApiError } from "@/lib/api";
-import type { IndicatorSubmission, SchoolBulkImportResult, SchoolBulkImportRowPayload, SchoolRecord, SchoolStatus } from "@/types";
+import type {
+  IndicatorSubmission,
+  SchoolBulkImportResult,
+  SchoolBulkImportRowPayload,
+  SchoolHeadAccountStatusUpdatePayload,
+  SchoolRecord,
+  SchoolStatus,
+} from "@/types";
 import {
   buildRegionAggregates,
   buildStatusDistribution,
@@ -103,8 +110,6 @@ interface MonitorRecordFormState {
   createSchoolHeadAccount: boolean;
   schoolHeadAccountName: string;
   schoolHeadAccountEmail: string;
-  schoolHeadAccountPassword: string;
-  schoolHeadMustResetPassword: boolean;
 }
 
 type MonitorRecordFormField =
@@ -119,8 +124,7 @@ type MonitorRecordFormField =
   | "teacherCount"
   | "status"
   | "schoolHeadAccountName"
-  | "schoolHeadAccountEmail"
-  | "schoolHeadAccountPassword";
+  | "schoolHeadAccountEmail";
 
 interface SchoolScopeOption {
   key: string;
@@ -317,8 +321,6 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
   createSchoolHeadAccount: false,
   schoolHeadAccountName: "",
   schoolHeadAccountEmail: "",
-  schoolHeadAccountPassword: "",
-  schoolHeadMustResetPassword: true,
 };
 
 const ALL_SCHOOL_SCOPE = "__all_schools__";
@@ -518,6 +520,26 @@ function schoolTypeLabel(value: string | null | undefined): string {
   if (normalized === "public") return "Public";
   if (normalized === "private") return "Private";
   return value;
+}
+
+function accountStatusLabel(status: string | null | undefined): string {
+  if (!status) return "No Account";
+  const normalized = status.toLowerCase();
+  if (normalized === "active") return "Active";
+  if (normalized === "pending_setup") return "Pending Setup";
+  if (normalized === "suspended") return "Suspended";
+  if (normalized === "locked") return "Locked";
+  if (normalized === "archived") return "Archived";
+  return status;
+}
+
+function accountStatusTone(status: string | null | undefined): string {
+  const normalized = (status ?? "").toLowerCase();
+  if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
+  if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (normalized === "suspended" || normalized === "locked") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+  if (normalized === "archived") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+  return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
 function workflowTone(status: string | null) {
@@ -1000,6 +1022,8 @@ export function MonitorDashboard() {
     listArchivedRecords,
     restoreRecord,
     sendReminder,
+    updateSchoolHeadAccountStatus,
+    issueSchoolHeadSetupLink,
     bulkImportRecords,
   } = useData();
   const { submissions: indicatorSubmissions } = useIndicatorData();
@@ -1069,6 +1093,7 @@ export function MonitorDashboard() {
   const [deleteError, setDeleteError] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
+  const [accountActionKey, setAccountActionKey] = useState<string | null>(null);
   const [archivedRecords, setArchivedRecords] = useState<SchoolRecord[]>([]);
   const [showArchivedRecords, setShowArchivedRecords] = useState(false);
   const [isArchivedRecordsLoading, setIsArchivedRecordsLoading] = useState(false);
@@ -1327,6 +1352,23 @@ export function MonitorDashboard() {
     setToasts((current) => current.filter((item) => item.id !== id));
   };
 
+  const revealSetupLink = async (setupLink: string, schoolName: string) => {
+    const trimmedLink = setupLink.trim();
+    if (!trimmedLink) return;
+
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(trimmedLink);
+        pushToast(`Setup link copied for ${schoolName}.`, "success");
+        return;
+      } catch {
+        // Fall back to prompt copy if clipboard access fails.
+      }
+    }
+
+    window.prompt(`Copy the setup link for ${schoolName}:`, trimmedLink);
+  };
+
   const resetRecordForm = () => {
     setEditingRecordId(null);
     setRecordForm(EMPTY_MONITOR_RECORD_FORM);
@@ -1364,8 +1406,6 @@ export function MonitorDashboard() {
       createSchoolHeadAccount: false,
       schoolHeadAccountName: "",
       schoolHeadAccountEmail: "",
-      schoolHeadAccountPassword: "",
-      schoolHeadMustResetPassword: true,
     });
     setRecordFormErrors({});
     setRecordFormError("");
@@ -1410,12 +1450,6 @@ export function MonitorDashboard() {
         formErrors.schoolHeadAccountEmail = "Email is required.";
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recordForm.schoolHeadAccountEmail.trim())) {
         formErrors.schoolHeadAccountEmail = "Use a valid email address.";
-      }
-
-      if (!recordForm.schoolHeadAccountPassword.trim()) {
-        formErrors.schoolHeadAccountPassword = "Password is required.";
-      } else if (recordForm.schoolHeadAccountPassword.trim().length < 8) {
-        formErrors.schoolHeadAccountPassword = "Password must be at least 8 characters.";
       }
     }
 
@@ -1462,8 +1496,6 @@ export function MonitorDashboard() {
           ? {
               name: recordForm.schoolHeadAccountName.trim(),
               email: recordForm.schoolHeadAccountEmail.trim(),
-              password: recordForm.schoolHeadAccountPassword.trim(),
-              mustResetPassword: recordForm.schoolHeadMustResetPassword,
             }
           : undefined,
     };
@@ -1473,8 +1505,16 @@ export function MonitorDashboard() {
         await updateRecord(editingRecordId, payload);
         setRecordFormMessage("School record updated.");
       } else {
-        await addRecord(payload);
-        setRecordFormMessage("School record created.");
+        const provisioning = await addRecord(payload);
+        setRecordFormMessage(
+          provisioning
+            ? "School record created. Setup link generated for the School Head account."
+            : "School record created.",
+        );
+
+        if (provisioning?.setupLink) {
+          await revealSetupLink(provisioning.setupLink, payload.schoolName);
+        }
       }
 
       setTimeout(() => {
@@ -1488,7 +1528,6 @@ export function MonitorDashboard() {
           for (const [field, message] of Object.entries(apiFieldErrors)) {
             if (field === "schoolHeadAccount.name") mappedErrors.schoolHeadAccountName = message;
             else if (field === "schoolHeadAccount.email") mappedErrors.schoolHeadAccountEmail = message;
-            else if (field === "schoolHeadAccount.password") mappedErrors.schoolHeadAccountPassword = message;
             else if (
               field === "schoolId" ||
               field === "schoolName" ||
@@ -2997,6 +3036,81 @@ export function MonitorDashboard() {
     }
 
     void sendReminderForSchool(schoolKey, record.schoolName);
+  };
+
+  const requestAccountActionReason = (actionLabel: string): string | null => {
+    const input = window.prompt(`Reason for ${actionLabel}:`, "");
+    if (input === null) {
+      return null;
+    }
+
+    const normalized = input.trim();
+    if (normalized.length < 5) {
+      pushToast("Please provide a reason with at least 5 characters.", "warning");
+      return null;
+    }
+
+    return normalized;
+  };
+
+  const handleUpdateSchoolHeadAccount = async (
+    record: SchoolRecord,
+    update: Omit<SchoolHeadAccountStatusUpdatePayload, "reason">,
+    actionLabel: string,
+  ) => {
+    const account = record.schoolHeadAccount;
+    if (!account) {
+      pushToast(`No School Head account is linked to ${record.schoolName}.`, "warning");
+      return;
+    }
+
+    const reason = requestAccountActionReason(actionLabel);
+    if (!reason) {
+      return;
+    }
+
+    const actionKey = `${record.id}:${actionLabel}`;
+    setAccountActionKey(actionKey);
+    try {
+      const result = await updateSchoolHeadAccountStatus(record.id, {
+        ...update,
+        reason,
+      });
+      pushToast(result.message || `School Head account updated for ${record.schoolName}.`, "success");
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to update School Head account.", "warning");
+    } finally {
+      setAccountActionKey(null);
+    }
+  };
+
+  const handleIssueSchoolHeadSetupLink = async (record: SchoolRecord) => {
+    const account = record.schoolHeadAccount;
+    if (!account) {
+      pushToast(`No School Head account is linked to ${record.schoolName}.`, "warning");
+      return;
+    }
+
+    const accountStatus = String(account.accountStatus ?? "").toLowerCase();
+    let reason: string | null = null;
+    if (accountStatus !== "pending_setup") {
+      reason = requestAccountActionReason("reissuing setup link");
+      if (!reason) {
+        return;
+      }
+    }
+
+    const actionKey = `${record.id}:setup-link`;
+    setAccountActionKey(actionKey);
+    try {
+      const receipt = await issueSchoolHeadSetupLink(record.id, reason);
+      await revealSetupLink(receipt.setupLink, record.schoolName);
+      pushToast(`Setup link ready for ${record.schoolName}.`, "success");
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Unable to issue setup link.", "warning");
+    } finally {
+      setAccountActionKey(null);
+    }
   };
 
   const clearLockedSchoolContext = () => {
@@ -4573,7 +4687,7 @@ export function MonitorDashboard() {
                       Create School Head Account
                     </label>
                     {recordForm.createSchoolHeadAccount && (
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div>
                           <label htmlFor="monitor-account-name" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                             Account Name
@@ -4610,38 +4724,9 @@ export function MonitorDashboard() {
                           />
                           {recordFormErrors.schoolHeadAccountEmail && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountEmail}</p>}
                         </div>
-                        <div>
-                          <label htmlFor="monitor-account-password" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                            Temporary Password
-                          </label>
-                          <input
-                            id="monitor-account-password"
-                            type="password"
-                            value={recordForm.schoolHeadAccountPassword}
-                            onChange={(event) => {
-                              setRecordForm((current) => ({ ...current, schoolHeadAccountPassword: event.target.value }));
-                              setRecordFormErrors((current) => ({ ...current, schoolHeadAccountPassword: undefined }));
-                            }}
-                            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-                              recordFormErrors.schoolHeadAccountPassword ? "border-primary-300" : "border-slate-200"
-                            }`}
-                          />
-                          {recordFormErrors.schoolHeadAccountPassword && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountPassword}</p>}
-                        </div>
-                        <label className="md:col-span-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={recordForm.schoolHeadMustResetPassword}
-                            onChange={(event) =>
-                              setRecordForm((current) => ({
-                                ...current,
-                                schoolHeadMustResetPassword: event.target.checked,
-                              }))
-                            }
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary-100"
-                          />
-                          Require password reset on first login
-                        </label>
+                        <p className="md:col-span-2 rounded-sm border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-semibold text-primary-800">
+                          A one-time setup link (24h expiry) will be generated after save. The account becomes active once the School Head sets a password.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -4714,6 +4799,9 @@ export function MonitorDashboard() {
                   const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
                   const summary = schoolRequirementByKey.get(schoolKey);
                   const urgent = summary ? isUrgentRequirement(summary) : false;
+                  const schoolHeadAccount = record.schoolHeadAccount ?? null;
+                  const schoolHeadStatus = schoolHeadAccount ? String(schoolHeadAccount.accountStatus ?? "") : "";
+                  const accountBusy = accountActionKey?.startsWith(`${record.id}:`) ?? false;
 
                   return (
                     <article key={record.id} className={`rounded-sm border border-slate-200 bg-white p-3 ${urgent && summary ? urgencyRowTone(summary) : ""}`}>
@@ -4727,6 +4815,16 @@ export function MonitorDashboard() {
                         </span>
                       </div>
                       <p className="mt-2 text-xs text-slate-600">{record.address ?? record.district ?? "N/A"}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${accountStatusTone(schoolHeadStatus)}`}>
+                          Head Account: {schoolHeadAccount ? accountStatusLabel(schoolHeadStatus) : "None"}
+                        </span>
+                        {schoolHeadAccount?.flagged && (
+                          <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-700 ring-1 ring-rose-200">
+                            Flagged
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-1 text-xs text-slate-600">
                         Students: <span className="font-semibold text-slate-900">{record.studentCount.toLocaleString()}</span> | Teachers:{" "}
                         <span className="font-semibold text-slate-900">{record.teacherCount.toLocaleString()}</span>
@@ -4760,6 +4858,93 @@ export function MonitorDashboard() {
                         </button>
                       </div>
                       <div className="mt-2 flex items-center gap-2">
+                        {schoolHeadAccount && (
+                          <>
+                            {schoolHeadStatus === "pending_setup" ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleIssueSchoolHeadSetupLink(record)}
+                                disabled={accountBusy}
+                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {accountBusy ? "Working..." : "Setup Link"}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleUpdateSchoolHeadAccount(
+                                    record,
+                                    {
+                                      accountStatus: schoolHeadStatus === "active" ? "suspended" : "active",
+                                    },
+                                    schoolHeadStatus === "active" ? "suspending account" : "activating account",
+                                  )
+                                }
+                                disabled={accountBusy}
+                                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {accountBusy
+                                  ? "Working..."
+                                  : schoolHeadStatus === "active"
+                                    ? "Suspend Head"
+                                    : "Activate Head"}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleUpdateSchoolHeadAccount(
+                                  record,
+                                  {
+                                    flagged: !schoolHeadAccount.flagged,
+                                  },
+                                  schoolHeadAccount.flagged ? "clearing account flag" : "flagging account",
+                                )
+                              }
+                              disabled={accountBusy}
+                              className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {accountBusy ? "Working..." : schoolHeadAccount.flagged ? "Clear Flag" : "Flag"}
+                            </button>
+                            {schoolHeadStatus !== "archived" && schoolHeadStatus !== "locked" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleUpdateSchoolHeadAccount(
+                                    record,
+                                    {
+                                      accountStatus: "locked",
+                                    },
+                                    "locking account",
+                                  )
+                                }
+                                disabled={accountBusy}
+                                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {accountBusy ? "Working..." : "Lock"}
+                              </button>
+                            )}
+                            {schoolHeadStatus !== "archived" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleUpdateSchoolHeadAccount(
+                                    record,
+                                    {
+                                      accountStatus: "archived",
+                                    },
+                                    "archiving account",
+                                  )
+                                }
+                                disabled={accountBusy}
+                                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                {accountBusy ? "Working..." : "Archive Head"}
+                              </button>
+                            )}
+                          </>
+                        )}
                         <button
                           type="button"
                           onClick={() => openEditRecordForm(record)}
@@ -4868,6 +5053,9 @@ export function MonitorDashboard() {
                       const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
                       const summary = schoolRequirementByKey.get(schoolKey);
                       const urgent = summary ? isUrgentRequirement(summary) : false;
+                      const schoolHeadAccount = record.schoolHeadAccount ?? null;
+                      const schoolHeadStatus = schoolHeadAccount ? String(schoolHeadAccount.accountStatus ?? "") : "";
+                      const accountBusy = accountActionKey?.startsWith(`${record.id}:`) ?? false;
 
                       return (
                         <tr key={record.id} className={urgent && summary ? urgencyRowTone(summary) : "dashboard-table-row"}>
@@ -4877,6 +5065,16 @@ export function MonitorDashboard() {
                           <td className="px-5 py-3.5 align-top">
                             <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
                             <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${accountStatusTone(schoolHeadStatus)}`}>
+                                Head: {schoolHeadAccount ? accountStatusLabel(schoolHeadStatus) : "No Account"}
+                              </span>
+                              {schoolHeadAccount?.flagged && (
+                                <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-700 ring-1 ring-rose-200">
+                                  Flagged
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.region}</td>
                           <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.level ?? "N/A"}</td>
@@ -4921,6 +5119,93 @@ export function MonitorDashboard() {
                                 <BellRing className="h-3.5 w-3.5" />
                                 {remindingSchoolKey === schoolKey ? "Sending..." : "Send Reminder"}
                               </button>
+                              {schoolHeadAccount && (
+                                <>
+                                  {schoolHeadStatus === "pending_setup" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleIssueSchoolHeadSetupLink(record)}
+                                      disabled={accountBusy}
+                                      className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      {accountBusy ? "Working..." : "Setup Link"}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleUpdateSchoolHeadAccount(
+                                          record,
+                                          {
+                                            accountStatus: schoolHeadStatus === "active" ? "suspended" : "active",
+                                          },
+                                          schoolHeadStatus === "active" ? "suspending account" : "activating account",
+                                        )
+                                      }
+                                      disabled={accountBusy}
+                                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      {accountBusy
+                                        ? "Working..."
+                                        : schoolHeadStatus === "active"
+                                          ? "Suspend Head"
+                                          : "Activate Head"}
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleUpdateSchoolHeadAccount(
+                                        record,
+                                        {
+                                          flagged: !schoolHeadAccount.flagged,
+                                        },
+                                        schoolHeadAccount.flagged ? "clearing account flag" : "flagging account",
+                                      )
+                                    }
+                                    disabled={accountBusy}
+                                    className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                  >
+                                    {accountBusy ? "Working..." : schoolHeadAccount.flagged ? "Clear Flag" : "Flag"}
+                                  </button>
+                                  {schoolHeadStatus !== "archived" && schoolHeadStatus !== "locked" && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleUpdateSchoolHeadAccount(
+                                          record,
+                                          {
+                                            accountStatus: "locked",
+                                          },
+                                          "locking account",
+                                        )
+                                      }
+                                      disabled={accountBusy}
+                                      className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      {accountBusy ? "Working..." : "Lock"}
+                                    </button>
+                                  )}
+                                  {schoolHeadStatus !== "archived" && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleUpdateSchoolHeadAccount(
+                                          record,
+                                          {
+                                            accountStatus: "archived",
+                                          },
+                                          "archiving account",
+                                        )
+                                      }
+                                      disabled={accountBusy}
+                                      className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      {accountBusy ? "Working..." : "Archive Head"}
+                                    </button>
+                                  )}
+                                </>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => openEditRecordForm(record)}

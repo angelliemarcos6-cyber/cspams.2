@@ -13,10 +13,13 @@ use App\Models\School;
 use App\Models\Section;
 use App\Models\Student;
 use App\Models\User;
+use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Support\Auth\ApiUserResolver;
+use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
+use Carbon\CarbonImmutable;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +32,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SchoolRecordController extends Controller
 {
+    public function __construct(
+        private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
+    ) {
+    }
+
     public function index(Request $request): AnonymousResourceCollection|JsonResponse
     {
         $user = ApiUserResolver::fromRequest($request);
@@ -66,6 +74,18 @@ class SchoolRecordController extends Controller
 
         $records = (clone $baseQuery)
             ->with('submittedBy:id,name')
+            ->with(['schoolHeadAccounts' => function ($query): void {
+                $query->select([
+                    'id',
+                    'name',
+                    'email',
+                    'must_reset_password',
+                    'account_status',
+                    'school_id',
+                    'flagged_at',
+                    'flagged_reason',
+                ])->with('latestAccountSetupToken');
+            }])
             ->withCount('students')
             ->orderByDesc('submitted_at')
             ->orderByDesc('updated_at')
@@ -221,6 +241,18 @@ class SchoolRecordController extends Controller
 
         $records = School::onlyTrashed()
             ->with('submittedBy:id,name')
+            ->with(['schoolHeadAccounts' => function ($query): void {
+                $query->select([
+                    'id',
+                    'name',
+                    'email',
+                    'must_reset_password',
+                    'account_status',
+                    'school_id',
+                    'flagged_at',
+                    'flagged_reason',
+                ])->with('latestAccountSetupToken');
+            }])
             ->withCount('students')
             ->orderByDesc('deleted_at')
             ->get();
@@ -588,7 +620,12 @@ class SchoolRecordController extends Controller
             return null;
         }
 
-        /** @var array{name?: string, email?: string, password?: string|null, mustResetPassword?: bool|null}|null $payload */
+        $monitor = $this->requireAuthenticatedUser($request);
+        if (! UserRoleResolver::has($monitor, UserRoleResolver::MONITOR)) {
+            return null;
+        }
+
+        /** @var array{name?: string, email?: string}|null $payload */
         $payload = $request->input('schoolHeadAccount');
         if (! is_array($payload)) {
             return null;
@@ -606,36 +643,74 @@ class SchoolRecordController extends Controller
             ]);
         }
 
-        $rawPassword = trim((string) ($payload['password'] ?? ''));
-        $generatedPassword = null;
-        if ($rawPassword === '') {
-            $generatedPassword = Str::password(12);
-            $rawPassword = $generatedPassword;
-        }
-
-        $mustResetPassword = (bool) ($payload['mustResetPassword'] ?? true);
-        if ($generatedPassword !== null) {
-            $mustResetPassword = true;
-        }
-
         $account = new User();
         $account->name = $name;
         $account->email = $email;
-        $account->password = Hash::make($rawPassword);
-        $account->must_reset_password = $mustResetPassword;
-        $account->password_changed_at = $mustResetPassword ? null : now();
-        $account->account_status = AccountStatus::ACTIVE->value;
+        $account->password = Hash::make(Str::password(40));
+        $account->must_reset_password = true;
+        $account->password_changed_at = null;
+        $account->account_status = AccountStatus::PENDING_SETUP->value;
         $account->school_id = $school->id;
         $account->save();
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
+
+        $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+            $account,
+            $monitor,
+            $request->ip(),
+            $request->userAgent(),
+        );
+
+        $deliveryStatus = 'sent';
+        $deliveryMessage = 'Setup link sent to the School Head email.';
+        try {
+            $account->notify(
+                new SchoolHeadAccountSetupNotification(
+                    $school,
+                    $issuedSetup['setupUrl'],
+                    CarbonImmutable::parse($issuedSetup['expiresAt']),
+                ),
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+            $deliveryStatus = 'failed';
+            $deliveryMessage = 'Setup link email delivery failed. Share the setup link manually.';
+        }
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.setup_link_issued',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'account_status' => $account->accountStatus()->value,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'setup_link_expires_at' => $issuedSetup['expiresAt'],
+                'delivery_status' => $deliveryStatus,
+                'delivery_message' => $deliveryMessage,
+                'reason' => 'account_created',
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
 
         return [
             'id' => (string) $account->id,
             'name' => $account->name,
             'email' => $account->email,
-            'mustResetPassword' => $mustResetPassword,
+            'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
-            'generatedPassword' => $generatedPassword,
+            'setupLink' => $issuedSetup['setupUrl'],
+            'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
+            'setupLinkDelivery' => $deliveryStatus,
+            'setupLinkDeliveryMessage' => $deliveryMessage,
         ];
     }
 
@@ -690,7 +765,21 @@ class SchoolRecordController extends Controller
         $syncedAt = now()->toISOString();
 
         $response = response()->json([
-            'data' => (new SchoolRecordResource($school->load('submittedBy:id,name')))->resolve(),
+            'data' => (new SchoolRecordResource($school->load([
+                'submittedBy:id,name',
+                'schoolHeadAccounts' => function ($query): void {
+                    $query->select([
+                        'id',
+                        'name',
+                        'email',
+                        'must_reset_password',
+                        'account_status',
+                        'school_id',
+                        'flagged_at',
+                        'flagged_reason',
+                    ])->with('latestAccountSetupToken');
+                },
+            ])))->resolve(),
             'meta' => array_merge([
                 'syncedAt' => $syncedAt,
                 'scope' => $syncMeta['scope'],

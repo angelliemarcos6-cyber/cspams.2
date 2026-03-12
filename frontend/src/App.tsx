@@ -11,6 +11,7 @@ import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
+import { SetupAccount } from "@/pages/SetupAccount";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
 
 function FullscreenLoader() {
@@ -65,6 +66,7 @@ function AppRoutes() {
         path="/"
         element={role ? <Navigate to={role === "school_head" ? "/school-admin" : "/monitor"} replace /> : <Login />}
       />
+      <Route path="/setup-account" element={<SetupAccount />} />
       <Route
         path="/school-admin"
         element={

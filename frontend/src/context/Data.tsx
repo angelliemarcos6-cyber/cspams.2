@@ -11,6 +11,10 @@ import {
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
 import type {
+  SchoolHeadAccountProvisioningReceipt,
+  SchoolHeadAccountStatusUpdatePayload,
+  SchoolHeadAccountStatusUpdateResult,
+  SchoolHeadSetupLinkResult,
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
   SchoolReminderReceipt,
@@ -40,7 +44,9 @@ interface SchoolRecordsResponse {
 
 interface SchoolRecordMutationResponse {
   data: SchoolRecord;
-  meta?: SyncMeta;
+  meta?: SyncMeta & {
+    schoolHeadAccount?: SchoolHeadAccountProvisioningReceipt;
+  };
 }
 
 interface SchoolRecordDeleteResponse {
@@ -77,6 +83,14 @@ interface SchoolRecordBulkImportResponse {
   meta?: SyncMeta;
 }
 
+interface SchoolHeadAccountStatusResponse {
+  data: SchoolHeadAccountStatusUpdateResult;
+}
+
+interface SchoolHeadSetupLinkResponse {
+  data: SchoolHeadSetupLinkResult;
+}
+
 interface DataContextType {
   records: SchoolRecord[];
   targetsMet: TargetsMetSnapshot | null;
@@ -88,13 +102,21 @@ interface DataContextType {
   syncScope: SyncScope;
   syncStatus: SyncStatus;
   refreshRecords: () => Promise<void>;
-  addRecord: (record: SchoolRecordPayload) => Promise<void>;
+  addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
   previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
   listArchivedRecords: () => Promise<SchoolRecord[]>;
   restoreRecord: (id: string) => Promise<void>;
   sendReminder: (id: string, notes?: string | null) => Promise<SchoolReminderReceipt>;
+  updateSchoolHeadAccountStatus: (
+    schoolId: string,
+    payload: SchoolHeadAccountStatusUpdatePayload,
+  ) => Promise<SchoolHeadAccountStatusUpdateResult>;
+  issueSchoolHeadSetupLink: (
+    schoolId: string,
+    reason?: string | null,
+  ) => Promise<SchoolHeadSetupLinkResult>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
     options?: { updateExisting?: boolean; restoreArchived?: boolean },
@@ -271,7 +293,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [syncRecords]);
 
   const addRecord = useCallback(
-    async (record: SchoolRecordPayload) => {
+    async (record: SchoolRecordPayload): Promise<SchoolHeadAccountProvisioningReceipt | null> => {
       if (!token) {
         const authError = new Error("You are signed out. Please sign in again.");
         setError(authError.message);
@@ -325,6 +347,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         etagRef.current = "";
         await syncRecords(true);
+
+        return response.data?.meta?.schoolHeadAccount ?? null;
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -595,6 +619,107 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
+  const updateSchoolHeadAccountStatus = useCallback(
+    async (
+      schoolId: string,
+      payload: SchoolHeadAccountStatusUpdatePayload,
+    ): Promise<SchoolHeadAccountStatusUpdateResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountStatusResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account`,
+          {
+            method: "PATCH",
+            token,
+            body: payload,
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account) {
+          throw new Error("Account update response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError],
+  );
+
+  const issueSchoolHeadSetupLink = useCallback(
+    async (schoolId: string, reason?: string | null): Promise<SchoolHeadSetupLinkResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadSetupLinkResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/setup-link`,
+          {
+            method: "POST",
+            token,
+            body: {
+              reason: reason?.trim() || undefined,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account || !result.setupLink) {
+          throw new Error("Setup link response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError],
+  );
+
   const bulkImportRecords = useCallback(
     async (
       rows: SchoolBulkImportRowPayload[],
@@ -714,6 +839,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listArchivedRecords,
       restoreRecord,
       sendReminder,
+      updateSchoolHeadAccountStatus,
+      issueSchoolHeadSetupLink,
       bulkImportRecords,
     }),
     [
@@ -734,6 +861,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       listArchivedRecords,
       restoreRecord,
       sendReminder,
+      updateSchoolHeadAccountStatus,
+      issueSchoolHeadSetupLink,
       bulkImportRecords,
     ],
   );

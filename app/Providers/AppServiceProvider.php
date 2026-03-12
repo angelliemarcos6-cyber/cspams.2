@@ -114,6 +114,32 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('auth-account-setup', function (Request $request) use ($lockoutResponse): array {
+            $tokenPrefix = strtolower(substr(trim((string) $request->input('token', 'unknown')), 0, 24));
+            $identity = $tokenPrefix . '|' . $request->ip();
+
+            return [
+                Limit::perMinute(5)->by('auth-account-setup:' . $identity)
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.account_setup.locked_out',
+                            'identity',
+                        ),
+                    ),
+                Limit::perMinute(20)->by('auth-account-setup-ip:' . $request->ip())
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.account_setup.locked_out',
+                            'ip',
+                        ),
+                    ),
+            ];
+        });
+
         RateLimiter::for('auth-mfa-verify', function (Request $request) use ($lockoutResponse): array {
             $role = strtolower(trim((string) $request->input('role', 'unknown')));
             $login = strtolower(trim((string) $request->input('login', 'unknown')));
@@ -299,6 +325,33 @@ class AppServiceProvider extends ServiceProvider
                             $request,
                             $headers,
                             'auth.token_refresh.locked_out',
+                            'ip',
+                        ),
+                    ),
+            ];
+        });
+
+        RateLimiter::for('auth-account-management', function (Request $request) use ($lockoutResponse): array {
+            $key = $request->user()?->id
+                ? 'auth-account-management-user:' . $request->user()->id
+                : 'auth-account-management-ip:' . $request->ip();
+
+            return [
+                Limit::perMinute(30)->by($key)
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.account_management.locked_out',
+                            'identity',
+                        ),
+                    ),
+                Limit::perMinute(80)->by('auth-account-management-ip:' . $request->ip())
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.account_management.locked_out',
                             'ip',
                         ),
                     ),

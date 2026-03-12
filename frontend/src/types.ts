@@ -1,5 +1,5 @@
 export type UserRole = "school_head" | "monitor" | null;
-export type AccountStatus = "active" | "suspended" | "locked" | "archived";
+export type AccountStatus = "active" | "pending_setup" | "suspended" | "locked" | "archived";
 
 export type SchoolStatus = "active" | "inactive" | "pending";
 export type WorkflowStatus = "draft" | "submitted" | "validated" | "returned";
@@ -30,13 +30,55 @@ export interface SchoolRecord {
   submittedBy: string;
   lastUpdated: string;
   deletedAt?: string | null;
+  schoolHeadAccount?: SchoolHeadAccountSummary | null;
 }
 
 export interface SchoolHeadAccountPayload {
   name: string;
   email: string;
-  password?: string | null;
-  mustResetPassword?: boolean;
+}
+
+export interface SchoolHeadAccountSummary {
+  id: string;
+  name: string;
+  email: string;
+  accountStatus: AccountStatus | string;
+  mustResetPassword: boolean;
+  flagged: boolean;
+  flaggedAt: string | null;
+  flagReason: string | null;
+  setupLinkExpiresAt: string | null;
+}
+
+export interface SchoolHeadAccountStatusUpdatePayload {
+  accountStatus?: "active" | "suspended" | "locked" | "archived";
+  flagged?: boolean;
+  reason: string;
+}
+
+export interface SchoolHeadAccountStatusUpdateResult {
+  account: SchoolHeadAccountSummary;
+  message: string;
+}
+
+export interface SchoolHeadSetupLinkResult {
+  account: SchoolHeadAccountSummary;
+  setupLink: string;
+  expiresAt: string;
+  delivery: "sent" | "failed" | string;
+  deliveryMessage: string;
+}
+
+export interface SchoolHeadAccountProvisioningReceipt {
+  id: string;
+  name: string;
+  email: string;
+  mustResetPassword: boolean;
+  accountStatus: AccountStatus | string;
+  setupLink: string;
+  setupLinkExpiresAt: string;
+  setupLinkDelivery: "sent" | "failed" | string;
+  setupLinkDeliveryMessage: string;
 }
 
 export interface SessionUser {

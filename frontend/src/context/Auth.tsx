@@ -24,6 +24,12 @@ interface VerifyMonitorMfaInput {
   code: string;
 }
 
+interface CompleteAccountSetupInput {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
 interface LoginResultAuthenticated {
   status: "authenticated";
   user: SessionUser;
@@ -47,6 +53,7 @@ interface AuthContextType {
   isLoggingOut: boolean;
   login: (input: LoginInput) => Promise<LoginResult>;
   verifyMfa: (input: VerifyMonitorMfaInput) => Promise<void>;
+  completeAccountSetup: (input: CompleteAccountSetupInput) => Promise<void>;
   resetRequiredPassword: (input: LoginInput & { newPassword: string; confirmPassword: string }) => Promise<void>;
   logout: () => Promise<void>;
   listActiveSessions: () => Promise<ActiveSessionDevice[]>;
@@ -78,6 +85,11 @@ interface MeResponse {
 }
 
 interface ResetRequiredPasswordResponse {
+  token?: string;
+  user: SessionUser;
+}
+
+interface CompleteAccountSetupResponse {
   token?: string;
   user: SessionUser;
 }
@@ -466,6 +478,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const completeAccountSetup = useCallback(
+    async ({ token, password, confirmPassword }: CompleteAccountSetupInput) => {
+      setIsAuthenticating(true);
+      try {
+        const payload = await apiRequest<CompleteAccountSetupResponse>("/api/auth/setup-account", {
+          method: "POST",
+          body: {
+            token,
+            password,
+            password_confirmation: confirmPassword,
+          },
+        });
+
+        const nextSession: StoredSession = {
+          user: normalizeUser(payload.user),
+        };
+
+        setSession(nextSession);
+        writeStoredSession(nextSession);
+      } finally {
+        setIsAuthenticating(false);
+      }
+    },
+    [],
+  );
+
   const logout = useCallback(async () => {
     clearSession();
     setIsLoggingOut(true);
@@ -524,6 +562,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoggingOut,
       login,
       verifyMfa,
+      completeAccountSetup,
       resetRequiredPassword,
       logout,
       listActiveSessions,
@@ -537,6 +576,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoggingOut,
       login,
       verifyMfa,
+      completeAccountSetup,
       resetRequiredPassword,
       logout,
       listActiveSessions,

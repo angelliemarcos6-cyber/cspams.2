@@ -23,7 +23,7 @@ class UserRoleResolver
             return false;
         }
 
-        foreach (self::ROLE_ALIASES[$role] ?? [$role] as $alias) {
+        foreach (self::roleAliases($role) as $alias) {
             if ($user->hasRole($alias)) {
                 return true;
             }
@@ -71,6 +71,14 @@ class UserRoleResolver
     public static function loginRoles(): array
     {
         return [self::MONITOR, self::SCHOOL_HEAD];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function roleAliases(string $role): array
+    {
+        return self::ROLE_ALIASES[$role] ?? [$role];
     }
 }
 

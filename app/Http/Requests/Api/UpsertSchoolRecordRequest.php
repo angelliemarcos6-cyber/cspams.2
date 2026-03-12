@@ -60,10 +60,6 @@ class UpsertSchoolRecordRequest extends FormRequest
                 $schoolHeadAccount['name'] = $normalize($schoolHeadAccount['name'] ?? null);
                 $normalizedEmail = $normalize($schoolHeadAccount['email'] ?? null);
                 $schoolHeadAccount['email'] = $normalizedEmail ? strtolower($normalizedEmail) : null;
-
-                if (array_key_exists('password', $schoolHeadAccount)) {
-                    $schoolHeadAccount['password'] = $normalize($schoolHeadAccount['password']);
-                }
             }
 
             $payload['schoolHeadAccount'] = $schoolHeadAccount;
@@ -117,8 +113,6 @@ class UpsertSchoolRecordRequest extends FormRequest
                 'max:255',
                 Rule::unique('users', 'email_normalized'),
             ],
-            'schoolHeadAccount.password' => ['sometimes', 'nullable', 'string', 'min:8', 'max:72'],
-            'schoolHeadAccount.mustResetPassword' => ['sometimes', 'boolean'],
         ];
     }
 

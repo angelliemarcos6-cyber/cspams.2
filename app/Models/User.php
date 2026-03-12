@@ -6,6 +6,7 @@ use App\Support\Domain\AccountStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -34,6 +35,9 @@ class User extends Authenticatable
         'mfa_backup_codes',
         'mfa_backup_codes_generated_at',
         'school_id',
+        'flagged_at',
+        'flagged_by_user_id',
+        'flagged_reason',
     ];
 
     /**
@@ -58,6 +62,7 @@ class User extends Authenticatable
             'account_status' => AccountStatus::class,
             'mfa_backup_codes' => 'array',
             'mfa_backup_codes_generated_at' => 'datetime',
+            'flagged_at' => 'datetime',
         ];
     }
 
@@ -106,5 +111,20 @@ class User extends Authenticatable
     public function monitorMfaResetTickets(): HasMany
     {
         return $this->hasMany(MonitorMfaResetTicket::class);
+    }
+
+    public function accountSetupTokens(): HasMany
+    {
+        return $this->hasMany(AccountSetupToken::class);
+    }
+
+    public function latestAccountSetupToken(): HasOne
+    {
+        return $this->hasOne(AccountSetupToken::class)->latestOfMany('id');
+    }
+
+    public function flaggedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'flagged_by_user_id');
     }
 }

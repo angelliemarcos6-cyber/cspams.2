@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Audit\AuditsActivity;
+use App\Support\Auth\UserRoleResolver;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -56,6 +57,16 @@ class School extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    public function schoolHeadAccounts(): HasMany
+    {
+        $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+
+        return $this->hasMany(User::class)
+            ->whereHas('roles', static function ($builder) use ($aliases): void {
+                $builder->whereIn('name', $aliases);
+            });
     }
 
     public function submittedBy(): BelongsTo

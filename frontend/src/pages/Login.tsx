@@ -186,11 +186,19 @@ export function Login() {
           pendingMfa === null &&
           err.status === 403 &&
           Boolean((err.payload as { requiresPasswordReset?: boolean } | null)?.requiresPasswordReset);
+        const requiresSetup =
+          pendingMfa === null &&
+          err.status === 403 &&
+          Boolean((err.payload as { requiresAccountSetup?: boolean } | null)?.requiresAccountSetup);
 
         if (requiresReset) {
           clearMfaState();
           setRequiresPasswordReset(true);
           setError("Password reset required. Set a new passcode to continue.");
+        } else if (requiresSetup) {
+          clearMfaState();
+          clearResetState();
+          setError("Account setup is required. Use your one-time setup link, or request a new one from your Division Monitor.");
         } else {
           if (pendingMfa === null) {
             clearResetState();

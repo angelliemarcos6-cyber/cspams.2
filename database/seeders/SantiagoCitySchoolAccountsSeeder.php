@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\School;
 use App\Models\User;
+use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Domain\SchoolStatus;
@@ -17,6 +18,9 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
 
     public function run(): void
     {
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+
         foreach ($this->schools() as $entry) {
             $school = School::query()->updateOrCreate(
                 ['school_code' => $entry['school_code']],
@@ -35,42 +39,32 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
 
             $schoolHead = User::query()->firstOrNew(['email' => $this->schoolHeadEmail($entry['school_code'])]);
             $schoolHeadWasRecentlyCreated = ! $schoolHead->exists;
+            $shouldRefreshSetup = $schoolHeadWasRecentlyCreated || $this->shouldSyncSeedPasswords();
+
             $schoolHead->name = 'School Head - ' . $entry['name'];
             $schoolHead->school_id = $school->id;
-            $schoolHead->account_status = AccountStatus::ACTIVE->value;
+            if ($shouldRefreshSetup) {
+                $schoolHead->account_status = AccountStatus::PENDING_SETUP->value;
+            }
 
-            if ($schoolHeadWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
-                $schoolHead->password = Hash::make($this->temporaryPasswordForSchoolCode($entry['school_code']));
+            if ($shouldRefreshSetup) {
+                $schoolHead->password = Hash::make(Str::password(40));
                 $schoolHead->must_reset_password = true;
                 $schoolHead->password_changed_at = null;
             }
 
             $schoolHead->save();
-
             $schoolHead->syncRoles([UserRoleResolver::SCHOOL_HEAD]);
+
+            if ($shouldRefreshSetup) {
+                $setupService->issue($schoolHead);
+            }
 
             $school->update([
                 'submitted_by' => $schoolHead->id,
                 'submitted_at' => now(),
             ]);
         }
-    }
-
-    private function temporaryPasswordForSchoolCode(string $schoolCode): string
-    {
-        $configured = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD'));
-        if ($configured !== '') {
-            return $configured;
-        }
-
-        $appKey = (string) config('app.key');
-        if ($appKey === '') {
-            return 'Csp@' . Str::upper(Str::random(10)) . '!';
-        }
-
-        $fingerprint = strtoupper(substr(hash_hmac('sha256', $schoolCode, $appKey), 0, 10));
-
-        return 'Csp@' . $fingerprint . '!';
     }
 
     private function schoolHeadEmail(string $schoolCode): string
