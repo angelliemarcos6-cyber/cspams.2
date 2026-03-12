@@ -3,15 +3,29 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Broadcast;
 use Symfony\Component\HttpFoundation\Response;
-use Tests\Concerns\InteractsWithSeededCredentials;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Tests\TestCase;
 
 class BroadcastChannelSecurityTest extends TestCase
 {
     use RefreshDatabase;
-    use InteractsWithSeededCredentials;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('broadcasting.default', 'reverb');
+        config()->set('broadcasting.connections.reverb.key', 'test-app-key');
+        config()->set('broadcasting.connections.reverb.secret', 'test-app-secret');
+        config()->set('broadcasting.connections.reverb.app_id', 'test-app-id');
+        Broadcast::setDefaultDriver('reverb');
+
+        require base_path('routes/channels.php');
+    }
 
     public function test_realtime_channel_auth_requires_authenticated_user(): void
     {
@@ -19,45 +33,73 @@ class BroadcastChannelSecurityTest extends TestCase
 
         $response = $this->postJson('/api/broadcasting/auth', [
             'socket_id' => '1234.1234',
-            'channel_name' => 'private-cspams-updates',
+            'channel_name' => 'private-cspams-updates.monitor',
         ]);
 
         $response->assertStatus(Response::HTTP_UNAUTHORIZED);
     }
 
-    public function test_school_head_can_authenticate_private_realtime_channel(): void
+    public function test_school_head_can_authenticate_own_school_realtime_channel(): void
     {
         $this->seed();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
-        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $status = $this->authorizeChannel($schoolHead, 'private-cspams-updates.school.' . $schoolHead->school_id);
+        $this->assertSame(Response::HTTP_OK, $status);
+    }
 
-        $response = $this->withToken($token)->post('/api/broadcasting/auth', [
+    public function test_school_head_cannot_authenticate_monitor_realtime_channel(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $status = $this->authorizeChannel($schoolHead, 'private-cspams-updates.monitor');
+        $this->assertSame(Response::HTTP_FORBIDDEN, $status);
+    }
+
+    public function test_school_head_cannot_authenticate_other_school_realtime_channel(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var User $otherSchoolHead */
+        $otherSchoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $status = $this->authorizeChannel($schoolHead, 'private-cspams-updates.school.' . $otherSchoolHead->school_id);
+        $this->assertSame(Response::HTTP_FORBIDDEN, $status);
+    }
+
+    public function test_monitor_can_authenticate_monitor_realtime_channel(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $status = $this->authorizeChannel($monitor, 'private-cspams-updates.monitor');
+        $this->assertSame(Response::HTTP_OK, $status);
+    }
+
+    private function authorizeChannel(User $user, string $channelName): int
+    {
+        $request = Request::create('/api/broadcasting/auth', 'POST', [
             'socket_id' => '1234.1234',
-            'channel_name' => 'private-cspams-updates',
+            'channel_name' => $channelName,
         ]);
 
-        $response->assertOk();
-    }
+        $request->setUserResolver(static fn () => $user);
 
-    private function loginToken(string $role, string $login): string
-    {
-        $loginResponse = $this->postJson('/api/auth/login', [
-            'role' => $role,
-            'login' => $login,
-            'password' => $this->demoPasswordForLogin($role, $login),
-        ]);
+        try {
+            $response = Broadcast::auth($request);
+        } catch (AccessDeniedHttpException) {
+            return Response::HTTP_FORBIDDEN;
+        }
 
-        $loginResponse->assertOk();
+        if ($response instanceof \Symfony\Component\HttpFoundation\Response) {
+            return $response->getStatusCode();
+        }
 
-        return (string) $loginResponse->json('token');
-    }
-
-    private function schoolHeadLogin(User $user): string
-    {
-        $user->loadMissing('school');
-
-        return (string) $user->school?->school_code;
+        return Response::HTTP_OK;
     }
 }

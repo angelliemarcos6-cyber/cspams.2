@@ -26,9 +26,15 @@ interface ChannelAuthResponse {
   shared_secret?: string;
 }
 
+export interface RealtimeBridgeScope {
+  role: "monitor" | "school_head";
+  schoolId?: number | null;
+}
+
 let realtimeEcho: Echo<"reverb"> | null = null;
 let isStarted = false;
 let activeToken = "";
+let activeScopeKey = "";
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (!value) return fallback;
@@ -69,7 +75,34 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-export function startRealtimeBridge(token: string) {
+function normalizeSchoolId(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  const normalized = Math.trunc(value);
+  return normalized > 0 ? normalized : null;
+}
+
+function buildScopeKey(scope: RealtimeBridgeScope): string {
+  if (scope.role === "monitor") {
+    return "monitor";
+  }
+
+  const schoolId = normalizeSchoolId(scope.schoolId);
+  return schoolId ? `school:${schoolId}` : "school:unassigned";
+}
+
+function resolveChannelName(scope: RealtimeBridgeScope): string | null {
+  if (scope.role === "monitor") {
+    return "cspams-updates.monitor";
+  }
+
+  const schoolId = normalizeSchoolId(scope.schoolId);
+  return schoolId ? `cspams-updates.school.${schoolId}` : null;
+}
+
+export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
   if (typeof window === "undefined") return;
 
   const normalizedToken = token.trim();
@@ -78,7 +111,14 @@ export function startRealtimeBridge(token: string) {
     return;
   }
 
-  if (isStarted && activeToken === normalizedToken) {
+  const channelName = resolveChannelName(scope);
+  if (!channelName) {
+    stopRealtimeBridge();
+    return;
+  }
+
+  const scopeKey = buildScopeKey(scope);
+  if (isStarted && activeToken === normalizedToken && activeScopeKey === scopeKey) {
     return;
   }
 
@@ -154,13 +194,14 @@ export function startRealtimeBridge(token: string) {
   });
 
   realtimeEcho
-    .private("cspams-updates")
+    .private(channelName)
     .listen(".cspams.update", (payload: CspamsRealtimePayload) => {
       dispatchRealtimePayload(payload);
     });
 
   isStarted = true;
   activeToken = normalizedToken;
+  activeScopeKey = scopeKey;
 }
 
 export function stopRealtimeBridge() {
@@ -170,4 +211,5 @@ export function stopRealtimeBridge() {
   realtimeEcho = null;
   isStarted = false;
   activeToken = "";
+  activeScopeKey = "";
 }

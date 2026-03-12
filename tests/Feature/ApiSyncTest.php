@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\School;
 use App\Models\Student;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Support\Domain\StudentStatus;
@@ -352,6 +353,111 @@ class ApiSyncTest extends TestCase
 
         $forbidden = $this->withToken($schoolHeadToken)->postJson('/api/dashboard/records/' . $schoolHead->school_id . '/send-reminder');
         $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
+    }
+
+    public function test_monitor_student_sync_supports_conditional_etag(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $students = $this->withToken($token)->getJson('/api/dashboard/students?page=1&per_page=25');
+        $students->assertOk()
+            ->assertHeader('X-Sync-Scope', 'division')
+            ->assertJsonPath('meta.scope', 'division')
+            ->assertJsonPath('meta.currentPage', 1)
+            ->assertJsonPath('meta.perPage', 25);
+
+        $etag = trim((string) $students->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $etag);
+
+        $notModified = $this->withToken($token)
+            ->withHeaders(['If-None-Match' => $etag])
+            ->getJson('/api/dashboard/students?page=1&per_page=25');
+
+        $notModified->assertStatus(Response::HTTP_NOT_MODIFIED)
+            ->assertHeader('X-Sync-Scope', 'division');
+
+        /** @var Student $student */
+        $student = Student::query()->firstOrFail();
+        $student->forceFill([
+            'status' => StudentStatus::AT_RISK->value,
+            'last_status_at' => now(),
+        ])->save();
+
+        $resynced = $this->withToken($token)
+            ->withHeaders(['If-None-Match' => $etag])
+            ->getJson('/api/dashboard/students?page=1&per_page=25');
+
+        $resynced->assertOk()
+            ->assertHeader('X-Sync-Scope', 'division');
+
+        $newEtag = trim((string) $resynced->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $newEtag);
+        $this->assertNotSame($etag, $newEtag);
+    }
+
+    public function test_monitor_teacher_sync_supports_conditional_etag(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $teachers = $this->withToken($token)->getJson('/api/dashboard/teachers?page=1&per_page=25');
+        $teachers->assertOk()
+            ->assertHeader('X-Sync-Scope', 'division')
+            ->assertJsonPath('meta.scope', 'division')
+            ->assertJsonPath('meta.currentPage', 1)
+            ->assertJsonPath('meta.perPage', 25);
+
+        $etag = trim((string) $teachers->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $etag);
+
+        $notModified = $this->withToken($token)
+            ->withHeaders(['If-None-Match' => $etag])
+            ->getJson('/api/dashboard/teachers?page=1&per_page=25');
+
+        $notModified->assertStatus(Response::HTTP_NOT_MODIFIED)
+            ->assertHeader('X-Sync-Scope', 'division');
+
+        /** @var Teacher $teacher */
+        $teacher = Teacher::query()->first();
+        if (! $teacher) {
+            /** @var School $school */
+            $school = School::query()->firstOrFail();
+            $teacher = Teacher::query()->create([
+                'school_id' => $school->id,
+                'name' => 'Seeded Teacher',
+                'sex' => 'female',
+            ]);
+        }
+
+        $teacher->forceFill(['name' => $teacher->name . ' Updated'])->save();
+
+        $resynced = $this->withToken($token)
+            ->withHeaders(['If-None-Match' => $etag])
+            ->getJson('/api/dashboard/teachers?page=1&per_page=25');
+
+        $resynced->assertOk()
+            ->assertHeader('X-Sync-Scope', 'division');
+
+        $newEtag = trim((string) $resynced->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $newEtag);
+        $this->assertNotSame($etag, $newEtag);
     }
 
     private function schoolHeadLogin(User $user): string

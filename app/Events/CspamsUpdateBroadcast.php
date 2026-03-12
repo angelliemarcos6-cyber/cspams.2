@@ -23,9 +23,21 @@ class CspamsUpdateBroadcast implements ShouldBroadcast
     {
     }
 
-    public function broadcastOn(): PrivateChannel
+    /**
+     * @return array<int, PrivateChannel>
+     */
+    public function broadcastOn(): array
     {
-        return new PrivateChannel('cspams-updates');
+        $channels = [
+            new PrivateChannel('cspams-updates.monitor'),
+        ];
+
+        $schoolId = $this->resolveSchoolId();
+        if ($schoolId !== null) {
+            $channels[] = new PrivateChannel('cspams-updates.school.' . $schoolId);
+        }
+
+        return $channels;
     }
 
     public function broadcastAs(): string
@@ -58,5 +70,18 @@ class CspamsUpdateBroadcast implements ShouldBroadcast
         $jobsTable = (string) ($connection['table'] ?? 'jobs');
 
         return Schema::hasTable($jobsTable);
+    }
+
+    private function resolveSchoolId(): ?int
+    {
+        $rawSchoolId = $this->payload['schoolId'] ?? null;
+        if (is_numeric($rawSchoolId)) {
+            $schoolId = (int) $rawSchoolId;
+            if ($schoolId > 0) {
+                return $schoolId;
+            }
+        }
+
+        return null;
     }
 }

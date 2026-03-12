@@ -88,20 +88,24 @@ function AppRoutes() {
 }
 
 function RealtimeBridge() {
-  const { token } = useAuth();
+  const { token, role, user } = useAuth();
+  const schoolId = user?.schoolId ?? null;
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !role) {
       stopRealtimeBridge();
       return;
     }
 
-    startRealtimeBridge(token);
+    startRealtimeBridge(token, {
+      role,
+      schoolId,
+    });
 
     return () => {
       stopRealtimeBridge();
     };
-  }, [token]);
+  }, [token, role, schoolId]);
 
   return null;
 }

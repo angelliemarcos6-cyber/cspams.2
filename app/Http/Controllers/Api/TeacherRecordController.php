@@ -11,6 +11,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,6 +34,11 @@ class TeacherRecordController extends Controller
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
+        $scope = $isSchoolHead ? 'school' : 'division';
+        $scopeKey = $isSchoolHead
+            ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
+            : 'division:all';
+
         $query = Teacher::query()
             ->with('school:id,school_code,name')
             ->orderByDesc('updated_at')
@@ -49,14 +55,14 @@ class TeacherRecordController extends Controller
         $schoolCode = trim((string) $request->query('schoolCode', ''));
         if ($schoolCode !== '' && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCode): void {
-                $builder->whereRaw('UPPER(school_code) = ?', [strtoupper($schoolCode)]);
+                $builder->where('school_code_normalized', strtolower($schoolCode));
             });
         }
 
         $schoolCodes = $this->parseSchoolCodes($request);
         if ($schoolCodes->isNotEmpty() && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCodes): void {
-                $builder->whereIn('school_code', $schoolCodes->all());
+                $builder->whereIn('school_code_normalized', $schoolCodes->all());
             });
         }
 
@@ -81,14 +87,38 @@ class TeacherRecordController extends Controller
         }
 
         $perPage = $this->resolvePerPage($request);
+        $page = max(1, $request->integer('page', 1));
+        $syncFingerprint = $this->buildSyncFingerprint(clone $query);
+        $etag = $this->buildSyncEtag(
+            $scope,
+            $scopeKey,
+            $page,
+            $perPage,
+            $syncFingerprint['recordCount'],
+            $syncFingerprint['latestAt'],
+        );
+
+        $incomingEtag = trim((string) $request->header('If-None-Match'));
+        if ($incomingEtag !== '' && trim($incomingEtag, '"') === $etag) {
+            return $this->buildNotModifiedResponse(
+                $etag,
+                $scope,
+                $scopeKey,
+                $syncFingerprint['recordCount'],
+                $syncFingerprint['latestAt'],
+            );
+        }
+
         $teachers = $query->paginate($perPage)->appends($request->query());
         $teacherRows = collect($teachers->items());
+        $syncedAt = now()->toISOString();
 
-        return response()->json([
+        $response = response()->json([
             'data' => TeacherRecordResource::collection($teacherRows)->resolve(),
             'meta' => [
-                'syncedAt' => now()->toISOString(),
-                'scope' => $isSchoolHead ? 'school' : 'division',
+                'syncedAt' => $syncedAt,
+                'scope' => $scope,
+                'scopeKey' => $scopeKey,
                 'recordCount' => $teachers->total(),
                 'currentPage' => $teachers->currentPage(),
                 'lastPage' => $teachers->lastPage(),
@@ -99,6 +129,16 @@ class TeacherRecordController extends Controller
                 'hasMorePages' => $teachers->hasMorePages(),
             ],
         ]);
+
+        return $this->applySyncHeaders(
+            $response,
+            $etag,
+            $scope,
+            $scopeKey,
+            $syncFingerprint['recordCount'],
+            $syncFingerprint['latestAt'],
+            $syncedAt,
+        );
     }
 
     public function store(UpsertTeacherRecordRequest $request): JsonResponse
@@ -283,8 +323,109 @@ class TeacherRecordController extends Controller
         }
 
         return collect(explode(',', $rawSchoolCodes))
-            ->map(static fn (string $value): string => strtoupper(trim($value)))
+            ->map(static fn (string $value): string => strtolower(trim($value)))
             ->filter(static fn (string $value): bool => $value !== '')
             ->values();
+    }
+
+    /**
+     * @return array{recordCount: int, latestAt: ?Carbon}
+     */
+    private function buildSyncFingerprint(Builder $query): array
+    {
+        $probe = $query
+            ->reorder()
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->selectRaw('MAX(updated_at) as latest_updated_at')
+            ->first();
+
+        return [
+            'recordCount' => (int) ($probe?->aggregate_count ?? 0),
+            'latestAt' => $this->resolveLatestTimestamp($probe?->latest_updated_at),
+        ];
+    }
+
+    private function buildSyncEtag(
+        string $scope,
+        string $scopeKey,
+        int $page,
+        int $perPage,
+        int $recordCount,
+        ?Carbon $latestAt,
+    ): string {
+        return sha1(implode('|', [
+            $scope,
+            $scopeKey,
+            (string) $page,
+            (string) $perPage,
+            (string) $recordCount,
+            $latestAt?->format('U.u') ?? '0',
+        ]));
+    }
+
+    private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon
+    {
+        $timestamps = [];
+        foreach ($rawTimestamps as $rawTimestamp) {
+            if (! $rawTimestamp) {
+                continue;
+            }
+
+            $timestamps[] = Carbon::parse($rawTimestamp);
+        }
+
+        if ($timestamps === []) {
+            return null;
+        }
+
+        usort(
+            $timestamps,
+            static fn (Carbon $a, Carbon $b): int => $b->greaterThan($a) ? 1 : ($a->equalTo($b) ? 0 : -1),
+        );
+
+        return $timestamps[0];
+    }
+
+    private function applySyncHeaders(
+        JsonResponse $response,
+        string $etag,
+        string $scope,
+        string $scopeKey,
+        int $recordCount,
+        ?Carbon $latestAt,
+        string $syncedAt,
+    ): JsonResponse {
+        $response->setEtag($etag);
+        if ($latestAt) {
+            $response->setLastModified($latestAt);
+        }
+
+        $response->headers->set('X-Sync-Scope', $scope);
+        $response->headers->set('X-Sync-Scope-Key', $scopeKey);
+        $response->headers->set('X-Sync-Record-Count', (string) $recordCount);
+        $response->headers->set('X-Sync-Etag', $etag);
+        $response->headers->set('X-Synced-At', $syncedAt);
+
+        return $response;
+    }
+
+    private function buildNotModifiedResponse(
+        string $etag,
+        string $scope,
+        string $scopeKey,
+        int $recordCount,
+        ?Carbon $latestAt,
+    ): JsonResponse {
+        $response = response()->json(null, Response::HTTP_NOT_MODIFIED);
+
+        return $this->applySyncHeaders(
+            $response,
+            $etag,
+            $scope,
+            $scopeKey,
+            $recordCount,
+            $latestAt,
+            now()->toISOString(),
+        );
     }
 }

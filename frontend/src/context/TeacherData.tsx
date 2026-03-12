@@ -17,6 +17,7 @@ type TeacherSyncScope = "division" | "school" | null;
 interface TeacherSyncMeta {
   syncedAt?: string;
   scope?: string;
+  scopeKey?: string;
   recordCount?: number;
   currentPage?: number;
   lastPage?: number;
@@ -117,6 +118,15 @@ const EMPTY_META: TeacherListMeta = {
 function normalizeScope(value: string | undefined): TeacherSyncScope {
   if (value === "division" || value === "school") return value;
   return null;
+}
+
+function normalizeScopeKey(value: string | undefined): string | null {
+  const normalized = (value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEtag(value: string | null): string {
+  return (value || "").replace(/^W\//, "").replace(/"/g, "");
 }
 
 function toPositiveInt(value: unknown, fallback: number): number {
@@ -232,6 +242,31 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const snapshotParamsRef = useRef<NormalizedTeacherListParams>(
     sanitizeParams({ page: 1, perPage: SNAPSHOT_PER_PAGE }),
   );
+  const syncInFlightRef = useRef(false);
+  const etagRef = useRef<string>("");
+  const syncScopeKeyRef = useRef<string>("");
+  const previousTokenRef = useRef<string>("");
+  const syncGenerationRef = useRef(0);
+
+  useEffect(() => {
+    if (previousTokenRef.current === token) {
+      return;
+    }
+
+    previousTokenRef.current = token;
+    syncGenerationRef.current += 1;
+    syncInFlightRef.current = false;
+    etagRef.current = "";
+    syncScopeKeyRef.current = "";
+    setTeachers([]);
+    setIsLoading(false);
+    setIsSaving(false);
+    setError("");
+    setLastSyncedAt(null);
+    setSyncScope(null);
+    setTotalCount(0);
+    setSnapshotMeta(EMPTY_META);
+  }, [token]);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
@@ -261,6 +296,10 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
   const syncTeachers = useCallback(
     async (silent = false) => {
+      if (syncInFlightRef.current) {
+        return;
+      }
+
       if (!token) {
         setTeachers([]);
         setIsLoading(false);
@@ -270,8 +309,13 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setSyncScope(null);
         setTotalCount(0);
         setSnapshotMeta(EMPTY_META);
+        etagRef.current = "";
+        syncScopeKeyRef.current = "";
         return;
       }
+
+      syncInFlightRef.current = true;
+      const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
         setIsLoading(true);
@@ -280,16 +324,65 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        const result = await requestTeachers(token, snapshotParamsRef.current);
+        const response = await apiRequestRaw<TeacherRecordsResponse>(buildListPath(snapshotParamsRef.current), {
+          token,
+          extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
+        });
+
+        const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+        if (nextEtag) {
+          etagRef.current = nextEtag;
+        }
+
+        if (requestGeneration !== syncGenerationRef.current) {
+          return;
+        }
+
+        const scopeFromHeaders = normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
+        const scopeKeyFromHeaders = normalizeScopeKey(response.headers.get("X-Sync-Scope-Key") || undefined);
+        if (scopeKeyFromHeaders) {
+          if (syncScopeKeyRef.current && syncScopeKeyRef.current !== scopeKeyFromHeaders) {
+            etagRef.current = "";
+          }
+          syncScopeKeyRef.current = scopeKeyFromHeaders;
+        }
+
+        if (response.status === 304) {
+          setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          if (scopeFromHeaders) {
+            setSyncScope(scopeFromHeaders);
+          }
+          return;
+        }
+
+        const result = {
+          data: Array.isArray(response.data?.data) ? response.data.data : [],
+          meta: normalizeMeta(response.data?.meta, snapshotParamsRef.current, Array.isArray(response.data?.data) ? response.data.data.length : 0),
+        };
+
+        const payloadScopeKey = normalizeScopeKey(response.data?.meta?.scopeKey);
+        if (payloadScopeKey) {
+          if (syncScopeKeyRef.current && syncScopeKeyRef.current !== payloadScopeKey) {
+            etagRef.current = "";
+          }
+          syncScopeKeyRef.current = payloadScopeKey;
+        }
+
         setTeachers(result.data);
         setSnapshotMeta(result.meta);
         setTotalCount(result.meta.total);
-        setLastSyncedAt(result.meta.syncedAt ?? new Date().toISOString());
-        setSyncScope(result.meta.scope);
+        setLastSyncedAt(response.headers.get("X-Synced-At") ?? result.meta.syncedAt ?? new Date().toISOString());
+        setSyncScope(normalizeScope(response.data?.meta?.scope) ?? scopeFromHeaders ?? result.meta.scope);
       } catch (err) {
+        if (requestGeneration !== syncGenerationRef.current) {
+          return;
+        }
         await handleApiError(err);
       } finally {
-        if (!silent) {
+        if (requestGeneration === syncGenerationRef.current) {
+          syncInFlightRef.current = false;
+        }
+        if (!silent && requestGeneration === syncGenerationRef.current) {
           setIsLoading(false);
         }
       }
@@ -342,6 +435,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           setTeachers((current) => [nextRecord, ...current.filter((item) => item.id !== nextRecord.id)].slice(0, SNAPSHOT_PER_PAGE));
         }
 
+        etagRef.current = "";
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -376,6 +470,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           setTeachers((current) => current.map((item) => (item.id === nextRecord.id ? nextRecord : item)));
         }
 
+        etagRef.current = "";
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -405,6 +500,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         });
 
         setTeachers((current) => current.filter((item) => item.id !== id));
+        etagRef.current = "";
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
