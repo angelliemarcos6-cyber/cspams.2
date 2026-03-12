@@ -4,6 +4,7 @@ namespace App\Filament\Pages\Auth;
 
 use App\Models\User;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\AccountStatus;
 use DanHarrin\LivewireRateLimiting\Exceptions\TooManyRequestsException;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Checkbox;
@@ -137,6 +138,10 @@ class CspamsLogin extends BaseLogin
             $this->throwFailedLoginException($rolePicked);
         }
 
+        if (! $user->canAuthenticate()) {
+            $this->throwInactiveAccountException($user);
+        }
+
         Filament::auth()->login($user, $remember);
 
         if (($user instanceof FilamentUser) && (! $user->canAccessPanel(Filament::getCurrentPanel()))) {
@@ -199,6 +204,20 @@ class CspamsLogin extends BaseLogin
         $message = $role === UserRoleResolver::SCHOOL_HEAD
             ? 'Invalid school code or password.'
             : 'Invalid credentials for the selected role.';
+
+        throw ValidationException::withMessages([
+            'data.login' => $message,
+        ]);
+    }
+
+    private function throwInactiveAccountException(User $user): never
+    {
+        $message = match ($user->accountStatus()) {
+            AccountStatus::SUSPENDED => 'Your account is suspended. Please contact your administrator.',
+            AccountStatus::LOCKED => 'Your account is locked. Please contact your administrator.',
+            AccountStatus::ARCHIVED => 'Your account is archived and can no longer sign in.',
+            default => 'This account is not active.',
+        };
 
         throw ValidationException::withMessages([
             'data.login' => $message,

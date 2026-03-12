@@ -1,4 +1,5 @@
 export type UserRole = "school_head" | "monitor" | null;
+export type AccountStatus = "active" | "suspended" | "locked" | "archived";
 
 export type SchoolStatus = "active" | "inactive" | "pending";
 export type WorkflowStatus = "draft" | "submitted" | "validated" | "returned";
@@ -43,6 +44,7 @@ export interface SessionUser {
   name: string;
   email: string;
   role: Exclude<UserRole, null>;
+  accountStatus?: AccountStatus | string;
   schoolId: number | null;
   schoolCode: string | null;
   schoolName: string | null;

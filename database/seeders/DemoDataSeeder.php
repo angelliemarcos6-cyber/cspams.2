@@ -11,6 +11,7 @@ use App\Models\StudentPerformanceRecord;
 use App\Models\StudentStatusLog;
 use App\Models\User;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\AccountStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Domain\MetricCategory;
 use App\Support\Domain\ReportingPeriod;
@@ -117,6 +118,7 @@ class DemoDataSeeder extends Seeder
         $monitor = User::query()->firstOrNew(['email' => 'monitor@cspams.local']);
         $monitorWasRecentlyCreated = ! $monitor->exists;
         $monitor->name = 'Division Monitor';
+        $monitor->account_status = AccountStatus::ACTIVE->value;
 
         if ($monitorWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
             $monitor->password = Hash::make($this->demoPasswordForKey('monitor'));
@@ -132,6 +134,7 @@ class DemoDataSeeder extends Seeder
             $headWasRecentlyCreated = ! $head->exists;
             $head->name = 'School Head ' . ($index + 1);
             $head->school_id = $school->id;
+            $head->account_status = AccountStatus::ACTIVE->value;
 
             if ($headWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
                 $head->password = Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code)));

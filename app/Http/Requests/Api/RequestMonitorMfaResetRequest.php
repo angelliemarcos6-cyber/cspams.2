@@ -6,7 +6,7 @@ use App\Support\Auth\UserRoleResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class VerifyMonitorMfaRequest extends FormRequest
+class RequestMonitorMfaResetRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -21,8 +21,8 @@ class VerifyMonitorMfaRequest extends FormRequest
         return [
             'role' => ['required', 'string', Rule::in([UserRoleResolver::MONITOR])],
             'login' => ['required', 'string', 'email', 'max:255'],
-            'challenge_id' => ['required', 'string', 'uuid'],
-            'code' => ['required', 'string', 'regex:/^(?:\d{6}|[A-Za-z0-9]{4}-[A-Za-z0-9]{4})$/'],
+            'password' => ['required', 'string', 'max:255'],
+            'reason' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ];
     }
 
@@ -32,8 +32,7 @@ class VerifyMonitorMfaRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'role.in' => 'MFA verification is currently supported for division monitor accounts only.',
-            'code.regex' => 'Code must be a 6-digit verification code or an 8-character backup code (XXXX-XXXX).',
+            'role.in' => 'MFA reset requests are only supported for division monitor accounts.',
         ];
     }
 }

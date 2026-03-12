@@ -16,12 +16,21 @@ Route::prefix('auth')->group(function (): void {
         ->middleware('throttle:auth-password-reset');
     Route::post('/verify-mfa', [AuthController::class, 'verifyMonitorMfa'])
         ->middleware('throttle:auth-mfa-verify');
+    Route::post('/mfa/reset/request', [AuthController::class, 'requestMonitorMfaReset'])
+        ->middleware('throttle:auth-mfa-reset-request');
+    Route::post('/mfa/reset/complete', [AuthController::class, 'completeMonitorMfaReset'])
+        ->middleware('throttle:auth-mfa-reset-complete');
 
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/refresh', [AuthController::class, 'refreshToken'])
             ->middleware('throttle:auth-token-refresh');
+        Route::post('/mfa/backup-codes/regenerate', [AuthController::class, 'regenerateMonitorMfaBackupCodes'])
+            ->middleware('throttle:auth-mfa-backup-codes');
+        Route::get('/mfa/reset/requests', [AuthController::class, 'monitorMfaResetRequests']);
+        Route::post('/mfa/reset/requests/{ticket}/approve', [AuthController::class, 'approveMonitorMfaReset'])
+            ->middleware('throttle:auth-mfa-reset-approve');
     });
 });
 

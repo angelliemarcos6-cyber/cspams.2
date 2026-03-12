@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\School;
 use App\Models\User;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\AccountStatus;
 use App\Support\Domain\SchoolStatus;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -36,6 +37,7 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
             $schoolHeadWasRecentlyCreated = ! $schoolHead->exists;
             $schoolHead->name = 'School Head - ' . $entry['name'];
             $schoolHead->school_id = $school->id;
+            $schoolHead->account_status = AccountStatus::ACTIVE->value;
 
             if ($schoolHeadWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
                 $schoolHead->password = Hash::make($this->temporaryPasswordForSchoolCode($entry['school_code']));

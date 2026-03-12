@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Domain\AccountStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -26,6 +27,9 @@ class User extends Authenticatable
         'password',
         'must_reset_password',
         'password_changed_at',
+        'account_status',
+        'mfa_backup_codes',
+        'mfa_backup_codes_generated_at',
         'school_id',
     ];
 
@@ -47,7 +51,34 @@ class User extends Authenticatable
             'password' => 'hashed',
             'must_reset_password' => 'boolean',
             'password_changed_at' => 'datetime',
+            'account_status' => AccountStatus::class,
+            'mfa_backup_codes' => 'array',
+            'mfa_backup_codes_generated_at' => 'datetime',
         ];
+    }
+
+    public function accountStatus(): AccountStatus
+    {
+        $rawStatus = $this->account_status;
+
+        if ($rawStatus instanceof AccountStatus) {
+            return $rawStatus;
+        }
+
+        if (is_string($rawStatus)) {
+            $normalized = strtolower(trim($rawStatus));
+            $status = AccountStatus::tryFrom($normalized);
+            if ($status instanceof AccountStatus) {
+                return $status;
+            }
+        }
+
+        return AccountStatus::ACTIVE;
+    }
+
+    public function canAuthenticate(): bool
+    {
+        return $this->accountStatus()->allowsLogin();
     }
 
     public function setEmailAttribute(mixed $value): void
@@ -66,5 +97,10 @@ class User extends Authenticatable
     public function submittedSchools(): HasMany
     {
         return $this->hasMany(School::class, 'submitted_by');
+    }
+
+    public function monitorMfaResetTickets(): HasMany
+    {
+        return $this->hasMany(MonitorMfaResetTicket::class);
     }
 }

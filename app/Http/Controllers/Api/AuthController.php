@@ -3,14 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\ApproveMonitorMfaResetRequest;
+use App\Http\Requests\Api\CompleteMonitorMfaResetRequest;
 use App\Http\Requests\Api\LoginRequest;
+use App\Http\Requests\Api\RegenerateMonitorMfaBackupCodesRequest;
+use App\Http\Requests\Api\RequestMonitorMfaResetRequest;
 use App\Http\Requests\Api\ResetRequiredPasswordRequest;
 use App\Http\Requests\Api\VerifyMonitorMfaRequest;
+use App\Models\MonitorMfaResetTicket;
 use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
+use App\Notifications\MonitorMfaResetApprovedNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Audit\AuthAuditLogger;
+use App\Support\Domain\AccountStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,6 +60,16 @@ class AuthController extends Controller
                 ['message' => $message],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
+        }
+
+        if (($inactiveResponse = $this->rejectInactiveAccount(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.login.failed',
+        )) instanceof JsonResponse) {
+            return $inactiveResponse;
         }
 
         if ($user->must_reset_password) {
@@ -167,6 +184,16 @@ class AuthController extends Controller
             );
         }
 
+        if (($inactiveResponse = $this->rejectInactiveAccount(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.password_reset.failed',
+        )) instanceof JsonResponse) {
+            return $inactiveResponse;
+        }
+
         if (! $user->must_reset_password) {
             AuthAuditLogger::record(
                 $request,
@@ -270,6 +297,18 @@ class AuthController extends Controller
             );
         }
 
+        if (($inactiveResponse = $this->rejectInactiveAccount(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.mfa_verify.failed',
+        )) instanceof JsonResponse) {
+            Cache::forget($this->monitorMfaCacheKey($challengeId));
+
+            return $inactiveResponse;
+        }
+
         $challenge = $this->readMonitorMfaChallenge($challengeId);
         if (! $challenge || $this->monitorMfaChallengeExpired($challenge)) {
             AuthAuditLogger::record(
@@ -316,54 +355,73 @@ class AuthController extends Controller
             );
         }
 
+        $usedBackupCode = false;
         if (! Hash::check($code, (string) ($challenge['code_hash'] ?? ''))) {
-            $attempts = (int) ($challenge['attempts'] ?? 0) + 1;
-            $maxAttempts = (int) ($challenge['max_attempts'] ?? $this->monitorMfaMaxAttempts());
-
-            if ($attempts >= $maxAttempts) {
-                Cache::forget($this->monitorMfaCacheKey($challengeId));
+            $normalizedBackupCode = $this->normalizeBackupCode($code);
+            if ($normalizedBackupCode !== null && $this->consumeMonitorBackupCode($user, $normalizedBackupCode)) {
+                $usedBackupCode = true;
 
                 AuthAuditLogger::record(
                     $request,
-                    'auth.mfa_verify.locked_out',
-                    'lockout',
+                    'auth.mfa_verify.backup_code_used',
+                    'success',
                     $user,
                     $role,
                     $login,
                     [
-                        'reason' => 'max_attempts_exceeded',
                         'mfa_challenge_id' => $challengeId,
+                        'backup_codes_remaining' => $this->monitorBackupCodeCount($user),
+                    ],
+                );
+            } else {
+                $attempts = (int) ($challenge['attempts'] ?? 0) + 1;
+                $maxAttempts = (int) ($challenge['max_attempts'] ?? $this->monitorMfaMaxAttempts());
+
+                if ($attempts >= $maxAttempts) {
+                    Cache::forget($this->monitorMfaCacheKey($challengeId));
+
+                    AuthAuditLogger::record(
+                        $request,
+                        'auth.mfa_verify.locked_out',
+                        'lockout',
+                        $user,
+                        $role,
+                        $login,
+                        [
+                            'reason' => 'max_attempts_exceeded',
+                            'mfa_challenge_id' => $challengeId,
+                        ],
+                    );
+
+                    return response()->json(
+                        ['message' => 'Too many invalid verification attempts. Please sign in again.'],
+                        Response::HTTP_TOO_MANY_REQUESTS,
+                    );
+                }
+
+                $challenge['attempts'] = $attempts;
+                $this->storeMonitorMfaChallenge($challengeId, $challenge);
+
+                AuthAuditLogger::record(
+                    $request,
+                    'auth.mfa_verify.failed',
+                    'failure',
+                    $user,
+                    $role,
+                    $login,
+                    [
+                        'reason' => 'invalid_code',
+                        'mfa_challenge_id' => $challengeId,
+                        'attempts' => $attempts,
+                        'attempts_remaining' => max(0, $maxAttempts - $attempts),
                     ],
                 );
 
                 return response()->json(
-                    ['message' => 'Too many invalid verification attempts. Please sign in again.'],
-                    Response::HTTP_TOO_MANY_REQUESTS,
+                    ['message' => 'Invalid verification code or backup code.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
                 );
             }
-
-            $challenge['attempts'] = $attempts;
-            $this->storeMonitorMfaChallenge($challengeId, $challenge);
-
-            AuthAuditLogger::record(
-                $request,
-                'auth.mfa_verify.failed',
-                'failure',
-                $user,
-                $role,
-                $login,
-                [
-                    'reason' => 'invalid_code',
-                    'mfa_challenge_id' => $challengeId,
-                    'attempts' => $attempts,
-                    'attempts_remaining' => max(0, $maxAttempts - $attempts),
-                ],
-            );
-
-            return response()->json(
-                ['message' => 'Invalid verification code.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
         }
 
         Cache::forget($this->monitorMfaCacheKey($challengeId));
@@ -386,6 +444,7 @@ class AuthController extends Controller
                 'mfa_challenge_id' => $challengeId,
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'mfa_method' => $usedBackupCode ? 'backup_code' : 'email_code',
             ],
         );
 
@@ -395,6 +454,456 @@ class AuthController extends Controller
             'expiresAt' => $tokenPayload['expiresAt'],
             'refreshAfter' => $tokenPayload['refreshAfter'],
             'user' => $this->serializeUser($user->fresh('school'), $role),
+        ]);
+    }
+
+    public function regenerateMonitorMfaBackupCodes(RegenerateMonitorMfaBackupCodesRequest $request): JsonResponse
+    {
+        $user = ApiUserResolver::fromRequest($request);
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $role = UserRoleResolver::MONITOR;
+        $login = strtolower((string) $user->email);
+
+        if (! UserRoleResolver::has($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_backup_codes.regenerate.failed',
+                'failure',
+                $user,
+                null,
+                $login,
+                ['reason' => 'insufficient_role'],
+            );
+
+            return response()->json(
+                ['message' => 'Only division monitor accounts can manage MFA backup codes.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $currentPassword = $request->string('current_password')->toString();
+        if (! Hash::check($currentPassword, $user->password)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_backup_codes.regenerate.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'invalid_credentials'],
+            );
+
+            return response()->json(
+                ['message' => 'Invalid credentials for the selected role.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $backupCodes = $this->generateAndStoreMonitorBackupCodes($user);
+        $generatedAt = CarbonImmutable::now();
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.mfa_backup_codes.regenerate.success',
+            'success',
+            $user,
+            $role,
+            $login,
+            [
+                'backup_codes_generated' => count($backupCodes),
+                'generated_at' => $generatedAt->toISOString(),
+            ],
+        );
+
+        return response()->json([
+            'backupCodes' => $backupCodes,
+            'generatedAt' => $generatedAt->toISOString(),
+            'message' => 'Backup codes generated. Store them securely; each code can be used once.',
+        ]);
+    }
+
+    public function requestMonitorMfaReset(RequestMonitorMfaResetRequest $request): JsonResponse
+    {
+        if (! $this->monitorMfaEnabled()) {
+            return response()->json(
+                ['message' => 'MFA reset is not required for this environment.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $role = UserRoleResolver::MONITOR;
+        $login = strtolower(trim($request->string('login')->toString()));
+        $password = $request->string('password')->toString();
+        $reason = trim($request->string('reason')->toString());
+
+        $user = $this->resolveUserForLogin($role, $login);
+        if (! $user || ! UserRoleResolver::has($user, $role) || ! Hash::check($password, $user->password)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.request.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'invalid_credentials'],
+            );
+
+            return response()->json(
+                ['message' => 'Invalid credentials for the selected role.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (($inactiveResponse = $this->rejectInactiveAccount(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.mfa_reset.request.failed',
+        )) instanceof JsonResponse) {
+            return $inactiveResponse;
+        }
+
+        $expiresAt = CarbonImmutable::now()->addMinutes($this->monitorMfaResetRequestTtlMinutes());
+        $this->expireOpenMonitorMfaResetTickets((int) $user->id);
+
+        $ticket = MonitorMfaResetTicket::query()->create([
+            'user_id' => $user->id,
+            'requested_by_user_id' => null,
+            'status' => MonitorMfaResetTicket::STATUS_PENDING,
+            'reason' => $reason !== '' ? $reason : null,
+            'expires_at' => $expiresAt,
+            'requested_ip' => $request->ip(),
+            'requested_user_agent' => $request->userAgent(),
+        ]);
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.mfa_reset.requested',
+            'challenge',
+            $user,
+            $role,
+            $login,
+            [
+                'mfa_reset_ticket_id' => $ticket->id,
+                'mfa_reset_expires_at' => $expiresAt->toISOString(),
+            ],
+        );
+
+        return response()->json(
+            [
+                'status' => MonitorMfaResetTicket::STATUS_PENDING,
+                'requestId' => $ticket->id,
+                'expiresAt' => $expiresAt->toISOString(),
+                'message' => 'MFA reset request submitted. Await admin approval before completion.',
+            ],
+            Response::HTTP_ACCEPTED,
+        );
+    }
+
+    public function monitorMfaResetRequests(Request $request): JsonResponse
+    {
+        $actor = ApiUserResolver::fromRequest($request);
+        if (! $actor) {
+            return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (! UserRoleResolver::has($actor, UserRoleResolver::MONITOR)) {
+            return response()->json(
+                ['message' => 'Only division monitor accounts can access MFA reset approvals.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $now = CarbonImmutable::now();
+        $items = MonitorMfaResetTicket::query()
+            ->with('user:id,name,email')
+            ->where('status', MonitorMfaResetTicket::STATUS_PENDING)
+            ->where('expires_at', '>', $now)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(static function (MonitorMfaResetTicket $ticket): array {
+                return [
+                    'id' => $ticket->id,
+                    'status' => $ticket->status,
+                    'reason' => $ticket->reason,
+                    'requestedAt' => $ticket->created_at?->toISOString(),
+                    'expiresAt' => $ticket->expires_at?->toISOString(),
+                    'requester' => [
+                        'id' => $ticket->user?->id,
+                        'name' => $ticket->user?->name,
+                        'email' => $ticket->user?->email,
+                    ],
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $items]);
+    }
+
+    public function approveMonitorMfaReset(
+        ApproveMonitorMfaResetRequest $request,
+        MonitorMfaResetTicket $ticket,
+    ): JsonResponse {
+        $actor = ApiUserResolver::fromRequest($request);
+        if (! $actor) {
+            return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (! UserRoleResolver::has($actor, UserRoleResolver::MONITOR)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.approve.failed',
+                'failure',
+                $actor,
+                null,
+                $actor->email,
+                [
+                    'reason' => 'insufficient_role',
+                    'mfa_reset_ticket_id' => $ticket->id,
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'Only division monitor accounts can approve MFA reset requests.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $targetUser = $ticket->user()->first();
+        if (! $targetUser || ! UserRoleResolver::has($targetUser, UserRoleResolver::MONITOR)) {
+            return response()->json(
+                ['message' => 'MFA reset approval is only supported for division monitor accounts.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $now = CarbonImmutable::now();
+        if (
+            $ticket->status !== MonitorMfaResetTicket::STATUS_PENDING ||
+            $ticket->expires_at === null ||
+            $ticket->expires_at->lte($now)
+        ) {
+            return response()->json(
+                ['message' => 'MFA reset request is no longer pending approval.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $approvalToken = $this->monitorMfaResetApprovalToken();
+        $approvalExpiresAt = $now->addMinutes($this->monitorMfaResetApprovalTtlMinutes());
+        $approvalNotes = trim($request->string('notes')->toString());
+
+        $ticket->forceFill([
+            'status' => MonitorMfaResetTicket::STATUS_APPROVED,
+            'approved_by_user_id' => $actor->id,
+            'approved_at' => $now,
+            'approval_token_hash' => Hash::make($approvalToken),
+            'approval_token_expires_at' => $approvalExpiresAt,
+        ])->save();
+
+        $targetUser->notify(
+            new MonitorMfaResetApprovedNotification($approvalToken, $approvalExpiresAt->toDateTimeString()),
+        );
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.mfa_reset.approved',
+            'success',
+            $actor,
+            UserRoleResolver::MONITOR,
+            $targetUser->email,
+            [
+                'mfa_reset_ticket_id' => $ticket->id,
+                'target_user_id' => $targetUser->id,
+                'approval_token_expires_at' => $approvalExpiresAt->toISOString(),
+                'approval_notes' => $approvalNotes !== '' ? $approvalNotes : null,
+            ],
+        );
+
+        return response()->json([
+            'status' => MonitorMfaResetTicket::STATUS_APPROVED,
+            'requestId' => $ticket->id,
+            'approvalToken' => $approvalToken,
+            'approvalTokenExpiresAt' => $approvalExpiresAt->toISOString(),
+            'message' => 'MFA reset approved. Share the approval token through a secure channel.',
+        ]);
+    }
+
+    public function completeMonitorMfaReset(CompleteMonitorMfaResetRequest $request): JsonResponse
+    {
+        if (! $this->monitorMfaEnabled()) {
+            return response()->json(
+                ['message' => 'MFA reset is not required for this environment.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $role = UserRoleResolver::MONITOR;
+        $login = strtolower(trim($request->string('login')->toString()));
+        $password = $request->string('password')->toString();
+        $requestId = (int) $request->integer('request_id');
+        $approvalToken = $this->normalizeBackupCode($request->string('approval_token')->toString());
+
+        $user = $this->resolveUserForLogin($role, $login);
+        if (! $user || ! UserRoleResolver::has($user, $role) || ! Hash::check($password, $user->password)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.complete.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'invalid_credentials'],
+            );
+
+            return response()->json(
+                ['message' => 'Invalid credentials for the selected role.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (($inactiveResponse = $this->rejectInactiveAccount(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.mfa_reset.complete.failed',
+        )) instanceof JsonResponse) {
+            return $inactiveResponse;
+        }
+
+        if ($approvalToken === null) {
+            return response()->json(
+                ['message' => 'Approval token format is invalid.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $ticket = MonitorMfaResetTicket::query()
+            ->whereKey($requestId)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $ticket || $ticket->status !== MonitorMfaResetTicket::STATUS_APPROVED) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.complete.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                [
+                    'reason' => 'invalid_ticket_state',
+                    'mfa_reset_ticket_id' => $requestId,
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'MFA reset request is not approved or no longer valid.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $now = CarbonImmutable::now();
+        if (
+            $ticket->expires_at === null ||
+            $ticket->expires_at->lte($now) ||
+            $ticket->approval_token_expires_at === null ||
+            $ticket->approval_token_expires_at->lte($now)
+        ) {
+            $ticket->forceFill([
+                'status' => MonitorMfaResetTicket::STATUS_EXPIRED,
+                'approval_token_hash' => null,
+                'approval_token_expires_at' => null,
+            ])->save();
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.complete.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                [
+                    'reason' => 'approval_token_invalid_or_expired',
+                    'mfa_reset_ticket_id' => $ticket->id,
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'Approval token is invalid or expired. Submit a new MFA reset request.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (
+            ! is_string($ticket->approval_token_hash) ||
+            $ticket->approval_token_hash === '' ||
+            ! Hash::check($approvalToken, $ticket->approval_token_hash)
+        ) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.complete.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                [
+                    'reason' => 'approval_token_invalid',
+                    'mfa_reset_ticket_id' => $ticket->id,
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'Approval token is invalid.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $backupCodes = $this->generateAndStoreMonitorBackupCodes($user);
+        $ticket->forceFill([
+            'status' => MonitorMfaResetTicket::STATUS_COMPLETED,
+            'completed_at' => $now,
+            'approval_token_hash' => null,
+            'approval_token_expires_at' => null,
+        ])->save();
+
+        if ($request->hasSession()) {
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+        }
+
+        $tokenPayload = $this->issueDashboardToken($user, $role, true);
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.mfa_reset.completed',
+            'success',
+            $user,
+            $role,
+            $login,
+            [
+                'mfa_reset_ticket_id' => $ticket->id,
+                'backup_codes_generated' => count($backupCodes),
+                'token_expires_at' => $tokenPayload['expiresAt'],
+                'token_refresh_after' => $tokenPayload['refreshAfter'],
+            ],
+        );
+
+        return response()->json([
+            'token' => $tokenPayload['token'],
+            'tokenType' => 'Bearer',
+            'expiresAt' => $tokenPayload['expiresAt'],
+            'refreshAfter' => $tokenPayload['refreshAfter'],
+            'user' => $this->serializeUser($user->fresh('school'), $role),
+            'backupCodes' => $backupCodes,
+            'message' => 'MFA reset completed. Store your backup codes securely.',
         ]);
     }
 
@@ -553,6 +1062,8 @@ class AuthController extends Controller
      */
     private function serializeUser(User $user, string $role): array
     {
+        $status = $user->accountStatus();
+
         return [
             'id' => $user->id,
             'name' => $user->name,
@@ -562,7 +1073,50 @@ class AuthController extends Controller
             'schoolCode' => $user->school?->school_code,
             'schoolName' => $user->school?->name,
             'mustResetPassword' => (bool) $user->must_reset_password,
+            'accountStatus' => $status->value,
         ];
+    }
+
+    private function rejectInactiveAccount(
+        Request $request,
+        User $user,
+        string $role,
+        string $identifier,
+        string $action,
+    ): ?JsonResponse {
+        if ($user->canAuthenticate()) {
+            return null;
+        }
+
+        $status = $user->accountStatus();
+
+        AuthAuditLogger::record(
+            $request,
+            $action,
+            'failure',
+            $user,
+            $role,
+            $identifier,
+            [
+                'reason' => 'account_not_active',
+                'account_status' => $status->value,
+            ],
+        );
+
+        return response()->json(
+            ['message' => $this->inactiveAccountMessage($status)],
+            Response::HTTP_FORBIDDEN,
+        );
+    }
+
+    private function inactiveAccountMessage(AccountStatus $status): string
+    {
+        return match ($status) {
+            AccountStatus::SUSPENDED => 'Your account is suspended. Please contact your administrator.',
+            AccountStatus::LOCKED => 'Your account is locked. Please contact your administrator.',
+            AccountStatus::ARCHIVED => 'Your account is archived and can no longer sign in.',
+            default => 'This account is not active.',
+        };
     }
 
     private function normalizeSchoolCode(string $value): ?string
@@ -767,6 +1321,133 @@ class AuthController extends Controller
         }
 
         return CarbonImmutable::now()->addMinutes($this->monitorMfaTtlMinutes());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function generateAndStoreMonitorBackupCodes(User $user): array
+    {
+        $codes = [];
+        $hashes = [];
+
+        for ($index = 0; $index < $this->monitorMfaBackupCodesCount(); $index++) {
+            $raw = strtoupper(Str::random(8));
+            $code = substr($raw, 0, 4) . '-' . substr($raw, 4, 4);
+            $normalizedCode = $this->normalizeBackupCode($code);
+            if ($normalizedCode === null) {
+                continue;
+            }
+
+            $codes[] = $normalizedCode;
+            $hashes[] = Hash::make($normalizedCode);
+        }
+
+        $user->forceFill([
+            'mfa_backup_codes' => $hashes,
+            'mfa_backup_codes_generated_at' => now(),
+        ])->save();
+
+        return $codes;
+    }
+
+    private function consumeMonitorBackupCode(User $user, string $normalizedCode): bool
+    {
+        $stored = $user->mfa_backup_codes;
+        if (! is_array($stored) || $stored === []) {
+            return false;
+        }
+
+        foreach ($stored as $index => $hash) {
+            if (! is_string($hash) || $hash === '') {
+                continue;
+            }
+
+            if (! Hash::check($normalizedCode, $hash)) {
+                continue;
+            }
+
+            unset($stored[$index]);
+
+            $user->forceFill([
+                'mfa_backup_codes' => array_values($stored),
+            ])->save();
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function monitorBackupCodeCount(User $user): int
+    {
+        $stored = $user->mfa_backup_codes;
+        if (! is_array($stored)) {
+            return 0;
+        }
+
+        return count(array_filter($stored, static fn (mixed $item): bool => is_string($item) && $item !== ''));
+    }
+
+    private function normalizeBackupCode(string $value): ?string
+    {
+        $compact = preg_replace('/[^a-zA-Z0-9]/', '', strtoupper(trim($value)));
+        if (! is_string($compact) || strlen($compact) !== 8) {
+            return null;
+        }
+
+        return substr($compact, 0, 4) . '-' . substr($compact, 4, 4);
+    }
+
+    private function monitorMfaBackupCodesCount(): int
+    {
+        return max(4, (int) config('auth_mfa.monitor.backup_codes_count', 8));
+    }
+
+    private function monitorMfaResetRequestTtlMinutes(): int
+    {
+        return max(5, (int) config('auth_mfa.monitor.reset_request_ttl_minutes', 1440));
+    }
+
+    private function monitorMfaResetApprovalTtlMinutes(): int
+    {
+        return max(1, (int) config('auth_mfa.monitor.reset_approval_ttl_minutes', 60));
+    }
+
+    private function monitorMfaResetTestApprovalToken(): ?string
+    {
+        $configured = trim((string) config('auth_mfa.monitor.reset_test_approval_token', ''));
+        if ($configured === '') {
+            return null;
+        }
+
+        return $this->normalizeBackupCode($configured);
+    }
+
+    private function monitorMfaResetApprovalToken(): string
+    {
+        $configured = $this->monitorMfaResetTestApprovalToken();
+        if ($configured !== null) {
+            return $configured;
+        }
+
+        $raw = strtoupper(Str::random(8));
+
+        return substr($raw, 0, 4) . '-' . substr($raw, 4, 4);
+    }
+
+    private function expireOpenMonitorMfaResetTickets(int $userId): void
+    {
+        MonitorMfaResetTicket::query()
+            ->where('user_id', $userId)
+            ->whereIn('status', [
+                MonitorMfaResetTicket::STATUS_PENDING,
+                MonitorMfaResetTicket::STATUS_APPROVED,
+            ])
+            ->update([
+                'status' => MonitorMfaResetTicket::STATUS_EXPIRED,
+                'updated_at' => now(),
+            ]);
     }
 
     private function resolveRoleForUser(User $user): string

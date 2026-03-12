@@ -22,6 +22,19 @@ function formatMfaExpiry(isoTimestamp: string): string {
   return date.toLocaleString();
 }
 
+function normalizeMfaCodeInput(rawValue: string): string {
+  const compact = rawValue.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  if (compact.length <= 4) {
+    return compact;
+  }
+
+  return `${compact.slice(0, 4)}-${compact.slice(4)}`;
+}
+
+function isValidMfaInput(code: string): boolean {
+  return /^(?:\d{6}|[A-Z0-9]{4}-[A-Z0-9]{4})$/.test(code.trim().toUpperCase());
+}
+
 const ROLE_META: Record<
   LoginRole,
   { label: string; note: string; submit: string; loginHint: string; loginLabel: string; emptyError: string }
@@ -93,8 +106,8 @@ export function Login() {
     }
 
     if (pendingMfa) {
-      if (!/^\d{6}$/.test(mfaCode.trim())) {
-        setError("Enter the 6-digit verification code sent to your email.");
+      if (!isValidMfaInput(mfaCode)) {
+        setError("Enter a 6-digit verification code or backup code in XXXX-XXXX format.");
         return;
       }
     }
@@ -124,7 +137,7 @@ export function Login() {
           role: "monitor",
           login: pendingMfa.login,
           challengeId: pendingMfa.challengeId,
-          code: mfaCode.trim(),
+          code: mfaCode.trim().toUpperCase(),
         });
         clearMfaState();
         navigate("/monitor");
@@ -338,20 +351,21 @@ export function Login() {
                 <input
                   id="mfa-code"
                   type="text"
-                  inputMode="numeric"
+                  inputMode="text"
                   autoComplete="one-time-code"
                   value={mfaCode}
                   onChange={(event) => {
-                    setMfaCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                    setMfaCode(normalizeMfaCodeInput(event.target.value));
                     setError("");
                   }}
-                  placeholder="Enter 6-digit code"
-                  maxLength={6}
-                  pattern="\d{6}"
+                  placeholder="Enter 6-digit or backup code"
+                  maxLength={9}
+                  pattern="(?:\d{6}|[A-Z0-9]{4}-[A-Z0-9]{4})"
                   className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
                 <p className="mt-1.5 text-xs text-slate-500">
-                  Enter the code sent to your monitor email. Expires at {formatMfaExpiry(pendingMfa.expiresAt)}.
+                  Enter the code sent to your monitor email, or use a backup code (XXXX-XXXX). Expires at{" "}
+                  {formatMfaExpiry(pendingMfa.expiresAt)}.
                 </p>
               </div>
             )}

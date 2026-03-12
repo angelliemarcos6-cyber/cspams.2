@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\AccountStatus;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -623,6 +624,7 @@ class SchoolRecordController extends Controller
         $account->password = Hash::make($rawPassword);
         $account->must_reset_password = $mustResetPassword;
         $account->password_changed_at = $mustResetPassword ? null : now();
+        $account->account_status = AccountStatus::ACTIVE->value;
         $account->school_id = $school->id;
         $account->save();
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
@@ -632,6 +634,7 @@ class SchoolRecordController extends Controller
             'name' => $account->name,
             'email' => $account->email,
             'mustResetPassword' => $mustResetPassword,
+            'accountStatus' => $account->accountStatus()->value,
             'generatedPassword' => $generatedPassword,
         ];
     }
