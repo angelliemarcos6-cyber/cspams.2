@@ -46,7 +46,7 @@ return [
     |
     */
 
-    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 30),
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 15),
 
     /*
     |--------------------------------------------------------------------------
@@ -58,7 +58,7 @@ return [
     |
     */
 
-    'refresh_before' => env('SANCTUM_TOKEN_REFRESH_BEFORE_MINUTES', 5),
+    'refresh_before' => env('SANCTUM_TOKEN_REFRESH_BEFORE_MINUTES', 3),
 
     /*
     |--------------------------------------------------------------------------

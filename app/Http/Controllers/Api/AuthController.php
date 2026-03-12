@@ -23,8 +23,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\NewAccessToken;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -121,13 +124,22 @@ class AuthController extends Controller
             );
         }
 
+        $suspiciousLoginContainment = $this->containSuspiciousLogin(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.login.suspicious_detected',
+        );
+
         if ($request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
 
         // Keep bearer token response for backward-compatible non-SPA clients.
-        $tokenPayload = $this->issueDashboardToken($user, $role, true);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
             $request,
@@ -139,6 +151,9 @@ class AuthController extends Controller
             [
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
+                'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
+                'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
             ],
         );
 
@@ -234,13 +249,13 @@ class AuthController extends Controller
             'password_changed_at' => now(),
         ])->save();
 
-        // Password resets invalidate all existing API tokens immediately.
-        $user->tokens()->delete();
+        $revocationSummary = $this->revokeUserSessionsAndTokens($user);
         if ($request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
-        $tokenPayload = $this->issueDashboardToken($user, $role, false);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
             $request,
@@ -252,6 +267,8 @@ class AuthController extends Controller
             [
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
 
@@ -426,12 +443,21 @@ class AuthController extends Controller
 
         Cache::forget($this->monitorMfaCacheKey($challengeId));
 
+        $suspiciousLoginContainment = $this->containSuspiciousLogin(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.mfa_verify.suspicious_detected',
+        );
+
         if ($request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, true);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
             $request,
@@ -445,6 +471,9 @@ class AuthController extends Controller
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
                 'mfa_method' => $usedBackupCode ? 'backup_code' : 'email_code',
+                'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
+                'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
+                'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
             ],
         );
 
@@ -874,12 +903,21 @@ class AuthController extends Controller
             'approval_token_expires_at' => null,
         ])->save();
 
+        $suspiciousLoginContainment = $this->containSuspiciousLogin(
+            $request,
+            $user,
+            $role,
+            $login,
+            'auth.mfa_reset.complete.suspicious_detected',
+        );
+
         if ($request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, true);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
             $request,
@@ -893,6 +931,9 @@ class AuthController extends Controller
                 'backup_codes_generated' => count($backupCodes),
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
+                'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
+                'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
             ],
         );
 
@@ -943,8 +984,30 @@ class AuthController extends Controller
             );
         }
 
+        if (! $user->canAuthenticate()) {
+            $currentToken->delete();
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.token_refresh.failed',
+                'failure',
+                $user,
+                $this->resolveRoleForUser($user),
+                $user->email,
+                [
+                    'reason' => 'account_not_active',
+                    'account_status' => $user->accountStatus()->value,
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'This account is not active.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
         $role = $this->resolveRoleForUser($user);
-        $tokenPayload = $this->issueDashboardToken($user, $role, false);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
 
         // Rotate by revoking the old token immediately after issuing a replacement.
         $currentToken->delete();
@@ -987,6 +1050,201 @@ class AuthController extends Controller
 
         return response()->json([
             'user' => $this->serializeUser($user, $role),
+        ]);
+    }
+
+    public function activeSessions(Request $request): JsonResponse
+    {
+        $user = ApiUserResolver::fromRequest($request);
+
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $this->purgeExpiredTokens($user);
+
+        $currentTokenId = $user->currentAccessToken()?->id;
+        $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
+
+        $tokenEntries = $user->tokens()
+            ->orderByDesc('last_used_at')
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get()
+            ->map(function (PersonalAccessToken $token) use ($currentTokenId): array {
+                $derivedExpiry = $this->derivedTokenExpiryTimestamp($token);
+                $expiresAt = $token->expires_at?->toISOString() ?? $derivedExpiry?->toISOString();
+
+                return [
+                    'id' => 'pat_' . $token->id,
+                    'sessionType' => 'api_token',
+                    'deviceLabel' => trim((string) $token->name) !== '' ? (string) $token->name : 'API token',
+                    'ipAddress' => $this->normalizeIpAddress($token->ip_address ?? null),
+                    'userAgent' => $this->normalizeUserAgentString($token->user_agent ?? null),
+                    'createdAt' => $token->created_at?->toISOString(),
+                    'lastActiveAt' => $token->last_used_at?->toISOString() ?? $token->created_at?->toISOString(),
+                    'expiresAt' => $expiresAt,
+                    'isCurrent' => $currentTokenId !== null && (int) $token->id === (int) $currentTokenId,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $webSessionEntries = $this->activeWebSessionEntries($user, $request, $currentSessionId);
+        $sessions = array_merge($tokenEntries, $webSessionEntries);
+
+        usort(
+            $sessions,
+            static function (array $left, array $right): int {
+                $leftTimestamp = strtotime((string) ($left['lastActiveAt'] ?? $left['createdAt'] ?? '')) ?: 0;
+                $rightTimestamp = strtotime((string) ($right['lastActiveAt'] ?? $right['createdAt'] ?? '')) ?: 0;
+
+                return $rightTimestamp <=> $leftTimestamp;
+            },
+        );
+
+        return response()->json([
+            'data' => $sessions,
+            'meta' => [
+                'total' => count($sessions),
+                'currentTokenId' => $currentTokenId !== null ? 'pat_' . $currentTokenId : null,
+                'currentSessionId' => $currentSessionId !== null ? 'web_' . $currentSessionId : null,
+            ],
+        ]);
+    }
+
+    public function revokeSessionDevice(Request $request, string $session): JsonResponse
+    {
+        $user = ApiUserResolver::fromRequest($request);
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $identifier = trim($session);
+        if (str_starts_with($identifier, 'pat_')) {
+            $tokenId = (int) substr($identifier, 4);
+            if ($tokenId <= 0) {
+                return response()->json(['message' => 'Session identifier is invalid.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            /** @var PersonalAccessToken|null $token */
+            $token = $user->tokens()->whereKey($tokenId)->first();
+            if (! $token) {
+                return response()->json(['message' => 'Session/device not found.'], Response::HTTP_NOT_FOUND);
+            }
+
+            $isCurrentToken = (int) ($user->currentAccessToken()?->id ?? 0) === (int) $token->id;
+            $token->delete();
+
+            if ($isCurrentToken) {
+                Auth::guard('web')->logout();
+                if ($request->hasSession()) {
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                }
+            }
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.session.revoked',
+                'success',
+                $user,
+                $this->resolveRoleForUser($user),
+                $user->email,
+                [
+                    'session_type' => 'api_token',
+                    'session_id' => $identifier,
+                    'is_current' => $isCurrentToken,
+                ],
+            );
+
+            return response()->json([], Response::HTTP_NO_CONTENT);
+        }
+
+        if (str_starts_with($identifier, 'web_')) {
+            if (! Schema::hasTable('sessions')) {
+                return response()->json(
+                    ['message' => 'Session storage is not configured for device revocation.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                );
+            }
+
+            $sessionId = trim(substr($identifier, 4));
+            if ($sessionId === '') {
+                return response()->json(['message' => 'Session identifier is invalid.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $deleted = DB::table('sessions')
+                ->where('id', $sessionId)
+                ->where('user_id', $user->id)
+                ->delete();
+
+            if ($deleted < 1) {
+                return response()->json(['message' => 'Session/device not found.'], Response::HTTP_NOT_FOUND);
+            }
+
+            $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
+            $isCurrentSession = is_string($currentSessionId) && $currentSessionId === $sessionId;
+            if ($isCurrentSession) {
+                Auth::guard('web')->logout();
+                if ($request->hasSession()) {
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                }
+            }
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.session.revoked',
+                'success',
+                $user,
+                $this->resolveRoleForUser($user),
+                $user->email,
+                [
+                    'session_type' => 'web_session',
+                    'session_id' => $identifier,
+                    'is_current' => $isCurrentSession,
+                ],
+            );
+
+            return response()->json([], Response::HTTP_NO_CONTENT);
+        }
+
+        return response()->json(['message' => 'Session identifier is invalid.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    public function revokeOtherSessions(Request $request): JsonResponse
+    {
+        $user = ApiUserResolver::fromRequest($request);
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $currentTokenId = $user->currentAccessToken()?->id;
+        $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
+        $summary = $this->revokeUserSessionsAndTokens($user, $currentTokenId, $currentSessionId);
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.session.revoke_others',
+            'success',
+            $user,
+            $this->resolveRoleForUser($user),
+            $user->email,
+            [
+                'revoked_tokens' => $summary['revokedTokens'],
+                'revoked_web_sessions' => $summary['revokedWebSessions'],
+                'kept_current_token' => $currentTokenId !== null,
+                'kept_current_session' => $currentSessionId !== null,
+            ],
+        );
+
+        return response()->json([
+            'data' => [
+                'revokedTokenCount' => $summary['revokedTokens'],
+                'revokedWebSessionCount' => $summary['revokedWebSessions'],
+            ],
+            'message' => 'Other active sessions were revoked.',
         ]);
     }
 
@@ -1074,7 +1332,224 @@ class AuthController extends Controller
             'schoolName' => $user->school?->name,
             'mustResetPassword' => (bool) $user->must_reset_password,
             'accountStatus' => $status->value,
+            'lastLoginAt' => $user->last_login_at?->toISOString(),
         ];
+    }
+
+    /**
+     * @return array{suspicious: bool, revokedTokens: int, revokedWebSessions: int}
+     */
+    private function containSuspiciousLogin(
+        Request $request,
+        User $user,
+        string $role,
+        string $identifier,
+        string $auditAction,
+    ): array {
+        if (! $this->isSuspiciousLoginAttempt($request, $user)) {
+            return [
+                'suspicious' => false,
+                'revokedTokens' => 0,
+                'revokedWebSessions' => 0,
+            ];
+        }
+
+        $summary = $this->revokeUserSessionsAndTokens($user);
+
+        AuthAuditLogger::record(
+            $request,
+            $auditAction,
+            'challenge',
+            $user,
+            $role,
+            $identifier,
+            [
+                'reason' => 'new_device_or_location_detected',
+                'previous_ip' => $this->normalizeIpAddress($user->last_login_ip),
+                'current_ip' => $this->normalizeIpAddress($request->ip()),
+                'revoked_tokens' => $summary['revokedTokens'],
+                'revoked_web_sessions' => $summary['revokedWebSessions'],
+            ],
+        );
+
+        return [
+            'suspicious' => true,
+            'revokedTokens' => $summary['revokedTokens'],
+            'revokedWebSessions' => $summary['revokedWebSessions'],
+        ];
+    }
+
+    private function isSuspiciousLoginAttempt(Request $request, User $user): bool
+    {
+        $previousIp = $this->normalizeIpAddress($user->last_login_ip);
+        $previousAgent = $this->normalizeUserAgentString($user->last_login_user_agent);
+        $currentIp = $this->normalizeIpAddress($request->ip());
+        $currentAgent = $this->normalizeUserAgentString($request->userAgent());
+
+        if ($previousIp === null || $previousAgent === null || $currentIp === null || $currentAgent === null) {
+            return false;
+        }
+
+        return $previousIp !== $currentIp && $previousAgent !== $currentAgent;
+    }
+
+    private function recordSuccessfulLoginTelemetry(User $user, Request $request): void
+    {
+        $user->forceFill([
+            'last_login_at' => now(),
+            'last_login_ip' => $this->normalizeIpAddress($request->ip()),
+            'last_login_user_agent' => $this->normalizeUserAgentString($request->userAgent()),
+        ])->save();
+    }
+
+    /**
+     * @return array{revokedTokens: int, revokedWebSessions: int}
+     */
+    private function revokeUserSessionsAndTokens(
+        User $user,
+        ?int $exceptTokenId = null,
+        ?string $exceptSessionId = null,
+    ): array {
+        return [
+            'revokedTokens' => $this->revokeUserTokens($user, $exceptTokenId),
+            'revokedWebSessions' => $this->revokeUserWebSessions($user, $exceptSessionId),
+        ];
+    }
+
+    private function revokeUserTokens(User $user, ?int $exceptTokenId = null): int
+    {
+        $query = $user->tokens();
+        if ($exceptTokenId !== null) {
+            $query->where('id', '!=', $exceptTokenId);
+        }
+
+        return $query->delete();
+    }
+
+    private function revokeUserWebSessions(User $user, ?string $exceptSessionId = null): int
+    {
+        if (! Schema::hasTable('sessions')) {
+            return 0;
+        }
+
+        $query = DB::table('sessions')->where('user_id', $user->id);
+        if (is_string($exceptSessionId) && $exceptSessionId !== '') {
+            $query->where('id', '!=', $exceptSessionId);
+        }
+
+        return $query->delete();
+    }
+
+    /**
+     * @return list<array{
+     *   id: string,
+     *   sessionType: string,
+     *   deviceLabel: string,
+     *   ipAddress: string|null,
+     *   userAgent: string|null,
+     *   createdAt: string|null,
+     *   lastActiveAt: string|null,
+     *   expiresAt: string|null,
+     *   isCurrent: bool
+     * }>
+     */
+    private function activeWebSessionEntries(User $user, Request $request, ?string $currentSessionId): array
+    {
+        $entries = [];
+        $includedCurrent = false;
+
+        if (Schema::hasTable('sessions')) {
+            $rows = DB::table('sessions')
+                ->where('user_id', $user->id)
+                ->orderByDesc('last_activity')
+                ->limit(100)
+                ->get(['id', 'ip_address', 'user_agent', 'last_activity']);
+
+            foreach ($rows as $row) {
+                $sessionId = (string) ($row->id ?? '');
+                if ($sessionId === '') {
+                    continue;
+                }
+
+                $isCurrent = $currentSessionId !== null && $sessionId === $currentSessionId;
+                $includedCurrent = $includedCurrent || $isCurrent;
+
+                $lastActiveAt = $this->sessionLastActivityToIso($row->last_activity ?? null);
+                $userAgent = $this->normalizeUserAgentString($row->user_agent ?? null);
+
+                $entries[] = [
+                    'id' => 'web_' . $sessionId,
+                    'sessionType' => 'web_session',
+                    'deviceLabel' => $userAgent !== null ? 'Browser session' : 'Web session',
+                    'ipAddress' => $this->normalizeIpAddress($row->ip_address ?? null),
+                    'userAgent' => $userAgent,
+                    'createdAt' => null,
+                    'lastActiveAt' => $lastActiveAt,
+                    'expiresAt' => null,
+                    'isCurrent' => $isCurrent,
+                ];
+            }
+        }
+
+        if ($currentSessionId !== null && ! $includedCurrent) {
+            $entries[] = [
+                'id' => 'web_' . $currentSessionId,
+                'sessionType' => 'web_session',
+                'deviceLabel' => 'Current browser session',
+                'ipAddress' => $this->normalizeIpAddress($request->ip()),
+                'userAgent' => $this->normalizeUserAgentString($request->userAgent()),
+                'createdAt' => null,
+                'lastActiveAt' => now()->toISOString(),
+                'expiresAt' => null,
+                'isCurrent' => true,
+            ];
+        }
+
+        return $entries;
+    }
+
+    private function sessionLastActivityToIso(mixed $value): ?string
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $timestamp = (int) $value;
+        if ($timestamp <= 0) {
+            return null;
+        }
+
+        return CarbonImmutable::createFromTimestamp($timestamp)->toISOString();
+    }
+
+    private function derivedTokenExpiryTimestamp(PersonalAccessToken $token): ?CarbonImmutable
+    {
+        if ($token->expires_at !== null) {
+            return CarbonImmutable::parse($token->expires_at);
+        }
+
+        $expirationMinutes = $this->tokenExpirationMinutes();
+        if ($expirationMinutes === null || $token->created_at === null) {
+            return null;
+        }
+
+        return CarbonImmutable::parse($token->created_at)->addMinutes($expirationMinutes);
+    }
+
+    private function normalizeIpAddress(mixed $value): ?string
+    {
+        $normalized = trim((string) $value);
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function normalizeUserAgentString(mixed $value): ?string
+    {
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        return Str::limit($normalized, 500, '');
     }
 
     private function rejectInactiveAccount(
@@ -1133,7 +1608,12 @@ class AuthController extends Controller
     /**
      * @return array{token: string, expiresAt: string|null, refreshAfter: string|null}
      */
-    private function issueDashboardToken(User $user, string $role, bool $revokeExistingDashboardTokens): array
+    private function issueDashboardToken(
+        User $user,
+        string $role,
+        Request $request,
+        bool $revokeExistingDashboardTokens,
+    ): array
     {
         $this->purgeExpiredTokens($user);
 
@@ -1148,12 +1628,18 @@ class AuthController extends Controller
             ? CarbonImmutable::now()->addMinutes($expirationMinutes)
             : null;
 
-        $token = $expiresAt !== null
-            ? $user->createToken($this->dashboardTokenName($role), ['*'], $expiresAt)->plainTextToken
-            : $user->createToken($this->dashboardTokenName($role))->plainTextToken;
+        /** @var NewAccessToken $issuedToken */
+        $issuedToken = $expiresAt !== null
+            ? $user->createToken($this->dashboardTokenName($role), ['*'], $expiresAt)
+            : $user->createToken($this->dashboardTokenName($role));
+
+        $issuedToken->accessToken->forceFill([
+            'ip_address' => $this->normalizeIpAddress($request->ip()),
+            'user_agent' => $this->normalizeUserAgentString($request->userAgent()),
+        ])->save();
 
         return [
-            'token' => $token,
+            'token' => $issuedToken->plainTextToken,
             'expiresAt' => $expiresAt?->toISOString(),
             'refreshAfter' => $this->refreshAfterTimestamp($expiresAt, $expirationMinutes)?->toISOString(),
         ];

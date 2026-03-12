@@ -26,6 +26,12 @@ Route::prefix('auth')->group(function (): void {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/refresh', [AuthController::class, 'refreshToken'])
             ->middleware('throttle:auth-token-refresh');
+        Route::get('/sessions', [AuthController::class, 'activeSessions'])
+            ->middleware('throttle:auth-session-management');
+        Route::delete('/sessions/{session}', [AuthController::class, 'revokeSessionDevice'])
+            ->middleware('throttle:auth-session-management');
+        Route::post('/sessions/revoke-others', [AuthController::class, 'revokeOtherSessions'])
+            ->middleware('throttle:auth-session-management');
         Route::post('/mfa/backup-codes/regenerate', [AuthController::class, 'regenerateMonitorMfaBackupCodes'])
             ->middleware('throttle:auth-mfa-backup-codes');
         Route::get('/mfa/reset/requests', [AuthController::class, 'monitorMfaResetRequests']);

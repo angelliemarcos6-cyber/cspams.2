@@ -24,12 +24,22 @@ class ApiUserResolver
                 return null;
             }
 
+            if (! $tokenable->canAuthenticate()) {
+                $accessToken->delete();
+
+                return null;
+            }
+
             return $tokenable->withAccessToken($accessToken);
         }
 
         $user = $request->user();
 
-        return $user instanceof User ? $user : null;
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        return $user->canAuthenticate() ? $user : null;
     }
 
     private static function isExpired(PersonalAccessToken $accessToken): bool

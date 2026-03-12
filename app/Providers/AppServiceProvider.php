@@ -251,6 +251,33 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('auth-session-management', function (Request $request) use ($lockoutResponse): array {
+            $key = $request->user()?->id
+                ? 'auth-session-management-user:' . $request->user()->id
+                : 'auth-session-management-ip:' . $request->ip();
+
+            return [
+                Limit::perMinute(30)->by($key)
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.session_management.locked_out',
+                            'identity',
+                        ),
+                    ),
+                Limit::perMinute(80)->by('auth-session-management-ip:' . $request->ip())
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.session_management.locked_out',
+                            'ip',
+                        ),
+                    ),
+            ];
+        });
+
         RateLimiter::for('auth-token-refresh', function (Request $request) use ($lockoutResponse): array {
             $key = $request->user()?->id
                 ? 'auth-refresh-user:' . $request->user()->id

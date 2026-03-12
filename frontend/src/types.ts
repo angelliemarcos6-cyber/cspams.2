@@ -45,9 +45,24 @@ export interface SessionUser {
   email: string;
   role: Exclude<UserRole, null>;
   accountStatus?: AccountStatus | string;
+  lastLoginAt?: string | null;
   schoolId: number | null;
   schoolCode: string | null;
   schoolName: string | null;
+}
+
+export type ActiveSessionType = "api_token" | "web_session";
+
+export interface ActiveSessionDevice {
+  id: string;
+  sessionType: ActiveSessionType | string;
+  deviceLabel: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string | null;
+  lastActiveAt: string | null;
+  expiresAt: string | null;
+  isCurrent: boolean;
 }
 
 export interface SchoolRecordPayload {

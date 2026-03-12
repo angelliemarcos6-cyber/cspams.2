@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiRequest, COOKIE_SESSION_TOKEN } from "@/lib/api";
-import type { SessionUser, UserRole } from "@/types";
+import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
   role: Exclude<UserRole, null>;
@@ -49,6 +49,9 @@ interface AuthContextType {
   verifyMfa: (input: VerifyMonitorMfaInput) => Promise<void>;
   resetRequiredPassword: (input: LoginInput & { newPassword: string; confirmPassword: string }) => Promise<void>;
   logout: () => Promise<void>;
+  listActiveSessions: () => Promise<ActiveSessionDevice[]>;
+  revokeSessionDevice: (sessionId: string) => Promise<void>;
+  revokeOtherSessions: () => Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }>;
 }
 
 interface StoredSession {
@@ -77,6 +80,20 @@ interface MeResponse {
 interface ResetRequiredPasswordResponse {
   token?: string;
   user: SessionUser;
+}
+
+interface ActiveSessionsResponse {
+  data: ActiveSessionDevice[];
+  meta?: {
+    total?: number;
+  };
+}
+
+interface RevokeOtherSessionsResponse {
+  data?: {
+    revokedTokenCount?: number;
+    revokedWebSessionCount?: number;
+  };
 }
 
 function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequiredResponse {
@@ -468,6 +485,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [clearSession, flushPendingRemoteLogout]);
 
+  const listActiveSessions = useCallback(async (): Promise<ActiveSessionDevice[]> => {
+    const payload = await apiRequest<ActiveSessionsResponse>("/api/auth/sessions");
+
+    return Array.isArray(payload.data) ? payload.data : [];
+  }, []);
+
+  const revokeSessionDevice = useCallback(async (sessionId: string): Promise<void> => {
+    const normalized = sessionId.trim();
+    if (normalized.length === 0) {
+      throw new Error("Session identifier is required.");
+    }
+
+    await apiRequest<void>(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
+      method: "DELETE",
+    });
+  }, []);
+
+  const revokeOtherSessions = useCallback(async (): Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }> => {
+    const payload = await apiRequest<RevokeOtherSessionsResponse>("/api/auth/sessions/revoke-others", {
+      method: "POST",
+    });
+
+    return {
+      revokedTokenCount: Number(payload.data?.revokedTokenCount ?? 0),
+      revokedWebSessionCount: Number(payload.data?.revokedWebSessionCount ?? 0),
+    };
+  }, []);
+
   const value = useMemo<AuthContextType>(
     () => ({
       role: session?.user.role ?? null,
@@ -481,8 +526,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyMfa,
       resetRequiredPassword,
       logout,
+      listActiveSessions,
+      revokeSessionDevice,
+      revokeOtherSessions,
     }),
-    [session, isLoading, isAuthenticating, isLoggingOut, login, verifyMfa, resetRequiredPassword, logout],
+    [
+      session,
+      isLoading,
+      isAuthenticating,
+      isLoggingOut,
+      login,
+      verifyMfa,
+      resetRequiredPassword,
+      logout,
+      listActiveSessions,
+      revokeSessionDevice,
+      revokeOtherSessions,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
