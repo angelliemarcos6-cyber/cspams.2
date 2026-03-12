@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
@@ -42,6 +42,18 @@ type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" 
 interface SchoolIndicatorPanelProps {
   statusFilter?: IndicatorWorkflowStatusFilter;
   academicYearFilter?: string;
+}
+
+interface MissingFieldTarget {
+  key: string;
+  categoryId: string;
+  categoryLabel: string;
+  metricId: string;
+  metricCode: string;
+  metricLabel: string;
+  year: string;
+  inputKind: "target" | "actual" | "value";
+  cellId: string;
 }
 
 const SCHOOL_ACHIEVEMENTS_METRIC_CODES = [
@@ -227,6 +239,15 @@ function formatDateTime(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable;
+}
+
 function metricDataType(metric: IndicatorMetric): MetricDataType {
   const value = String(metric.dataType || "number").toLowerCase();
   if (value === "currency") return "currency";
@@ -410,6 +431,101 @@ function buildEntryFromSubmission(metric: IndicatorMetric, indicator: IndicatorS
   return entry;
 }
 
+function yearToken(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function indicatorCellId(metricId: string, year: string, inputKind: "target" | "actual" | "value"): string {
+  return `indicator-cell-${metricId}-${yearToken(year)}-${inputKind}`;
+}
+
+function collectMissingFieldsForMetric(
+  metric: IndicatorMetric,
+  entry: MetricEntryValue,
+  years: string[],
+  categoryId: string,
+  categoryLabel: string,
+): MissingFieldTarget[] {
+  if (metricIsAutoCalculated(metric)) {
+    return [];
+  }
+
+  const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+  const metricLabel = metricDisplayLabel(metric);
+  const missingTargets: MissingFieldTarget[] = [];
+
+  for (const year of years) {
+    const targetValue = String(entry.targetMatrix[year] ?? "").trim();
+    const actualValue = String(entry.actualMatrix[year] ?? "").trim();
+
+    if (requiresTargetActual) {
+      if (targetValue.length === 0) {
+        missingTargets.push({
+          key: `${metric.id}:${year}:target`,
+          categoryId,
+          categoryLabel,
+          metricId: metric.id,
+          metricCode: metric.code,
+          metricLabel,
+          year,
+          inputKind: "target",
+          cellId: indicatorCellId(metric.id, year, "target"),
+        });
+      }
+      if (actualValue.length === 0) {
+        missingTargets.push({
+          key: `${metric.id}:${year}:actual`,
+          categoryId,
+          categoryLabel,
+          metricId: metric.id,
+          metricCode: metric.code,
+          metricLabel,
+          year,
+          inputKind: "actual",
+          cellId: indicatorCellId(metric.id, year, "actual"),
+        });
+      }
+      continue;
+    }
+
+    if (actualValue.length === 0 && targetValue.length === 0) {
+      missingTargets.push({
+        key: `${metric.id}:${year}:value`,
+        categoryId,
+        categoryLabel,
+        metricId: metric.id,
+        metricCode: metric.code,
+        metricLabel,
+        year,
+        inputKind: "value",
+        cellId: indicatorCellId(metric.id, year, "value"),
+      });
+    }
+  }
+
+  return missingTargets;
+}
+
+function buildMissingReason(
+  missingCount: number,
+  categoryCounts: Array<{ categoryLabel: string; count: number }>,
+): string {
+  if (missingCount <= 0) {
+    return "";
+  }
+
+  if (categoryCounts.length === 0) {
+    return `${missingCount} missing required cell${missingCount === 1 ? "" : "s"}.`;
+  }
+
+  if (categoryCounts.length === 1) {
+    return `${missingCount} missing required cell${missingCount === 1 ? "" : "s"} in ${categoryCounts[0].categoryLabel}.`;
+  }
+
+  const top = [...categoryCounts].sort((a, b) => b.count - a.count)[0];
+  return `${missingCount} missing required cells. Most are in ${top.categoryLabel} (${top.count}).`;
+}
+
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
@@ -444,6 +560,11 @@ export function SchoolIndicatorPanel({
   const [showOnlyMissingRows, setShowOnlyMissingRows] = useState(false);
   const [autosaveAt, setAutosaveAt] = useState<string | null>(null);
   const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null);
+  const [showMissingFields, setShowMissingFields] = useState(false);
+  const [missingJumpIndex, setMissingJumpIndex] = useState(0);
+  const [pendingFocusCellId, setPendingFocusCellId] = useState<string | null>(null);
+  const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
+  const [autoMissingAppliedForSubmissionId, setAutoMissingAppliedForSubmissionId] = useState<string | null>(null);
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -463,6 +584,16 @@ export function SchoolIndicatorPanel({
       })),
     [complianceMetricsByCode],
   );
+  const categoryLookupByMetricId = useMemo(() => {
+    const lookup = new Map<string, { id: string; label: string }>();
+    for (const category of categoryMetrics) {
+      const label = categoryTabLabel(category);
+      for (const metric of category.metrics) {
+        lookup.set(metric.id, { id: category.id, label });
+      }
+    }
+    return lookup;
+  }, [categoryMetrics]);
   const orderedComplianceMetrics = useMemo(
     () => categoryMetrics.flatMap((category) => category.metrics),
     [categoryMetrics],
@@ -611,6 +742,142 @@ export function SchoolIndicatorPanel({
     () => orderedComplianceMetrics.reduce((count, metric) => count + Number(metricCompletionById.get(metric.id) ?? false), 0),
     [metricCompletionById, orderedComplianceMetrics],
   );
+  const missingFieldTargets = useMemo(() => {
+    const targets: MissingFieldTarget[] = [];
+
+    for (const metric of orderedComplianceMetrics) {
+      const category = categoryLookupByMetricId.get(metric.id);
+      if (!category) {
+        continue;
+      }
+
+      const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
+      const years = metricYears(metric);
+      const effectiveYears = years.length > 0 ? years : schoolYears;
+
+      targets.push(
+        ...collectMissingFieldsForMetric(
+          metric,
+          current,
+          effectiveYears,
+          category.id,
+          category.label,
+        ),
+      );
+    }
+
+    return targets;
+  }, [categoryLookupByMetricId, metricEntries, orderedComplianceMetrics, schoolYears]);
+  const missingCountByCategory = useMemo(() => {
+    const map = new Map<string, { categoryId: string; categoryLabel: string; count: number }>();
+
+    for (const target of missingFieldTargets) {
+      const current = map.get(target.categoryId);
+      if (current) {
+        current.count += 1;
+        continue;
+      }
+
+      map.set(target.categoryId, {
+        categoryId: target.categoryId,
+        categoryLabel: target.categoryLabel,
+        count: 1,
+      });
+    }
+
+    return [...map.values()];
+  }, [missingFieldTargets]);
+  const submitBlockedReason = useMemo(
+    () => buildMissingReason(missingFieldTargets.length, missingCountByCategory),
+    [missingCountByCategory, missingFieldTargets.length],
+  );
+  const firstMissingByCategory = useMemo(() => {
+    const map = new Map<string, MissingFieldTarget>();
+    for (const target of missingFieldTargets) {
+      if (!map.has(target.categoryId)) {
+        map.set(target.categoryId, target);
+      }
+    }
+    return map;
+  }, [missingFieldTargets]);
+  const editingSubmission = useMemo(
+    () => sortedSubmissions.find((submission) => submission.id === editingSubmissionId) ?? null,
+    [editingSubmissionId, sortedSubmissions],
+  );
+  const returnedSubmission = useMemo(
+    () =>
+      (editingSubmission && String(editingSubmission.status ?? "").toLowerCase() === "returned")
+        ? editingSubmission
+        : sortedSubmissions.find((submission) => String(submission.status ?? "").toLowerCase() === "returned") ?? null,
+    [editingSubmission, sortedSubmissions],
+  );
+  const returnedSubmissionNotes = (returnedSubmission?.reviewNotes ?? "").trim();
+  const submissionMissingSummaryById = useMemo(() => {
+    const summary = new Map<string, { missingCount: number; reason: string }>();
+    const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
+
+    for (const submission of sortedSubmissions) {
+      const indicatorByMetricId = new Map(
+        submission.indicators
+          .map((indicator) => [indicator.metric?.id ?? "", indicator] as const)
+          .filter(([metricId]) => metricId.length > 0),
+      );
+      const missingTargets: MissingFieldTarget[] = [];
+
+      for (const metric of orderedComplianceMetrics) {
+        const category = categoryLookupByMetricId.get(metric.id);
+        if (!category) {
+          continue;
+        }
+
+        const fallbackMetric = metricsById.get(metric.id) ?? metric;
+        const indicator = indicatorByMetricId.get(metric.id);
+        const entry = indicator
+          ? buildEntryFromSubmission(fallbackMetric, indicator)
+          : buildDefaultEntry(fallbackMetric);
+        const years = metricYears(fallbackMetric);
+        const effectiveYears = years.length > 0 ? years : schoolYears;
+
+        missingTargets.push(
+          ...collectMissingFieldsForMetric(
+            fallbackMetric,
+            entry,
+            effectiveYears,
+            category.id,
+            category.label,
+          ),
+        );
+      }
+
+      const perCategory = new Map<string, { categoryLabel: string; count: number }>();
+      for (const target of missingTargets) {
+        const current = perCategory.get(target.categoryId);
+        if (current) {
+          current.count += 1;
+          continue;
+        }
+        perCategory.set(target.categoryId, {
+          categoryLabel: target.categoryLabel,
+          count: 1,
+        });
+      }
+
+      summary.set(submission.id, {
+        missingCount: missingTargets.length,
+        reason: buildMissingReason(
+          missingTargets.length,
+          [...perCategory.values()],
+        ),
+      });
+    }
+
+    return summary;
+  }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, schoolYears, sortedSubmissions]);
+  const wizardStep = useMemo(() => {
+    if (!academicYearId) return 1;
+    if (missingFieldTargets.length > 0) return 2;
+    return 3;
+  }, [academicYearId, missingFieldTargets.length]);
   const activeCategory = useMemo(
     () => visibleCategoryMetrics.find((category) => category.id === activeCategoryId) ?? visibleCategoryMetrics[0] ?? null,
     [activeCategoryId, visibleCategoryMetrics],
@@ -640,11 +907,53 @@ export function SchoolIndicatorPanel({
     setActiveCategoryId(activeCategory.id);
   }, [activeCategory, activeCategoryId]);
 
+  useEffect(() => {
+    if (missingFieldTargets.length === 0) {
+      setMissingJumpIndex(0);
+      return;
+    }
+
+    if (missingJumpIndex >= missingFieldTargets.length) {
+      setMissingJumpIndex(0);
+    }
+  }, [missingFieldTargets.length, missingJumpIndex]);
+
+  useEffect(() => {
+    if (!pendingFocusCellId || typeof document === "undefined") return;
+
+    const focusCell = () => {
+      const element = document.getElementById(pendingFocusCellId);
+      if (!element) {
+        return false;
+      }
+
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (element instanceof HTMLElement) {
+        element.focus({ preventScroll: true });
+      }
+      setPendingFocusCellId(null);
+      return true;
+    };
+
+    if (focusCell()) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      focusCell();
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
+
   const resetForm = () => {
     setEditingSubmissionId(null);
     setNotes("");
     setMetricEntries(() => buildInitialMetricEntries(complianceMetrics, {}));
     setAutosaveAt(null);
+    setShowMissingFields(false);
+    setMissingJumpIndex(0);
+    setPendingFocusCellId(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(INDICATOR_DRAFT_STORAGE_KEY);
     }
@@ -673,7 +982,131 @@ export function SchoolIndicatorPanel({
     setSaveMessage(`Editing package #${submission.id}.`);
     setExpandedSubmissionId(null);
     setAutosaveAt(null);
+    if (String(submission.status ?? "").toLowerCase() === "returned") {
+      setShowOnlyMissingRows(true);
+      setAutoMissingAppliedForSubmissionId(submission.id);
+    }
   };
+
+  const focusMissingTarget = useCallback((target: MissingFieldTarget, nextIndex?: number) => {
+    if (target.categoryId !== activeCategoryId) {
+      setActiveCategoryId(target.categoryId);
+    }
+
+    if (!showAdvancedInputs && target.categoryId !== COMPLIANCE_CATEGORIES[0]?.id) {
+      setShowAdvancedInputs(true);
+    }
+
+    if (indicatorSearch.trim().length > 0) {
+      setIndicatorSearch("");
+    }
+
+    setPendingFocusCellId(target.cellId);
+    if (typeof nextIndex === "number") {
+      setMissingJumpIndex(nextIndex);
+    }
+  }, [activeCategoryId, indicatorSearch, showAdvancedInputs]);
+
+  const jumpToMissingByDirection = useCallback((direction: 1 | -1) => {
+    if (missingFieldTargets.length === 0) {
+      return;
+    }
+
+    const currentIndex = missingJumpIndex % missingFieldTargets.length;
+    const normalizedIndex = currentIndex < 0 ? 0 : currentIndex;
+    const targetIndex =
+      direction === 1
+        ? normalizedIndex
+        : (normalizedIndex - 1 + missingFieldTargets.length) % missingFieldTargets.length;
+
+    const target = missingFieldTargets[targetIndex];
+    if (!target) {
+      return;
+    }
+
+    const nextIndex =
+      direction === 1
+        ? (targetIndex + 1) % missingFieldTargets.length
+        : targetIndex;
+
+    focusMissingTarget(target, nextIndex);
+  }, [focusMissingTarget, missingFieldTargets, missingJumpIndex]);
+
+  const handleJumpToNextMissing = useCallback(() => {
+    jumpToMissingByDirection(1);
+  }, [jumpToMissingByDirection]);
+
+  const handleJumpToPreviousMissing = useCallback(() => {
+    jumpToMissingByDirection(-1);
+  }, [jumpToMissingByDirection]);
+
+  const handleGoToAffectedCategory = useCallback((categoryId: string) => {
+    const target = firstMissingByCategory.get(categoryId);
+    if (!target) {
+      return;
+    }
+
+    focusMissingTarget(target);
+  }, [firstMissingByCategory, focusMissingTarget]);
+
+  const handleReturnedIndicatorFocus = useCallback(() => {
+    if (!returnedSubmission) {
+      return;
+    }
+
+    if (editingSubmissionId !== returnedSubmission.id) {
+      handleEditDraft(returnedSubmission);
+    }
+
+    const target = firstMissingByCategory.values().next().value as MissingFieldTarget | undefined;
+    if (target) {
+      focusMissingTarget(target);
+    }
+  }, [editingSubmissionId, firstMissingByCategory, focusMissingTarget, handleEditDraft, returnedSubmission]);
+
+  useEffect(() => {
+    if (!returnedSubmission) {
+      return;
+    }
+
+    if (autoMissingAppliedForSubmissionId === returnedSubmission.id) {
+      return;
+    }
+
+    setShowOnlyMissingRows(true);
+    setAutoMissingAppliedForSubmissionId(returnedSubmission.id);
+  }, [autoMissingAppliedForSubmissionId, returnedSubmission]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleMissingShortcuts = (event: KeyboardEvent) => {
+      if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "n") {
+        event.preventDefault();
+        handleJumpToNextMissing();
+        return;
+      }
+
+      if (key === "p") {
+        event.preventDefault();
+        handleJumpToPreviousMissing();
+      }
+    };
+
+    window.addEventListener("keydown", handleMissingShortcuts);
+    return () => window.removeEventListener("keydown", handleMissingShortcuts);
+  }, [handleJumpToNextMissing, handleJumpToPreviousMissing]);
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -682,6 +1115,11 @@ export function SchoolIndicatorPanel({
 
     if (!academicYearId) {
       setSubmitError("Select an academic year.");
+      return;
+    }
+
+    if (missingFieldTargets.length > 0) {
+      setSubmitError(submitBlockedReason || "Complete all required indicator cells before saving.");
       return;
     }
 
@@ -849,7 +1287,7 @@ export function SchoolIndicatorPanel({
     });
 
     if (invalidEntry) {
-      setSubmitError("Complete all required indicator cells before saving.");
+      setSubmitError(submitBlockedReason || "Complete all required indicator cells before saving.");
       return;
     }
 
@@ -884,6 +1322,12 @@ export function SchoolIndicatorPanel({
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
     setSubmitError("");
     setSaveMessage("");
+
+    const submissionSummary = submissionMissingSummaryById.get(submission.id);
+    if ((submissionSummary?.missingCount ?? 0) > 0) {
+      setSubmitError(submissionSummary?.reason || "Complete all required indicator cells before submitting.");
+      return;
+    }
 
     try {
       await submitSubmission(submission.id);
@@ -954,6 +1398,73 @@ export function SchoolIndicatorPanel({
         </p>
       </div>
 
+      <div className="border-b border-slate-200 bg-white px-5 py-3">
+        <div className="grid gap-2 md:grid-cols-3">
+          {[
+            { id: 1, label: "Step 1: Context", detail: "School year and submission note" },
+            { id: 2, label: "Step 2: Encode", detail: "Fill all required indicator cells" },
+            { id: 3, label: "Step 3: Review & Submit", detail: "Check gaps then submit package" },
+          ].map((step) => {
+            const isActive = wizardStep === step.id;
+            const isComplete = wizardStep > step.id;
+            return (
+              <article
+                key={step.id}
+                className={`rounded-sm border px-3 py-2 ${
+                  isActive
+                    ? "border-primary-300 bg-primary-50"
+                    : isComplete
+                      ? "border-primary-200 bg-primary-50/60"
+                      : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                <p className={`text-xs font-semibold uppercase tracking-wide ${isActive || isComplete ? "text-primary-700" : "text-slate-600"}`}>
+                  {step.label}
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-600">{step.detail}</p>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      {returnedSubmission && returnedSubmissionNotes && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+            Returned Monitor Notes (Package #{returnedSubmission.id})
+          </p>
+          <p className="mt-1 text-sm text-amber-900">{returnedSubmissionNotes}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {editingSubmissionId !== returnedSubmission.id && (
+              <button
+                type="button"
+                onClick={() => handleEditDraft(returnedSubmission)}
+                className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+              >
+                Edit Returned Package
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleReturnedIndicatorFocus}
+              className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+            >
+              Go to Affected Indicators
+            </button>
+            {missingCountByCategory.map((category) => (
+              <button
+                key={`returned-category-${category.categoryId}`}
+                type="button"
+                onClick={() => handleGoToAffectedCategory(category.categoryId)}
+                className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+              >
+                {category.categoryLabel} ({category.count})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <form className="space-y-4 border-b border-slate-100 px-5 py-4" onSubmit={handleCreateSubmission}>
         <div className="grid gap-3 md:grid-cols-2">
           <div>
@@ -1004,7 +1515,7 @@ export function SchoolIndicatorPanel({
         </div>
 
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:hidden">
             {visibleCategoryMetrics.map((category) => {
               const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
               const isActive = activeCategory?.id === category.id;
@@ -1050,50 +1561,189 @@ export function SchoolIndicatorPanel({
             </button>
           </div>
 
+          <div className="sticky top-2 z-30 rounded-sm border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700">
+                Category: {activeCategory ? categoryTabLabel(activeCategory) : "N/A"}
+              </span>
+              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700">
+                Progress: {completeIndicators}/{totalIndicators}
+              </span>
+              <span className={`rounded-sm border px-2 py-1 font-semibold ${
+                missingFieldTargets.length > 0
+                  ? "border-amber-300 bg-amber-50 text-amber-700"
+                  : "border-primary-300 bg-primary-50 text-primary-700"
+              }`}>
+                Missing: {missingFieldTargets.length}
+              </span>
+              <button
+                type="button"
+                onClick={handleJumpToPreviousMissing}
+                disabled={missingFieldTargets.length === 0}
+                title="Previous missing (Alt+Shift+P)"
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Previous missing
+              </button>
+              <button
+                type="button"
+                onClick={handleJumpToNextMissing}
+                disabled={missingFieldTargets.length === 0}
+                title="Next missing (Alt+Shift+N)"
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Jump to next missing
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMissingFields((current) => !current)}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                {showMissingFields ? "Hide Missing Fields" : "Missing Fields"}
+              </button>
+            </div>
+            {missingFieldTargets.length > 0 && (
+              <p className="mt-1 text-[11px] font-semibold text-amber-700">{submitBlockedReason}</p>
+            )}
+          </div>
+
+          {showMissingFields && (
+            <div className="rounded-sm border border-slate-200 bg-slate-50 p-2">
+              {missingFieldTargets.length === 0 ? (
+                <p className="px-2 py-1 text-xs font-semibold text-primary-700">No missing required fields.</p>
+              ) : (
+                <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+                  {missingFieldTargets.map((target, index) => (
+                    <button
+                      key={target.key}
+                      type="button"
+                      onClick={() => {
+                        focusMissingTarget(target, (index + 1) % missingFieldTargets.length);
+                        setShowMissingFields(false);
+                      }}
+                      className="w-full rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-left text-xs transition hover:bg-slate-100"
+                    >
+                      <p className="font-semibold text-slate-800">
+                        {target.metricCode} | {target.metricLabel}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-600">
+                        {target.categoryLabel} | {target.year} | {target.inputKind === "value" ? "Value" : target.inputKind === "target" ? "Target" : "Actual"}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {activeCategory && (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{activeCategory.label}</h3>
-                <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                  {activeCategoryProgress.complete}/{activeCategoryProgress.total} complete
-                </span>
-              </div>
-              <div className="overflow-x-auto rounded-sm border border-slate-200">
-                <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
-                  <thead>
-                    <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                      <th rowSpan={2} className="sticky left-0 z-20 min-w-[280px] border border-slate-300 bg-slate-100 px-3 py-2 text-left">
-                        Indicators
-                      </th>
-                      {activeCategory.mode === "target_actual" ? (
-                        schoolYears.map((year) => (
-                          <th key={`${activeCategory.id}-${year}`} colSpan={2} className="border border-slate-300 px-2 py-2 text-center">
-                            {year}
-                          </th>
-                        ))
-                      ) : (
-                        <th colSpan={schoolYears.length} className="border border-slate-300 px-3 py-2 text-center">
-                          School Year
+            <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+              <aside className="hidden lg:block lg:sticky lg:top-20">
+                <div className="space-y-2 rounded-sm border border-slate-200 bg-slate-50 p-2">
+                  <h4 className="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Categories</h4>
+                  {visibleCategoryMetrics.map((category) => {
+                    const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
+                    const missingCount = missingCountByCategory.find((item) => item.categoryId === category.id)?.count ?? 0;
+                    const isActive = activeCategory.id === category.id;
+                    const hasMissing = missingCount > 0;
+
+                    return (
+                      <div key={`rail-${category.id}`} className="rounded-sm border border-slate-200 bg-white p-2">
+                        <button
+                          type="button"
+                          onClick={() => setActiveCategoryId(category.id)}
+                          className={`w-full rounded-sm border px-2 py-2 text-left text-xs font-semibold transition ${
+                            isActive
+                              ? "border-primary-300 bg-primary-50 text-primary-700"
+                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                          }`}
+                        >
+                          <p className="leading-4">{categoryTabLabel(category)}</p>
+                          <p className="mt-1 text-[11px] font-medium text-slate-600">
+                            {progress.complete}/{progress.total} complete
+                          </p>
+                        </button>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span
+                            className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
+                              hasMissing
+                                ? "border-amber-300 bg-amber-50 text-amber-700"
+                                : "border-primary-300 bg-primary-50 text-primary-700"
+                            }`}
+                          >
+                            Missing {missingCount}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={!hasMissing}
+                            onClick={() => handleGoToAffectedCategory(category.id)}
+                            className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Quick jump
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </aside>
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{activeCategory.label}</h3>
+                  <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                    {activeCategoryProgress.complete}/{activeCategoryProgress.total} complete
+                  </span>
+                </div>
+                <div className="overflow-x-auto rounded-sm border border-slate-200">
+                  <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
+                    <thead>
+                      <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                        <th rowSpan={2} className="sticky left-0 top-0 z-40 min-w-[280px] border border-slate-300 bg-slate-100 px-3 py-2 text-left">
+                          Indicators
                         </th>
-                      )}
-                    </tr>
-                    <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                      {activeCategory.mode === "target_actual"
-                        ? schoolYears.flatMap((year) => [
-                            <th key={`${activeCategory.id}-${year}-target`} className="border border-slate-300 px-2 py-2 text-center">
-                              Target
-                            </th>,
-                            <th key={`${activeCategory.id}-${year}-actual`} className="border border-slate-300 px-2 py-2 text-center">
-                              Actual
-                            </th>,
-                          ])
-                        : schoolYears.map((year) => (
-                            <th key={`${activeCategory.id}-${year}`} className="border border-slate-300 px-2 py-2 text-center">
+                        {activeCategory.mode === "target_actual" ? (
+                          schoolYears.map((year) => (
+                            <th
+                              key={`${activeCategory.id}-${year}`}
+                              colSpan={2}
+                              className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                            >
                               {year}
                             </th>
-                          ))}
-                    </tr>
-                  </thead>
+                          ))
+                        ) : (
+                          <th colSpan={schoolYears.length} className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-3 py-2 text-center">
+                            School Year
+                          </th>
+                        )}
+                      </tr>
+                      <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                        {activeCategory.mode === "target_actual"
+                          ? schoolYears.flatMap((year) => [
+                              <th
+                                key={`${activeCategory.id}-${year}-target`}
+                                className="sticky top-[33px] z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                              >
+                                Target
+                              </th>,
+                              <th
+                                key={`${activeCategory.id}-${year}-actual`}
+                                className="sticky top-[33px] z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                              >
+                                Actual
+                              </th>,
+                            ])
+                          : schoolYears.map((year) => (
+                              <th
+                                key={`${activeCategory.id}-${year}`}
+                                className="sticky top-[33px] z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                              >
+                                {year}
+                              </th>
+                            ))}
+                      </tr>
+                    </thead>
                   <tbody>
                     {filteredActiveMetrics.map((metric) => {
                       const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
@@ -1127,7 +1777,7 @@ export function SchoolIndicatorPanel({
 
                       return (
                         <tr key={`${activeCategory.id}-${metric.id}`} className={rowTone}>
-                          <td className={`sticky left-0 z-10 min-w-[280px] max-w-[320px] border border-slate-300 px-3 py-2 align-top ${stickyTone}`}>
+                          <td className={`sticky left-0 z-20 min-w-[280px] max-w-[320px] border border-slate-300 px-3 py-2 align-top ${stickyTone}`}>
                             <p className="text-[13px] font-semibold leading-5 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
                             <p className="mt-1 text-[11px] font-medium text-slate-600">
                               Status: {isComplete ? "Complete" : "Pending"}
@@ -1145,6 +1795,9 @@ export function SchoolIndicatorPanel({
                                 : valueType === "enum"
                                   ? enumOptions.join(" / ")
                                   : "";
+                            const valueCellId = indicatorCellId(metric.id, year, "value");
+                            const targetCellId = indicatorCellId(metric.id, year, "target");
+                            const actualCellId = indicatorCellId(metric.id, year, "actual");
 
                             if (isAutoCalculated) {
                               if (activeCategory.mode !== "target_actual") {
@@ -1172,6 +1825,7 @@ export function SchoolIndicatorPanel({
                                 <td key={`${metric.id}-${year}`} className="border border-slate-300 p-1.5 align-middle">
                                   {useSelectInput ? (
                                     <select
+                                      id={valueCellId}
                                       value={current.actualMatrix[year] ?? ""}
                                       onChange={(event) =>
                                         setMetricEntries((entries) => ({
@@ -1200,6 +1854,7 @@ export function SchoolIndicatorPanel({
                                     </select>
                                   ) : (
                                     <input
+                                      id={valueCellId}
                                       type={numericInput ? "number" : "text"}
                                       step={valueType === "integer" ? "1" : "0.01"}
                                       min={numericInput ? 0 : undefined}
@@ -1233,6 +1888,7 @@ export function SchoolIndicatorPanel({
                                 <td className="border border-slate-300 p-1.5 align-middle">
                                   {useSelectInput ? (
                                     <select
+                                      id={targetCellId}
                                       value={current.targetMatrix[year] ?? ""}
                                       onChange={(event) =>
                                         setMetricEntries((entries) => ({
@@ -1257,6 +1913,7 @@ export function SchoolIndicatorPanel({
                                     </select>
                                   ) : (
                                     <input
+                                      id={targetCellId}
                                       type={numericInput ? "number" : "text"}
                                       step={valueType === "integer" ? "1" : "0.01"}
                                       min={numericInput ? 0 : undefined}
@@ -1281,6 +1938,7 @@ export function SchoolIndicatorPanel({
                                 <td className="border border-slate-300 p-1.5 align-middle">
                                   {useSelectInput ? (
                                     <select
+                                      id={actualCellId}
                                       value={current.actualMatrix[year] ?? ""}
                                       onChange={(event) =>
                                         setMetricEntries((entries) => ({
@@ -1305,6 +1963,7 @@ export function SchoolIndicatorPanel({
                                     </select>
                                   ) : (
                                     <input
+                                      id={actualCellId}
                                       type={numericInput ? "number" : "text"}
                                       step={valueType === "integer" ? "1" : "0.01"}
                                       min={numericInput ? 0 : undefined}
@@ -1356,6 +2015,7 @@ export function SchoolIndicatorPanel({
                 </table>
               </div>
             </div>
+            </div>
           )}
         </div>
 
@@ -1367,6 +2027,11 @@ export function SchoolIndicatorPanel({
         {editingSubmissionId && (
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
             Editing package #{editingSubmissionId}. Save draft to update this package.
+          </p>
+        )}
+        {missingFieldTargets.length > 0 && (
+          <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+            Submit is disabled until required fields are complete. {submitBlockedReason}
           </p>
         )}
 
@@ -1391,8 +2056,22 @@ export function SchoolIndicatorPanel({
         </div>
       </form>
 
-      <div className="px-5 py-4">
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">My Indicator Submissions</h3>
+      <div className="border-t border-slate-100 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
+            My Indicator Submissions ({filteredSubmissions.length})
+          </h3>
+          <button
+            type="button"
+            onClick={() => setShowSubmissionPanel((current) => !current)}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            {showSubmissionPanel ? "Hide" : "Show"}
+            {showSubmissionPanel ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+
+        {showSubmissionPanel && (
         <div className="mt-3 overflow-x-auto">
           <table className="min-w-full">
             <thead>
@@ -1411,6 +2090,9 @@ export function SchoolIndicatorPanel({
                 const historyRows = historyBySubmissionId[submission.id] ?? [];
                 const isExpanded = expandedSubmissionId === submission.id;
                 const isHistoryLoading = historyLoadingSubmissionId === submission.id;
+                const submissionSummary = submissionMissingSummaryById.get(submission.id) ?? { missingCount: 0, reason: "" };
+                const canSubmitPackage = submissionSummary.missingCount === 0;
+                const isDraftOrReturned = submission.status === "draft" || submission.status === "returned";
 
                 return (
                   <Fragment key={submission.id}>
@@ -1432,8 +2114,9 @@ export function SchoolIndicatorPanel({
                       <td className="px-2 py-2 text-sm text-slate-600">{submission.reviewNotes || "N/A"}</td>
                       <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(submission.updatedAt ?? submission.createdAt)}</td>
                       <td className="px-2 py-2 text-center">
-                        <div className="inline-flex items-center gap-2">
-                          {submission.status === "draft" || submission.status === "returned" ? (
+                        <div className="space-y-1">
+                          <div className="inline-flex items-center gap-2">
+                          {isDraftOrReturned ? (
                             <>
                               <button
                                 type="button"
@@ -1451,7 +2134,8 @@ export function SchoolIndicatorPanel({
                               <button
                                 type="button"
                                 onClick={() => void handleSubmitToMonitor(submission)}
-                                disabled={isSaving}
+                                disabled={isSaving || !canSubmitPackage}
+                                title={!canSubmitPackage ? submissionSummary.reason : "Submit to monitor"}
                                 className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                               >
                                 <Send className="h-3.5 w-3.5" />
@@ -1478,6 +2162,10 @@ export function SchoolIndicatorPanel({
                             {isExpanded ? "Hide" : "Details"}
                             {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                           </button>
+                          </div>
+                          {isDraftOrReturned && !canSubmitPackage && (
+                            <p className="text-[11px] font-semibold text-amber-700">{submissionSummary.reason}</p>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1557,6 +2245,7 @@ export function SchoolIndicatorPanel({
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </section>
   );
