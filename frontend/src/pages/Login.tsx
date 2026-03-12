@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight, LockKeyhole } from "lucide-react";
+import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { isApiError } from "@/lib/api";
 import type { UserRole } from "@/types";
@@ -219,12 +219,6 @@ export function Login() {
   const isBusy = isSubmitting || isAuthenticating;
   const loginFieldIcon =
     activeRole === "school_head" ? <UserCog className="h-4 w-4 text-slate-400" /> : <Radar className="h-4 w-4 text-slate-400" />;
-  const flowLabel = pendingMfa ? "Verify Sign In" : requiresPasswordReset ? "Reset and Sign In" : "Secure Sign In";
-  const flowSupportText = pendingMfa
-    ? "Enter your one-time code."
-    : requiresPasswordReset
-      ? "Set a new passcode to continue."
-      : "Use your account credentials.";
   const formInputClass =
     "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.45)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
 
@@ -233,11 +227,11 @@ export function Login() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_12%,rgba(100,157,216,0.26),transparent_32%),radial-gradient(circle_at_88%_20%,rgba(4,80,140,0.18),transparent_34%),radial-gradient(circle_at_52%_88%,rgba(47,125,196,0.16),transparent_38%)]" />
       <div className="pointer-events-none absolute left-1/2 top-[-13rem] h-[24rem] w-[24rem] -translate-x-1/2 rounded-full border border-primary-200/45 bg-white/40 blur-3xl" />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid w-full overflow-hidden rounded-[30px] border border-slate-200/85 bg-white/85 shadow-[0_30px_70px_-40px_rgba(2,46,80,0.64)] backdrop-blur-sm lg:grid-cols-[1.12fr_0.88fr]">
-          <section className="relative hidden overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 p-10 text-white lg:block">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-2xl items-center px-4 py-8 sm:px-6">
+        <div className="w-full overflow-hidden rounded-[28px] border border-slate-200/85 bg-white/85 shadow-[0_30px_70px_-40px_rgba(2,46,80,0.64)] backdrop-blur-sm">
+          <section className="relative overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 px-6 py-6 text-white sm:px-8 sm:py-7">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.26),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.16),transparent_50%)]" />
-            <div className="relative flex h-full flex-col">
+            <div className="relative">
               <div className="flex items-start gap-4">
                 <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto rounded-md bg-white px-2 py-1.5" />
                 <div>
@@ -245,34 +239,10 @@ export function Login() {
                   <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">Sign In Portal</h1>
                 </div>
               </div>
-
-              <p className="mt-8 max-w-xl text-sm leading-relaxed text-primary-100/95">
-                Secure access for school heads and division monitors.
-              </p>
-
-              <p className="mt-auto inline-flex w-fit rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-primary-100">
-                Authorized Users Only
-              </p>
             </div>
           </section>
 
-          <section className="bg-white/94 p-6 sm:p-8 lg:p-10">
-            <div className="mb-6 flex items-center gap-3 lg:hidden">
-              <img src="/depedlogo.png" alt="Department of Education logo" className="h-11 w-auto rounded-md bg-primary-50 px-1.5 py-1" />
-              <div>
-                <p className="text-sm font-bold text-primary-800">CSPAMS Dashboard</p>
-                <p className="text-xs text-slate-600">Secure login</p>
-              </div>
-            </div>
-
-            <div className="mb-5 rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-white px-4 py-3.5">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <LockKeyhole className="h-4 w-4 text-primary-700" />
-                {flowLabel}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-slate-600">{flowSupportText}</p>
-            </div>
-
+          <section className="bg-white/94 p-5 sm:p-7">
             <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-2">
               <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sign In Role</p>
               <div className="grid gap-2 sm:grid-cols-2">
