@@ -522,10 +522,12 @@ class AuthController extends Controller
                 return null;
             }
 
+            $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
+
             return User::query()
                 ->with('school')
-                ->whereHas('school', function ($builder) use ($normalizedSchoolCode): void {
-                    $builder->where('school_code', $normalizedSchoolCode);
+                ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
+                    $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
                 })
                 ->get()
                 ->first(
@@ -536,7 +538,7 @@ class AuthController extends Controller
         $normalizedEmail = strtolower(trim($login));
         $query = User::query()
             ->with('school')
-            ->whereRaw('LOWER(email) = ?', [$normalizedEmail]);
+            ->where('email_normalized', $normalizedEmail);
 
         /** @var \Illuminate\Support\Collection<int, User> $candidates */
         $candidates = $query->limit(5)->get();

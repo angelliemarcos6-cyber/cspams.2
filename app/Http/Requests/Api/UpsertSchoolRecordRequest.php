@@ -88,7 +88,7 @@ class UpsertSchoolRecordRequest extends FormRequest
         $schoolId = $schoolParam instanceof School ? $schoolParam->id : null;
         $isMonitorStore = $this->isMethod('post') && $this->isMonitor();
 
-        $schoolIdRule = Rule::unique('schools', 'school_code')
+        $schoolIdRule = Rule::unique('schools', 'school_code_normalized')
             ->where(static fn ($query) => $query->whereNull('deleted_at'))
             ->ignore($schoolId);
 
@@ -111,7 +111,12 @@ class UpsertSchoolRecordRequest extends FormRequest
             'type' => [$isMonitorStore ? 'required' : 'sometimes', 'string', Rule::in(['public', 'private'])],
             'schoolHeadAccount' => ['sometimes', 'nullable', 'array'],
             'schoolHeadAccount.name' => ['required_with:schoolHeadAccount', 'string', 'max:255'],
-            'schoolHeadAccount.email' => ['required_with:schoolHeadAccount', 'email', 'max:255', Rule::unique('users', 'email')],
+            'schoolHeadAccount.email' => [
+                'required_with:schoolHeadAccount',
+                'email',
+                'max:255',
+                Rule::unique('users', 'email_normalized'),
+            ],
             'schoolHeadAccount.password' => ['sometimes', 'nullable', 'string', 'min:8', 'max:72'],
             'schoolHeadAccount.mustResetPassword' => ['sometimes', 'boolean'],
         ];

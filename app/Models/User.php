@@ -50,6 +50,14 @@ class User extends Authenticatable
         ];
     }
 
+    public function setEmailAttribute(mixed $value): void
+    {
+        $normalized = strtolower(trim((string) $value));
+
+        $this->attributes['email'] = $normalized;
+        $this->attributes['email_normalized'] = $normalized;
+    }
+
     public function school(): BelongsTo
     {
         return $this->belongsTo(School::class);

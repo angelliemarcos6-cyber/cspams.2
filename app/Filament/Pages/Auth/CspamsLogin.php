@@ -65,8 +65,8 @@ class CspamsLogin extends BaseLogin
             ->required()
             ->autocomplete('username')
             ->autofocus()
-            ->placeholder('Monitor email/name or 6-digit school code')
-            ->helperText('Division Monitor: email/name. School Head: 6-digit school code.')
+            ->placeholder('Monitor email or 6-digit school code')
+            ->helperText('Division Monitor: email only. School Head: 6-digit school code only.')
             ->maxLength(255)
             ->dehydrateStateUsing(function (?string $state): ?string {
                 $normalized = trim((string) $state);
@@ -164,10 +164,12 @@ class CspamsLogin extends BaseLogin
                 return null;
             }
 
+            $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
+
             return User::query()
                 ->with('school')
-                ->whereHas('school', function ($builder) use ($normalizedSchoolCode): void {
-                    $builder->where('school_code', $normalizedSchoolCode);
+                ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
+                    $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
                 })
                 ->get()
                 ->first(
@@ -175,14 +177,16 @@ class CspamsLogin extends BaseLogin
                 );
         }
 
+        $normalizedEmail = strtolower(trim($login));
+        if (filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL) === false) {
+            return null;
+        }
+
         /** @var \Illuminate\Support\Collection<int, User> $candidates */
         $candidates = User::query()
             ->with('school')
-            ->where(function ($builder) use ($login): void {
-                $builder->where('email', $login)
-                    ->orWhere('name', $login);
-            })
-            ->limit(10)
+            ->where('email_normalized', $normalizedEmail)
+            ->limit(5)
             ->get();
 
         return $candidates->first(

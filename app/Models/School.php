@@ -45,6 +45,14 @@ class School extends Model
         ];
     }
 
+    public function setSchoolCodeAttribute(mixed $value): void
+    {
+        $normalized = trim((string) $value);
+
+        $this->attributes['school_code'] = $normalized;
+        $this->attributes['school_code_normalized'] = strtolower($normalized);
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

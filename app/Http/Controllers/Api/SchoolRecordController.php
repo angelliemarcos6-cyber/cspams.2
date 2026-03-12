@@ -599,7 +599,7 @@ class SchoolRecordController extends Controller
             return null;
         }
 
-        if (User::query()->whereRaw('LOWER(email) = ?', [$email])->exists()) {
+        if (User::query()->where('email_normalized', $email)->exists()) {
             throw ValidationException::withMessages([
                 'schoolHeadAccount.email' => 'A user account with this email already exists.',
             ]);
