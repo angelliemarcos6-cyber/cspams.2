@@ -387,7 +387,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [token, requestStudents, handleApiError],
+    [token, handleApiError],
   );
 
   const refreshStudents = useCallback(async () => {
@@ -433,10 +433,28 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         const nextRecord = response.data?.data;
         if (nextRecord) {
           setStudents((current) => [nextRecord, ...current.filter((item) => item.id !== nextRecord.id)].slice(0, SNAPSHOT_PER_PAGE));
+          setTotalCount((current) => current + 1);
+          setSnapshotMeta((current) => {
+            const perPage = Math.max(1, current.perPage || SNAPSHOT_PER_PAGE);
+            const total = current.total + 1;
+            const lastPage = Math.max(1, Math.ceil(Math.max(total, 1) / perPage));
+            const currentPage = Math.min(Math.max(1, current.currentPage), lastPage);
+
+            return {
+              ...current,
+              total,
+              recordCount: total,
+              lastPage,
+              currentPage,
+              hasMorePages: currentPage < lastPage,
+              syncedAt: response.data?.meta?.syncedAt ?? current.syncedAt,
+            };
+          });
         }
 
+        setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
-        await syncStudents(true);
+        void syncStudents(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -470,8 +488,13 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           setStudents((current) => current.map((item) => (item.id === nextRecord.id ? nextRecord : item)));
         }
 
+        setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
+        setSnapshotMeta((current) => ({
+          ...current,
+          syncedAt: response.data?.meta?.syncedAt ?? current.syncedAt,
+        }));
         etagRef.current = "";
-        await syncStudents(true);
+        void syncStudents(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -494,14 +517,36 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        await apiRequestRaw<StudentRecordDeleteResponse>(`/api/dashboard/students/${id}`, {
+        const response = await apiRequestRaw<StudentRecordDeleteResponse>(`/api/dashboard/students/${id}`, {
           method: "DELETE",
           token,
         });
 
         setStudents((current) => current.filter((item) => item.id !== id));
+        setTotalCount((current) => Math.max(0, current - 1));
+        setSnapshotMeta((current) => {
+          const perPage = Math.max(1, current.perPage || SNAPSHOT_PER_PAGE);
+          const total = Math.max(0, current.total - 1);
+          const lastPage = Math.max(1, Math.ceil(Math.max(total, 1) / perPage));
+          const currentPage = Math.min(Math.max(1, current.currentPage), lastPage);
+          const from = total > 0 ? Math.min(current.from ?? ((currentPage - 1) * perPage + 1), total) : null;
+          const to = total > 0 ? Math.min(current.to ?? (currentPage * perPage), total) : null;
+
+          return {
+            ...current,
+            total,
+            recordCount: total,
+            lastPage,
+            currentPage,
+            from,
+            to,
+            hasMorePages: currentPage < lastPage,
+            syncedAt: response.data?.meta?.syncedAt ?? current.syncedAt,
+          };
+        });
+        setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
-        await syncStudents(true);
+        void syncStudents(true);
       } catch (err) {
         await handleApiError(err);
         throw err;

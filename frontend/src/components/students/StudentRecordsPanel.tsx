@@ -354,12 +354,12 @@ export function StudentRecordsPanel({
     try {
       if (editingId) {
         await updateStudent(editingId, payload);
-        await loadStudentsPage(page, true);
+        void loadStudentsPage(page, true);
         setFormMessage("Student record updated.");
       } else {
         await addStudent(payload);
-        await loadStudentsPage(1, true);
         setPage(1);
+        void loadStudentsPage(1, true);
         setFormMessage("Student record added.");
       }
 
@@ -375,12 +375,36 @@ export function StudentRecordsPanel({
     const confirmed = window.confirm(`Delete ${student.fullName}?`);
     if (!confirmed) return;
 
+    const previousPage = page;
+    const previousRows = pagedStudents;
+    const previousTotal = totalStudents;
+    const previousTotalPages = totalPages;
+    const optimisticRows = previousRows.filter((item) => item.id !== student.id);
+    const optimisticTotal = Math.max(0, previousTotal - 1);
+    const optimisticTotalPages = Math.max(1, Math.ceil(Math.max(optimisticTotal, 1) / STUDENT_PAGE_SIZE));
+    const fallbackPage = optimisticRows.length === 0 && previousPage > 1
+      ? Math.max(1, Math.min(previousPage - 1, optimisticTotalPages))
+      : previousPage;
+
+    setPagedStudents(optimisticRows);
+    setTotalStudents(optimisticTotal);
+    setTotalPages(optimisticTotalPages);
+    if (fallbackPage !== previousPage) {
+      setPage(fallbackPage);
+    }
+
     setDeletingId(student.id);
+    setFormError("");
     setFormMessage("");
     try {
       await deleteStudent(student.id);
-      await loadStudentsPage(page, true);
+      setFormMessage("Student record deleted.");
+      void loadStudentsPage(fallbackPage, true);
     } catch (err) {
+      setPagedStudents(previousRows);
+      setTotalStudents(previousTotal);
+      setTotalPages(previousTotalPages);
+      setPage(previousPage);
       setFormError(err instanceof Error ? err.message : "Unable to delete student record.");
     } finally {
       setDeletingId(null);
