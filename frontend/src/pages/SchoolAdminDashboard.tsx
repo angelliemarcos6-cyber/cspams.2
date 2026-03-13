@@ -85,8 +85,7 @@ interface QuickJumpItem {
 
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
-  { id: "first_glance", label: "My Queue" },
-  { id: "compliance", label: "School Workspace" },
+  { id: "compliance", label: "Workspace" },
   { id: "requirements", label: "Revisions" },
   { id: "records", label: "Reports" },
 ];
@@ -156,6 +155,9 @@ const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
     { id: "kpi_cards", label: "Task KPIs", targetId: "overview-metrics", icon: LayoutDashboard },
   ],
   compliance: [
+    { id: "overview_alerts", label: "Today Focus", targetId: "first-glance", icon: AlertTriangle },
+    { id: "school_info", label: "School Info", targetId: "school-overview", icon: Building2 },
+    { id: "kpi_cards", label: "Task KPIs", targetId: "overview-metrics", icon: LayoutDashboard },
     { id: "compliance_input", label: "Summary Inputs", targetId: "compliance-input", icon: Database },
     { id: "indicator_workflow", label: "Indicator Workflow", targetId: "indicator-workflow", icon: ClipboardList },
   ],
@@ -173,9 +175,9 @@ const SCHOOL_QUICK_JUMP_TARGETS: Record<
   string,
   { navigatorId: TopNavigatorItem["id"]; submissionSection?: RequirementItem["id"] }
 > = {
-  "first-glance": { navigatorId: "first_glance" },
-  "school-overview": { navigatorId: "first_glance" },
-  "overview-metrics": { navigatorId: "first_glance" },
+  "first-glance": { navigatorId: "compliance" },
+  "school-overview": { navigatorId: "compliance" },
+  "overview-metrics": { navigatorId: "compliance" },
   "requirement-navigator": { navigatorId: "requirements" },
   "compliance-input": { navigatorId: "compliance", submissionSection: "school_record" },
   "indicator-workflow": { navigatorId: "compliance", submissionSection: "indicators" },
@@ -437,7 +439,7 @@ export function SchoolAdminDashboard() {
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("first_glance");
+  const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("compliance");
   const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
@@ -713,8 +715,11 @@ export function SchoolAdminDashboard() {
         isNavigatorVisible?: boolean;
         isNavigatorCompact?: boolean;
       };
-      if (persisted.activeTopNavigator && TOP_NAVIGATOR_ITEMS.some((item) => item.id === persisted.activeTopNavigator)) {
-        setActiveTopNavigator(persisted.activeTopNavigator);
+      if (persisted.activeTopNavigator) {
+        const mappedNavigator = persisted.activeTopNavigator === "first_glance" ? "compliance" : persisted.activeTopNavigator;
+        if (TOP_NAVIGATOR_ITEMS.some((item) => item.id === mappedNavigator)) {
+          setActiveTopNavigator(mappedNavigator);
+        }
       }
       if (typeof persisted.isNavigatorVisible === "boolean") {
         setIsNavigatorVisible(persisted.isNavigatorVisible);
@@ -1155,7 +1160,7 @@ export function SchoolAdminDashboard() {
   return (
     <Shell
       title="School Head Dashboard"
-      subtitle="My Queue workspace for tasks, submissions, revisions, and reports."
+      subtitle="Unified workspace for queue, submissions, revisions, and reports."
       actions={
         <div className="inline-flex min-w-0 items-center gap-2 rounded-sm border border-white/20 bg-white/10 p-1.5">
           <button
@@ -1684,33 +1689,31 @@ export function SchoolAdminDashboard() {
       </section>
       )}
 
-      {!showNavigatorManual && activeTopNavigator === "first_glance" && (
-      <section id="first-glance" className={`space-y-5 ${sectionFocusClass("first-glance")}`}>
-      <section id="school-overview" className={`animate-fade-slide grid gap-3 md:grid-cols-3 ${sectionFocusClass("school-overview")}`}>
-        <article className="dashboard-subtle-panel px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
-          <p className="mt-1 text-sm font-bold text-slate-900">{schoolName}</p>
-        </article>
-        <article className="dashboard-subtle-panel px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">School Code</p>
-          <p className="mt-1 text-sm font-bold text-slate-900">{schoolCode}</p>
-        </article>
-        <article className="dashboard-subtle-panel px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Region</p>
-          <p className="mt-1 text-sm font-bold text-slate-900">{schoolRegion}</p>
-        </article>
-      </section>
-
-      <section id="overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("overview-metrics")}`}>
-        <StatCard label="For Review" value={pendingCount.toLocaleString()} icon={<AlertCircle className="h-5 w-5" />} />
-        <StatCard label="Needs Revision" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
-        <StatCard label="Validated / Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
-      </section>
-      </section>
-      )}
-
       {!showNavigatorManual && activeTopNavigator === "compliance" && (
-      <section id="compliance-records" className="grid gap-6">
+      <section id="compliance-records" className="grid gap-5">
+        <section id="first-glance" className={`space-y-5 ${sectionFocusClass("first-glance")}`}>
+          <section id="school-overview" className={`animate-fade-slide grid gap-3 md:grid-cols-3 ${sectionFocusClass("school-overview")}`}>
+            <article className="dashboard-subtle-panel px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{schoolName}</p>
+            </article>
+            <article className="dashboard-subtle-panel px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">School Code</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{schoolCode}</p>
+            </article>
+            <article className="dashboard-subtle-panel px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Region</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{schoolRegion}</p>
+            </article>
+          </section>
+
+          <section id="overview-metrics" className={`animate-fade-slide grid gap-4 sm:grid-cols-2 xl:grid-cols-3 ${sectionFocusClass("overview-metrics")}`}>
+            <StatCard label="For Review" value={pendingCount.toLocaleString()} icon={<AlertCircle className="h-5 w-5" />} />
+            <StatCard label="Needs Revision" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
+            <StatCard label="Validated / Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
+          </section>
+        </section>
+
         <section className="dashboard-shell overflow-hidden rounded-sm">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
             <div>
