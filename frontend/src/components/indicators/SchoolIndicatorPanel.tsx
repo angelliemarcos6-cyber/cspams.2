@@ -1878,27 +1878,32 @@ export function SchoolIndicatorPanel({
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               Academic Year
             </label>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {compactAcademicYears.map((year) => (
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 pr-1">
+              {compactAcademicYears.map((year) => {
+                const isSelected = academicYearId === year.id;
+                return (
                 <button
                   key={year.id}
                   type="button"
                   onClick={() => setAcademicYearId(year.id)}
-                  className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                    academicYearId === year.id
+                  title={year.isCurrent ? `${year.name} (Current)` : year.name}
+                  className={`inline-flex shrink-0 items-center rounded-sm border px-2 py-0.5 text-[11px] font-semibold leading-5 transition ${
+                    isSelected
                       ? "border-primary bg-primary-50 text-primary-800"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                      : year.isCurrent
+                        ? "border-primary-200 bg-primary-50/60 text-primary-700 hover:bg-primary-50"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                   }`}
                 >
                   {year.name}
-                  {year.isCurrent ? " (Current)" : ""}
                 </button>
-              ))}
+              );
+              })}
               {hiddenAcademicYearCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setShowAllAcademicYears(true)}
-                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                  className="inline-flex shrink-0 items-center rounded-sm border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100"
                 >
                   +{hiddenAcademicYearCount} more
                 </button>
@@ -1907,9 +1912,9 @@ export function SchoolIndicatorPanel({
                 <button
                   type="button"
                   onClick={() => setShowAllAcademicYears(false)}
-                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                  className="inline-flex shrink-0 items-center rounded-sm border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100"
                 >
-                  Show less
+                  Less
                 </button>
               )}
             </div>
