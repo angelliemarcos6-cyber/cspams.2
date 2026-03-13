@@ -223,6 +223,8 @@ class StudentRecordController extends Controller
             );
         }
 
+        $this->purgeArchivedStudentByLrn(trim($request->string('lrn')->toString()));
+
         $student = new Student();
         $student->school_id = $user->school_id;
         $student->academic_year_id = $academicYearId;
@@ -285,7 +287,7 @@ class StudentRecordController extends Controller
             );
         }
 
-        $student->delete();
+        $student->forceDelete();
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'students',
@@ -363,7 +365,7 @@ class StudentRecordController extends Controller
                 Student::query()
                     ->where('school_id', $user->school_id)
                     ->whereIn('id', $deletableIds->all())
-                    ->delete();
+                    ->forceDelete();
             });
 
             event(new CspamsUpdateBroadcast([
@@ -402,6 +404,18 @@ class StudentRecordController extends Controller
         );
 
         return $user;
+    }
+
+    private function purgeArchivedStudentByLrn(string $lrn): void
+    {
+        if ($lrn === '') {
+            return;
+        }
+
+        Student::withTrashed()
+            ->where('lrn', $lrn)
+            ->whereNotNull('deleted_at')
+            ->forceDelete();
     }
 
     private function syncRollingAcademicYears(): void

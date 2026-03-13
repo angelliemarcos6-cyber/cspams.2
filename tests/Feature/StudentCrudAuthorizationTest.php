@@ -97,6 +97,10 @@ class StudentCrudAuthorizationTest extends TestCase
         $ownerDelete = $this->withToken($tokenOne)->deleteJson("/api/dashboard/students/{$studentId}");
         $ownerDelete->assertOk()
             ->assertJsonPath('data.id', $studentId);
+
+        $recreateAfterDelete = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $payload);
+        $recreateAfterDelete->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.lrn', $payload['lrn']);
     }
 
     private function loginToken(string $role, string $login): string

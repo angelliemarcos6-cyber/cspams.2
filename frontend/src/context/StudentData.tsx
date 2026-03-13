@@ -635,8 +635,12 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         const deletedIds = Array.isArray(response.data?.data?.deletedIds)
           ? response.data?.data?.deletedIds.filter((id): id is string => typeof id === "string")
           : [];
-        const deletedIdSet = new Set(deletedIds);
-        const deletedCount = deletedIds.length;
+        const missingIds = Array.isArray(response.data?.data?.missingIds)
+          ? response.data?.data?.missingIds.filter((id): id is string => typeof id === "string")
+          : [];
+        const resolvedIds = [...new Set([...deletedIds, ...missingIds])];
+        const deletedIdSet = new Set(resolvedIds);
+        const deletedCount = resolvedIds.length;
 
         if (deletedCount > 0) {
           setStudents((current) => current.filter((item) => !deletedIdSet.has(item.id)));
@@ -653,7 +657,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           await syncStudents(true);
         }
 
-        return deletedIds;
+        return resolvedIds;
       } catch (err) {
         await handleApiError(err);
         throw err;

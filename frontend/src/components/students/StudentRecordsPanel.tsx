@@ -141,7 +141,6 @@ export function StudentRecordsPanel({
     listStudents,
     addStudent,
     updateStudent,
-    deleteStudent,
     deleteStudents,
   } = useStudentData();
   const { academicYears } = useIndicatorData();
@@ -567,9 +566,13 @@ export function StudentRecordsPanel({
     setFormError("");
     setFormMessage("");
     try {
-      await deleteStudent(student.id, { revalidate: false });
-      setFormMessage("Student record deleted.");
-      void loadStudentsPage(fallbackPage, true);
+      const resolvedIds = await deleteStudents([student.id], { revalidate: false });
+      if (resolvedIds.includes(student.id)) {
+        setFormMessage("Student record deleted.");
+        void loadStudentsPage(fallbackPage, true);
+      } else {
+        throw new Error("Unable to delete student record.");
+      }
     } catch (err) {
       setPagedStudents(previousRows);
       setTotalStudents(previousTotal);
