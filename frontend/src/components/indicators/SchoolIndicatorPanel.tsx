@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type FormEvent } from "react";
-import { CheckCircle2, ChevronDown, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
   AcademicYearOption,
@@ -599,6 +599,7 @@ export function SchoolIndicatorPanel({
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
+  const categoryRailRef = useRef<HTMLDivElement | null>(null);
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -980,11 +981,58 @@ export function SchoolIndicatorPanel({
     });
   }, [activeCategory, indicatorSearch, metricCompletionById, showOnlyMissingRows]);
 
+  const scrollCategoryRail = useCallback((direction: 1 | -1) => {
+    const rail = categoryRailRef.current;
+    if (!rail) return;
+
+    rail.scrollBy({
+      left: direction * 240,
+      behavior: "smooth",
+    });
+  }, []);
+
+  const handleSelectCategory = useCallback((categoryId: string) => {
+    setActiveCategoryId(categoryId);
+
+    const rail = categoryRailRef.current;
+    if (!rail) return;
+
+    const targetButton = rail.querySelector<HTMLButtonElement>(`button[data-category-id="${categoryId}"]`);
+    targetButton?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, []);
+
+  const handleSlideCategory = useCallback((direction: 1 | -1) => {
+    if (visibleCategoryMetrics.length === 0) {
+      return;
+    }
+
+    const currentIndex = visibleCategoryMetrics.findIndex((category) => category.id === activeCategoryId);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+    const nextIndex = (safeIndex + direction + visibleCategoryMetrics.length) % visibleCategoryMetrics.length;
+    const nextCategory = visibleCategoryMetrics[nextIndex];
+    if (!nextCategory) {
+      return;
+    }
+
+    handleSelectCategory(nextCategory.id);
+    scrollCategoryRail(direction);
+  }, [activeCategoryId, handleSelectCategory, scrollCategoryRail, visibleCategoryMetrics]);
+
   useEffect(() => {
     if (!activeCategory) return;
     if (activeCategory.id === activeCategoryId) return;
     setActiveCategoryId(activeCategory.id);
   }, [activeCategory, activeCategoryId]);
+
+  useEffect(() => {
+    if (!activeCategoryId) return;
+
+    const rail = categoryRailRef.current;
+    if (!rail) return;
+
+    const targetButton = rail.querySelector<HTMLButtonElement>(`button[data-category-id="${activeCategoryId}"]`);
+    targetButton?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [activeCategoryId, visibleCategoryMetrics.length]);
 
   useEffect(() => {
     if (missingFieldTargets.length === 0) {
@@ -1890,29 +1938,72 @@ export function SchoolIndicatorPanel({
         </div>
 
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2 lg:hidden">
-            {visibleCategoryMetrics.map((category) => {
-              const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
-              const isActive = activeCategory?.id === category.id;
+          <div className="rounded-sm border border-slate-200 bg-slate-50 p-1.5">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handleSlideCategory(-1)}
+                disabled={visibleCategoryMetrics.length <= 1}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Slide categories left"
+                aria-label="Slide categories left"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
 
-              return (
-                <button
-                  key={category.id}
-                  type="button"
-                  onClick={() => setActiveCategoryId(category.id)}
-                  className={`inline-flex items-center gap-2 rounded-sm border px-3 py-1 text-xs font-semibold transition ${
-                    isActive
-                      ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {categoryTabLabel(category)}
-                  <span className="rounded-sm border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
-                    {progress.complete}/{progress.total}
-                  </span>
-                </button>
-              );
-            })}
+              <div ref={categoryRailRef} className="min-w-0 flex-1 overflow-x-auto scroll-smooth">
+                <div className="flex min-w-max items-stretch gap-1 pr-1">
+                  {visibleCategoryMetrics.map((category) => {
+                    const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
+                    const missingCount = missingCountByCategory.find((item) => item.categoryId === category.id)?.count ?? 0;
+                    const isActive = activeCategory?.id === category.id;
+
+                    return (
+                      <button
+                        key={category.id}
+                        data-category-id={category.id}
+                        type="button"
+                        onClick={() => handleSelectCategory(category.id)}
+                        className={`inline-flex min-w-[220px] items-center justify-between gap-2 rounded-sm border px-2.5 py-1.5 text-left transition ${
+                          isActive
+                            ? "border-primary-300 bg-primary-50 text-primary-700"
+                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-[11px] font-semibold uppercase tracking-wide">
+                            {categoryTabLabel(category)}
+                          </span>
+                          <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
+                            {progress.complete}/{progress.total} complete
+                          </span>
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
+                            missingCount > 0
+                              ? "border-amber-300 bg-amber-50 text-amber-700"
+                              : "border-primary-300 bg-primary-50 text-primary-700"
+                          }`}
+                        >
+                          Missing {missingCount}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSlideCategory(1)}
+                disabled={visibleCategoryMetrics.length <= 1}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Slide categories right"
+                aria-label="Slide categories right"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -2033,58 +2124,7 @@ export function SchoolIndicatorPanel({
           )}
 
           {activeCategory && (
-            <div className="grid gap-2 lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start">
-              <aside className="hidden lg:block lg:sticky lg:top-20">
-                <div className="space-y-1 rounded-sm border border-slate-200 bg-slate-50 p-1.5">
-                  <h4 className="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Categories</h4>
-                  {visibleCategoryMetrics.map((category) => {
-                    const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
-                    const missingCount = missingCountByCategory.find((item) => item.categoryId === category.id)?.count ?? 0;
-                    const isActive = activeCategory.id === category.id;
-                    const hasMissing = missingCount > 0;
-
-                    return (
-                      <div key={`rail-${category.id}`} className="rounded-sm border border-slate-200 bg-white p-1">
-                        <button
-                          type="button"
-                          onClick={() => setActiveCategoryId(category.id)}
-                          className={`w-full rounded-sm border px-2 py-1 text-left text-[11px] font-semibold transition ${
-                            isActive
-                              ? "border-primary-300 bg-primary-50 text-primary-700"
-                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                          }`}
-                        >
-                          <p className="leading-4">{categoryTabLabel(category)}</p>
-                          <p className="mt-0.5 text-[10px] font-medium text-slate-600">
-                            {progress.complete}/{progress.total}
-                          </p>
-                        </button>
-                        <div className="mt-1 flex items-center justify-between gap-1">
-                          <span
-                            className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
-                              hasMissing
-                                ? "border-amber-300 bg-amber-50 text-amber-700"
-                                : "border-primary-300 bg-primary-50 text-primary-700"
-                            }`}
-                          >
-                            Missing {missingCount}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={!hasMissing}
-                            onClick={() => handleGoToAffectedCategory(category.id)}
-                            className="rounded-sm border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Jump
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </aside>
-
-              <div className="space-y-1.5">
+            <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{categoryTabLabel(activeCategory)}</h3>
                   <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
@@ -2441,7 +2481,6 @@ export function SchoolIndicatorPanel({
                   </tbody>
                 </table>
               </div>
-            </div>
             </div>
           )}
         </div>
