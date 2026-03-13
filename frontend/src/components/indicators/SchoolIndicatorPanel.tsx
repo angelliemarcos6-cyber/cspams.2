@@ -150,7 +150,7 @@ const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
 
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
-const BASE_SCHOOL_YEAR_START = 2022;
+const BASE_SCHOOL_YEAR_START = 2025;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
 const INDICATOR_DRAFT_STORAGE_KEY = "cspams.schoolhead.indicator.autosave.v1";

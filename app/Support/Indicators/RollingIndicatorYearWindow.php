@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Cache;
 
 class RollingIndicatorYearWindow
 {
-    private const BASE_START_YEAR = 2022;
+    private const BASE_START_YEAR = 2025;
     private const WINDOW_SIZE = 5;
     private const SCHOOL_YEAR_START_MONTH = 6;
     private const CACHE_SIGNATURE_KEY = 'cspams.indicators.year_window_signature';
@@ -77,7 +77,7 @@ class RollingIndicatorYearWindow
             ? (int) $now->year
             : ((int) $now->year - 1);
 
-        // Keep the initial 5-year window anchored at 2022-2023 until a true
+        // Keep the initial 5-year window anchored at 2025-2026 until a true
         // 6th school year appears, then slide forward by one each school year.
         $windowEndYear = max(
             self::BASE_START_YEAR + self::WINDOW_SIZE - 1,
