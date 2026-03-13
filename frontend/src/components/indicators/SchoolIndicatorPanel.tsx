@@ -403,6 +403,26 @@ function schoolYearStartValue(value: string | null | undefined): number | null {
   return start;
 }
 
+function sortSchoolYearsAscending(years: Iterable<string>): string[] {
+  return [...new Set(Array.from(years, (year) => String(year).trim()).filter((year) => year.length > 0))]
+    .sort((a, b) => {
+      const aStart = schoolYearStartValue(a);
+      const bStart = schoolYearStartValue(b);
+
+      if (aStart !== null && bStart !== null) {
+        return aStart - bStart;
+      }
+      if (aStart !== null) {
+        return -1;
+      }
+      if (bStart !== null) {
+        return 1;
+      }
+
+      return a.localeCompare(b);
+    });
+}
+
 function hasMeaningfulMetricEntries(entries: MetricEntryState | undefined): boolean {
   if (!entries || typeof entries !== "object") {
     return false;
@@ -694,10 +714,15 @@ export function SchoolIndicatorPanel({
     [categoryMetrics],
   );
   const schoolYears = useMemo(() => {
-    const metricWithYears = orderedComplianceMetrics.find((metric) => metricYears(metric).length > 0);
-    const years = metricWithYears ? metricYears(metricWithYears) : [];
-    return years.length > 0 ? years : buildFallbackSchoolYears();
-  }, [orderedComplianceMetrics]);
+    const metricYearsUnion = orderedComplianceMetrics.flatMap((metric) => metricYears(metric));
+    const academicYearLabels = academicYears
+      .map((year) => normalizeSchoolYearLabel(year.name))
+      .filter((year): year is string => Boolean(year));
+    const fallbackYears = buildFallbackSchoolYears();
+    const merged = sortSchoolYearsAscending([...metricYearsUnion, ...academicYearLabels, ...fallbackYears]);
+
+    return merged.length > 0 ? merged : fallbackYears;
+  }, [academicYears, orderedComplianceMetrics]);
   const schoolYearByAcademicYearId = useMemo(() => {
     const map = new Map<string, string>();
 
@@ -707,10 +732,8 @@ export function SchoolIndicatorPanel({
         continue;
       }
 
-      const matched = schoolYears.find((candidate) => normalizeSchoolYearLabel(candidate) === normalized);
-      if (matched) {
-        map.set(year.id, matched);
-      }
+      const matched = schoolYears.find((candidate) => normalizeSchoolYearLabel(candidate) === normalized) ?? normalized;
+      map.set(year.id, matched);
     }
 
     return map;
@@ -773,6 +796,32 @@ export function SchoolIndicatorPanel({
     const currentYear = academicYears.find((year) => year.isCurrent);
     setAcademicYearId(currentYear?.id ?? academicYears[0].id);
   }, [academicYearId, academicYears]);
+
+  useEffect(() => {
+    if (!academicYearFilter || academicYearFilter === "all" || academicYears.length === 0) {
+      return;
+    }
+
+    const directMatch = academicYears.find((year) => year.id === academicYearFilter);
+    if (directMatch) {
+      if (academicYearId !== directMatch.id) {
+        setAcademicYearId(directMatch.id);
+      }
+      return;
+    }
+
+    const normalizedFilter = normalizeSchoolYearLabel(academicYearFilter);
+    if (!normalizedFilter) {
+      return;
+    }
+
+    const normalizedMatch = academicYears.find(
+      (year) => normalizeSchoolYearLabel(year.name) === normalizedFilter,
+    );
+    if (normalizedMatch && academicYearId !== normalizedMatch.id) {
+      setAcademicYearId(normalizedMatch.id);
+    }
+  }, [academicYearFilter, academicYearId, academicYears]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2400,7 +2449,7 @@ export function SchoolIndicatorPanel({
                   className="max-h-[68vh] overflow-auto rounded-sm border border-slate-200 bg-white scroll-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
                   title="Use mouse wheel to scroll rows. Use Shift+wheel, trackpad sideways pan, or arrow buttons for left/right."
                 >
-                  <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
+                  <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1320px]" : "min-w-[860px]"} w-full border-collapse`}>
                     <thead>
                       <tr className="bg-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
                         <th rowSpan={2} className="sticky left-0 top-0 z-40 min-w-[260px] border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-left">
@@ -2427,13 +2476,13 @@ export function SchoolIndicatorPanel({
                           ? activeSchoolYears.flatMap((year) => [
                               <th
                                 key={`${activeCategory.id}-${year}-target`}
-                                className="sticky top-[29px] z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
+                                className="sticky top-[29px] z-30 min-w-[180px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 Target
                               </th>,
                               <th
                                 key={`${activeCategory.id}-${year}-actual`}
-                                className="sticky top-[29px] z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
+                                className="sticky top-[29px] z-30 min-w-[180px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 Actual
                               </th>,
@@ -2441,7 +2490,7 @@ export function SchoolIndicatorPanel({
                           : activeSchoolYears.map((year) => (
                               <th
                                 key={`${activeCategory.id}-${year}`}
-                                className="sticky top-[29px] z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
+                                className="sticky top-[29px] z-30 min-w-[240px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 {year}
                               </th>
@@ -2481,8 +2530,13 @@ export function SchoolIndicatorPanel({
 
                       return (
                         <tr key={`${activeCategory.id}-${metric.id}`} className={rowTone}>
-                          <td className={`sticky left-0 z-20 min-w-[260px] max-w-[300px] border border-slate-300 px-2.5 py-1.5 align-top ${stickyTone}`}>
-                            <p className="text-[11px] font-semibold leading-4 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
+                          <td className={`sticky left-0 z-20 min-w-[260px] max-w-[320px] border border-slate-300 px-2.5 py-1.5 align-top ${stickyTone}`}>
+                            <p
+                              className="truncate text-[11px] font-semibold leading-4 text-slate-900"
+                              title={metricDisplayLabel(metric)}
+                            >
+                              {metricDisplayLabel(metric)}
+                            </p>
                             <p className="mt-0.5 text-[10px] text-slate-500">{metric.code}</p>
                             {isAutoCalculated && (
                               <p className="mt-0.5 text-[10px] font-medium text-primary-700">
@@ -2543,7 +2597,7 @@ export function SchoolIndicatorPanel({
 
                             if (activeCategory.mode !== "target_actual") {
                               return (
-                                <td key={`${metric.id}-${year}`} className="relative border border-slate-300 p-1 align-middle">
+                                <td key={`${metric.id}-${year}`} className="relative min-w-[240px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={valueCellId}
@@ -2611,7 +2665,7 @@ export function SchoolIndicatorPanel({
 
                             return (
                               <Fragment key={`${metric.id}-${year}`}>
-                                <td className="relative border border-slate-300 p-1 align-middle">
+                                <td className="relative min-w-[180px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={targetCellId}
@@ -2666,7 +2720,7 @@ export function SchoolIndicatorPanel({
                                     </span>
                                   )}
                                 </td>
-                                <td className="relative border border-slate-300 p-1 align-middle">
+                                <td className="relative min-w-[180px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={actualCellId}

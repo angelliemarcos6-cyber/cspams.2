@@ -1748,15 +1748,51 @@ export function SchoolAdminDashboard() {
                 <h2 className="text-sm font-bold text-slate-900">Submission Workspace</h2>
                 <p className="mt-0.5 text-xs text-slate-500">Complete school record and indicators in one focused view.</p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-1">
-                <span className="text-[11px] font-semibold text-slate-600">Progress</span>
-                <span className="text-xs font-bold text-slate-900">{completedRequirementCount}/{requirements.length}</span>
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                {isIndicatorWorkspaceActive && (
+                  <div className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubmissionSection("school_record")}
+                      className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      School Record
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubmissionSection("indicators")}
+                      className="rounded-sm border border-primary-300 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
+                    >
+                      Indicators
+                    </button>
+                  </div>
+                )}
+                <span className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">
+                  Students: {Number(syncedStudentCount ?? 0).toLocaleString()}
+                </span>
+                <span className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">
+                  Teachers: {Number(syncedTeacherCount ?? 0).toLocaleString()}
+                </span>
+                <div className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-1">
+                  <span className="text-[11px] font-semibold text-slate-600">Progress</span>
+                  <span className="text-xs font-bold text-slate-900">{completedRequirementCount}/{requirements.length}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-4 p-3 xl:grid-cols-[15rem_minmax(0,1fr)]">
-            <aside className="h-fit rounded-sm border border-slate-200 bg-slate-50/60 p-2.5 xl:sticky xl:top-2">
+          <div
+            className={`grid gap-3 p-3 ${
+              isIndicatorWorkspaceActive
+                ? "xl:grid-cols-1"
+                : "xl:grid-cols-[15rem_minmax(0,1fr)]"
+            }`}
+          >
+            <aside
+              className={`h-fit rounded-sm border border-slate-200 bg-slate-50/60 p-2.5 xl:sticky xl:top-2 ${
+                isIndicatorWorkspaceActive ? "hidden" : ""
+              }`}
+            >
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Section Checklist</p>
                 <p className="text-[11px] font-semibold text-slate-900">{workspaceCompletion}% complete</p>
