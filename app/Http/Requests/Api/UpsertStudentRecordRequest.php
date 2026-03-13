@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api;
 
 use App\Models\Student;
+use App\Support\Auth\ApiUserResolver;
 use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
 use Illuminate\Foundation\Http\FormRequest;
@@ -88,13 +89,27 @@ class UpsertStudentRecordRequest extends FormRequest
     {
         $studentParam = $this->route('student');
         $studentId = $studentParam instanceof Student ? $studentParam->id : null;
+        $actor = ApiUserResolver::fromRequest($this);
+        $schoolId = $studentParam instanceof Student
+            ? (int) $studentParam->school_id
+            : (int) ($actor?->school_id ?? 0);
+
+        $lrnUniqueRule = Rule::unique('students', 'lrn')
+            ->where(static function ($query) use ($schoolId): void {
+                $query->whereNull('deleted_at');
+
+                if ($schoolId > 0) {
+                    $query->where('school_id', $schoolId);
+                }
+            })
+            ->ignore($studentId);
 
         return [
             'lrn' => [
                 'required',
                 'string',
                 'max:20',
-                Rule::unique('students', 'lrn')->ignore($studentId),
+                $lrnUniqueRule,
             ],
             'firstName' => ['required', 'string', 'max:255'],
             'middleName' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -116,7 +131,7 @@ class UpsertStudentRecordRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'lrn.unique' => 'LRN already exists in the student records.',
+            'lrn.unique' => 'LRN already exists in this school\'s student records.',
         ];
     }
 }

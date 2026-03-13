@@ -203,6 +203,53 @@ class StudentCrudAuthorizationTest extends TestCase
             ->assertJsonPath('meta.deletedCount', 0);
     }
 
+    public function test_lrn_uniqueness_is_scoped_per_school(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHeadOne */
+        $schoolHeadOne = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var User $schoolHeadTwo */
+        $schoolHeadTwo = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+
+        $tokenOne = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadOne));
+        $tokenTwo = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadTwo));
+
+        $sharedLrn = '9922000' . (string) random_int(1000, 9999);
+        $basePayload = [
+            'lrn' => $sharedLrn,
+            'firstName' => 'Scoped',
+            'middleName' => null,
+            'lastName' => 'Learner',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ];
+
+        $createSchoolOne = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $basePayload);
+        $createSchoolOne->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.lrn', $sharedLrn);
+
+        $createSchoolTwo = $this->withToken($tokenTwo)->postJson('/api/dashboard/students', [
+            ...$basePayload,
+            'teacher' => 'Teacher Two',
+        ]);
+        $createSchoolTwo->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.lrn', $sharedLrn);
+
+        $duplicateInSameSchool = $this->withToken($tokenOne)->postJson('/api/dashboard/students', [
+            ...$basePayload,
+            'firstName' => 'Duplicate',
+        ]);
+        $duplicateInSameSchool->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['lrn']);
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $response = $this->postJson('/api/auth/login', [
