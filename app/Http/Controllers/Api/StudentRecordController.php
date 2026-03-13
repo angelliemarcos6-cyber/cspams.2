@@ -8,6 +8,7 @@ use App\Http\Requests\Api\UpsertStudentRecordRequest;
 use App\Http\Resources\StudentRecordResource;
 use App\Http\Resources\StudentStatusHistoryResource;
 use App\Models\AcademicYear;
+use App\Models\School;
 use App\Models\Student;
 use App\Models\StudentStatusLog;
 use App\Models\User;
@@ -224,13 +225,17 @@ class StudentRecordController extends Controller
             );
         }
 
-        $this->purgeArchivedStudentByLrn(trim($request->string('lrn')->toString()));
+        $this->purgeArchivedStudentByLrn(
+            trim($request->string('lrn')->toString()),
+            (int) $user->school_id,
+        );
 
         $student = new Student();
         $student->school_id = $user->school_id;
         $student->academic_year_id = $academicYearId;
 
         $this->applyPayload($student, $request, $user);
+        $this->syncSchoolStudentCount((int) $student->school_id);
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'students',
@@ -289,6 +294,7 @@ class StudentRecordController extends Controller
         }
 
         $student->forceDelete();
+        $this->syncSchoolStudentCount((int) $student->school_id);
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'students',
@@ -469,6 +475,7 @@ class StudentRecordController extends Controller
                     ->whereIn('id', $deletableIds->all())
                     ->forceDelete();
             });
+            $this->syncSchoolStudentCount((int) $user->school_id);
 
             event(new CspamsUpdateBroadcast([
                 'entity' => 'students',
@@ -508,16 +515,32 @@ class StudentRecordController extends Controller
         return $user;
     }
 
-    private function purgeArchivedStudentByLrn(string $lrn): void
+    private function purgeArchivedStudentByLrn(string $lrn, int $schoolId): void
     {
-        if ($lrn === '') {
+        if ($lrn === '' || $schoolId <= 0) {
             return;
         }
 
         Student::withTrashed()
             ->where('lrn', $lrn)
+            ->where('school_id', $schoolId)
             ->whereNotNull('deleted_at')
             ->forceDelete();
+    }
+
+    private function syncSchoolStudentCount(int $schoolId): void
+    {
+        if ($schoolId <= 0) {
+            return;
+        }
+
+        $studentCount = Student::query()
+            ->where('school_id', $schoolId)
+            ->count();
+
+        School::query()
+            ->whereKey($schoolId)
+            ->update(['reported_student_count' => $studentCount]);
     }
 
     private function syncRollingAcademicYears(): void

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AcademicYear;
 use App\Models\PerformanceMetric;
 use App\Models\School;
+use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
@@ -101,6 +102,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $currentSchoolYear = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+        $expectedStudentTotal = Student::query()
+            ->where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->count();
         $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
 
         $metricIds = PerformanceMetric::query()
@@ -125,7 +130,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->keyBy(static fn (array $row): string => (string) data_get($row, 'metric.code', ''));
 
         $this->assertSame(
-            1234.0,
+            (float) $expectedStudentTotal,
             (float) data_get($rowsByCode->get('IMETA_ENROLL_TOTAL'), "actualTypedValue.values.{$currentSchoolYear}"),
         );
         $this->assertSame(

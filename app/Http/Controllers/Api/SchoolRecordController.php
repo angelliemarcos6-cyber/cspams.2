@@ -537,7 +537,6 @@ class SchoolRecordController extends Controller
     {
         $school->fill([
             'status' => $request->string('status')->toString(),
-            'reported_student_count' => $request->integer('studentCount'),
             'reported_teacher_count' => $request->integer('teacherCount'),
             'submitted_by' => $user->id,
             'submitted_at' => now(),
@@ -583,6 +582,7 @@ class SchoolRecordController extends Controller
         }
 
         $school->save();
+        $this->syncSchoolStudentCount($school);
     }
 
     /**
@@ -607,11 +607,11 @@ class SchoolRecordController extends Controller
         $school->district = $district !== '' ? $district : $this->deriveDistrictFromAddress($address);
         $school->region = $region !== '' ? $region : $this->deriveRegionFromAddress($address);
         $school->status = $status;
-        $school->reported_student_count = (int) ($payload['studentCount'] ?? 0);
         $school->reported_teacher_count = (int) ($payload['teacherCount'] ?? 0);
         $school->submitted_by = $user->id;
         $school->submitted_at = now();
         $school->save();
+        $this->syncSchoolStudentCount($school);
     }
 
     private function createSchoolHeadAccountIfRequested(School $school, UpsertSchoolRecordRequest $request): ?array
@@ -918,7 +918,6 @@ class SchoolRecordController extends Controller
         $pendingSchools = (int) $schools->where('status', 'pending')->count();
         $inactiveSchools = (int) $schools->where('status', 'inactive')->count();
 
-        $reportedStudents = (int) $schools->sum('reported_student_count');
         $reportedTeachers = (int) $schools->sum('reported_teacher_count');
 
         $sectionCount = 0;
@@ -944,6 +943,7 @@ class SchoolRecordController extends Controller
         $completerLearners = (int) ($statusCounts->get('completer', 0) + $statusCounts->get('graduated', 0));
         $transfereeLearners = (int) $statusCounts->get('transferee', 0);
         $retainedLearners = max($trackedLearners - $dropoutLearners, 0);
+        $reportedStudents = $trackedLearners;
 
         return [
             'generatedAt' => now()->toISOString(),
@@ -968,6 +968,24 @@ class SchoolRecordController extends Controller
             'atRiskRatePercent' => $this->calculatePercentage($atRiskLearners, $trackedLearners),
             'transitionRatePercent' => $this->calculatePercentage($transfereeLearners + $completerLearners, $trackedLearners),
         ];
+    }
+
+    private function syncSchoolStudentCount(School $school): void
+    {
+        if (! $school->exists) {
+            return;
+        }
+
+        $studentCount = Student::query()
+            ->where('school_id', $school->id)
+            ->count();
+
+        if ((int) $school->reported_student_count === $studentCount) {
+            return;
+        }
+
+        $school->reported_student_count = $studentCount;
+        $school->saveQuietly();
     }
 
     /**

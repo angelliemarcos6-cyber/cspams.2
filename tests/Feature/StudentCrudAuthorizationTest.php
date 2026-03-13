@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\School;
+use App\Models\Student;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
@@ -101,6 +103,60 @@ class StudentCrudAuthorizationTest extends TestCase
         $recreateAfterDelete = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $payload);
         $recreateAfterDelete->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.lrn', $payload['lrn']);
+    }
+
+    public function test_student_count_sync_stays_isolated_per_school(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHeadOne */
+        $schoolHeadOne = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var User $schoolHeadTwo */
+        $schoolHeadTwo = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        /** @var School $schoolOne */
+        $schoolOne = School::query()->findOrFail((int) $schoolHeadOne->school_id);
+        /** @var School $schoolTwo */
+        $schoolTwo = School::query()->findOrFail((int) $schoolHeadTwo->school_id);
+
+        $initialOne = Student::query()->where('school_id', $schoolOne->id)->count();
+        $initialTwo = Student::query()->where('school_id', $schoolTwo->id)->count();
+
+        $schoolOne->update(['reported_student_count' => $initialOne]);
+        $schoolTwo->update(['reported_student_count' => $initialTwo]);
+
+        $tokenOne = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadOne));
+
+        $payload = [
+            'lrn' => '9911000' . (string) random_int(1000, 9999),
+            'firstName' => 'Isolated',
+            'middleName' => null,
+            'lastName' => 'Learner',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ];
+
+        $created = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $payload);
+        $created->assertStatus(Response::HTTP_CREATED);
+        $studentId = (string) $created->json('data.id');
+
+        $schoolOne->refresh();
+        $schoolTwo->refresh();
+        $this->assertSame($initialOne + 1, (int) $schoolOne->reported_student_count);
+        $this->assertSame($initialTwo, (int) $schoolTwo->reported_student_count);
+
+        $deleted = $this->withToken($tokenOne)->deleteJson("/api/dashboard/students/{$studentId}");
+        $deleted->assertOk();
+
+        $schoolOne->refresh();
+        $schoolTwo->refresh();
+        $this->assertSame($initialOne, (int) $schoolOne->reported_student_count);
+        $this->assertSame($initialTwo, (int) $schoolTwo->reported_student_count);
     }
 
     private function loginToken(string $role, string $login): string

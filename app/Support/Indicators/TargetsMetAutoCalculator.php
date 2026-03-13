@@ -211,14 +211,12 @@ class TargetsMetAutoCalculator
             static fn (float $value): bool => $value >= 75,
         )->count();
 
-        $reportedStudents = (int) ($school?->reported_student_count ?? 0);
         $reportedTeachers = (int) ($school?->reported_teacher_count ?? 0);
 
         $hasData = $trackedLearners > 0
             || $sections > 0
             || $teachers > 0
             || $performanceTotal > 0
-            || $reportedStudents > 0
             || $reportedTeachers > 0;
 
         if (! $hasData) {
@@ -238,7 +236,7 @@ class TargetsMetAutoCalculator
             'learningMasteryHighlyProficientPercent' => $this->percentage($highlyProficient, $performanceTotal),
             'aePassRatePercent' => $this->percentage($aePassers, $performanceTotal),
             'rbeManifestPercent' => ($school?->status === 'active') ? 100.0 : 0.0,
-            'reportedStudents' => (float) ($reportedStudents > 0 ? $reportedStudents : $trackedLearners),
+            'reportedStudents' => (float) $trackedLearners,
             'reportedTeachers' => (float) ($reportedTeachers > 0 ? $reportedTeachers : $teachers),
             'reportedTeachersMale' => (float) $teachersMale,
             'reportedTeachersFemale' => (float) $teachersFemale,

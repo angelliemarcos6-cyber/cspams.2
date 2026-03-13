@@ -15,10 +15,9 @@ class SchoolRecordResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $studentCount = $this->reported_student_count;
-        if ($studentCount <= 0 && isset($this->students_count)) {
-            $studentCount = (int) $this->students_count;
-        }
+        $studentCount = isset($this->students_count)
+            ? (int) $this->students_count
+            : (int) $this->reported_student_count;
 
         return [
             'id' => (string) $this->id,

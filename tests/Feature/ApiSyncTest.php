@@ -216,6 +216,9 @@ class ApiSyncTest extends TestCase
         $originalRegion = (string) $school?->region;
         $originalDistrict = (string) $school?->district;
         $originalType = (string) $school?->type;
+        $expectedStudentCount = Student::query()
+            ->where('school_id', $schoolHead->school_id)
+            ->count();
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -238,7 +241,7 @@ class ApiSyncTest extends TestCase
         $updated->assertOk()
             ->assertJsonPath('data.schoolName', $originalName)
             ->assertJsonPath('data.region', $originalRegion)
-            ->assertJsonPath('data.studentCount', 1500)
+            ->assertJsonPath('data.studentCount', $expectedStudentCount)
             ->assertJsonPath('data.teacherCount', 65);
 
         $school?->refresh();
@@ -246,7 +249,7 @@ class ApiSyncTest extends TestCase
         $this->assertSame($originalRegion, $school?->region);
         $this->assertSame($originalDistrict, $school?->district);
         $this->assertSame($originalType, $school?->type);
-        $this->assertSame(1500, (int) $school?->reported_student_count);
+        $this->assertSame($expectedStudentCount, (int) $school?->reported_student_count);
         $this->assertSame(65, (int) $school?->reported_teacher_count);
     }
 
