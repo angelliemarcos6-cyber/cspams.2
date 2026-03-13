@@ -667,8 +667,10 @@ export function SchoolIndicatorPanel({
         continue;
       }
 
-      const matched = schoolYears.find((candidate) => normalizeSchoolYearLabel(candidate) === normalized) ?? normalized;
-      map.set(year.id, matched);
+      const matched = schoolYears.find((candidate) => normalizeSchoolYearLabel(candidate) === normalized);
+      if (matched) {
+        map.set(year.id, matched);
+      }
     }
 
     return map;
@@ -982,7 +984,7 @@ export function SchoolIndicatorPanel({
           (submission.academicYear?.id ? schoolYearByAcademicYearId.get(submission.academicYear.id) ?? null : null);
         const matchedSubmissionYear =
           submissionYear
-            ? schoolYears.find((year) => normalizeSchoolYearLabel(year) === submissionYear) ?? submissionYear
+            ? schoolYears.find((year) => normalizeSchoolYearLabel(year) === submissionYear) ?? null
             : null;
         const submissionYears = matchedSubmissionYear ? [matchedSubmissionYear] : schoolYears;
         const years = metricYears(fallbackMetric);
