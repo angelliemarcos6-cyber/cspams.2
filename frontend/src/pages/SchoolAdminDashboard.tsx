@@ -290,6 +290,22 @@ function submissionStatusLabel(status: string | null | undefined): "Draft" | "Ne
   return "Draft";
 }
 
+function requirementStatusTone(statusLabel: string): string {
+  const normalized = statusLabel.trim().toLowerCase();
+
+  if (normalized === "validated" || normalized === "submitted") {
+    return "border-primary-300 bg-primary-50 text-primary-700";
+  }
+  if (normalized === "needs revision") {
+    return "border-amber-300 bg-amber-50 text-amber-700";
+  }
+  if (normalized === "overdue") {
+    return "border-rose-300 bg-rose-50 text-rose-700";
+  }
+
+  return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
 function csvEscape(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
@@ -523,6 +539,10 @@ export function SchoolAdminDashboard() {
     const complete = requirements.filter((item) => item.isComplete).length;
     return Math.round((complete / requirements.length) * 100);
   }, [requirements]);
+  const completedRequirementCount = useMemo(
+    () => requirements.filter((item) => item.isComplete).length,
+    [requirements],
+  );
   const selectedRequirement = useMemo(
     () => requirements.find((item) => item.id === selectedRequirementId) ?? requirements[0] ?? null,
     [requirements, selectedRequirementId],
@@ -1721,19 +1741,25 @@ export function SchoolAdminDashboard() {
           </section>
         </section>
 
-        <section className="dashboard-shell overflow-hidden rounded-sm">
+        <section className="dashboard-shell overflow-hidden rounded-sm border border-slate-200 bg-white">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
-            <div>
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Workspace</h2>
-              <p className="mt-0.5 text-xs text-slate-500">Complete school record and indicators in one focused view.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Submission Workspace</h2>
+                <p className="mt-0.5 text-xs text-slate-500">Complete school record and indicators in one focused view.</p>
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-1">
+                <span className="text-[11px] font-semibold text-slate-600">Progress</span>
+                <span className="text-xs font-bold text-slate-900">{completedRequirementCount}/{requirements.length}</span>
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-4 p-3 2xl:grid-cols-[14rem_minmax(0,1fr)]">
-            <aside className="h-fit rounded-sm border border-slate-200 bg-slate-50 p-2.5">
+          <div className="grid gap-4 p-3 xl:grid-cols-[15rem_minmax(0,1fr)]">
+            <aside className="h-fit rounded-sm border border-slate-200 bg-slate-50/60 p-2.5 xl:sticky xl:top-2">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Checklist</p>
-                <p className="text-xs font-semibold text-slate-900">{workspaceCompletion}%</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Section Checklist</p>
+                <p className="text-[11px] font-semibold text-slate-900">{workspaceCompletion}% complete</p>
               </div>
               <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
                 <div className="h-1.5 rounded-full bg-primary transition-[width] duration-300" style={{ width: `${workspaceCompletion}%` }} />
@@ -1747,25 +1773,28 @@ export function SchoolAdminDashboard() {
                         : "Draft"
                       : submissionStatusLabel(latestIndicators?.status);
                   const isActive = activeSubmissionSection === item.id;
+                  const statusTone = requirementStatusTone(status);
 
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => setActiveSubmissionSection(item.id)}
-                      className={`w-full rounded-sm border px-2 py-1.5 text-left text-[11px] transition ${
+                      className={`w-full rounded-sm border px-2.5 py-2 text-left transition ${
                         isActive
-                          ? "border-primary-300 bg-primary-50"
-                          : "border-slate-200 bg-white hover:bg-slate-50"
+                          ? "border-primary-300 bg-primary-50 shadow-sm"
+                          : item.isComplete
+                            ? "border-primary-200 bg-white hover:bg-primary-50/40"
+                            : "border-slate-200 bg-white hover:bg-slate-50"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold leading-4 text-slate-700">{item.label}</p>
-                        <span className="rounded-sm border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[11px] font-semibold leading-4 text-slate-800">{item.label}</p>
+                        <span className={`rounded-sm border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${statusTone}`}>
                           {status}
                         </span>
                       </div>
-                      <p className="mt-0.5 truncate text-[10px] text-slate-500" title={item.summary}>{item.summary}</p>
+                      <p className="mt-1 text-[10px] leading-4 text-slate-600">{item.summary}</p>
                     </button>
                   );
                 })}
@@ -1777,10 +1806,10 @@ export function SchoolAdminDashboard() {
                 <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
                   <section className="surface-panel animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white">
                     <div className="border-b border-slate-200 px-3 py-2.5">
-                      <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">School Summary</h3>
+                      <h3 className="text-sm font-bold text-slate-900">School Summary</h3>
                       <p className="mt-0.5 text-xs text-slate-500">
                         Required fields first
-                        <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-600" title="Optional details are available under Show advanced.">
+                        <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-600" title="Counts are synced from records.">
                           i
                         </span>
                       </p>
@@ -1880,7 +1909,7 @@ export function SchoolAdminDashboard() {
                         disabled={isSaving}
                         className="rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
                       >
-                        {returnedCount > 0 ? "Submit / Resubmit" : "Submit"}
+                        {returnedCount > 0 ? "Resubmit" : "Submit"}
                       </button>
                     </div>
                   </div>
