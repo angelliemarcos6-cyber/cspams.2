@@ -734,10 +734,28 @@ export function SchoolIndicatorPanel({
       .map((year) => normalizeSchoolYearLabel(year.name))
       .filter((year): year is string => Boolean(year));
     const fallbackYears = buildFallbackSchoolYears();
+    const windowStart = schoolYearStartValue(fallbackYears[0] ?? null);
+    const windowEnd = schoolYearStartValue(fallbackYears[fallbackYears.length - 1] ?? null);
     const merged = sortSchoolYearsAscending([...metricYearsUnion, ...academicYearLabels, ...fallbackYears]);
     const bounded = merged.filter((year) => {
       const start = schoolYearStartValue(year);
-      return start === null || start >= BASE_SCHOOL_YEAR_START;
+      if (start === null) {
+        return false;
+      }
+
+      if (start < BASE_SCHOOL_YEAR_START) {
+        return false;
+      }
+
+      if (windowStart !== null && start < windowStart) {
+        return false;
+      }
+
+      if (windowEnd !== null && start > windowEnd) {
+        return false;
+      }
+
+      return true;
     });
 
     return bounded.length > 0 ? bounded : fallbackYears;
@@ -751,8 +769,10 @@ export function SchoolIndicatorPanel({
         continue;
       }
 
-      const matched = schoolYears.find((candidate) => normalizeSchoolYearLabel(candidate) === normalized) ?? normalized;
-      map.set(year.id, matched);
+      const matched = schoolYears.find((candidate) => normalizeSchoolYearLabel(candidate) === normalized);
+      if (matched) {
+        map.set(year.id, matched);
+      }
     }
 
     return map;
@@ -793,6 +813,34 @@ export function SchoolIndicatorPanel({
     () => activeSchoolYears.filter((year) => requiredSchoolYearSet.has(year)),
     [activeSchoolYears, requiredSchoolYearSet],
   );
+  const currentAcademicYearId = useMemo(
+    () => eligibleAcademicYears.find((year) => year.isCurrent)?.id ?? "",
+    [eligibleAcademicYears],
+  );
+  const currentSchoolYearLabel = useMemo(() => {
+    if (!currentAcademicYearId) {
+      return schoolYears[schoolYears.length - 1] ?? null;
+    }
+
+    return schoolYearByAcademicYearId.get(currentAcademicYearId) ?? (schoolYears[schoolYears.length - 1] ?? null);
+  }, [currentAcademicYearId, schoolYearByAcademicYearId, schoolYears]);
+  const autoSyncTargetYears = useMemo(() => {
+    // Keep auto-sync scoped to the current school year so historical/future
+    // year columns stay aligned with encoded submission values.
+    if (!currentSchoolYearLabel) {
+      return [] as string[];
+    }
+
+    if (academicYearId === ALL_RECORDS_YEAR_ID) {
+      return [currentSchoolYearLabel];
+    }
+
+    if (academicYearId && academicYearId === currentAcademicYearId) {
+      return [currentSchoolYearLabel];
+    }
+
+    return [] as string[];
+  }, [academicYearId, currentAcademicYearId, currentSchoolYearLabel]);
   const requiredYearsScopeLabel = useMemo(() => {
     if (requiredYearsInScope.length === 0) {
       return "Future years only";
@@ -871,6 +919,9 @@ export function SchoolIndicatorPanel({
     if (complianceMetrics.length === 0) {
       return;
     }
+    if (autoSyncTargetYears.length === 0) {
+      return;
+    }
 
     setMetricEntries((current) => {
       let changed = false;
@@ -883,7 +934,11 @@ export function SchoolIndicatorPanel({
 
         const syncedValue = autoSyncValueByCode[metric.code];
         const normalizedValue = String(Math.max(0, Math.trunc(Number(syncedValue ?? 0))));
-        const years = metricYears(metric);
+        const metricScopedYears = metricYears(metric);
+        const years =
+          metricScopedYears.length > 0
+            ? metricScopedYears.filter((year) => autoSyncTargetYears.includes(year))
+            : autoSyncTargetYears;
         if (years.length === 0) {
           continue;
         }
@@ -918,7 +973,7 @@ export function SchoolIndicatorPanel({
 
       return changed ? next : current;
     });
-  }, [autoSyncValueByCode, complianceMetrics]);
+  }, [autoSyncTargetYears, autoSyncValueByCode, complianceMetrics]);
 
   useEffect(() => {
     if (academicYearId || eligibleAcademicYears.length === 0) {
@@ -930,7 +985,13 @@ export function SchoolIndicatorPanel({
   }, [academicYearId, eligibleAcademicYears]);
 
   useEffect(() => {
-    if (!academicYearFilter || academicYearFilter === "all" || eligibleAcademicYears.length === 0) {
+    if (!academicYearFilter || eligibleAcademicYears.length === 0) {
+      return;
+    }
+    if (academicYearFilter === "all") {
+      if (academicYearId !== ALL_RECORDS_YEAR_ID) {
+        setAcademicYearId(ALL_RECORDS_YEAR_ID);
+      }
       return;
     }
 
@@ -1388,6 +1449,33 @@ export function SchoolIndicatorPanel({
       slideIndicatorTable(1);
     }
   }, [slideIndicatorTable]);
+  const setMetricMatrixValue = useCallback(
+    (metric: IndicatorMetric, year: string, mode: "single" | "target" | "actual", value: string) => {
+      setMetricEntries((entries) => {
+        const previous = entries[metric.id] ?? buildDefaultEntry(metric);
+        const nextEntry: MetricEntryValue = {
+          ...previous,
+          targetMatrix: { ...previous.targetMatrix },
+          actualMatrix: { ...previous.actualMatrix },
+        };
+
+        if (mode === "single") {
+          nextEntry.targetMatrix[year] = value;
+          nextEntry.actualMatrix[year] = value;
+        } else if (mode === "target") {
+          nextEntry.targetMatrix[year] = value;
+        } else {
+          nextEntry.actualMatrix[year] = value;
+        }
+
+        return {
+          ...entries,
+          [metric.id]: nextEntry,
+        };
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!activeCategory) return;
@@ -2760,22 +2848,7 @@ export function SchoolIndicatorPanel({
                                     <select
                                       id={valueCellId}
                                       value={current.actualMatrix[year] ?? ""}
-                                      onChange={(event) =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            actualMatrix: {
-                                              ...current.actualMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                            targetMatrix: {
-                                              ...current.targetMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                          },
-                                        }))
-                                      }
+                                      onChange={(event) => setMetricMatrixValue(metric, year, "single", event.target.value)}
                                       className={valueInputClass}
                                     >
                                       <option value="">Select</option>
@@ -2793,22 +2866,7 @@ export function SchoolIndicatorPanel({
                                       min={numericInput ? 0 : undefined}
                                       placeholder={placeholder}
                                       value={current.actualMatrix[year] ?? ""}
-                                      onChange={(event) =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            actualMatrix: {
-                                              ...current.actualMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                            targetMatrix: {
-                                              ...current.targetMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                          },
-                                        }))
-                                      }
+                                      onChange={(event) => setMetricMatrixValue(metric, year, "single", event.target.value)}
                                       className={valueInputClass}
                                     />
                                   )}
@@ -2828,18 +2886,7 @@ export function SchoolIndicatorPanel({
                                     <select
                                       id={targetCellId}
                                       value={current.targetMatrix[year] ?? ""}
-                                      onChange={(event) =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            targetMatrix: {
-                                              ...current.targetMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                          },
-                                        }))
-                                      }
+                                      onChange={(event) => setMetricMatrixValue(metric, year, "target", event.target.value)}
                                       className={targetInputClass}
                                     >
                                       <option value="">Select</option>
@@ -2857,18 +2904,7 @@ export function SchoolIndicatorPanel({
                                       min={numericInput ? 0 : undefined}
                                       placeholder={placeholder}
                                       value={current.targetMatrix[year] ?? ""}
-                                      onChange={(event) =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            targetMatrix: {
-                                              ...current.targetMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                          },
-                                        }))
-                                      }
+                                      onChange={(event) => setMetricMatrixValue(metric, year, "target", event.target.value)}
                                       className={targetInputClass}
                                     />
                                   )}
@@ -2883,18 +2919,7 @@ export function SchoolIndicatorPanel({
                                     <select
                                       id={actualCellId}
                                       value={current.actualMatrix[year] ?? ""}
-                                      onChange={(event) =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            actualMatrix: {
-                                              ...current.actualMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                          },
-                                        }))
-                                      }
+                                      onChange={(event) => setMetricMatrixValue(metric, year, "actual", event.target.value)}
                                       className={actualInputClass}
                                     >
                                       <option value="">Select</option>
@@ -2912,18 +2937,7 @@ export function SchoolIndicatorPanel({
                                       min={numericInput ? 0 : undefined}
                                       placeholder={placeholder}
                                       value={current.actualMatrix[year] ?? ""}
-                                      onChange={(event) =>
-                                        setMetricEntries((entries) => ({
-                                          ...entries,
-                                          [metric.id]: {
-                                            ...current,
-                                            actualMatrix: {
-                                              ...current.actualMatrix,
-                                              [year]: event.target.value,
-                                            },
-                                          },
-                                        }))
-                                      }
+                                      onChange={(event) => setMetricMatrixValue(metric, year, "actual", event.target.value)}
                                       className={actualInputClass}
                                     />
                                   )}
