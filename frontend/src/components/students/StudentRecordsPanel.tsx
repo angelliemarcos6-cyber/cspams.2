@@ -63,6 +63,18 @@ const EMPTY_FORM: StudentFormState = {
 };
 
 const STUDENT_PAGE_SIZE = 10;
+const SEARCH_DEBOUNCE_MS = 280;
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [value, delayMs]);
+
+  return debouncedValue;
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) return "N/A";
@@ -126,7 +138,6 @@ export function StudentRecordsPanel({
     error,
     lastSyncedAt,
     dataVersion,
-    refreshStudents,
     listStudents,
     addStudent,
     updateStudent,
@@ -137,6 +148,7 @@ export function StudentRecordsPanel({
   const { teachers } = useTeacherData();
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [statusFilter, setStatusFilter] = useState<StudentEnrollmentStatus | "all">("all");
   const [academicYearFilter, setAcademicYearFilter] = useState<string>(defaultAcademicYearFilter);
   const [showForm, setShowForm] = useState(false);
@@ -155,6 +167,7 @@ export function StudentRecordsPanel({
   const [pageError, setPageError] = useState("");
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
   const studentDataVersionRef = useRef(0);
+  const pageRequestIdRef = useRef(0);
   const academicYearOptions = useMemo(
     () =>
       academicYears.map((year) => ({
@@ -176,6 +189,7 @@ export function StudentRecordsPanel({
   const loadStudentsPage = useCallback(
     async (nextPage: number, silent = false) => {
       if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
+        pageRequestIdRef.current += 1;
         setPagedStudents([]);
         setTotalStudents(0);
         setTotalPages(1);
@@ -190,17 +204,22 @@ export function StudentRecordsPanel({
         setIsPageLoading(true);
       }
 
+      const requestId = ++pageRequestIdRef.current;
       setPageError("");
 
       try {
         const result = await listStudents({
           page: nextPage,
           perPage: STUDENT_PAGE_SIZE,
-          search: search.trim() || null,
+          search: debouncedSearch.trim() || null,
           status: statusFilter === "all" ? null : statusFilter,
           schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
           academicYear: academicYearFilter,
         });
+
+        if (requestId !== pageRequestIdRef.current) {
+          return;
+        }
 
         setPagedStudents(result.data);
         setTotalStudents(result.meta.total);
@@ -210,17 +229,21 @@ export function StudentRecordsPanel({
           setPage(result.meta.currentPage);
         }
       } catch (err) {
+        if (requestId !== pageRequestIdRef.current) {
+          return;
+        }
+
         setPagedStudents([]);
         setTotalStudents(0);
         setTotalPages(1);
         setPageError(err instanceof Error ? err.message : "Unable to load student records.");
       } finally {
-        if (!silent) {
+        if (!silent && requestId === pageRequestIdRef.current) {
           setIsPageLoading(false);
         }
       }
     },
-    [listStudents, schoolFilterKeys, scopedSchoolCodes, search, statusFilter, academicYearFilter],
+    [listStudents, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, statusFilter, academicYearFilter],
   );
 
   const scopedTeachers = useMemo(() => {
@@ -300,7 +323,7 @@ export function StudentRecordsPanel({
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, schoolFilterKeys, scopedSchoolCodes, academicYearFilter]);
+  }, [debouncedSearch, statusFilter, schoolFilterKeys, scopedSchoolCodes, academicYearFilter]);
 
   useEffect(() => {
     if (academicYearFilter === "current" || academicYearFilter === "all") {
@@ -638,7 +661,8 @@ export function StudentRecordsPanel({
   };
 
   const handleRefresh = async () => {
-    await refreshStudents();
+    setFormError("");
+    setFormMessage("");
     await loadStudentsPage(page, true);
   };
 

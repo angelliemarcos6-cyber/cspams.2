@@ -20,11 +20,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class StudentRecordController extends Controller
 {
+    private const ROLLING_YEAR_SYNC_CACHE_KEY = 'cspams.students.rolling_year_window.last_sync';
+    private const ROLLING_YEAR_SYNC_TTL_MINUTES = 30;
+
     public function index(Request $request): JsonResponse
     {
         $user = ApiUserResolver::fromRequest($request);
@@ -52,6 +56,27 @@ class StudentRecordController extends Controller
         $scopeKey .= '|' . $academicYearScope;
 
         $query = Student::query()
+            ->select([
+                'id',
+                'school_id',
+                'section_id',
+                'academic_year_id',
+                'lrn',
+                'first_name',
+                'middle_name',
+                'last_name',
+                'sex',
+                'birth_date',
+                'status',
+                'risk_level',
+                'tracked_from_level',
+                'current_level',
+                'section_name',
+                'teacher_name',
+                'last_status_at',
+                'created_at',
+                'updated_at',
+            ])
             ->with(['school:id,school_code,name', 'section:id,name', 'academicYear:id,name,is_current'])
             ->orderByDesc('updated_at')
             ->orderByDesc('id');
@@ -381,7 +406,23 @@ class StudentRecordController extends Controller
 
     private function syncRollingAcademicYears(): void
     {
+        $lastSyncedAt = Cache::get(self::ROLLING_YEAR_SYNC_CACHE_KEY);
+        if (is_string($lastSyncedAt)) {
+            try {
+                if (Carbon::parse($lastSyncedAt)->greaterThan(now()->subMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES))) {
+                    return;
+                }
+            } catch (\Throwable) {
+                // Invalid cache payload. Fall through and re-sync.
+            }
+        }
+
         app(RollingIndicatorYearWindow::class)->sync();
+        Cache::put(
+            self::ROLLING_YEAR_SYNC_CACHE_KEY,
+            now()->toISOString(),
+            now()->addMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES),
+        );
     }
 
     /**
