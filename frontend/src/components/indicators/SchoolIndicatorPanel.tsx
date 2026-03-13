@@ -1768,17 +1768,19 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={() => setShowAdvancedInputs((current) => !current)}
+              title={showAdvancedInputs ? "Show core indicators only" : "Show all sections"}
               className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
             >
-              {showAdvancedInputs ? "Core only" : "All sections"}
+              {showAdvancedInputs ? "Core" : "All"}
             </button>
             <button
               type="button"
               onClick={() => void refreshSubmissions()}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+              title="Refresh"
+              aria-label="Refresh"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100"
             >
               <RefreshCw className="h-3.5 w-3.5" />
-              Refresh
             </button>
           </div>
         </div>

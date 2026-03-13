@@ -451,9 +451,6 @@ export function SchoolAdminDashboard() {
   const [showContextMoreFilters, setShowContextMoreFilters] = useState(false);
   const [selectedRequirementId, setSelectedRequirementId] = useState<RequirementItem["id"]>("school_record");
   const [activeSubmissionSection, setActiveSubmissionSection] = useState<RequirementItem["id"]>("school_record");
-  const [showSubmissionAdvanced, setShowSubmissionAdvanced] = useState(false);
-  const [focusMode, setFocusMode] = useState(false);
-  const [submissionDetailTab, setSubmissionDetailTab] = useState<"notes" | "history" | "cycle">("notes");
   const [recordsExportMessage, setRecordsExportMessage] = useState("");
   const [recordsExportError, setRecordsExportError] = useState("");
   const [isExportingRecords, setIsExportingRecords] = useState(false);
@@ -467,13 +464,6 @@ export function SchoolAdminDashboard() {
     [schoolCode, schoolName],
   );
   const latestIndicators = useMemo(() => latestSubmission(indicatorSubmissions), [indicatorSubmissions]);
-  const recentSubmissionPreview = useMemo(
-    () =>
-      [...indicatorSubmissions]
-        .sort((a, b) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime())
-        .slice(0, 4),
-    [indicatorSubmissions],
-  );
 
   const requirements = useMemo<RequirementItem[]>(
     () => [
@@ -1090,16 +1080,6 @@ export function SchoolAdminDashboard() {
     await persistSummary("draft");
   };
 
-  const handleValidateSummary = () => {
-    if (!validateForm()) {
-      setSubmitError("Please fix the required fields before proceeding.");
-      return;
-    }
-
-    setSubmitError("");
-    setSaveMessage("Validated and ready to submit.");
-  };
-
   const handleSubmitOrResubmit = async () => {
     await persistSummary("submit");
   };
@@ -1429,7 +1409,7 @@ export function SchoolAdminDashboard() {
         </section>
       )}
 
-      {!showNavigatorManual && (
+      {!showNavigatorManual && activeTopNavigator !== "compliance" && (
       <section className="dashboard-shell sticky top-2 z-20 mb-5 rounded-sm border border-slate-200 bg-white/95">
         <div className="border-b border-slate-200 px-4 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1733,42 +1713,13 @@ export function SchoolAdminDashboard() {
       <section id="compliance-records" className="grid gap-6">
         <section className="dashboard-shell overflow-hidden rounded-sm">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
-            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Workspace</h2>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowSubmissionAdvanced((current) => !current)}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  {showSubmissionAdvanced ? "Basic view" : "Advanced"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFocusMode((current) => !current)}
-                  className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition ${
-                    focusMode
-                      ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {focusMode ? "Exit Focus" : "Focus"}
-                </button>
-                {!focusMode && !isMobileViewport && renderQuickJumpChips(false)}
-              </div>
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Workspace</h2>
+              <p className="mt-0.5 text-xs text-slate-500">Complete school record and indicators in one focused view.</p>
             </div>
-            {!focusMode && isMobileViewport && renderQuickJumpChips(true)}
           </div>
 
-          <div
-            className={`grid gap-4 p-3 ${
-              focusMode || isIndicatorWorkspaceActive
-                ? "2xl:grid-cols-[14rem_minmax(0,1fr)]"
-                : "2xl:grid-cols-[14rem_minmax(0,1fr)_18rem]"
-            }`}
-          >
+          <div className="grid gap-4 p-3 2xl:grid-cols-[14rem_minmax(0,1fr)]">
             <aside className="h-fit rounded-sm border border-slate-200 bg-slate-50 p-2.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Checklist</p>
@@ -1900,17 +1851,6 @@ export function SchoolAdminDashboard() {
                         </select>
                       </div>
 
-                      {showSubmissionAdvanced && (
-                        <div className="md:col-span-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Advanced</p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            Latest package: {latestIndicators ? `#${latestIndicators.id}` : "N/A"}.
-                          </p>
-                          <p className="mt-1 text-xs text-slate-600">
-                            Compliance: {latestIndicators ? `${latestIndicators.summary.complianceRatePercent.toFixed(2)}%` : "N/A"}.
-                          </p>
-                        </div>
-                      )}
                     </form>
                   </section>
 
@@ -1923,14 +1863,6 @@ export function SchoolAdminDashboard() {
                         className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                       >
                         Save Draft
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleValidateSummary}
-                        disabled={isSaving}
-                        className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        Validate
                       </button>
                       <button
                         type="button"
@@ -1953,91 +1885,6 @@ export function SchoolAdminDashboard() {
               )}
             </section>
 
-            {!focusMode && !isIndicatorWorkspaceActive && (
-              <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Details</p>
-                <div className="mt-2 grid grid-cols-3 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setSubmissionDetailTab("notes")}
-                    className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                      submissionDetailTab === "notes"
-                        ? "border-primary-300 bg-primary-50 text-primary-700"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    Notes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSubmissionDetailTab("history")}
-                    className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                      submissionDetailTab === "history"
-                        ? "border-primary-300 bg-primary-50 text-primary-700"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    History
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSubmissionDetailTab("cycle")}
-                    className={`rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                      submissionDetailTab === "cycle"
-                        ? "border-primary-300 bg-primary-50 text-primary-700"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    Cycle
-                  </button>
-                </div>
-
-                {submissionDetailTab === "notes" && (
-                  <div className="mt-3 rounded-sm border border-slate-200 bg-white px-3 py-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Monitor Notes</p>
-                    <p className="mt-1 text-xs text-slate-700">{latestIndicators?.reviewNotes || "No monitor note for the latest package."}</p>
-                  </div>
-                )}
-
-                {submissionDetailTab === "history" && (
-                  <div className="mt-3 space-y-2">
-                    {recentSubmissionPreview.length === 0 ? (
-                      <p className="rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">No submission history yet.</p>
-                    ) : (
-                      recentSubmissionPreview.map((submission) => (
-                        <article key={submission.id} className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-                          <p className="text-xs font-semibold text-slate-900">Package #{submission.id}</p>
-                          <p className="mt-1 text-[11px] text-slate-600">
-                            {submissionStatusLabel(submission.status)} |{" "}
-                            {submission.updatedAt || submission.createdAt
-                              ? formatDateTime((submission.updatedAt ?? submission.createdAt) as string)
-                              : "N/A"}
-                          </p>
-                        </article>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {submissionDetailTab === "cycle" && (
-                  <div className="mt-3 rounded-sm border border-slate-200 bg-white px-3 py-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Previous Cycle Comparison</p>
-                    <p className="mt-1 text-xs text-slate-700">
-                      Students: <span className="font-semibold">{syncedStudentCount.toLocaleString()}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-slate-700">
-                      Teachers: <span className="font-semibold">{syncedTeacherCount.toLocaleString()}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-slate-700">
-                      Latest compliance:{" "}
-                      <span className="font-semibold">
-                        {latestIndicators ? `${latestIndicators.summary.complianceRatePercent.toFixed(2)}%` : "N/A"}
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </aside>
-            )}
           </div>
         </section>
       </section>
