@@ -94,10 +94,10 @@ interface StudentDataContextType {
   dataVersion: number;
   refreshStudents: () => Promise<void>;
   listStudents: (params?: StudentListParams) => Promise<StudentListResult>;
-  addStudent: (payload: StudentRecordPayload) => Promise<void>;
-  updateStudent: (id: string, payload: StudentRecordPayload) => Promise<void>;
-  deleteStudent: (id: string) => Promise<void>;
-  deleteStudents: (ids: string[]) => Promise<string[]>;
+  addStudent: (payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
+  updateStudent: (id: string, payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
+  deleteStudent: (id: string, options?: { revalidate?: boolean }) => Promise<void>;
+  deleteStudents: (ids: string[], options?: { revalidate?: boolean }) => Promise<string[]>;
 }
 
 interface NormalizedStudentListParams {
@@ -475,7 +475,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
 
   const addStudent = useCallback(
-    async (payload: StudentRecordPayload) => {
+    async (payload: StudentRecordPayload, options?: { revalidate?: boolean }) => {
       if (!token) {
         const authError = new Error("You are signed out. Please sign in again.");
         setError(authError.message);
@@ -516,7 +516,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
-        void syncStudents(true);
+        const shouldRevalidate = options?.revalidate ?? true;
+        if (shouldRevalidate) {
+          await syncStudents(true);
+        }
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -528,7 +531,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
 
   const updateStudent = useCallback(
-    async (id: string, payload: StudentRecordPayload) => {
+    async (id: string, payload: StudentRecordPayload, options?: { revalidate?: boolean }) => {
       if (!token) {
         const authError = new Error("You are signed out. Please sign in again.");
         setError(authError.message);
@@ -556,7 +559,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           syncedAt: response.data?.meta?.syncedAt ?? current.syncedAt,
         }));
         etagRef.current = "";
-        void syncStudents(true);
+        const shouldRevalidate = options?.revalidate ?? true;
+        if (shouldRevalidate) {
+          await syncStudents(true);
+        }
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -568,7 +574,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteStudent = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { revalidate?: boolean }) => {
       if (!token) {
         const authError = new Error("You are signed out. Please sign in again.");
         setError(authError.message);
@@ -589,7 +595,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setSnapshotMeta((current) => applyDeleteMetaSnapshot(current, 1, response.data?.meta?.syncedAt ?? null));
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
-        void syncStudents(true);
+        const shouldRevalidate = options?.revalidate ?? true;
+        if (shouldRevalidate) {
+          await syncStudents(true);
+        }
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -601,7 +610,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteStudents = useCallback(
-    async (ids: string[]): Promise<string[]> => {
+    async (ids: string[], options?: { revalidate?: boolean }): Promise<string[]> => {
       if (!token) {
         const authError = new Error("You are signed out. Please sign in again.");
         setError(authError.message);
@@ -639,7 +648,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
-        await syncStudents(true);
+        const shouldRevalidate = options?.revalidate ?? true;
+        if (shouldRevalidate) {
+          await syncStudents(true);
+        }
 
         return deletedIds;
       } catch (err) {

@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class StudentRecordController extends Controller
@@ -313,14 +314,10 @@ class StudentRecordController extends Controller
             );
         }
 
-        $students = Student::query()
-            ->select(['id', 'school_id'])
+        $unauthorizedAccess = Student::query()
             ->whereIn('id', $requestedIds->all())
-            ->get();
-
-        $unauthorizedAccess = $students->contains(
-            static fn (Student $record): bool => (int) $record->school_id !== (int) $user->school_id,
-        );
+            ->where('school_id', '!=', $user->school_id)
+            ->exists();
         if ($unauthorizedAccess) {
             return response()->json(
                 ['message' => 'You can only delete student records assigned to your school.'],
@@ -328,15 +325,21 @@ class StudentRecordController extends Controller
             );
         }
 
-        $deletableIds = $students->pluck('id')
+        $deletableIds = Student::query()
+            ->where('school_id', $user->school_id)
+            ->whereIn('id', $requestedIds->all())
+            ->pluck('id')
             ->map(static fn (mixed $id): int => (int) $id)
             ->filter(static fn (int $id): bool => $id > 0)
             ->values();
 
         if ($deletableIds->isNotEmpty()) {
-            Student::query()
-                ->whereIn('id', $deletableIds->all())
-                ->delete();
+            DB::transaction(function () use ($deletableIds, $user): void {
+                Student::query()
+                    ->where('school_id', $user->school_id)
+                    ->whereIn('id', $deletableIds->all())
+                    ->delete();
+            });
 
             event(new CspamsUpdateBroadcast([
                 'entity' => 'students',
@@ -469,9 +472,13 @@ class StudentRecordController extends Controller
             $student->last_status_at = now();
         }
 
-        $student->save();
+        DB::transaction(function () use ($student, $statusChanged, $previousStatus, $nextStatus, $user): void {
+            $student->save();
 
-        if ($statusChanged || $student->wasRecentlyCreated) {
+            if (! $statusChanged && ! $student->wasRecentlyCreated) {
+                return;
+            }
+
             StudentStatusLog::query()->create([
                 'student_id' => $student->id,
                 'from_status' => $previousStatus,
@@ -482,7 +489,7 @@ class StudentRecordController extends Controller
                     : 'Student status or profile updated by school head.',
                 'changed_at' => now(),
             ]);
-        }
+        });
     }
 
     private function resolvePerPage(Request $request, int $default = 25, int $max = 200): int

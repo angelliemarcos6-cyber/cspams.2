@@ -482,11 +482,11 @@ export function StudentRecordsPanel({
 
     try {
       if (editingId) {
-        await updateStudent(editingId, payload);
+        await updateStudent(editingId, payload, { revalidate: false });
         void loadStudentsPage(page, true);
         setFormMessage("Student record updated.");
       } else {
-        await addStudent(payload);
+        await addStudent(payload, { revalidate: false });
         setPage(1);
         void loadStudentsPage(1, true);
         setFormMessage("Student record added.");
@@ -538,7 +538,7 @@ export function StudentRecordsPanel({
     setFormError("");
     setFormMessage("");
     try {
-      await deleteStudent(student.id);
+      await deleteStudent(student.id, { revalidate: false });
       setFormMessage("Student record deleted.");
       void loadStudentsPage(fallbackPage, true);
     } catch (err) {
@@ -601,7 +601,7 @@ export function StudentRecordsPanel({
     setFormMessage("");
 
     try {
-      const deletedIds = await deleteStudents(idsToDelete);
+      const deletedIds = await deleteStudents(idsToDelete, { revalidate: false });
       const deletedCount = deletedIds.length;
       const failedCount = Math.max(0, idsToDelete.length - deletedCount);
 
