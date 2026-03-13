@@ -213,12 +213,6 @@ class StudentRecordController extends Controller
     public function store(UpsertStudentRecordRequest $request): JsonResponse
     {
         $user = $this->requireSchoolHead($request);
-        if (! $user->school_id) {
-            return response()->json(
-                ['message' => 'Your account is not linked to any school.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
 
         $this->syncRollingAcademicYears();
         $academicYearId = $this->resolveAcademicYearId();
@@ -568,6 +562,11 @@ class StudentRecordController extends Controller
             ! UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD),
             Response::HTTP_FORBIDDEN,
             'Only School Heads can modify student records.',
+        );
+        abort_if(
+            ! $user->school_id,
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+            'Your account is not linked to any school.',
         );
 
         return $user;

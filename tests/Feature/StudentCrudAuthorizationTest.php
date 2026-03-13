@@ -316,6 +316,48 @@ class StudentCrudAuthorizationTest extends TestCase
             ->assertJsonPath('data.lrn', $legacyLrn);
     }
 
+    public function test_unassigned_school_head_cannot_mutate_student_records(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->forceFill(['school_id' => null])->save();
+        $token = $schoolHead->createToken('unassigned-school-head-test')->plainTextToken;
+
+        $payload = [
+            'lrn' => '9955000' . (string) random_int(1000, 9999),
+            'firstName' => 'Unassigned',
+            'middleName' => null,
+            'lastName' => 'Head',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ];
+
+        $create = $this->withToken($token)->postJson('/api/dashboard/students', $payload);
+        $create->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Your account is not linked to any school.');
+
+        /** @var Student $existingStudent */
+        $existingStudent = Student::query()->firstOrFail();
+
+        $delete = $this->withToken($token)->deleteJson("/api/dashboard/students/{$existingStudent->id}");
+        $delete->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Your account is not linked to any school.');
+
+        $batchDelete = $this->withToken($token)->deleteJson('/api/dashboard/students', [
+            'ids' => [(string) $existingStudent->id],
+        ]);
+        $batchDelete->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Your account is not linked to any school.');
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $response = $this->postJson('/api/auth/login', [

@@ -657,6 +657,7 @@ export function StudentRecordsPanel({
     const previousRows = pagedStudents;
     const previousTotal = totalStudents;
     const previousTotalPages = totalPages;
+    const previousSelection = new Set(selectedStudentIds);
     const optimisticRows = previousRows.filter((item) => item.id !== student.id);
     const optimisticTotal = Math.max(0, previousTotal - 1);
     const optimisticTotalPages = Math.max(1, Math.ceil(Math.max(optimisticTotal, 1) / STUDENT_PAGE_SIZE));
@@ -707,11 +708,7 @@ export function StudentRecordsPanel({
       setTotalStudents(previousTotal);
       setTotalPages(previousTotalPages);
       setPage(previousPage);
-      setSelectedStudentIds((current) => {
-        const next = new Set(current);
-        next.add(student.id);
-        return next;
-      });
+      setSelectedStudentIds(previousSelection);
       setFormError(err instanceof Error ? err.message : "Unable to delete student record.");
     } finally {
       setDeletingIds((current) => {
@@ -742,6 +739,7 @@ export function StudentRecordsPanel({
     const previousRows = paginatedStudents;
     const previousTotal = totalStudents;
     const previousTotalPages = totalPages;
+    const previousSelection = new Set(selectedStudentIds);
     const optimisticRows = previousRows.filter((student) => !selectedStudentIds.has(student.id));
     const optimisticTotal = Math.max(0, previousTotal - idsToDelete.length);
     const optimisticTotalPages = Math.max(1, Math.ceil(Math.max(optimisticTotal, 1) / STUDENT_PAGE_SIZE));
@@ -796,6 +794,7 @@ export function StudentRecordsPanel({
         setTotalStudents(previousTotal);
         setTotalPages(previousTotalPages);
         setPage(previousPage);
+        setSelectedStudentIds(previousSelection);
         setFormError("Unable to delete selected student records.");
       }
     } catch (err) {
@@ -803,6 +802,7 @@ export function StudentRecordsPanel({
       setTotalStudents(previousTotal);
       setTotalPages(previousTotalPages);
       setPage(previousPage);
+      setSelectedStudentIds(previousSelection);
       setFormError(err instanceof Error ? err.message : "Unable to delete selected student records.");
     } finally {
       setDeletingIds(new Set());
