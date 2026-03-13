@@ -235,7 +235,7 @@ class StudentRecordController extends Controller
         $student->academic_year_id = $academicYearId;
 
         $this->applyPayload($student, $request, $user);
-        $this->syncSchoolStudentCount((int) $student->school_id);
+        $this->incrementSchoolStudentCount((int) $student->school_id);
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'students',
@@ -312,7 +312,7 @@ class StudentRecordController extends Controller
             );
         }
 
-        $this->syncSchoolStudentCount($schoolId);
+        $this->decrementSchoolStudentCount($schoolId, $deletedCount);
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'students',
@@ -505,7 +505,7 @@ class StudentRecordController extends Controller
         });
 
         if ($deletableIds->isNotEmpty()) {
-            $this->syncSchoolStudentCount((int) $user->school_id);
+            $this->decrementSchoolStudentCount((int) $user->school_id, $deletableIds->count());
 
             event(new CspamsUpdateBroadcast([
                 'entity' => 'students',
@@ -574,6 +574,33 @@ class StudentRecordController extends Controller
         School::query()
             ->whereKey($schoolId)
             ->update(['reported_student_count' => $studentCount]);
+    }
+
+    private function incrementSchoolStudentCount(int $schoolId, int $incrementBy = 1): void
+    {
+        if ($schoolId <= 0 || $incrementBy <= 0) {
+            return;
+        }
+
+        School::query()
+            ->whereKey($schoolId)
+            ->increment('reported_student_count', $incrementBy);
+    }
+
+    private function decrementSchoolStudentCount(int $schoolId, int $decrementBy = 1): void
+    {
+        if ($schoolId <= 0 || $decrementBy <= 0) {
+            return;
+        }
+
+        $affected = School::query()
+            ->whereKey($schoolId)
+            ->where('reported_student_count', '>=', $decrementBy)
+            ->decrement('reported_student_count', $decrementBy);
+
+        if ($affected === 0) {
+            $this->syncSchoolStudentCount($schoolId);
+        }
     }
 
     private function syncRollingAcademicYears(): void
