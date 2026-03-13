@@ -1766,11 +1766,10 @@ export function SchoolAdminDashboard() {
       {!showNavigatorManual && activeTopNavigator === "compliance" && (
       <section id="compliance-records" className="grid gap-6">
         <section className="dashboard-shell overflow-hidden rounded-sm">
-          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Submission Workspace</h2>
-                <p className="mt-0.5 text-xs text-slate-600">Step Header, Active Form, and Sticky Actions.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -1778,7 +1777,7 @@ export function SchoolAdminDashboard() {
                   onClick={() => setShowSubmissionAdvanced((current) => !current)}
                   className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
-                  {showSubmissionAdvanced ? "Hide advanced" : "Show advanced"}
+                  {showSubmissionAdvanced ? "Basic view" : "Advanced"}
                 </button>
                 <button
                   type="button"
@@ -1789,7 +1788,7 @@ export function SchoolAdminDashboard() {
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                   }`}
                 >
-                  {focusMode ? "Exit focus mode" : "Focus mode"}
+                  {focusMode ? "Exit Focus" : "Focus"}
                 </button>
                 {!focusMode && !isMobileViewport && renderQuickJumpChips(false)}
               </div>
@@ -1798,19 +1797,21 @@ export function SchoolAdminDashboard() {
           </div>
 
           <div
-            className={`grid gap-6 p-4 ${
+            className={`grid gap-4 p-3 ${
               focusMode || isIndicatorWorkspaceActive
                 ? "2xl:grid-cols-[14rem_minmax(0,1fr)]"
                 : "2xl:grid-cols-[14rem_minmax(0,1fr)_18rem]"
             }`}
           >
-            <aside className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Section Checklist</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{workspaceCompletion}% complete</p>
-              <div className="mt-2 h-1.5 rounded-full bg-slate-200">
+            <aside className="h-fit rounded-sm border border-slate-200 bg-slate-50 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-700">Checklist</p>
+                <p className="text-xs font-semibold text-slate-900">{workspaceCompletion}%</p>
+              </div>
+              <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
                 <div className="h-1.5 rounded-full bg-primary transition-[width] duration-300" style={{ width: `${workspaceCompletion}%` }} />
               </div>
-              <div className="mt-3 space-y-2">
+              <div className="mt-2.5 space-y-1.5">
                 {requirements.map((item) => {
                   const status =
                     item.id === "school_record"
@@ -1825,30 +1826,30 @@ export function SchoolAdminDashboard() {
                       key={item.id}
                       type="button"
                       onClick={() => setActiveSubmissionSection(item.id)}
-                      className={`w-full rounded-sm border px-2.5 py-2 text-left text-xs transition ${
+                      className={`w-full rounded-sm border px-2 py-1.5 text-left text-[11px] transition ${
                         isActive
                           ? "border-primary-300 bg-primary-50"
                           : "border-slate-200 bg-white hover:bg-slate-50"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold uppercase tracking-wide text-slate-700">{item.label}</p>
-                        <span className="rounded-sm border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                        <p className="font-semibold leading-4 text-slate-700">{item.label}</p>
+                        <span className="rounded-sm border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600">
                           {status}
                         </span>
                       </div>
-                      <p className="mt-1 text-[11px] text-slate-600">{item.summary}</p>
+                      <p className="mt-0.5 truncate text-[10px] text-slate-500" title={item.summary}>{item.summary}</p>
                     </button>
                   );
                 })}
               </div>
             </aside>
 
-            <section className="min-w-0 space-y-6">
+            <section className="min-w-0 space-y-4">
               {activeSubmissionSection === "school_record" ? (
                 <section id="compliance-input" className={sectionFocusClass("compliance-input")}>
                   <section className="surface-panel animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white">
-                    <div className="border-b border-slate-200 px-4 py-3">
+                    <div className="border-b border-slate-200 px-3 py-2.5">
                       <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">School Summary</h3>
                       <p className="mt-0.5 text-xs text-slate-500">
                         Required fields first
@@ -1884,7 +1885,7 @@ export function SchoolAdminDashboard() {
                       </div>
                     )}
 
-                    <form className="grid gap-4 p-4 md:grid-cols-3" onSubmit={handleFormSubmit}>
+                    <form className="grid gap-3 p-3 md:grid-cols-3" onSubmit={handleFormSubmit}>
                       <div>
                         <label htmlFor="studentCount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
                           Students

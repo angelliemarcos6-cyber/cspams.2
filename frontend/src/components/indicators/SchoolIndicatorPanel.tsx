@@ -1708,7 +1708,7 @@ export function SchoolIndicatorPanel({
 
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
-      <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-bold text-slate-900">Compliance Indicators</h2>
@@ -1720,14 +1720,14 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={() => setShowAdvancedInputs((current) => !current)}
-              className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               {showAdvancedInputs ? "Core only" : "All sections"}
             </button>
             <button
               type="button"
               onClick={() => void refreshSubmissions()}
-              className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
@@ -1737,17 +1737,17 @@ export function SchoolIndicatorPanel({
       </div>
 
       {returnedSubmission && returnedSubmissionNotes && (
-        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3">
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
             Returned Monitor Notes (Package #{returnedSubmission.id})
           </p>
-          <p className="mt-1 text-sm text-amber-900">{returnedSubmissionNotes}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <p className="mt-1 text-xs text-amber-900">{returnedSubmissionNotes}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {editingSubmissionId !== returnedSubmission.id && (
               <button
                 type="button"
                 onClick={() => handleEditDraft(returnedSubmission)}
-                className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-100"
               >
                 Edit Returned Package
               </button>
@@ -1755,7 +1755,7 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={handleReturnedIndicatorFocus}
-              className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+              className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-100"
             >
               Go to Affected Indicators
             </button>
@@ -1764,7 +1764,7 @@ export function SchoolIndicatorPanel({
                 key={`returned-category-${category.categoryId}`}
                 type="button"
                 onClick={() => handleGoToAffectedCategory(category.categoryId)}
-                className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-100"
               >
                 {category.categoryLabel} ({category.count})
               </button>
@@ -1774,9 +1774,9 @@ export function SchoolIndicatorPanel({
       )}
 
       {showRestoreBanner && (
-        <div className="border-b border-primary-200 bg-primary-50/70 px-5 py-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-primary-900">
-            <span className="font-semibold uppercase tracking-wide text-primary-800">Draft Found</span>
+        <div className="border-b border-primary-200 bg-primary-50/70 px-4 py-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-primary-900">
+            <span className="font-semibold uppercase tracking-wide text-primary-800">Draft Available</span>
             {pendingLocalDraft && (
               <span>
                 Local
@@ -1797,24 +1797,24 @@ export function SchoolIndicatorPanel({
               <button
                 type="button"
                 onClick={handleRestoreLocalDraft}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[11px] font-semibold text-primary-800 transition hover:bg-primary-100"
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[10px] font-semibold text-primary-800 transition hover:bg-primary-100"
               >
-                Restore Local
+                Restore local
               </button>
             )}
             {latestServerDraft && latestServerDraft.id !== editingSubmissionId && (
               <button
                 type="button"
                 onClick={handleRestoreServerDraft}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[11px] font-semibold text-primary-800 transition hover:bg-primary-100"
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[10px] font-semibold text-primary-800 transition hover:bg-primary-100"
               >
-                Restore Server
+                Restore server
               </button>
             )}
             <button
               type="button"
               onClick={() => setRestoreBannerDismissed(true)}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Dismiss
             </button>
@@ -1822,7 +1822,7 @@ export function SchoolIndicatorPanel({
         </div>
       )}
 
-      <form className="space-y-3 border-b border-slate-100 px-5 py-3" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
+      <form className="space-y-2.5 border-b border-slate-100 px-4 py-2.5" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
         <div className="grid gap-2.5 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
@@ -1834,7 +1834,7 @@ export function SchoolIndicatorPanel({
                   key={year.id}
                   type="button"
                   onClick={() => setAcademicYearId(year.id)}
-                  className={`rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition ${
+                  className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
                     academicYearId === year.id
                       ? "border-primary bg-primary-50 text-primary-800"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -1848,7 +1848,7 @@ export function SchoolIndicatorPanel({
                 <button
                   type="button"
                   onClick={() => setShowAllAcademicYears(true)}
-                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
                 >
                   +{hiddenAcademicYearCount} more
                 </button>
@@ -1857,7 +1857,7 @@ export function SchoolIndicatorPanel({
                 <button
                   type="button"
                   onClick={() => setShowAllAcademicYears(false)}
-                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
                 >
                   Show less
                 </button>
@@ -1869,7 +1869,7 @@ export function SchoolIndicatorPanel({
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
               Reporting Period
             </label>
-            <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
+            <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800">
               Annual
             </p>
           </div>
@@ -1884,12 +1884,12 @@ export function SchoolIndicatorPanel({
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               placeholder="Optional note"
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
           </div>
         </div>
 
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 lg:hidden">
             {visibleCategoryMetrics.map((category) => {
               const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
@@ -1900,7 +1900,7 @@ export function SchoolIndicatorPanel({
                   key={category.id}
                   type="button"
                   onClick={() => setActiveCategoryId(category.id)}
-                  className={`inline-flex items-center gap-2 rounded-sm border px-3 py-1.5 text-xs font-semibold transition ${
+                  className={`inline-flex items-center gap-2 rounded-sm border px-3 py-1 text-xs font-semibold transition ${
                     isActive
                       ? "border-primary-300 bg-primary-50 text-primary-700"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -1926,7 +1926,7 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={() => setShowOnlyMissingRows((current) => !current)}
-              className={`rounded-sm border px-3 py-1.5 text-xs font-semibold transition ${
+              className={`rounded-sm border px-3 py-1 text-xs font-semibold transition ${
                 showOnlyMissingRows
                   ? "border-amber-300 bg-amber-50 text-amber-700"
                   : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -1936,7 +1936,7 @@ export function SchoolIndicatorPanel({
             </button>
           </div>
 
-          <details className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+          <details className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1">
             <summary className="cursor-pointer list-none text-xs font-semibold text-slate-700">
               Quick Fill
             </summary>
@@ -1960,10 +1960,10 @@ export function SchoolIndicatorPanel({
             </div>
           </details>
 
-          <div className="sticky top-1 z-30 rounded-sm border border-slate-200 bg-white/95 px-2.5 py-1.5 shadow-sm backdrop-blur">
+          <div className="sticky top-1 z-30 rounded-sm border border-slate-200 bg-white/95 px-2 py-1 shadow-sm backdrop-blur">
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
-                Cat: {activeCategory ? categoryTabLabel(activeCategory) : "N/A"}
+                Category: {activeCategory ? categoryTabLabel(activeCategory) : "N/A"}
               </span>
               <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
                 Done: {completeIndicators}/{totalIndicators}
@@ -2033,9 +2033,9 @@ export function SchoolIndicatorPanel({
           )}
 
           {activeCategory && (
-            <div className="grid gap-2.5 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
+            <div className="grid gap-2 lg:grid-cols-[200px_minmax(0,1fr)] lg:items-start">
               <aside className="hidden lg:block lg:sticky lg:top-20">
-                <div className="space-y-1.5 rounded-sm border border-slate-200 bg-slate-50 p-2">
+                <div className="space-y-1 rounded-sm border border-slate-200 bg-slate-50 p-1.5">
                   <h4 className="px-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Categories</h4>
                   {visibleCategoryMetrics.map((category) => {
                     const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
@@ -2044,22 +2044,22 @@ export function SchoolIndicatorPanel({
                     const hasMissing = missingCount > 0;
 
                     return (
-                      <div key={`rail-${category.id}`} className="rounded-sm border border-slate-200 bg-white p-1.5">
+                      <div key={`rail-${category.id}`} className="rounded-sm border border-slate-200 bg-white p-1">
                         <button
                           type="button"
                           onClick={() => setActiveCategoryId(category.id)}
-                          className={`w-full rounded-sm border px-2 py-1.5 text-left text-xs font-semibold transition ${
+                          className={`w-full rounded-sm border px-2 py-1 text-left text-[11px] font-semibold transition ${
                             isActive
                               ? "border-primary-300 bg-primary-50 text-primary-700"
                               : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                           }`}
                         >
                           <p className="leading-4">{categoryTabLabel(category)}</p>
-                          <p className="mt-1 text-[11px] font-medium text-slate-600">
-                            {progress.complete}/{progress.total} complete
+                          <p className="mt-0.5 text-[10px] font-medium text-slate-600">
+                            {progress.complete}/{progress.total}
                           </p>
                         </button>
-                        <div className="mt-1.5 flex items-center justify-between gap-1.5">
+                        <div className="mt-1 flex items-center justify-between gap-1">
                           <span
                             className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
                               hasMissing
@@ -2073,7 +2073,7 @@ export function SchoolIndicatorPanel({
                             type="button"
                             disabled={!hasMissing}
                             onClick={() => handleGoToAffectedCategory(category.id)}
-                            className="rounded-sm border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-sm border border-slate-300 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Jump
                           </button>
@@ -2088,14 +2088,14 @@ export function SchoolIndicatorPanel({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{categoryTabLabel(activeCategory)}</h3>
                   <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                    {activeCategoryProgress.complete}/{activeCategoryProgress.total} complete
+                    {activeCategoryProgress.complete}/{activeCategoryProgress.total}
                   </span>
                 </div>
                 <div className="overflow-x-auto rounded-sm border border-slate-200">
                   <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
                     <thead>
-                      <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                        <th rowSpan={2} className="sticky left-0 top-0 z-40 min-w-[280px] border border-slate-300 bg-slate-100 px-3 py-2 text-left">
+                      <tr className="bg-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                        <th rowSpan={2} className="sticky left-0 top-0 z-40 min-w-[260px] border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-left">
                           Indicators
                         </th>
                         {activeCategory.mode === "target_actual" ? (
@@ -2103,29 +2103,29 @@ export function SchoolIndicatorPanel({
                             <th
                               key={`${activeCategory.id}-${year}`}
                               colSpan={2}
-                              className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                              className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                             >
                               {year}
                             </th>
                           ))
                         ) : (
-                          <th colSpan={schoolYears.length} className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-3 py-2 text-center">
+                          <th colSpan={schoolYears.length} className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-3 py-1.5 text-center">
                             School Year
                           </th>
                         )}
                       </tr>
-                      <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                      <tr className="bg-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
                         {activeCategory.mode === "target_actual"
                           ? schoolYears.flatMap((year) => [
                               <th
                                 key={`${activeCategory.id}-${year}-target`}
-                                className="sticky top-[33px] z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                                className="sticky top-[29px] z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 Target
                               </th>,
                               <th
                                 key={`${activeCategory.id}-${year}-actual`}
-                                className="sticky top-[33px] z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                                className="sticky top-[29px] z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 Actual
                               </th>,
@@ -2133,7 +2133,7 @@ export function SchoolIndicatorPanel({
                           : schoolYears.map((year) => (
                               <th
                                 key={`${activeCategory.id}-${year}`}
-                                className="sticky top-[33px] z-30 border border-slate-300 bg-slate-100 px-2 py-2 text-center"
+                                className="sticky top-[29px] z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 {year}
                               </th>
@@ -2173,10 +2173,10 @@ export function SchoolIndicatorPanel({
 
                       return (
                         <tr key={`${activeCategory.id}-${metric.id}`} className={rowTone}>
-                          <td className={`sticky left-0 z-20 min-w-[280px] max-w-[320px] border border-slate-300 px-3 py-2 align-top ${stickyTone}`}>
-                            <p className="text-[12px] font-semibold leading-5 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
+                          <td className={`sticky left-0 z-20 min-w-[260px] max-w-[300px] border border-slate-300 px-2.5 py-1.5 align-top ${stickyTone}`}>
+                            <p className="text-[11px] font-semibold leading-4 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
                             {isAutoCalculated && (
-                              <p className="mt-0.5 text-[11px] font-medium text-primary-700">
+                              <p className="mt-0.5 text-[10px] font-medium text-primary-700">
                                 Auto-calculated
                               </p>
                             )}
@@ -2195,17 +2195,17 @@ export function SchoolIndicatorPanel({
                             const targetMissing = missingFieldByCellId.get(targetCellId);
                             const actualMissing = missingFieldByCellId.get(actualCellId);
 
-                            const valueInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
+                            const valueInputClass = `w-full rounded-sm border px-1.5 py-1 text-xs text-slate-900 outline-none transition ${
                               valueMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
                             }`;
-                            const targetInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
+                            const targetInputClass = `w-full rounded-sm border px-1.5 py-1 text-xs text-slate-900 outline-none transition ${
                               targetMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
                             }`;
-                            const actualInputClass = `w-full rounded-sm border px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
+                            const actualInputClass = `w-full rounded-sm border px-1.5 py-1 text-xs text-slate-900 outline-none transition ${
                               actualMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
@@ -2214,7 +2214,7 @@ export function SchoolIndicatorPanel({
                             if (isAutoCalculated) {
                               if (activeCategory.mode !== "target_actual") {
                                 return (
-                                  <td key={`${metric.id}-${year}-auto`} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td key={`${metric.id}-${year}-auto`} className="border border-slate-300 bg-primary-50/40 p-1 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">Auto</span>
                                   </td>
                                 );
@@ -2222,10 +2222,10 @@ export function SchoolIndicatorPanel({
 
                               return (
                                 <Fragment key={`${metric.id}-${year}-auto`}>
-                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td className="border border-slate-300 bg-primary-50/40 p-1 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">Auto</span>
                                   </td>
-                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td className="border border-slate-300 bg-primary-50/40 p-1 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">Auto</span>
                                   </td>
                                 </Fragment>
@@ -2234,7 +2234,7 @@ export function SchoolIndicatorPanel({
 
                             if (activeCategory.mode !== "target_actual") {
                               return (
-                                <td key={`${metric.id}-${year}`} className="relative border border-slate-300 p-1.5 align-middle">
+                                <td key={`${metric.id}-${year}`} className="relative border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={valueCellId}
@@ -2302,7 +2302,7 @@ export function SchoolIndicatorPanel({
 
                             return (
                               <Fragment key={`${metric.id}-${year}`}>
-                                <td className="relative border border-slate-300 p-1.5 align-middle">
+                                <td className="relative border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={targetCellId}
@@ -2357,7 +2357,7 @@ export function SchoolIndicatorPanel({
                                     </span>
                                   )}
                                 </td>
-                                <td className="relative border border-slate-300 p-1.5 align-middle">
+                                <td className="relative border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={actualCellId}
@@ -2483,10 +2483,10 @@ export function SchoolIndicatorPanel({
         </div>
       </form>
 
-      <div className="border-t border-slate-100 px-5 py-4">
+      <div className="border-t border-slate-100 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
-            My Indicator Submissions ({filteredSubmissions.length})
+            Submission History ({filteredSubmissions.length})
           </h3>
           <button
             type="button"
