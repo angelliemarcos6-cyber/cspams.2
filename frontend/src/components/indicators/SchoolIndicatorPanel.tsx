@@ -8,7 +8,7 @@ import {
   type FocusEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
@@ -283,6 +283,12 @@ function metricYears(metric: IndicatorMetric): string[] {
   return Array.isArray(metric.inputSchema?.years) ? metric.inputSchema?.years ?? [] : [];
 }
 
+function resolveMetricYearsInScope(metric: IndicatorMetric, scopeYears: string[]): string[] {
+  const schemaYears = metricYears(metric);
+  const scopedYears = schemaYears.length > 0 ? schemaYears.filter((year) => scopeYears.includes(year)) : scopeYears;
+  return scopedYears.length > 0 ? scopedYears : scopeYears;
+}
+
 function metricDisplayLabel(metric: IndicatorMetric): string {
   return METRIC_LABEL_OVERRIDES[metric.code] ?? metric.name;
 }
@@ -297,10 +303,12 @@ function categoryTabLabel(category: ComplianceCategory): string {
   return category.label;
 }
 
+function currentSchoolYearStart(now: Date = new Date()): number {
+  return now.getMonth() + 1 >= SCHOOL_YEAR_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
+}
+
 function buildFallbackSchoolYears(now: Date = new Date()): string[] {
-  const currentSchoolYearStart =
-    now.getMonth() + 1 >= SCHOOL_YEAR_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
-  const windowEndYear = Math.max(BASE_SCHOOL_YEAR_START + SCHOOL_YEAR_WINDOW_SIZE - 1, currentSchoolYearStart);
+  const windowEndYear = Math.max(BASE_SCHOOL_YEAR_START + SCHOOL_YEAR_WINDOW_SIZE - 1, currentSchoolYearStart(now));
   const windowStartYear = windowEndYear - (SCHOOL_YEAR_WINDOW_SIZE - 1);
 
   return Array.from({ length: SCHOOL_YEAR_WINDOW_SIZE }, (_, offset) => {
@@ -373,6 +381,26 @@ function normalizeSchoolYearLabel(value: string | null | undefined): string | nu
   }
 
   return null;
+}
+
+function schoolYearStartValue(value: string | null | undefined): number | null {
+  const normalized = normalizeSchoolYearLabel(value);
+  if (!normalized) {
+    return null;
+  }
+
+  const match = normalized.match(/^(\d{4})-(\d{4})$/);
+  if (!match) {
+    return null;
+  }
+
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end !== start + 1) {
+    return null;
+  }
+
+  return start;
 }
 
 function hasMeaningfulMetricEntries(entries: MetricEntryState | undefined): boolean {
@@ -627,18 +655,11 @@ export function SchoolIndicatorPanel({
   const [serverAutosaveAt, setServerAutosaveAt] = useState<string | null>(null);
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
-  const [isIndicatorTablePanning, setIsIndicatorTablePanning] = useState(false);
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
-  const indicatorTablePanRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number }>({
-    active: false,
-    pointerId: null,
-    startX: 0,
-    startScrollLeft: 0,
-  });
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -714,6 +735,31 @@ export function SchoolIndicatorPanel({
 
     return schoolYears.length > 0 ? [schoolYears[schoolYears.length - 1]] : [];
   }, [academicYearId, academicYears, schoolYearByAcademicYearId, schoolYears]);
+  const requiredSchoolYears = useMemo(() => {
+    const currentStart = currentSchoolYearStart();
+
+    return schoolYears.filter((year) => {
+      const yearStart = schoolYearStartValue(year);
+      if (yearStart === null) {
+        return true;
+      }
+      return yearStart <= currentStart;
+    });
+  }, [schoolYears]);
+  const requiredSchoolYearSet = useMemo(() => new Set(requiredSchoolYears), [requiredSchoolYears]);
+  const requiredYearsInScope = useMemo(
+    () => activeSchoolYears.filter((year) => requiredSchoolYearSet.has(year)),
+    [activeSchoolYears, requiredSchoolYearSet],
+  );
+  const requiredYearsScopeLabel = useMemo(() => {
+    if (requiredYearsInScope.length === 0) {
+      return "Future years only";
+    }
+    if (requiredYearsInScope.length === 1) {
+      return requiredYearsInScope[0];
+    }
+    return `${requiredYearsInScope[0]} to ${requiredYearsInScope[requiredYearsInScope.length - 1]}`;
+  }, [requiredYearsInScope]);
 
   useEffect(() => {
     setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
@@ -850,9 +896,8 @@ export function SchoolIndicatorPanel({
 
     for (const metric of orderedComplianceMetrics) {
       const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
-      const years = metricYears(metric);
-      const scopedYears = years.length > 0 ? years.filter((year) => activeSchoolYears.includes(year)) : activeSchoolYears;
-      const effectiveYears = scopedYears.length > 0 ? scopedYears : activeSchoolYears;
+      const scopedYears = resolveMetricYearsInScope(metric, activeSchoolYears);
+      const requiredYears = scopedYears.filter((year) => requiredSchoolYearSet.has(year));
       if (metricIsAutoCalculated(metric)) {
         map.set(metric.id, true);
         continue;
@@ -861,8 +906,8 @@ export function SchoolIndicatorPanel({
       const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
 
       const isComplete =
-        effectiveYears.length > 0 &&
-        effectiveYears.every((year) => {
+        requiredYears.length === 0 ||
+        requiredYears.every((year) => {
           const targetValue = String(current.targetMatrix[year] ?? "").trim();
           const actualValue = String(current.actualMatrix[year] ?? "").trim();
 
@@ -877,7 +922,7 @@ export function SchoolIndicatorPanel({
     }
 
     return map;
-  }, [activeSchoolYears, metricEntries, orderedComplianceMetrics]);
+  }, [activeSchoolYears, metricEntries, orderedComplianceMetrics, requiredSchoolYearSet]);
   const categoryProgressById = useMemo(() => {
     const map = new Map<string, { total: number; complete: number }>();
 
@@ -907,15 +952,14 @@ export function SchoolIndicatorPanel({
       }
 
       const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
-      const years = metricYears(metric);
-      const scopedYears = years.length > 0 ? years.filter((year) => activeSchoolYears.includes(year)) : activeSchoolYears;
-      const effectiveYears = scopedYears.length > 0 ? scopedYears : activeSchoolYears;
+      const scopedYears = resolveMetricYearsInScope(metric, activeSchoolYears);
+      const requiredYears = scopedYears.filter((year) => requiredSchoolYearSet.has(year));
 
       targets.push(
         ...collectMissingFieldsForMetric(
           metric,
           current,
-          effectiveYears,
+          requiredYears,
           category.id,
           category.label,
         ),
@@ -923,7 +967,7 @@ export function SchoolIndicatorPanel({
     }
 
     return targets;
-  }, [activeSchoolYears, categoryLookupByMetricId, metricEntries, orderedComplianceMetrics]);
+  }, [activeSchoolYears, categoryLookupByMetricId, metricEntries, orderedComplianceMetrics, requiredSchoolYearSet]);
   const missingFieldByCellId = useMemo(() => {
     const map = new Map<string, MissingFieldTarget>();
     for (const target of missingFieldTargets) {
@@ -1006,15 +1050,14 @@ export function SchoolIndicatorPanel({
             ? schoolYears.find((year) => normalizeSchoolYearLabel(year) === submissionYear) ?? null
             : null;
         const submissionYears = matchedSubmissionYear ? [matchedSubmissionYear] : schoolYears;
-        const years = metricYears(fallbackMetric);
-        const scopedYears = years.length > 0 ? years.filter((year) => submissionYears.includes(year)) : submissionYears;
-        const effectiveYears = scopedYears.length > 0 ? scopedYears : submissionYears;
+        const scopedYears = resolveMetricYearsInScope(fallbackMetric, submissionYears);
+        const requiredYears = scopedYears.filter((year) => requiredSchoolYearSet.has(year));
 
         missingTargets.push(
           ...collectMissingFieldsForMetric(
             fallbackMetric,
             entry,
-            effectiveYears,
+            requiredYears,
             category.id,
             category.label,
           ),
@@ -1044,7 +1087,7 @@ export function SchoolIndicatorPanel({
     }
 
     return summary;
-  }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, schoolYearByAcademicYearId, schoolYears, sortedSubmissions]);
+  }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, requiredSchoolYearSet, schoolYearByAcademicYearId, schoolYears, sortedSubmissions]);
   const activeCategory = useMemo(
     () => visibleCategoryMetrics.find((category) => category.id === activeCategoryId) ?? visibleCategoryMetrics[0] ?? null,
     [activeCategoryId, visibleCategoryMetrics],
@@ -1116,67 +1159,26 @@ export function SchoolIndicatorPanel({
     });
   }, []);
 
-  const endIndicatorTablePan = useCallback((pointerId?: number) => {
+  const handleIndicatorTableWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     const tableContainer = indicatorTableRef.current;
-    const pan = indicatorTablePanRef.current;
-    if (!pan.active) return;
-    if (typeof pointerId === "number" && pan.pointerId !== pointerId) return;
+    if (!tableContainer) return;
 
-    if (tableContainer && pan.pointerId !== null && tableContainer.hasPointerCapture(pan.pointerId)) {
-      tableContainer.releasePointerCapture(pan.pointerId);
-    }
-
-    pan.active = false;
-    pan.pointerId = null;
-    setIsIndicatorTablePanning(false);
-  }, []);
-
-  const handleIndicatorTablePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) {
-      return;
-    }
-    if (isTypingTarget(event.target)) {
+    // Allow natural vertical scroll for rows; only force horizontal pan when user
+    // intentionally pans sideways (trackpad deltaX or Shift+wheel gesture).
+    const hasHorizontalIntent = Math.abs(event.deltaX) > 0 || event.shiftKey;
+    if (!hasHorizontalIntent) {
       return;
     }
 
-    const target = event.target as HTMLElement;
-    if (target.closest("button, a, label")) {
-      return;
-    }
-
-    const tableContainer = indicatorTableRef.current;
-    if (!tableContainer || tableContainer.scrollWidth <= tableContainer.clientWidth) {
-      return;
-    }
-
-    indicatorTablePanRef.current = {
-      active: true,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startScrollLeft: tableContainer.scrollLeft,
-    };
-    tableContainer.setPointerCapture(event.pointerId);
-    setIsIndicatorTablePanning(true);
-    event.preventDefault();
-  }, []);
-
-  const handleIndicatorTablePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const pan = indicatorTablePanRef.current;
-    if (!pan.active || pan.pointerId !== event.pointerId) {
-      return;
-    }
-
-    const tableContainer = indicatorTableRef.current;
-    if (!tableContainer) {
-      return;
-    }
-
-    const deltaX = event.clientX - pan.startX;
-    tableContainer.scrollLeft = pan.startScrollLeft - deltaX;
+    tableContainer.scrollLeft += event.deltaX + event.deltaY;
     event.preventDefault();
   }, []);
 
   const handleIndicatorTableKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (isTypingTarget(event.target)) {
+      return;
+    }
+
     if (event.key === "ArrowLeft") {
       event.preventDefault();
       slideIndicatorTable(-1);
@@ -1436,6 +1438,9 @@ export function SchoolIndicatorPanel({
     const entries = orderedComplianceMetrics
       .map((metric) => {
         const value = metricEntries[metric.id] ?? buildDefaultEntry(metric);
+        const scopedYears = resolveMetricYearsInScope(metric, activeSchoolYears);
+        const requiredYears = scopedYears.filter((year) => requiredSchoolYearSet.has(year));
+        const isRequired = requiredYears.length > 0;
 
         const type = metricDataType(metric);
         const isAutoCalculated = metricIsAutoCalculated(metric);
@@ -1451,6 +1456,8 @@ export function SchoolIndicatorPanel({
             type,
             requiresTargetActual: false,
             isAutoCalculated: true,
+            requiredYears: [] as string[],
+            isRequired: false,
           };
         }
 
@@ -1462,10 +1469,13 @@ export function SchoolIndicatorPanel({
 
         if (type === "currency" || type === "number") {
           if (requiresTargetActual) {
-            targetValue = Number(value.targetValue);
-            actualValue = Number(value.actualValue);
+            const targetRaw = value.targetValue.trim();
+            const actualRaw = value.actualValue.trim();
+            targetValue = targetRaw === "" ? undefined : Number(targetRaw);
+            actualValue = actualRaw === "" ? undefined : Number(actualRaw);
           } else {
-            const singleValue = Number(value.actualValue || value.targetValue);
+            const singleRaw = String(value.actualValue || value.targetValue || "").trim();
+            const singleValue = singleRaw === "" ? undefined : Number(singleRaw);
             targetValue = singleValue;
             actualValue = singleValue;
           }
@@ -1505,15 +1515,18 @@ export function SchoolIndicatorPanel({
             actualPayload = { value: textValue };
           }
         } else if (type === "yearly_matrix") {
-          const matrixYears = metricYears(metric);
-          const scopedYears = matrixYears.length > 0 ? matrixYears.filter((year) => activeSchoolYears.includes(year)) : activeSchoolYears;
-          const years = scopedYears.length > 0 ? scopedYears : activeSchoolYears;
+          const years = scopedYears;
+          const requiredYearSet = new Set(requiredYears);
           if (requiresTargetActual) {
             const targetMatrixValues = Object.fromEntries(
-              years.map((year) => [year, (value.targetMatrix[year] ?? "").trim()]),
+              years
+                .map((year) => [year, (value.targetMatrix[year] ?? "").trim()] as const)
+                .filter(([year, cellValue]) => requiredYearSet.has(year) || cellValue !== ""),
             );
             const actualMatrixValues = Object.fromEntries(
-              years.map((year) => [year, (value.actualMatrix[year] ?? "").trim()]),
+              years
+                .map((year) => [year, (value.actualMatrix[year] ?? "").trim()] as const)
+                .filter(([year, cellValue]) => requiredYearSet.has(year) || cellValue !== ""),
             );
 
             targetPayload = {
@@ -1524,7 +1537,9 @@ export function SchoolIndicatorPanel({
             };
           } else {
             const matrixValues = Object.fromEntries(
-              years.map((year) => [year, (value.actualMatrix[year] ?? value.targetMatrix[year] ?? "").trim()]),
+              years
+                .map((year) => [year, (value.actualMatrix[year] ?? value.targetMatrix[year] ?? "").trim()] as const)
+                .filter(([year, cellValue]) => requiredYearSet.has(year) || cellValue !== ""),
             );
 
             targetPayload = {
@@ -1546,6 +1561,8 @@ export function SchoolIndicatorPanel({
           type,
           requiresTargetActual,
           isAutoCalculated: false,
+          requiredYears,
+          isRequired,
         };
       });
 
@@ -1554,7 +1571,7 @@ export function SchoolIndicatorPanel({
     }
 
     const invalidEntry = entries.find((entry) => {
-      if (entry.isAutoCalculated) {
+      if (entry.isAutoCalculated || !entry.isRequired) {
         return false;
       }
 
@@ -1581,17 +1598,12 @@ export function SchoolIndicatorPanel({
 
       if (entry.type === "yearly_matrix") {
         if (entry.requiresTargetActual) {
-          const targetValues = Object.values(entry.target?.values ?? {});
-          const actualValues = Object.values(entry.actual?.values ?? {});
-          return (
-            targetValues.length === 0 ||
-            actualValues.length === 0 ||
-            targetValues.some((value) => String(value).trim() === "") ||
-            actualValues.some((value) => String(value).trim() === "")
-          );
+          const targetValues = entry.requiredYears.map((year) => String(entry.target?.values?.[year] ?? "").trim());
+          const actualValues = entry.requiredYears.map((year) => String(entry.actual?.values?.[year] ?? "").trim());
+          return targetValues.some((value) => value === "") || actualValues.some((value) => value === "");
         }
-        const actualValues = Object.values(entry.actual?.values ?? {});
-        return actualValues.length === 0 || actualValues.some((value) => String(value).trim() === "");
+        const actualValues = entry.requiredYears.map((year) => String(entry.actual?.values?.[year] ?? entry.target?.values?.[year] ?? "").trim());
+        return actualValues.some((value) => value === "");
       }
 
       return false;
@@ -1620,7 +1632,7 @@ export function SchoolIndicatorPanel({
     };
 
     return { payload, reason: "", fingerprint: JSON.stringify(payload) };
-  }, [academicYearId, activeSchoolYears, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, submitBlockedReason]);
+  }, [academicYearId, activeSchoolYears, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason]);
 
   const persistDraftPayload = useCallback(
     async (payload: IndicatorSubmissionPayload, mode: "manual" | "autosave"): Promise<IndicatorSubmission> => {
@@ -1891,6 +1903,25 @@ export function SchoolIndicatorPanel({
       await persistDraftPayload(prepared.payload, "manual");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
+    }
+  };
+
+  const handleCreateAndSubmit = async () => {
+    setSubmitError("");
+    setSaveMessage("");
+
+    const prepared = buildSubmissionPayload();
+    if (!prepared.payload) {
+      setSubmitError(prepared.reason);
+      return;
+    }
+
+    try {
+      const result = await persistDraftPayload(prepared.payload, "manual");
+      await submitSubmission(result.id);
+      setSaveMessage(`Package #${result.id} submitted to monitor.`);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
     }
   };
 
@@ -2228,70 +2259,79 @@ export function SchoolIndicatorPanel({
             </button>
           </div>
 
-          <details className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1">
-            <summary className="cursor-pointer list-none text-xs font-semibold text-slate-700">
-              Quick Fill
-            </summary>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleCopyPreviousYearValues}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                Prev Year
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyFromLatestValidated}
-                disabled={!latestValidatedSubmission}
-                title={latestValidatedSubmission ? `Copy from package #${latestValidatedSubmission.id}` : "No validated package available"}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Latest Validated
-              </button>
-            </div>
-          </details>
+          <div className="sticky top-1 z-30 rounded-sm border border-slate-200 bg-white/95 px-2 py-1.5 shadow-sm backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
+                <span className="rounded-sm border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
+                  Quick Fill
+                </span>
+                <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
+                  {activeCategory ? categoryTabLabel(activeCategory) : "N/A"}
+                </span>
+                <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
+                  {completeIndicators}/{totalIndicators}
+                </span>
+                <span className={`rounded-sm border px-2 py-0.5 font-semibold ${
+                  missingFieldTargets.length > 0
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
+                    : "border-primary-300 bg-primary-50 text-primary-700"
+                }`}>
+                  {missingFieldTargets.length}
+                </span>
+                <span
+                  className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-medium text-slate-600"
+                  title="Required years are based on the current device school year and selected view."
+                >
+                  Req: {requiredYearsScopeLabel}
+                </span>
+              </div>
 
-          <div className="sticky top-1 z-30 rounded-sm border border-slate-200 bg-white/95 px-2 py-1 shadow-sm backdrop-blur">
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
-                Category: {activeCategory ? categoryTabLabel(activeCategory) : "N/A"}
-              </span>
-              <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
-                Done: {completeIndicators}/{totalIndicators}
-              </span>
-              <span className={`rounded-sm border px-2 py-0.5 font-semibold ${
-                missingFieldTargets.length > 0
-                  ? "border-amber-300 bg-amber-50 text-amber-700"
-                  : "border-primary-300 bg-primary-50 text-primary-700"
-              }`}>
-                Missing: {missingFieldTargets.length}
-              </span>
-              <button
-                type="button"
-                onClick={handleJumpToPreviousMissing}
-                disabled={missingFieldTargets.length === 0}
-                title="Previous missing (Alt+Shift+P)"
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Prev
-              </button>
-              <button
-                type="button"
-                onClick={handleJumpToNextMissing}
-                disabled={missingFieldTargets.length === 0}
-                title="Next missing (Alt+Shift+N)"
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Next
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowMissingFields((current) => !current)}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                {showMissingFields ? "Hide List" : "List"}
-              </button>
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleCopyPreviousYearValues}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100"
+                  title="Copy previous year values to blank fields"
+                >
+                  Prev Year
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyFromLatestValidated}
+                  disabled={!latestValidatedSubmission}
+                  title={latestValidatedSubmission ? `Copy from package #${latestValidatedSubmission.id}` : "No validated package available"}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Latest
+                </button>
+                <button
+                  type="button"
+                  onClick={handleJumpToPreviousMissing}
+                  disabled={missingFieldTargets.length === 0}
+                  title="Previous missing (Alt+Shift+P)"
+                  aria-label="Previous missing"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleJumpToNextMissing}
+                  disabled={missingFieldTargets.length === 0}
+                  title="Next missing (Alt+Shift+N)"
+                  aria-label="Next missing"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMissingFields((current) => !current)}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  {showMissingFields ? "Hide" : "List"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -2356,14 +2396,9 @@ export function SchoolIndicatorPanel({
                   ref={indicatorTableRef}
                   tabIndex={0}
                   onKeyDown={handleIndicatorTableKeyDown}
-                  onPointerDown={handleIndicatorTablePointerDown}
-                  onPointerMove={handleIndicatorTablePointerMove}
-                  onPointerUp={(event) => endIndicatorTablePan(event.pointerId)}
-                  onPointerCancel={(event) => endIndicatorTablePan(event.pointerId)}
-                  className={`overflow-x-auto rounded-sm border border-slate-200 bg-white scroll-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100 ${
-                    isIndicatorTablePanning ? "cursor-grabbing select-none" : "cursor-grab"
-                  }`}
-                  title="Drag left or right to pan the table. Use Arrow Left/Right keys for quick slide."
+                  onWheel={handleIndicatorTableWheel}
+                  className="max-h-[68vh] overflow-auto rounded-sm border border-slate-200 bg-white scroll-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
+                  title="Use mouse wheel to scroll rows. Use Shift+wheel, trackpad sideways pan, or arrow buttons for left/right."
                 >
                   <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
                     <thead>
@@ -2749,6 +2784,28 @@ export function SchoolIndicatorPanel({
           >
             <Target className="h-4 w-4" />
             {isSaving ? "Saving..." : editingSubmissionId ? "Update Draft" : "Save Draft"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCreateAndSubmit()}
+            disabled={
+              isSaving
+              || isLoading
+              || complianceMetrics.length === 0
+              || academicYearId === ALL_RECORDS_YEAR_ID
+              || missingFieldTargets.length > 0
+            }
+            title={
+              academicYearId === ALL_RECORDS_YEAR_ID
+                ? "Select a specific academic year to submit."
+                : missingFieldTargets.length > 0
+                  ? submitBlockedReason || "Complete required fields before submitting."
+                  : "Save and submit to monitor"
+            }
+            className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Send className="h-4 w-4" />
+            Submit
           </button>
           {editingSubmissionId && (
             <button
