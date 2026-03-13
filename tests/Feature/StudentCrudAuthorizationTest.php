@@ -70,6 +70,27 @@ class StudentCrudAuthorizationTest extends TestCase
             ->assertJsonPath('data.riskLevel', 'high')
             ->assertJsonPath('data.teacher', 'Teacher Updated');
 
+        $batchPayload = [
+            ...$payload,
+            'lrn' => '9900000' . (string) random_int(1000, 9999),
+            'firstName' => 'Taylor',
+            'lastName' => 'Mendoza',
+        ];
+        $batchCreated = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $batchPayload);
+        $batchCreated->assertStatus(Response::HTTP_CREATED);
+        $batchStudentId = (string) $batchCreated->json('data.id');
+
+        $otherHeadBatchDelete = $this->withToken($tokenTwo)->deleteJson('/api/dashboard/students', [
+            'ids' => [$batchStudentId],
+        ]);
+        $otherHeadBatchDelete->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $ownerBatchDelete = $this->withToken($tokenOne)->deleteJson('/api/dashboard/students', [
+            'ids' => [$batchStudentId],
+        ]);
+        $ownerBatchDelete->assertOk()
+            ->assertJsonPath('data.deletedIds.0', $batchStudentId);
+
         $otherHeadDelete = $this->withToken($tokenTwo)->deleteJson("/api/dashboard/students/{$studentId}");
         $otherHeadDelete->assertStatus(Response::HTTP_FORBIDDEN);
 

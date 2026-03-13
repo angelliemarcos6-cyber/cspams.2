@@ -46,6 +46,15 @@ interface StudentRecordDeleteResponse {
   meta?: StudentSyncMeta;
 }
 
+interface StudentBatchDeleteResponse {
+  data: {
+    deletedIds?: string[];
+    missingIds?: string[];
+    requestedCount?: number;
+  };
+  meta?: StudentSyncMeta;
+}
+
 export interface StudentListParams {
   page?: number;
   perPage?: number;
@@ -88,6 +97,7 @@ interface StudentDataContextType {
   addStudent: (payload: StudentRecordPayload) => Promise<void>;
   updateStudent: (id: string, payload: StudentRecordPayload) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
+  deleteStudents: (ids: string[]) => Promise<string[]>;
 }
 
 interface NormalizedStudentListParams {
@@ -251,6 +261,28 @@ function normalizeMeta(meta: StudentSyncMeta | undefined, params: NormalizedStud
     from,
     to,
     hasMorePages: Boolean(meta?.hasMorePages ?? currentPage < lastPage),
+  };
+}
+
+function applyDeleteMetaSnapshot(current: StudentListMeta, deletedCount: number, syncedAt: string | null): StudentListMeta {
+  const safeDeletedCount = Math.max(0, Math.trunc(deletedCount));
+  const perPage = Math.max(1, current.perPage || SNAPSHOT_PER_PAGE);
+  const total = Math.max(0, current.total - safeDeletedCount);
+  const lastPage = Math.max(1, Math.ceil(Math.max(total, 1) / perPage));
+  const currentPage = Math.min(Math.max(1, current.currentPage), lastPage);
+  const from = total > 0 ? Math.min(current.from ?? ((currentPage - 1) * perPage + 1), total) : null;
+  const to = total > 0 ? Math.min(current.to ?? (currentPage * perPage), total) : null;
+
+  return {
+    ...current,
+    total,
+    recordCount: total,
+    lastPage,
+    currentPage,
+    from,
+    to,
+    hasMorePages: currentPage < lastPage,
+    syncedAt: syncedAt ?? current.syncedAt,
   };
 }
 
@@ -554,29 +586,62 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
         setStudents((current) => current.filter((item) => item.id !== id));
         setTotalCount((current) => Math.max(0, current - 1));
-        setSnapshotMeta((current) => {
-          const perPage = Math.max(1, current.perPage || SNAPSHOT_PER_PAGE);
-          const total = Math.max(0, current.total - 1);
-          const lastPage = Math.max(1, Math.ceil(Math.max(total, 1) / perPage));
-          const currentPage = Math.min(Math.max(1, current.currentPage), lastPage);
-          const from = total > 0 ? Math.min(current.from ?? ((currentPage - 1) * perPage + 1), total) : null;
-          const to = total > 0 ? Math.min(current.to ?? (currentPage * perPage), total) : null;
-
-          return {
-            ...current,
-            total,
-            recordCount: total,
-            lastPage,
-            currentPage,
-            from,
-            to,
-            hasMorePages: currentPage < lastPage,
-            syncedAt: response.data?.meta?.syncedAt ?? current.syncedAt,
-          };
-        });
+        setSnapshotMeta((current) => applyDeleteMetaSnapshot(current, 1, response.data?.meta?.syncedAt ?? null));
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
         void syncStudents(true);
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, syncStudents, handleApiError],
+  );
+
+  const deleteStudents = useCallback(
+    async (ids: string[]): Promise<string[]> => {
+      if (!token) {
+        const authError = new Error("You are signed out. Please sign in again.");
+        setError(authError.message);
+        throw authError;
+      }
+
+      const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0))];
+      if (uniqueIds.length === 0) {
+        return [];
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<StudentBatchDeleteResponse>("/api/dashboard/students", {
+          method: "DELETE",
+          token,
+          body: { ids: uniqueIds },
+        });
+
+        const deletedIds = Array.isArray(response.data?.data?.deletedIds)
+          ? response.data?.data?.deletedIds.filter((id): id is string => typeof id === "string")
+          : [];
+        const deletedIdSet = new Set(deletedIds);
+        const deletedCount = deletedIds.length;
+
+        if (deletedCount > 0) {
+          setStudents((current) => current.filter((item) => !deletedIdSet.has(item.id)));
+          setTotalCount((current) => Math.max(0, current - deletedCount));
+          setSnapshotMeta((current) =>
+            applyDeleteMetaSnapshot(current, deletedCount, response.data?.meta?.syncedAt ?? null),
+          );
+        }
+
+        setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
+        etagRef.current = "";
+        await syncStudents(true);
+
+        return deletedIds;
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -636,6 +701,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       addStudent,
       updateStudent,
       deleteStudent,
+      deleteStudents,
     }),
     [
       students,
@@ -651,6 +717,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       addStudent,
       updateStudent,
       deleteStudent,
+      deleteStudents,
     ],
   );
 

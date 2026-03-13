@@ -129,6 +129,7 @@ export function StudentRecordsPanel({
     addStudent,
     updateStudent,
     deleteStudent,
+    deleteStudents,
   } = useStudentData();
   const { academicYears } = useIndicatorData();
   const { teachers } = useTeacherData();
@@ -599,34 +600,35 @@ export function StudentRecordsPanel({
     setFormError("");
     setFormMessage("");
 
-    const failedDeletes: string[] = [];
-    for (const studentId of idsToDelete) {
-      try {
-        await deleteStudent(studentId);
-      } catch {
-        failedDeletes.push(studentId);
-      }
-    }
+    try {
+      const deletedIds = await deleteStudents(idsToDelete);
+      const deletedCount = deletedIds.length;
+      const failedCount = Math.max(0, idsToDelete.length - deletedCount);
 
-    if (failedDeletes.length === 0) {
-      setFormMessage(
-        `${idsToDelete.length} student record${idsToDelete.length === 1 ? "" : "s"} deleted.`,
-      );
-      void loadStudentsPage(fallbackPage, true);
-    } else {
+      if (failedCount === 0) {
+        setFormMessage(
+          `${idsToDelete.length} student record${idsToDelete.length === 1 ? "" : "s"} deleted.`,
+        );
+        void loadStudentsPage(fallbackPage, true);
+      } else if (deletedCount > 0) {
+        setFormError(`${failedCount} of ${idsToDelete.length} selected records could not be deleted.`);
+        void loadStudentsPage(fallbackPage, true);
+      } else {
+        setPagedStudents(previousRows);
+        setTotalStudents(previousTotal);
+        setTotalPages(previousTotalPages);
+        setPage(previousPage);
+        setFormError("Unable to delete selected student records.");
+      }
+    } catch (err) {
       setPagedStudents(previousRows);
       setTotalStudents(previousTotal);
       setTotalPages(previousTotalPages);
       setPage(previousPage);
-      setFormError(
-        failedDeletes.length === idsToDelete.length
-          ? "Unable to delete selected student records."
-          : `${failedDeletes.length} of ${idsToDelete.length} selected records could not be deleted.`,
-      );
-      void loadStudentsPage(previousPage, true);
+      setFormError(err instanceof Error ? err.message : "Unable to delete selected student records.");
+    } finally {
+      setDeletingIds(new Set());
     }
-
-    setDeletingIds(new Set());
   };
 
   const handleRefresh = async () => {

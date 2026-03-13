@@ -278,6 +278,91 @@ class StudentRecordController extends Controller
         ]);
     }
 
+    public function batchDestroy(Request $request): JsonResponse
+    {
+        $user = $this->requireSchoolHead($request);
+
+        $rawIds = $request->input('ids', []);
+        if (! is_array($rawIds)) {
+            return response()->json(
+                ['message' => 'Invalid batch delete payload.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $requestedIds = collect($rawIds)
+            ->map(static function (mixed $value): int {
+                if (is_int($value)) {
+                    return $value;
+                }
+
+                if (is_string($value) && ctype_digit(trim($value))) {
+                    return (int) trim($value);
+                }
+
+                return 0;
+            })
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($requestedIds->isEmpty()) {
+            return response()->json(
+                ['message' => 'Select at least one student record to delete.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $students = Student::query()
+            ->select(['id', 'school_id'])
+            ->whereIn('id', $requestedIds->all())
+            ->get();
+
+        $unauthorizedAccess = $students->contains(
+            static fn (Student $record): bool => (int) $record->school_id !== (int) $user->school_id,
+        );
+        if ($unauthorizedAccess) {
+            return response()->json(
+                ['message' => 'You can only delete student records assigned to your school.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $deletableIds = $students->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->values();
+
+        if ($deletableIds->isNotEmpty()) {
+            Student::query()
+                ->whereIn('id', $deletableIds->all())
+                ->delete();
+
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'students',
+                'eventType' => 'students.batch_deleted',
+                'schoolId' => (string) $user->school_id,
+                'deletedCount' => $deletableIds->count(),
+            ]));
+        }
+
+        $missingIds = $requestedIds
+            ->diff($deletableIds)
+            ->map(static fn (int $id): string => (string) $id)
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'deletedIds' => $deletableIds->map(static fn (int $id): string => (string) $id)->values(),
+                'missingIds' => $missingIds,
+                'requestedCount' => $requestedIds->count(),
+            ],
+            'meta' => [
+                'syncedAt' => now()->toISOString(),
+            ],
+        ]);
+    }
+
     private function requireSchoolHead(Request $request): User
     {
         $user = ApiUserResolver::fromRequest($request);
