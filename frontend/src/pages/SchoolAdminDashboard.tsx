@@ -2009,6 +2009,7 @@ export function SchoolAdminDashboard() {
             editable
             title="Student Records History"
             description="Manage learner records and review historical entries."
+            defaultAcademicYearFilter="all"
           />
         </div>
         <div id="teacher-records-history" className={`mt-5 ${sectionFocusClass("teacher-records-history")}`}>

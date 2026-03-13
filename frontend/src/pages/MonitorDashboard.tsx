@@ -5301,6 +5301,7 @@ export function MonitorDashboard() {
               externalSearchTerm={studentRecordsLookupTerm}
               title="Student Records"
               description="Read-only learner checks and search."
+              defaultAcademicYearFilter="all"
             />
           ) : (
             <div className="px-5 py-8 text-sm text-slate-500">

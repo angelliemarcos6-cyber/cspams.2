@@ -12,6 +12,7 @@ interface StudentRecordsPanelProps {
   showSchoolColumn?: boolean;
   schoolFilterKeys?: Set<string> | null;
   externalSearchTerm?: string | null;
+  defaultAcademicYearFilter?: "current" | "all";
 }
 
 interface StudentFormState {
@@ -117,6 +118,7 @@ export function StudentRecordsPanel({
   showSchoolColumn = false,
   schoolFilterKeys = null,
   externalSearchTerm = null,
+  defaultAcademicYearFilter = "current",
 }: StudentRecordsPanelProps) {
   const {
     isLoading,
@@ -136,7 +138,7 @@ export function StudentRecordsPanel({
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StudentEnrollmentStatus | "all">("all");
-  const [academicYearFilter, setAcademicYearFilter] = useState("current");
+  const [academicYearFilter, setAcademicYearFilter] = useState<string>(defaultAcademicYearFilter);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<StudentFormState>(EMPTY_FORM);
@@ -166,6 +168,10 @@ export function StudentRecordsPanel({
     if (externalSearchTerm === null) return;
     setSearch(externalSearchTerm);
   }, [externalSearchTerm]);
+
+  useEffect(() => {
+    setAcademicYearFilter(defaultAcademicYearFilter);
+  }, [defaultAcademicYearFilter]);
 
   const loadStudentsPage = useCallback(
     async (nextPage: number, silent = false) => {
