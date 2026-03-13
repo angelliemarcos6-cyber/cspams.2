@@ -140,6 +140,17 @@ Frontend (new terminal):
 
 Use this to test the system publicly without a paid Cloudflare plan.
 
+One-click launcher (Windows):
+
+1. Double-click [preview-cloudflare-start.cmd](preview-cloudflare-start.cmd)
+2. It will:
+   - start Laravel backend (`127.0.0.1:8000`)
+   - start Vite frontend (`127.0.0.1:5173`) with API proxy
+   - start Cloudflare tunnel and print/open the public `trycloudflare.com` URL
+3. To stop everything, double-click [preview-cloudflare-stop.cmd](preview-cloudflare-stop.cmd)
+
+Manual commands (alternative):
+
 1. Install Cloudflare Tunnel client (`cloudflared`) on Windows:
    - `winget install --id Cloudflare.cloudflared -e --accept-source-agreements --accept-package-agreements`
 2. Start backend:
@@ -160,6 +171,7 @@ Notes:
 - Keep backend, frontend, and cloudflared terminals running while testing.
 - This is an ephemeral preview URL, not a production deployment.
 - Realtime websocket features may need extra tunnel/proxy setup; core CRUD and API flows are covered by the proxy setup above.
+- Launcher logs are written to `storage/logs/preview/` (`backend.log`, `frontend.log`, `tunnel.log`).
 
 ## Demo Accounts
 
