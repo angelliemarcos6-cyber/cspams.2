@@ -3156,33 +3156,6 @@ export function MonitorDashboard() {
     setLastReviewCompletion(null);
   }, [laneFilteredQueueRows, lastReviewCompletion]);
 
-  const handleContinuePendingRequirements = () => {
-    if (requirementCounts.missing > 0) {
-      setRequirementFilter("missing");
-      setQueueLane("waiting_data");
-      setActiveTopNavigator("action_queue");
-      return;
-    }
-
-    if (requirementCounts.returned > 0) {
-      setRequirementFilter("returned");
-      setQueueLane("returned");
-      setActiveTopNavigator("action_queue");
-      return;
-    }
-
-    if (requirementCounts.awaitingReview > 0) {
-      setRequirementFilter("waiting");
-      setQueueLane("for_review");
-      setActiveTopNavigator("action_queue");
-      return;
-    }
-
-    setRequirementFilter("all");
-    setQueueLane("all");
-    setActiveTopNavigator("action_queue");
-  };
-
   const handleSort = (column: SortColumn) => {
     if (column === sortColumn) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -3641,22 +3614,6 @@ export function MonitorDashboard() {
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
-            </button>
-            <button
-              type="button"
-              onClick={handleContinuePendingRequirements}
-              className="inline-flex h-9 items-center gap-2 rounded-sm border border-primary-300/50 bg-primary px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-600"
-            >
-              <ListChecks className="h-3.5 w-3.5" />
-              Continue Pending Requirements
-            </button>
-            <button
-              type="button"
-              onClick={openCreateRecordForm}
-              className="inline-flex h-9 items-center gap-2 rounded-sm border border-white/35 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white"
-            >
-              <Database className="h-3.5 w-3.5" />
-              Add School Record
             </button>
           </div>
           <span className="inline-flex max-w-full items-center rounded-sm border border-white/35 bg-white/92 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">

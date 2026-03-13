@@ -129,10 +129,11 @@ export function ActiveSessionsCenter() {
       <button
         type="button"
         onClick={handleToggle}
-        className="inline-flex h-9 items-center gap-1.5 border border-white/35 bg-white/12 px-3 text-xs font-semibold text-white transition hover:bg-white/20"
+        className="inline-flex h-9 w-9 items-center justify-center border border-white/35 bg-white/12 text-white transition hover:bg-white/20"
+        aria-label="Devices"
+        title="Devices"
       >
         <Shield className="h-3.5 w-3.5" />
-        Devices
       </button>
 
       {open && (

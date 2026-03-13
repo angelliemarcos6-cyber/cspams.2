@@ -1109,25 +1109,6 @@ export function SchoolAdminDashboard() {
     await handleSubmitOrResubmit();
   };
 
-  const handleComplianceAction = () => {
-    setShowNavigatorManual(false);
-    setActiveTopNavigator("compliance");
-    setActiveSubmissionSection("school_record");
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => scrollToSection("compliance-input"), 60);
-    }
-  };
-
-  const handleContinuePendingRequirements = () => {
-    setShowNavigatorManual(false);
-    if (returnedCount > 0) {
-      setActiveTopNavigator("requirements");
-      return;
-    }
-
-    setActiveTopNavigator("compliance");
-  };
-
   const clearTopContext = () => {
     setContextAcademicYearId("all");
     setContextSubmissionType("all");
@@ -1205,22 +1186,6 @@ export function SchoolAdminDashboard() {
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
-            </button>
-            <button
-              type="button"
-              onClick={handleContinuePendingRequirements}
-              className="inline-flex h-9 items-center gap-2 rounded-sm border border-primary-300/50 bg-primary px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-600"
-            >
-              <ListChecks className="h-3.5 w-3.5" />
-              Continue Pending Requirements
-            </button>
-            <button
-              type="button"
-              onClick={handleComplianceAction}
-              className="inline-flex h-9 items-center gap-2 rounded-sm border border-white/35 bg-white/95 px-3 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-white"
-            >
-              <ClipboardList className="h-3.5 w-3.5" />
-              Open Submission Workspace
             </button>
           </div>
           <span className="inline-flex max-w-full items-center rounded-sm border border-white/35 bg-white/92 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">

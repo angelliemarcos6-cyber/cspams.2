@@ -50,12 +50,13 @@ export function NotificationCenter() {
       <button
         type="button"
         onClick={handleToggle}
-        className="relative inline-flex h-9 items-center gap-1.5 border border-white/35 bg-white/12 px-3 text-xs font-semibold text-white transition hover:bg-white/20"
+        className="relative inline-flex h-9 w-9 items-center justify-center border border-white/35 bg-white/12 text-white transition hover:bg-white/20"
+        aria-label="Notifications"
+        title="Notifications"
       >
         <Bell className="h-3.5 w-3.5" />
-        Notifications
         {unreadCount > 0 && (
-          <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+          <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
