@@ -66,6 +66,7 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::get('/students', [StudentRecordController::class, 'index']);
     Route::post('/students', [StudentRecordController::class, 'store']);
     Route::delete('/students', [StudentRecordController::class, 'batchDestroy']);
+    Route::get('/students/{student}/history', [StudentRecordController::class, 'history']);
     Route::put('/students/{student}', [StudentRecordController::class, 'update']);
     Route::patch('/students/{student}', [StudentRecordController::class, 'update']);
     Route::delete('/students/{student}', [StudentRecordController::class, 'destroy']);

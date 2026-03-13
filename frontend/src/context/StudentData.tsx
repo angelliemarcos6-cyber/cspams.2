@@ -10,7 +10,13 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
-import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload } from "@/types";
+import type {
+  StudentEnrollmentStatus,
+  StudentRecord,
+  StudentRecordPayload,
+  StudentStatusHistoryEntry,
+  StudentStatusHistoryMeta,
+} from "@/types";
 
 type StudentSyncScope = "division" | "school" | null;
 
@@ -46,6 +52,16 @@ interface StudentRecordDeleteResponse {
   meta?: StudentSyncMeta;
 }
 
+interface StudentHistorySyncMeta extends StudentSyncMeta {
+  studentId?: string;
+  studentLrn?: string | null;
+}
+
+interface StudentHistoryResponse {
+  data: StudentStatusHistoryEntry[];
+  meta?: StudentHistorySyncMeta;
+}
+
 interface StudentBatchDeleteResponse {
   data: {
     deletedIds?: string[];
@@ -63,6 +79,13 @@ export interface StudentListParams {
   schoolCode?: string | null;
   schoolCodes?: string[] | null;
   academicYear?: string | number | null;
+  signal?: AbortSignal;
+}
+
+export interface StudentHistoryParams {
+  page?: number;
+  perPage?: number;
+  signal?: AbortSignal;
 }
 
 export interface StudentListMeta {
@@ -83,6 +106,11 @@ export interface StudentListResult {
   meta: StudentListMeta;
 }
 
+export interface StudentHistoryResult {
+  data: StudentStatusHistoryEntry[];
+  meta: StudentStatusHistoryMeta;
+}
+
 interface StudentDataContextType {
   students: StudentRecord[];
   isLoading: boolean;
@@ -94,6 +122,7 @@ interface StudentDataContextType {
   dataVersion: number;
   refreshStudents: () => Promise<void>;
   listStudents: (params?: StudentListParams) => Promise<StudentListResult>;
+  listStudentHistory: (studentId: string, params?: StudentHistoryParams) => Promise<StudentHistoryResult>;
   addStudent: (payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
   updateStudent: (id: string, payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
   deleteStudent: (id: string, options?: { revalidate?: boolean }) => Promise<void>;
@@ -115,6 +144,8 @@ const AUTO_SYNC_INTERVAL_MS = 12_000;
 const SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 25;
 const MAX_PER_PAGE = 200;
+const DEFAULT_HISTORY_PER_PAGE = 12;
+const MAX_HISTORY_PER_PAGE = 50;
 
 const EMPTY_META: StudentListMeta = {
   syncedAt: null,
@@ -241,6 +272,16 @@ function buildListPath(params: NormalizedStudentListParams): string {
   return serialized ? `/api/dashboard/students?${serialized}` : "/api/dashboard/students";
 }
 
+function buildHistoryPath(studentId: string, page: number, perPage: number): string {
+  const query = new URLSearchParams();
+  query.set("page", String(page));
+  query.set("per_page", String(perPage));
+  const serialized = query.toString();
+  const base = `/api/dashboard/students/${encodeURIComponent(studentId)}/history`;
+
+  return serialized ? `${base}?${serialized}` : base;
+}
+
 function normalizeMeta(meta: StudentSyncMeta | undefined, params: NormalizedStudentListParams, dataLength: number): StudentListMeta {
   const perPage = toPositiveInt(meta?.perPage, params.perPage);
   const total = toPositiveInt(meta?.total, dataLength);
@@ -253,6 +294,38 @@ function normalizeMeta(meta: StudentSyncMeta | undefined, params: NormalizedStud
   return {
     syncedAt: meta?.syncedAt ?? new Date().toISOString(),
     scope: normalizeScope(meta?.scope),
+    recordCount,
+    currentPage,
+    lastPage,
+    perPage,
+    total,
+    from,
+    to,
+    hasMorePages: Boolean(meta?.hasMorePages ?? currentPage < lastPage),
+  };
+}
+
+function normalizeHistoryMeta(
+  meta: StudentHistorySyncMeta | undefined,
+  studentId: string,
+  page: number,
+  perPageFallback: number,
+  dataLength: number,
+): StudentStatusHistoryMeta {
+  const perPage = toPositiveInt(meta?.perPage, perPageFallback);
+  const total = toPositiveInt(meta?.total, dataLength);
+  const lastPage = Math.max(1, toPositiveInt(meta?.lastPage, Math.ceil(Math.max(total, 1) / perPage)));
+  const currentPage = Math.min(Math.max(1, toPositiveInt(meta?.currentPage, page)), lastPage);
+  const recordCount = toPositiveInt(meta?.recordCount, total);
+  const from = meta?.from ?? (dataLength > 0 ? (currentPage - 1) * perPage + 1 : null);
+  const to = meta?.to ?? (dataLength > 0 ? (from ?? 1) + dataLength - 1 : null);
+
+  return {
+    syncedAt: meta?.syncedAt ?? new Date().toISOString(),
+    scope: normalizeScope(meta?.scope),
+    scopeKey: normalizeScopeKey(meta?.scopeKey),
+    studentId: (meta?.studentId ?? studentId).toString(),
+    studentLrn: meta?.studentLrn ?? null,
     recordCount,
     currentPage,
     lastPage,
@@ -306,6 +379,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   const syncQueuedRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
+  const historyCacheRef = useRef<Map<string, { etag: string; result: StudentHistoryResult }>>(new Map());
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
@@ -321,6 +395,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     syncQueuedRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    historyCacheRef.current.clear();
     if (realtimeSyncTimerRef.current !== null) {
       window.clearTimeout(realtimeSyncTimerRef.current);
       realtimeSyncTimerRef.current = null;
@@ -349,8 +424,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
 
   const requestStudents = useCallback(
-    async (tokenValue: string, params: NormalizedStudentListParams): Promise<StudentListResult> => {
-      const response = await apiRequestRaw<StudentRecordsResponse>(buildListPath(params), { token: tokenValue });
+    async (tokenValue: string, params: NormalizedStudentListParams, signal?: AbortSignal): Promise<StudentListResult> => {
+      const response = await apiRequestRaw<StudentRecordsResponse>(buildListPath(params), { token: tokenValue, signal });
       const data = Array.isArray(response.data?.data) ? response.data.data : [];
       const meta = normalizeMeta(response.data?.meta, params, data.length);
 
@@ -479,13 +554,70 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       const normalized = sanitizeParams(params);
 
       try {
-        return await requestStudents(token, normalized);
+        return await requestStudents(token, normalized, params?.signal);
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw err;
+        }
+
         await handleApiError(err);
         throw err;
       }
     },
     [token, requestStudents, handleApiError],
+  );
+
+  const listStudentHistory = useCallback(
+    async (studentId: string, params?: StudentHistoryParams): Promise<StudentHistoryResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const normalizedStudentId = studentId.trim();
+      if (!normalizedStudentId) {
+        throw new Error("Student history request is missing a student identifier.");
+      }
+
+      const page = toPositiveInt(params?.page, 1);
+      const perPage = Math.min(toPositiveInt(params?.perPage, DEFAULT_HISTORY_PER_PAGE), MAX_HISTORY_PER_PAGE);
+      const cacheKey = `${normalizedStudentId}|${page}|${perPage}`;
+      const cached = historyCacheRef.current.get(cacheKey);
+
+      try {
+        const response = await apiRequestRaw<StudentHistoryResponse>(buildHistoryPath(normalizedStudentId, page, perPage), {
+          token,
+          signal: params?.signal,
+          extraHeaders: cached?.etag ? { "If-None-Match": cached.etag } : undefined,
+        });
+
+        if (response.status === 304 && cached) {
+          return cached.result;
+        }
+
+        const responseData = Array.isArray(response.data?.data) ? response.data.data : [];
+        const responseMeta = normalizeHistoryMeta(response.data?.meta, normalizedStudentId, page, perPage, responseData.length);
+        const result: StudentHistoryResult = {
+          data: responseData,
+          meta: responseMeta,
+        };
+
+        const responseEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+        historyCacheRef.current.set(cacheKey, {
+          etag: responseEtag,
+          result,
+        });
+
+        return result;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw err;
+        }
+
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, handleApiError],
   );
 
   const addStudent = useCallback(
@@ -530,6 +662,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
+        historyCacheRef.current.clear();
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -573,6 +706,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           syncedAt: response.data?.meta?.syncedAt ?? current.syncedAt,
         }));
         etagRef.current = "";
+        historyCacheRef.current.clear();
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -609,6 +743,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setSnapshotMeta((current) => applyDeleteMetaSnapshot(current, 1, response.data?.meta?.syncedAt ?? null));
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
+        historyCacheRef.current.clear();
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -666,6 +801,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
+        historyCacheRef.current.clear();
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -753,6 +889,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       dataVersion,
       refreshStudents,
       listStudents,
+      listStudentHistory,
       addStudent,
       updateStudent,
       deleteStudent,
@@ -769,6 +906,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       dataVersion,
       refreshStudents,
       listStudents,
+      listStudentHistory,
       addStudent,
       updateStudent,
       deleteStudent,

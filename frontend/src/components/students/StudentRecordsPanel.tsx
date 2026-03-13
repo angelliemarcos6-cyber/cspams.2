@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { AlertCircle, CalendarDays, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import { AlertCircle, CalendarDays, Edit2, Filter, History, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { isApiError } from "@/lib/api";
-import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload } from "@/types";
+import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload, StudentStatusHistoryEntry } from "@/types";
 
 interface StudentRecordsPanelProps {
   editable: boolean;
@@ -65,6 +65,7 @@ const EMPTY_FORM: StudentFormState = {
 
 const STUDENT_PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 280;
+const HISTORY_PAGE_SIZE = 12;
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -140,6 +141,7 @@ export function StudentRecordsPanel({
     lastSyncedAt,
     dataVersion,
     listStudents,
+    listStudentHistory,
     addStudent,
     updateStudent,
     deleteStudent,
@@ -169,6 +171,16 @@ export function StudentRecordsPanel({
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
   const studentDataVersionRef = useRef(0);
   const pageRequestIdRef = useRef(0);
+  const historyRequestIdRef = useRef(0);
+  const pageAbortRef = useRef<AbortController | null>(null);
+  const historyAbortRef = useRef<AbortController | null>(null);
+  const [historyStudent, setHistoryStudent] = useState<StudentRecord | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<StudentStatusHistoryEntry[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historySyncedAt, setHistorySyncedAt] = useState<string | null>(null);
   const academicYearOptions = useMemo(
     () =>
       academicYears.map((year) => ({
@@ -205,6 +217,11 @@ export function StudentRecordsPanel({
         setIsPageLoading(true);
       }
 
+      if (pageAbortRef.current) {
+        pageAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      pageAbortRef.current = controller;
       const requestId = ++pageRequestIdRef.current;
       setPageError("");
 
@@ -216,9 +233,10 @@ export function StudentRecordsPanel({
           status: statusFilter === "all" ? null : statusFilter,
           schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
           academicYear: academicYearFilter,
+          signal: controller.signal,
         });
 
-        if (requestId !== pageRequestIdRef.current) {
+        if (controller.signal.aborted || requestId !== pageRequestIdRef.current) {
           return;
         }
 
@@ -230,7 +248,7 @@ export function StudentRecordsPanel({
           setPage(result.meta.currentPage);
         }
       } catch (err) {
-        if (requestId !== pageRequestIdRef.current) {
+        if (controller.signal.aborted || requestId !== pageRequestIdRef.current) {
           return;
         }
 
@@ -239,6 +257,9 @@ export function StudentRecordsPanel({
         setTotalPages(1);
         setPageError(err instanceof Error ? err.message : "Unable to load student records.");
       } finally {
+        if (pageAbortRef.current === controller) {
+          pageAbortRef.current = null;
+        }
         if (!silent && requestId === pageRequestIdRef.current) {
           setIsPageLoading(false);
         }
@@ -321,6 +342,7 @@ export function StudentRecordsPanel({
     batchDeleteEnabled
     && paginatedStudents.some((student) => selectedStudentIds.has(student.id));
   const isDeletingAny = deletingIds.size > 0;
+  const showActionColumn = true;
 
   useEffect(() => {
     setPage(1);
@@ -380,6 +402,11 @@ export function StudentRecordsPanel({
     studentDataVersionRef.current = dataVersion;
     void loadStudentsPage(page, true);
   }, [dataVersion, loadStudentsPage, page]);
+
+  useEffect(() => () => {
+    pageAbortRef.current?.abort();
+    historyAbortRef.current?.abort();
+  }, []);
 
   const resetForm = () => {
     setEditingId(null);
@@ -469,6 +496,87 @@ export function StudentRecordsPanel({
 
     setBatchDeleteEnabled((current) => !current);
   };
+
+  const closeHistory = useCallback(() => {
+    historyAbortRef.current?.abort();
+    historyAbortRef.current = null;
+    setHistoryStudent(null);
+    setHistoryEntries([]);
+    setHistoryPage(1);
+    setHistoryTotalPages(1);
+    setHistoryLoading(false);
+    setHistoryError("");
+    setHistorySyncedAt(null);
+  }, []);
+
+  const loadStudentHistoryPage = useCallback(
+    async (student: StudentRecord, nextPage: number, silent = false) => {
+      if (historyAbortRef.current) {
+        historyAbortRef.current.abort();
+      }
+
+      const controller = new AbortController();
+      historyAbortRef.current = controller;
+      const requestId = ++historyRequestIdRef.current;
+      if (!silent) {
+        setHistoryLoading(true);
+      }
+      setHistoryError("");
+
+      try {
+        const result = await listStudentHistory(student.id, {
+          page: nextPage,
+          perPage: HISTORY_PAGE_SIZE,
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted || requestId !== historyRequestIdRef.current) {
+          return;
+        }
+
+        setHistoryEntries(result.data);
+        setHistoryPage(result.meta.currentPage);
+        setHistoryTotalPages(Math.max(1, result.meta.lastPage));
+        setHistorySyncedAt(result.meta.syncedAt);
+      } catch (err) {
+        if (controller.signal.aborted || requestId !== historyRequestIdRef.current) {
+          return;
+        }
+
+        setHistoryEntries([]);
+        setHistoryPage(Math.max(1, nextPage));
+        setHistoryTotalPages(1);
+        setHistoryError(err instanceof Error ? err.message : "Unable to load student history.");
+      } finally {
+        if (historyAbortRef.current === controller) {
+          historyAbortRef.current = null;
+        }
+
+        if (!silent && requestId === historyRequestIdRef.current) {
+          setHistoryLoading(false);
+        }
+      }
+    },
+    [listStudentHistory],
+  );
+
+  const openHistory = (student: StudentRecord) => {
+    setHistoryStudent(student);
+    setHistoryEntries([]);
+    setHistoryPage(1);
+    setHistoryTotalPages(1);
+    setHistoryError("");
+    setHistorySyncedAt(null);
+    void loadStudentHistoryPage(student, 1, false);
+  };
+
+  useEffect(() => {
+    if (!historyStudent || dataVersion <= 0) {
+      return;
+    }
+
+    void loadStudentHistoryPage(historyStudent, historyPage, true);
+  }, [dataVersion, historyStudent, historyPage, loadStudentHistoryPage]);
 
   const validateForm = (): boolean => {
     if (!form.lrn.trim() || !form.firstName.trim() || !form.lastName.trim()) {
@@ -574,10 +682,16 @@ export function StudentRecordsPanel({
     try {
       await deleteStudent(student.id, { revalidate: false });
       setFormMessage("Student record deleted.");
+      if (historyStudent?.id === student.id) {
+        closeHistory();
+      }
       void loadStudentsPage(fallbackPage, true);
     } catch (err) {
       if (isApiError(err) && err.status === 404) {
         setFormMessage("Student record was already removed.");
+        if (historyStudent?.id === student.id) {
+          closeHistory();
+        }
         void loadStudentsPage(fallbackPage, true);
         return;
       }
@@ -644,6 +758,10 @@ export function StudentRecordsPanel({
       const deletedIds = await deleteStudents(idsToDelete, { revalidate: false });
       const deletedCount = deletedIds.length;
       const failedCount = Math.max(0, idsToDelete.length - deletedCount);
+
+      if (historyStudent && deletedIds.includes(historyStudent.id)) {
+        closeHistory();
+      }
 
       if (failedCount === 0) {
         setFormMessage(
@@ -936,8 +1054,16 @@ export function StudentRecordsPanel({
                   </span>
                   <span className="text-xs text-slate-500">Updated {formatDateTime(student.updatedAt)}</span>
                 </div>
-                {editable && (
-                  <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openHistory(student)}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                  >
+                    <History className="h-3.5 w-3.5" />
+                    History
+                  </button>
+                  {editable && (
                     <button
                       type="button"
                       onClick={() => openEdit(student)}
@@ -946,6 +1072,8 @@ export function StudentRecordsPanel({
                       <Edit2 className="h-3.5 w-3.5" />
                       Edit
                     </button>
+                  )}
+                  {editable && (
                     <button
                       type="button"
                       onClick={() => void handleDelete(student)}
@@ -955,8 +1083,8 @@ export function StudentRecordsPanel({
                       <Trash2 className="h-3.5 w-3.5" />
                       {deletingIds.has(student.id) ? "Deleting..." : "Delete"}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </article>
             ))}
           </div>
@@ -987,7 +1115,7 @@ export function StudentRecordsPanel({
                   <th className="px-2 py-2 text-left">Teacher</th>
                   <th className="px-2 py-2 text-center">Status</th>
                   <th className="px-2 py-2 text-left">Last Updated</th>
-                  {editable && <th className="px-2 py-2 text-center">Action</th>}
+                  {showActionColumn && <th className="px-2 py-2 text-center">Action</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1026,26 +1154,38 @@ export function StudentRecordsPanel({
                       </span>
                     </td>
                     <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(student.updatedAt)}</td>
-                    {editable && (
+                    {showActionColumn && (
                       <td className="px-2 py-2">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            onClick={() => openEdit(student)}
+                            onClick={() => openHistory(student)}
                             className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
-                            Edit
+                            <History className="h-3.5 w-3.5" />
+                            History
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(student)}
-                            disabled={isDeletingAny || deletingIds.has(student.id)}
-                            className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {deletingIds.has(student.id) ? "Deleting..." : "Delete"}
-                          </button>
+                          {editable && (
+                            <button
+                              type="button"
+                              onClick={() => openEdit(student)}
+                              className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                          )}
+                          {editable && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDelete(student)}
+                              disabled={isDeletingAny || deletingIds.has(student.id)}
+                              className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {deletingIds.has(student.id) ? "Deleting..." : "Delete"}
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
@@ -1080,6 +1220,121 @@ export function StudentRecordsPanel({
             </div>
           </div>
         </>
+      )}
+
+      {historyStudent && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-3">
+          <button
+            type="button"
+            aria-label="Close student history"
+            onClick={closeHistory}
+            className="absolute inset-0 bg-slate-900/40"
+          />
+          <section className="relative z-[91] w-full max-w-3xl overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl">
+            <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Student Record History</h3>
+                <p className="text-xs text-slate-600">
+                  {historyStudent.fullName} | LRN {historyStudent.lrn}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {historySyncedAt ? `Synced ${new Date(historySyncedAt).toLocaleTimeString()}` : "Not synced yet"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadStudentHistoryPage(historyStudent, historyPage, false)}
+                  disabled={historyLoading}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={closeHistory}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Close
+                </button>
+              </div>
+            </header>
+
+            {historyError && (
+              <div className="mx-4 mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                {historyError}
+              </div>
+            )}
+
+            <div className="max-h-[60vh] overflow-y-auto px-4 py-3">
+              {historyLoading && historyEntries.length === 0 ? (
+                <div className="space-y-2">
+                  <div className="skeleton-line h-10 w-full" />
+                  <div className="skeleton-line h-10 w-full" />
+                  <div className="skeleton-line h-10 w-full" />
+                </div>
+              ) : historyEntries.length === 0 ? (
+                <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
+                  No status history entries found for this student.
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {historyEntries.map((entry) => (
+                    <li key={entry.id} className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          {entry.toStatusLabel ?? entry.toStatus ?? "Unknown"}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {entry.changedAt ? formatDateTime(entry.changedAt) : "N/A"}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        From: <span className="font-semibold text-slate-800">{entry.fromStatusLabel ?? entry.fromStatus ?? "N/A"}</span>
+                        {" -> "}
+                        To: <span className="font-semibold text-slate-800">{entry.toStatusLabel ?? entry.toStatus ?? "N/A"}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        By: <span className="font-semibold text-slate-800">{entry.actor?.name ?? "System"}</span>
+                        {entry.actor?.email ? ` (${entry.actor.email})` : ""}
+                      </p>
+                      {entry.notes && (
+                        <p className="mt-1 text-xs text-slate-600">Notes: {entry.notes}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <footer className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs text-slate-600">
+                Page <span className="font-semibold text-slate-900">{historyPage}</span> of{" "}
+                <span className="font-semibold text-slate-900">{historyTotalPages}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadStudentHistoryPage(historyStudent, Math.max(1, historyPage - 1), false)}
+                  disabled={historyPage <= 1 || historyLoading}
+                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void loadStudentHistoryPage(historyStudent, Math.min(historyTotalPages, historyPage + 1), false)}
+                  disabled={historyPage >= historyTotalPages || historyLoading}
+                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Next
+                </button>
+              </div>
+            </footer>
+          </section>
+        </div>
       )}
     </section>
   );

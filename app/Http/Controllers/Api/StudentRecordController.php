@@ -6,6 +6,7 @@ use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\UpsertStudentRecordRequest;
 use App\Http\Resources\StudentRecordResource;
+use App\Http\Resources\StudentStatusHistoryResource;
 use App\Models\AcademicYear;
 use App\Models\Student;
 use App\Models\StudentStatusLog;
@@ -304,6 +305,107 @@ class StudentRecordController extends Controller
                 'syncedAt' => now()->toISOString(),
             ],
         ]);
+    }
+
+    public function history(Request $request, Student $student): JsonResponse
+    {
+        $user = ApiUserResolver::fromRequest($request);
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
+        $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
+
+        if (! $isSchoolHead && ! $isMonitor) {
+            return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
+        }
+
+        if ($isSchoolHead && (int) $user->school_id !== (int) $student->school_id) {
+            return response()->json(
+                ['message' => 'You can only view student history assigned to your school.'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        $scope = $isSchoolHead ? 'school' : 'division';
+        $scopeKey = $isSchoolHead
+            ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
+            : 'division:all';
+        $scopeKey .= '|student:' . $student->id;
+
+        $perPage = $this->resolvePerPage($request, 12, 50);
+        $page = max(1, $request->integer('page', 1));
+
+        $historyQuery = StudentStatusLog::query()
+            ->select([
+                'id',
+                'student_id',
+                'from_status',
+                'to_status',
+                'changed_by',
+                'notes',
+                'changed_at',
+            ])
+            ->where('student_id', $student->id)
+            ->orderByDesc('changed_at')
+            ->orderByDesc('id');
+
+        $historyProbe = (clone $historyQuery)
+            ->reorder()
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->selectRaw('MAX(changed_at) as latest_changed_at')
+            ->first();
+        $recordCount = (int) ($historyProbe?->aggregate_count ?? 0);
+        $latestAt = $this->resolveLatestTimestamp($historyProbe?->latest_changed_at);
+        $etag = $this->buildSyncEtag($scope, $scopeKey, $page, $perPage, $recordCount, $latestAt);
+
+        $incomingEtag = trim((string) $request->header('If-None-Match'));
+        if ($incomingEtag !== '' && trim($incomingEtag, '"') === $etag) {
+            return $this->buildNotModifiedResponse(
+                $etag,
+                $scope,
+                $scopeKey,
+                $recordCount,
+                $latestAt,
+            );
+        }
+
+        $history = $historyQuery
+            ->with(['user:id,name,email'])
+            ->paginate($perPage)
+            ->appends($request->query());
+        $historyRows = collect($history->items());
+        $syncedAt = now()->toISOString();
+
+        $response = response()->json([
+            'data' => StudentStatusHistoryResource::collection($historyRows)->resolve(),
+            'meta' => [
+                'syncedAt' => $syncedAt,
+                'scope' => $scope,
+                'scopeKey' => $scopeKey,
+                'studentId' => (string) $student->id,
+                'studentLrn' => (string) $student->lrn,
+                'recordCount' => $history->total(),
+                'currentPage' => $history->currentPage(),
+                'lastPage' => $history->lastPage(),
+                'perPage' => $history->perPage(),
+                'total' => $history->total(),
+                'from' => $history->firstItem(),
+                'to' => $history->lastItem(),
+                'hasMorePages' => $history->hasMorePages(),
+            ],
+        ]);
+
+        return $this->applySyncHeaders(
+            $response,
+            $etag,
+            $scope,
+            $scopeKey,
+            $recordCount,
+            $latestAt,
+            $syncedAt,
+        );
     }
 
     public function batchDestroy(Request $request): JsonResponse

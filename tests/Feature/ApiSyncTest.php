@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\School;
 use App\Models\Student;
+use App\Models\StudentStatusLog;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\SchoolSubmissionReminderNotification;
@@ -402,6 +403,115 @@ class ApiSyncTest extends TestCase
         $newEtag = trim((string) $resynced->headers->get('X-Sync-Etag'), '"');
         $this->assertNotSame('', $newEtag);
         $this->assertNotSame($etag, $newEtag);
+    }
+
+    public function test_monitor_student_history_sync_supports_conditional_etag(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        /** @var Student $student */
+        $student = Student::query()->firstOrFail();
+
+        $history = $this->withToken($token)->getJson("/api/dashboard/students/{$student->id}/history?page=1&per_page=10");
+        $history->assertOk()
+            ->assertHeader('X-Sync-Scope', 'division')
+            ->assertJsonPath('meta.scope', 'division')
+            ->assertJsonPath('meta.studentId', (string) $student->id)
+            ->assertJsonPath('meta.currentPage', 1)
+            ->assertJsonPath('meta.perPage', 10);
+
+        $etag = trim((string) $history->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $etag);
+
+        $notModified = $this->withToken($token)
+            ->withHeaders(['If-None-Match' => $etag])
+            ->getJson("/api/dashboard/students/{$student->id}/history?page=1&per_page=10");
+
+        $notModified->assertStatus(Response::HTTP_NOT_MODIFIED)
+            ->assertHeader('X-Sync-Scope', 'division');
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $fromStatus = $student->status instanceof StudentStatus ? $student->status->value : (string) $student->status;
+        $toStatus = $fromStatus === StudentStatus::AT_RISK->value
+            ? StudentStatus::ENROLLED->value
+            : StudentStatus::AT_RISK->value;
+
+        StudentStatusLog::query()->create([
+            'student_id' => $student->id,
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'changed_by' => $monitor->id,
+            'notes' => 'ETag sync probe history entry.',
+            'changed_at' => now(),
+        ]);
+
+        $resynced = $this->withToken($token)
+            ->withHeaders(['If-None-Match' => $etag])
+            ->getJson("/api/dashboard/students/{$student->id}/history?page=1&per_page=10");
+
+        $resynced->assertOk()
+            ->assertHeader('X-Sync-Scope', 'division');
+
+        $newEtag = trim((string) $resynced->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $newEtag);
+        $this->assertNotSame($etag, $newEtag);
+    }
+
+    public function test_school_head_student_history_is_scope_limited(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHeadOne */
+        $schoolHeadOne = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var User $schoolHeadTwo */
+        $schoolHeadTwo = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+
+        $tokenOne = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $this->schoolHeadLogin($schoolHeadOne),
+            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHeadOne)),
+        ])->assertOk()->json('token');
+        $tokenTwo = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $this->schoolHeadLogin($schoolHeadTwo),
+            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHeadTwo)),
+        ])->assertOk()->json('token');
+
+        $created = $this->withToken((string) $tokenOne)->postJson('/api/dashboard/students', [
+            'lrn' => '9910000' . (string) random_int(1000, 9999),
+            'firstName' => 'History',
+            'middleName' => null,
+            'lastName' => 'Scope',
+            'sex' => 'female',
+            'birthDate' => '2012-04-12',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+        $created->assertStatus(Response::HTTP_CREATED);
+        $studentId = (string) $created->json('data.id');
+
+        $allowed = $this->withToken((string) $tokenOne)->getJson("/api/dashboard/students/{$studentId}/history");
+        $allowed->assertOk()
+            ->assertHeader('X-Sync-Scope', 'school')
+            ->assertJsonPath('meta.scope', 'school')
+            ->assertJsonPath('meta.studentId', $studentId);
+
+        $forbidden = $this->withToken((string) $tokenTwo)->getJson("/api/dashboard/students/{$studentId}/history");
+        $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
 
     public function test_monitor_teacher_sync_supports_conditional_etag(): void

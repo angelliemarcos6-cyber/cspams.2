@@ -227,6 +227,38 @@ export interface StudentRecordPayload {
   trackedFromLevel?: string | null;
 }
 
+export interface StudentStatusHistoryEntry {
+  id: string;
+  studentId: string;
+  fromStatus: string | null;
+  fromStatusLabel: string | null;
+  toStatus: string | null;
+  toStatusLabel: string | null;
+  notes: string | null;
+  actor?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  changedAt: string | null;
+}
+
+export interface StudentStatusHistoryMeta {
+  syncedAt: string | null;
+  scope: "division" | "school" | null;
+  scopeKey: string | null;
+  studentId: string;
+  studentLrn: string | null;
+  recordCount: number;
+  currentPage: number;
+  lastPage: number;
+  perPage: number;
+  total: number;
+  from: number | null;
+  to: number | null;
+  hasMorePages: boolean;
+}
+
 export interface TeacherRecord {
   id: string;
   school?: {
