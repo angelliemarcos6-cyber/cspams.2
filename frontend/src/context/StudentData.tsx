@@ -506,6 +506,9 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           && syncScopeKeyRef.current
           && cached.scopeKey !== syncScopeKeyRef.current,
       );
+      if (hasScopeMismatch && cached) {
+        listCacheRef.current.delete(cacheKey);
+      }
       const cacheEntry = hasScopeMismatch ? null : cached;
 
       let response = await apiRequestRaw<StudentRecordsResponse>(path, {

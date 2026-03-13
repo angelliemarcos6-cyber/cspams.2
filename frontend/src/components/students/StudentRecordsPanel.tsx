@@ -172,6 +172,7 @@ export function StudentRecordsPanel({
   const studentDataVersionRef = useRef(0);
   const pageRequestIdRef = useRef(0);
   const historyRequestIdRef = useRef(0);
+  const historyRefreshedVersionRef = useRef(0);
   const pageAbortRef = useRef<AbortController | null>(null);
   const historyAbortRef = useRef<AbortController | null>(null);
   const [historyStudent, setHistoryStudent] = useState<StudentRecord | null>(null);
@@ -561,6 +562,7 @@ export function StudentRecordsPanel({
   );
 
   const openHistory = (student: StudentRecord) => {
+    historyRefreshedVersionRef.current = dataVersion;
     setHistoryStudent(student);
     setHistoryEntries([]);
     setHistoryPage(1);
@@ -575,6 +577,11 @@ export function StudentRecordsPanel({
       return;
     }
 
+    if (historyRefreshedVersionRef.current === dataVersion) {
+      return;
+    }
+
+    historyRefreshedVersionRef.current = dataVersion;
     void loadStudentHistoryPage(historyStudent, historyPage, true);
   }, [dataVersion, historyStudent, historyPage, loadStudentHistoryPage]);
 
