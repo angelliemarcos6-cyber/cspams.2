@@ -136,6 +136,31 @@ Frontend (new terminal):
 4. `npm install`
 5. `npm run dev`
 
+## Cloudflare Quick Preview (Free, Not Production)
+
+Use this to test the system publicly without a paid Cloudflare plan.
+
+1. Install Cloudflare Tunnel client (`cloudflared`) on Windows:
+   - `winget install --id Cloudflare.cloudflared -e --accept-source-agreements --accept-package-agreements`
+2. Start backend:
+   - `php artisan serve --host=127.0.0.1 --port=8000`
+3. Start frontend with same-origin API (through Vite proxy):
+   - `cd frontend`
+   - PowerShell:
+     - `$env:VITE_API_BASE_URL='/'`
+     - `$env:VITE_DEV_BACKEND_URL='http://127.0.0.1:8000'`
+   - `npm run dev -- --host 127.0.0.1 --port 5173`
+4. Open one public tunnel to the frontend:
+   - `& 'C:\Program Files (x86)\cloudflared\cloudflared.exe' tunnel --url http://127.0.0.1:5173 --no-autoupdate`
+5. Cloudflared prints a URL like `https://random-name.trycloudflare.com`.
+   - Share/use this URL to test from outside your local network.
+
+Notes:
+
+- Keep backend, frontend, and cloudflared terminals running while testing.
+- This is an ephemeral preview URL, not a production deployment.
+- Realtime websocket features may need extra tunnel/proxy setup; core CRUD and API flows are covered by the proxy setup above.
+
 ## Demo Accounts
 
 After seeding:
