@@ -287,7 +287,7 @@ function applyDeleteMetaSnapshot(current: StudentListMeta, deletedCount: number,
 }
 
 export function StudentDataProvider({ children }: { children: ReactNode }) {
-  const { token, logout } = useAuth();
+  const { token, logout, role, user } = useAuth();
 
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -303,10 +303,12 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     sanitizeParams({ page: 1, perPage: SNAPSHOT_PER_PAGE }),
   );
   const syncInFlightRef = useRef(false);
+  const syncQueuedRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
+  const realtimeSyncTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (previousTokenRef.current === token) {
@@ -316,8 +318,13 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     previousTokenRef.current = token;
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
+    syncQueuedRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    if (realtimeSyncTimerRef.current !== null) {
+      window.clearTimeout(realtimeSyncTimerRef.current);
+      realtimeSyncTimerRef.current = null;
+    }
     setStudents([]);
     setIsLoading(false);
     setIsSaving(false);
@@ -358,6 +365,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   const syncStudents = useCallback(
     async (silent = false) => {
       if (syncInFlightRef.current) {
+        syncQueuedRef.current = true;
         return;
       }
 
@@ -372,6 +380,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setSnapshotMeta(EMPTY_META);
         etagRef.current = "";
         syncScopeKeyRef.current = "";
+        syncQueuedRef.current = false;
         return;
       }
 
@@ -446,6 +455,11 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         }
         if (!silent && requestGeneration === syncGenerationRef.current) {
           setIsLoading(false);
+        }
+
+        if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          syncQueuedRef.current = false;
+          void syncStudents(true);
         }
       }
     },
@@ -673,21 +687,45 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   }, [syncStudents]);
 
   useEffect(() => {
-    if (!token) return;
+    const clearRealtimeSyncTimer = () => {
+      if (realtimeSyncTimerRef.current !== null) {
+        window.clearTimeout(realtimeSyncTimerRef.current);
+        realtimeSyncTimerRef.current = null;
+      }
+    };
+
+    if (!token) {
+      clearRealtimeSyncTimer();
+      return;
+    }
+
+    const scheduleSync = (delayMs = 0) => {
+      clearRealtimeSyncTimer();
+      realtimeSyncTimerRef.current = window.setTimeout(() => {
+        realtimeSyncTimerRef.current = null;
+        void syncStudents(true);
+      }, delayMs);
+    };
 
     const interval = window.setInterval(() => {
       void syncStudents(true);
     }, AUTO_SYNC_INTERVAL_MS);
 
     const syncOnFocus = () => {
-      void syncStudents(true);
+      scheduleSync(0);
     };
     const syncOnRealtime = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      const payload = (event as CustomEvent<{ entity?: string; schoolId?: string | number }>).detail;
       if (!payload?.entity) return;
-      if (payload.entity === "students" || payload.entity === "dashboard") {
-        void syncStudents(true);
+      if (payload.entity !== "students" && payload.entity !== "dashboard") return;
+
+      if (role === "school_head" && user?.schoolId !== null && user?.schoolId !== undefined && payload.schoolId !== undefined && payload.schoolId !== null) {
+        if (String(payload.schoolId) !== String(user.schoolId)) {
+          return;
+        }
       }
+
+      scheduleSync(220);
     };
 
     window.addEventListener("focus", syncOnFocus);
@@ -696,11 +734,12 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
     return () => {
       window.clearInterval(interval);
+      clearRealtimeSyncTimer();
       window.removeEventListener("focus", syncOnFocus);
       window.removeEventListener("online", syncOnFocus);
       window.removeEventListener("cspams:update", syncOnRealtime);
     };
-  }, [token, syncStudents]);
+  }, [token, syncStudents, role, user?.schoolId]);
 
   const value = useMemo<StudentDataContextType>(
     () => ({
