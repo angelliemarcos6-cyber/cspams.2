@@ -129,7 +129,7 @@ export function ActiveSessionsCenter() {
       <button
         type="button"
         onClick={handleToggle}
-        className="inline-flex h-9 w-9 items-center justify-center border border-white/35 bg-white/12 text-white transition hover:bg-white/20"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-sm text-white transition hover:bg-white/14"
         aria-label="Devices"
         title="Devices"
       >
@@ -137,7 +137,7 @@ export function ActiveSessionsCenter() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-[61] w-[24rem] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
+        <div className="absolute right-0 top-10 z-[61] w-[24rem] overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Active Sessions</p>
             <button

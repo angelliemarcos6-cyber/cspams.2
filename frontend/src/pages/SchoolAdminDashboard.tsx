@@ -1177,17 +1177,17 @@ export function SchoolAdminDashboard() {
       title="School Head Dashboard"
       subtitle="My Queue workspace for tasks, submissions, revisions, and reports."
       actions={
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="inline-flex min-w-0 items-center gap-2 rounded-sm border border-white/20 bg-white/10 p-1.5">
           <button
             type="button"
             onClick={() => void refreshRecords()}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-white/35 bg-white/95 text-slate-700 shadow-sm transition hover:bg-white"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90"
             aria-label="Refresh records"
             title="Refresh"
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
-          <span className="inline-flex max-w-full items-center rounded-sm bg-white/12 px-2.5 py-1 text-[11px] font-medium text-primary-100">
+          <span className="inline-flex max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 lg:max-w-[21rem]">
             {syncStatus === "up_to_date" ? "Up to date" : "Updated"}
             {" | "}
             {lastSyncedAt
