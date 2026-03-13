@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AcademicYear;
 use App\Models\PerformanceMetric;
+use App\Models\School;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -74,6 +76,70 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertIsArray($nerRow['actualTypedValue']['values'] ?? null);
         $this->assertCount(5, $nerRow['targetTypedValue']['values']);
         $this->assertCount(5, $nerRow['actualTypedValue']['values']);
+    }
+
+    public function test_school_achievement_counts_auto_sync_from_reports_and_teacher_records(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolId = (int) $schoolHead->school_id;
+        $this->assertGreaterThan(0, $schoolId);
+
+        School::query()->whereKey($schoolId)->update([
+            'reported_student_count' => 1234,
+            'reported_teacher_count' => 57,
+        ]);
+
+        Teacher::query()->where('school_id', $schoolId)->forceDelete();
+        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Male 1', 'sex' => 'male']);
+        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Male 2', 'sex' => 'male']);
+        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Male 3', 'sex' => 'male']);
+        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Female 1', 'sex' => 'female']);
+        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Female 2', 'sex' => 'female']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $currentSchoolYear = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $metricIds = PerformanceMetric::query()
+            ->whereIn('code', ['IMETA_ENROLL_TOTAL', 'TEACHERS_TOTAL', 'TEACHERS_MALE', 'TEACHERS_FEMALE'])
+            ->pluck('id', 'code');
+
+        $response = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                ['metric_id' => (int) $metricIds->get('IMETA_ENROLL_TOTAL'), 'target_value' => 1, 'actual_value' => 1],
+                ['metric_id' => (int) $metricIds->get('TEACHERS_TOTAL'), 'target_value' => 2, 'actual_value' => 2],
+                ['metric_id' => (int) $metricIds->get('TEACHERS_MALE'), 'target_value' => 3, 'actual_value' => 3],
+                ['metric_id' => (int) $metricIds->get('TEACHERS_FEMALE'), 'target_value' => 4, 'actual_value' => 4],
+            ],
+        ]);
+
+        $response->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.summary.totalIndicators', 4);
+
+        $rowsByCode = collect($response->json('data.indicators', []))
+            ->keyBy(static fn (array $row): string => (string) data_get($row, 'metric.code', ''));
+
+        $this->assertSame(
+            1234.0,
+            (float) data_get($rowsByCode->get('IMETA_ENROLL_TOTAL'), "actualTypedValue.values.{$currentSchoolYear}"),
+        );
+        $this->assertSame(
+            57.0,
+            (float) data_get($rowsByCode->get('TEACHERS_TOTAL'), "actualTypedValue.values.{$currentSchoolYear}"),
+        );
+        $this->assertSame(
+            3.0,
+            (float) data_get($rowsByCode->get('TEACHERS_MALE'), "actualTypedValue.values.{$currentSchoolYear}"),
+        );
+        $this->assertSame(
+            2.0,
+            (float) data_get($rowsByCode->get('TEACHERS_FEMALE'), "actualTypedValue.values.{$currentSchoolYear}"),
+        );
     }
 
     public function test_school_head_indicator_workflow_and_monitor_review(): void

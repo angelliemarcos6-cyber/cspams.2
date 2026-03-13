@@ -38,6 +38,10 @@ class TargetsMetAutoCalculator
         'LEARNER_SATISFACTION',
         'RIGHTS_AWARENESS',
         'RBE_MANIFEST',
+        'IMETA_ENROLL_TOTAL',
+        'TEACHERS_TOTAL',
+        'TEACHERS_MALE',
+        'TEACHERS_FEMALE',
     ];
 
     /**
@@ -86,7 +90,7 @@ class TargetsMetAutoCalculator
             $derived[$code] = [
                 'target' => ['values' => $targetValues],
                 'actual' => ['values' => $actualValues],
-                'remarks' => 'Auto-calculated from synchronized students, sections, teachers, and resource records.',
+                'remarks' => 'Auto-calculated from synchronized reports, students, sections, and teachers data.',
             ];
         }
 
@@ -127,6 +131,10 @@ class TargetsMetAutoCalculator
             $series['LEARNER_SATISFACTION'][$year] = 0.0;
             $series['RIGHTS_AWARENESS'][$year] = 0.0;
             $series['RBE_MANIFEST'][$year] = $snapshot['rbeManifestPercent'] ?? null;
+            $series['IMETA_ENROLL_TOTAL'][$year] = $snapshot['reportedStudents'] ?? null;
+            $series['TEACHERS_TOTAL'][$year] = $snapshot['reportedTeachers'] ?? null;
+            $series['TEACHERS_MALE'][$year] = $snapshot['reportedTeachersMale'] ?? null;
+            $series['TEACHERS_FEMALE'][$year] = $snapshot['reportedTeachersFemale'] ?? null;
         }
 
         return $series;
@@ -169,6 +177,14 @@ class TargetsMetAutoCalculator
             ->count();
         $teachers = Teacher::query()
             ->where('school_id', $schoolId)
+            ->count();
+        $teachersMale = Teacher::query()
+            ->where('school_id', $schoolId)
+            ->where('sex', 'male')
+            ->count();
+        $teachersFemale = Teacher::query()
+            ->where('school_id', $schoolId)
+            ->where('sex', 'female')
             ->count();
 
         /** @var Collection<int, float> $performanceValues */
@@ -222,6 +238,10 @@ class TargetsMetAutoCalculator
             'learningMasteryHighlyProficientPercent' => $this->percentage($highlyProficient, $performanceTotal),
             'aePassRatePercent' => $this->percentage($aePassers, $performanceTotal),
             'rbeManifestPercent' => ($school?->status === 'active') ? 100.0 : 0.0,
+            'reportedStudents' => (float) ($reportedStudents > 0 ? $reportedStudents : $trackedLearners),
+            'reportedTeachers' => (float) ($reportedTeachers > 0 ? $reportedTeachers : $teachers),
+            'reportedTeachersMale' => (float) $teachersMale,
+            'reportedTeachersFemale' => (float) $teachersFemale,
         ];
     }
 
