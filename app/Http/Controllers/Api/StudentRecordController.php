@@ -19,6 +19,7 @@ use App\Support\Domain\StudentStatus;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -237,7 +238,15 @@ class StudentRecordController extends Controller
         $student->school_id = $user->school_id;
         $student->academic_year_id = $academicYearId;
 
-        $this->applyPayload($student, $request, $user);
+        try {
+            $this->applyPayload($student, $request, $user);
+        } catch (QueryException $exception) {
+            if ($this->isSchoolScopedLrnConstraintViolation($exception)) {
+                return $this->buildLrnConflictResponse();
+            }
+
+            throw $exception;
+        }
         $this->incrementSchoolStudentCount((int) $student->school_id);
 
         event(new CspamsUpdateBroadcast([
@@ -268,7 +277,20 @@ class StudentRecordController extends Controller
             );
         }
 
-        $this->applyPayload($student, $request, $user);
+        $this->purgeArchivedStudentByLrn(
+            trim($request->string('lrn')->toString()),
+            (int) $student->school_id,
+        );
+
+        try {
+            $this->applyPayload($student, $request, $user);
+        } catch (QueryException $exception) {
+            if ($this->isSchoolScopedLrnConstraintViolation($exception)) {
+                return $this->buildLrnConflictResponse();
+            }
+
+            throw $exception;
+        }
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'students',
@@ -625,6 +647,31 @@ class StudentRecordController extends Controller
             now()->toISOString(),
             now()->addMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES),
         );
+    }
+
+    private function isSchoolScopedLrnConstraintViolation(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        if ($sqlState !== '23000' && $sqlState !== '23505') {
+            return false;
+        }
+
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'students_school_lrn_unique')
+            || str_contains($message, 'students.school_id, students.lrn')
+            || str_contains($message, 'students.school_id,students.lrn')
+            || str_contains($message, 'for key \'students_school_lrn_unique\'');
+    }
+
+    private function buildLrnConflictResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => 'LRN already exists in this school\'s student records.',
+            'errors' => [
+                'lrn' => ['LRN already exists in this school\'s student records.'],
+            ],
+        ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
     /**

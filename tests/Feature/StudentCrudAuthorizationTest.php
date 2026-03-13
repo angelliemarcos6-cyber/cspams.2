@@ -250,6 +250,72 @@ class StudentCrudAuthorizationTest extends TestCase
             ->assertJsonValidationErrors(['lrn']);
     }
 
+    public function test_update_reuses_lrn_from_soft_deleted_legacy_row(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $legacyLrn = '9933000' . (string) random_int(1000, 9999);
+        $activeLrn = '9944000' . (string) random_int(1000, 9999);
+
+        $legacyCreate = $this->withToken($token)->postJson('/api/dashboard/students', [
+            'lrn' => $legacyLrn,
+            'firstName' => 'Legacy',
+            'middleName' => null,
+            'lastName' => 'Student',
+            'sex' => 'male',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+        $legacyCreate->assertStatus(Response::HTTP_CREATED);
+        $legacyStudentId = (string) $legacyCreate->json('data.id');
+
+        Student::query()->whereKey($legacyStudentId)->delete();
+
+        $activeCreate = $this->withToken($token)->postJson('/api/dashboard/students', [
+            'lrn' => $activeLrn,
+            'firstName' => 'Active',
+            'middleName' => null,
+            'lastName' => 'Student',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+        $activeCreate->assertStatus(Response::HTTP_CREATED);
+        $activeStudentId = (string) $activeCreate->json('data.id');
+
+        $update = $this->withToken($token)->putJson("/api/dashboard/students/{$activeStudentId}", [
+            'lrn' => $legacyLrn,
+            'firstName' => 'Active',
+            'middleName' => null,
+            'lastName' => 'Student',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+
+        $update->assertOk()
+            ->assertJsonPath('data.lrn', $legacyLrn);
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $response = $this->postJson('/api/auth/login', [
