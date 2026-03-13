@@ -2131,7 +2131,7 @@ export function SchoolIndicatorPanel({
                     {activeCategoryProgress.complete}/{activeCategoryProgress.total}
                   </span>
                 </div>
-                <div className="overflow-x-auto rounded-sm border border-slate-200">
+                <div className="overflow-x-auto rounded-sm border border-slate-200 bg-white">
                   <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
                     <thead>
                       <tr className="bg-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
@@ -2215,6 +2215,7 @@ export function SchoolIndicatorPanel({
                         <tr key={`${activeCategory.id}-${metric.id}`} className={rowTone}>
                           <td className={`sticky left-0 z-20 min-w-[260px] max-w-[300px] border border-slate-300 px-2.5 py-1.5 align-top ${stickyTone}`}>
                             <p className="text-[11px] font-semibold leading-4 text-slate-900 break-words">{metricDisplayLabel(metric)}</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500">{metric.code}</p>
                             {isAutoCalculated && (
                               <p className="mt-0.5 text-[10px] font-medium text-primary-700">
                                 Auto-calculated
@@ -2235,17 +2236,17 @@ export function SchoolIndicatorPanel({
                             const targetMissing = missingFieldByCellId.get(targetCellId);
                             const actualMissing = missingFieldByCellId.get(actualCellId);
 
-                            const valueInputClass = `w-full rounded-sm border px-1.5 py-1 text-xs text-slate-900 outline-none transition ${
+                            const valueInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs text-slate-900 outline-none transition ${
                               valueMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
                             }`;
-                            const targetInputClass = `w-full rounded-sm border px-1.5 py-1 text-xs text-slate-900 outline-none transition ${
+                            const targetInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs text-slate-900 outline-none transition ${
                               targetMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
                             }`;
-                            const actualInputClass = `w-full rounded-sm border px-1.5 py-1 text-xs text-slate-900 outline-none transition ${
+                            const actualInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs text-slate-900 outline-none transition ${
                               actualMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
@@ -2462,7 +2463,7 @@ export function SchoolIndicatorPanel({
                       <tr>
                         <td
                           colSpan={activeCategory.mode === "target_actual" ? schoolYears.length * 2 + 1 : schoolYears.length + 1}
-                          className="border border-slate-300 px-2 py-6 text-center text-sm text-slate-500"
+                          className="border border-slate-300 bg-slate-50 px-2 py-6 text-center text-sm text-slate-500"
                         >
                           No required compliance indicators found.
                         </td>
@@ -2472,7 +2473,7 @@ export function SchoolIndicatorPanel({
                       <tr>
                         <td
                           colSpan={activeCategory.mode === "target_actual" ? schoolYears.length * 2 + 1 : schoolYears.length + 1}
-                          className="border border-slate-300 px-2 py-6 text-center text-sm text-slate-500"
+                          className="border border-slate-300 bg-slate-50 px-2 py-6 text-center text-sm text-slate-500"
                         >
                           No indicators match the current filter.
                         </td>
