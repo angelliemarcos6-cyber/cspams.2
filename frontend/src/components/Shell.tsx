@@ -72,12 +72,12 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
               <p className="mt-1 text-sm text-primary-100">{subtitle}</p>
             </div>
 
-            <div className="flex w-full flex-wrap items-start gap-2 lg:w-auto lg:justify-end">
+            <div className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
+              <div className="min-w-0">{actions}</div>
               <span className="inline-flex h-9 items-center gap-2 rounded-sm border border-white/25 bg-white/12 px-3 text-xs font-semibold text-white shadow-sm">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {new Date().toLocaleDateString()}
               </span>
-              <div className="min-w-0">{actions}</div>
             </div>
           </div>
         </div>
