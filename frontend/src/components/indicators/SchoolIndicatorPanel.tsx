@@ -713,20 +713,32 @@ export function SchoolIndicatorPanel({
     () => categoryMetrics.flatMap((category) => category.metrics),
     [categoryMetrics],
   );
+  const eligibleAcademicYears = useMemo(
+    () =>
+      academicYears.filter((year) => {
+        const start = schoolYearStartValue(year.name);
+        return start === null || start >= BASE_SCHOOL_YEAR_START;
+      }),
+    [academicYears],
+  );
   const schoolYears = useMemo(() => {
     const metricYearsUnion = orderedComplianceMetrics.flatMap((metric) => metricYears(metric));
-    const academicYearLabels = academicYears
+    const academicYearLabels = eligibleAcademicYears
       .map((year) => normalizeSchoolYearLabel(year.name))
       .filter((year): year is string => Boolean(year));
     const fallbackYears = buildFallbackSchoolYears();
     const merged = sortSchoolYearsAscending([...metricYearsUnion, ...academicYearLabels, ...fallbackYears]);
+    const bounded = merged.filter((year) => {
+      const start = schoolYearStartValue(year);
+      return start === null || start >= BASE_SCHOOL_YEAR_START;
+    });
 
-    return merged.length > 0 ? merged : fallbackYears;
-  }, [academicYears, orderedComplianceMetrics]);
+    return bounded.length > 0 ? bounded : fallbackYears;
+  }, [eligibleAcademicYears, orderedComplianceMetrics]);
   const schoolYearByAcademicYearId = useMemo(() => {
     const map = new Map<string, string>();
 
-    for (const year of academicYears) {
+    for (const year of eligibleAcademicYears) {
       const normalized = normalizeSchoolYearLabel(year.name);
       if (!normalized) {
         continue;
@@ -737,7 +749,7 @@ export function SchoolIndicatorPanel({
     }
 
     return map;
-  }, [academicYears, schoolYears]);
+  }, [eligibleAcademicYears, schoolYears]);
   const activeSchoolYears = useMemo(() => {
     if (academicYearId === ALL_RECORDS_YEAR_ID) {
       return schoolYears;
@@ -748,7 +760,7 @@ export function SchoolIndicatorPanel({
       return [selected];
     }
 
-    const current = academicYears.find((year) => year.isCurrent);
+    const current = eligibleAcademicYears.find((year) => year.isCurrent);
     if (current) {
       const currentYear = schoolYearByAcademicYearId.get(current.id);
       if (currentYear) {
@@ -757,7 +769,7 @@ export function SchoolIndicatorPanel({
     }
 
     return schoolYears.length > 0 ? [schoolYears[schoolYears.length - 1]] : [];
-  }, [academicYearId, academicYears, schoolYearByAcademicYearId, schoolYears]);
+  }, [academicYearId, eligibleAcademicYears, schoolYearByAcademicYearId, schoolYears]);
   const requiredSchoolYears = useMemo(() => {
     const currentStart = currentSchoolYearStart();
 
@@ -789,20 +801,20 @@ export function SchoolIndicatorPanel({
   }, [complianceMetrics]);
 
   useEffect(() => {
-    if (academicYearId || academicYears.length === 0) {
+    if (academicYearId || eligibleAcademicYears.length === 0) {
       return;
     }
 
-    const currentYear = academicYears.find((year) => year.isCurrent);
-    setAcademicYearId(currentYear?.id ?? academicYears[0].id);
-  }, [academicYearId, academicYears]);
+    const currentYear = eligibleAcademicYears.find((year) => year.isCurrent);
+    setAcademicYearId(currentYear?.id ?? eligibleAcademicYears[0].id);
+  }, [academicYearId, eligibleAcademicYears]);
 
   useEffect(() => {
-    if (!academicYearFilter || academicYearFilter === "all" || academicYears.length === 0) {
+    if (!academicYearFilter || academicYearFilter === "all" || eligibleAcademicYears.length === 0) {
       return;
     }
 
-    const directMatch = academicYears.find((year) => year.id === academicYearFilter);
+    const directMatch = eligibleAcademicYears.find((year) => year.id === academicYearFilter);
     if (directMatch) {
       if (academicYearId !== directMatch.id) {
         setAcademicYearId(directMatch.id);
@@ -815,13 +827,30 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const normalizedMatch = academicYears.find(
+    const normalizedMatch = eligibleAcademicYears.find(
       (year) => normalizeSchoolYearLabel(year.name) === normalizedFilter,
     );
     if (normalizedMatch && academicYearId !== normalizedMatch.id) {
       setAcademicYearId(normalizedMatch.id);
     }
-  }, [academicYearFilter, academicYearId, academicYears]);
+  }, [academicYearFilter, academicYearId, eligibleAcademicYears]);
+
+  useEffect(() => {
+    if (!academicYearId || academicYearId === ALL_RECORDS_YEAR_ID) {
+      return;
+    }
+
+    const exists = eligibleAcademicYears.some((year) => year.id === academicYearId);
+    if (exists) {
+      return;
+    }
+
+    const currentYear = eligibleAcademicYears.find((year) => year.isCurrent);
+    const fallback = currentYear?.id ?? eligibleAcademicYears[0]?.id ?? "";
+    if (fallback && academicYearId !== fallback) {
+      setAcademicYearId(fallback);
+    }
+  }, [academicYearId, eligibleAcademicYears]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -919,13 +948,13 @@ export function SchoolIndicatorPanel({
     [sortedSubmissions],
   );
   const compactAcademicYears = useMemo(() => {
-    if (showAllAcademicYears || academicYears.length <= 3) {
-      return academicYears;
+    if (showAllAcademicYears || eligibleAcademicYears.length <= 3) {
+      return eligibleAcademicYears;
     }
 
-    const selectedYear = academicYears.find((year) => year.id === academicYearId) ?? null;
-    const currentYear = academicYears.find((year) => year.isCurrent) ?? null;
-    const candidates = [selectedYear, currentYear, ...academicYears].filter(
+    const selectedYear = eligibleAcademicYears.find((year) => year.id === academicYearId) ?? null;
+    const currentYear = eligibleAcademicYears.find((year) => year.isCurrent) ?? null;
+    const candidates = [selectedYear, currentYear, ...eligibleAcademicYears].filter(
       (year): year is AcademicYearOption => Boolean(year),
     );
 
@@ -937,8 +966,8 @@ export function SchoolIndicatorPanel({
     });
 
     return unique.slice(0, 3);
-  }, [academicYearId, academicYears, showAllAcademicYears]);
-  const hiddenAcademicYearCount = Math.max(0, academicYears.length - compactAcademicYears.length);
+  }, [academicYearId, eligibleAcademicYears, showAllAcademicYears]);
+  const hiddenAcademicYearCount = Math.max(0, eligibleAcademicYears.length - compactAcademicYears.length);
   const visibleCategoryMetrics = showAdvancedInputs ? categoryMetrics : categoryMetrics.slice(0, 1);
   const metricCompletionById = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -2182,7 +2211,7 @@ export function SchoolIndicatorPanel({
                   +{hiddenAcademicYearCount} more
                 </button>
               )}
-              {showAllAcademicYears && academicYears.length > 3 && (
+              {showAllAcademicYears && eligibleAcademicYears.length > 3 && (
                 <button
                   type="button"
                   onClick={() => setShowAllAcademicYears(false)}
