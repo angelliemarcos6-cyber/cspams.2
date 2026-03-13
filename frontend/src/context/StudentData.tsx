@@ -41,6 +41,12 @@ interface StudentRecordsResponse {
   meta?: StudentSyncMeta;
 }
 
+interface StudentListCacheEntry {
+  etag: string;
+  scopeKey: string | null;
+  result: StudentListResult;
+}
+
 interface StudentRecordMutationResponse {
   data: StudentRecord;
   meta?: StudentSyncMeta;
@@ -156,6 +162,7 @@ const DEFAULT_PER_PAGE = 25;
 const MAX_PER_PAGE = 200;
 const DEFAULT_HISTORY_PER_PAGE = 12;
 const MAX_HISTORY_PER_PAGE = 50;
+const LIST_CACHE_MAX_ENTRIES = 64;
 
 const EMPTY_META: StudentListMeta = {
   syncedAt: null,
@@ -369,6 +376,37 @@ function applyDeleteMetaSnapshot(current: StudentListMeta, deletedCount: number,
   };
 }
 
+function buildListCacheKey(params: NormalizedStudentListParams): string {
+  return [
+    params.page,
+    params.perPage,
+    params.search.toLowerCase(),
+    params.status,
+    params.schoolCode,
+    params.schoolCodes.join(","),
+    params.academicYear,
+  ].join("|");
+}
+
+function storeListCacheEntry(
+  cache: Map<string, StudentListCacheEntry>,
+  key: string,
+  entry: StudentListCacheEntry,
+): void {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+  cache.set(key, entry);
+
+  while (cache.size > LIST_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    cache.delete(oldestKey);
+  }
+}
+
 function normalizeSchoolId(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
@@ -412,6 +450,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   const syncQueuedRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
+  const listCacheRef = useRef<Map<string, StudentListCacheEntry>>(new Map());
   const historyCacheRef = useRef<Map<string, { etag: string; result: StudentHistoryResult }>>(new Map());
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
@@ -428,6 +467,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     syncQueuedRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    listCacheRef.current.clear();
     historyCacheRef.current.clear();
     if (realtimeSyncTimerRef.current !== null) {
       window.clearTimeout(realtimeSyncTimerRef.current);
@@ -458,14 +498,43 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
   const requestStudents = useCallback(
     async (tokenValue: string, params: NormalizedStudentListParams, signal?: AbortSignal): Promise<StudentListResult> => {
-      const response = await apiRequestRaw<StudentRecordsResponse>(buildListPath(params), { token: tokenValue, signal });
+      const path = buildListPath(params);
+      const cacheKey = buildListCacheKey(params);
+      const cached = listCacheRef.current.get(cacheKey);
+
+      let response = await apiRequestRaw<StudentRecordsResponse>(path, {
+        token: tokenValue,
+        signal,
+        extraHeaders: cached?.etag ? { "If-None-Match": cached.etag } : undefined,
+      });
+
+      if (response.status === 304) {
+        if (cached) {
+          return cached.result;
+        }
+
+        response = await apiRequestRaw<StudentRecordsResponse>(path, {
+          token: tokenValue,
+          signal,
+        });
+      }
+
       const data = Array.isArray(response.data?.data) ? response.data.data : [];
       const meta = normalizeMeta(response.data?.meta, params, data.length);
-
-      return {
+      const result: StudentListResult = {
         data,
         meta,
       };
+
+      const responseEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+      const responseScopeKey = normalizeScopeKey(response.headers.get("X-Sync-Scope-Key") || response.data?.meta?.scopeKey);
+      storeListCacheEntry(listCacheRef.current, cacheKey, {
+        etag: responseEtag,
+        scopeKey: responseScopeKey,
+        result,
+      });
+
+      return result;
     },
     [],
   );
@@ -488,6 +557,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setSnapshotMeta(EMPTY_META);
         etagRef.current = "";
         syncScopeKeyRef.current = "";
+        listCacheRef.current.clear();
+        historyCacheRef.current.clear();
         syncQueuedRef.current = false;
         return;
       }
@@ -521,6 +592,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         if (scopeKeyFromHeaders) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== scopeKeyFromHeaders) {
             etagRef.current = "";
+            listCacheRef.current.clear();
+            historyCacheRef.current.clear();
           }
           syncScopeKeyRef.current = scopeKeyFromHeaders;
         }
@@ -542,6 +615,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         if (payloadScopeKey) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== payloadScopeKey) {
             etagRef.current = "";
+            listCacheRef.current.clear();
+            historyCacheRef.current.clear();
           }
           syncScopeKeyRef.current = payloadScopeKey;
         }
@@ -551,6 +626,11 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setTotalCount(result.meta.total);
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? result.meta.syncedAt ?? new Date().toISOString());
         setSyncScope(normalizeScope(response.data?.meta?.scope) ?? scopeFromHeaders ?? result.meta.scope);
+        storeListCacheEntry(listCacheRef.current, buildListCacheKey(snapshotParamsRef.current), {
+          etag: nextEtag,
+          scopeKey: payloadScopeKey ?? scopeKeyFromHeaders,
+          result,
+        });
         setDataVersion((current) => current + 1);
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
@@ -585,6 +665,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       }
 
       const normalized = sanitizeParams(params);
+      snapshotParamsRef.current = normalized;
 
       try {
         return await requestStudents(token, normalized, params?.signal);
@@ -695,6 +776,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
+        listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
         emitStudentUpdateEvent(nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
@@ -741,6 +823,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           syncedAt: response.data?.meta?.syncedAt ?? current.syncedAt,
         }));
         etagRef.current = "";
+        listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
         emitStudentUpdateEvent(nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
@@ -780,6 +863,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setSnapshotMeta((current) => applyDeleteMetaSnapshot(current, 1, response.data?.meta?.syncedAt ?? null));
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
+        listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
         emitStudentUpdateEvent(response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
@@ -850,6 +934,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
+        listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
         emitStudentUpdateEvent(response.data?.meta?.schoolId ?? user?.schoolId ?? null);

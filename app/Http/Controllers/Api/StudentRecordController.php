@@ -120,7 +120,7 @@ class StudentRecordController extends Controller
 
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
-            $query->where(function (Builder $builder) use ($search): void {
+            $query->where(function (Builder $builder) use ($search, $isMonitor): void {
                 $like = '%' . $search . '%';
                 $builder
                     ->where('lrn', 'like', $like)
@@ -129,12 +129,15 @@ class StudentRecordController extends Controller
                     ->orWhere('last_name', 'like', $like)
                     ->orWhere('current_level', 'like', $like)
                     ->orWhere('section_name', 'like', $like)
-                    ->orWhere('teacher_name', 'like', $like)
-                    ->orWhereHas('school', function (Builder $schoolQuery) use ($like): void {
+                    ->orWhere('teacher_name', 'like', $like);
+
+                if ($isMonitor) {
+                    $builder->orWhereHas('school', function (Builder $schoolQuery) use ($like): void {
                         $schoolQuery
                             ->where('school_code', 'like', $like)
                             ->orWhere('name', 'like', $like);
                     });
+                }
             });
         }
 
