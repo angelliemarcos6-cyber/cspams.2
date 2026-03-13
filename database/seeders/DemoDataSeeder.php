@@ -39,33 +39,11 @@ class DemoDataSeeder extends Seeder
 
     private function seedAcademicYears(): AcademicYear
     {
-        $windowYears = app(RollingIndicatorYearWindow::class)->windowYears();
-        $now = now();
-        $currentSchoolYearStart = $now->month >= 6
-            ? (int) $now->year
-            : ((int) $now->year - 1);
-        $currentSchoolYearName = "{$currentSchoolYearStart}-" . ($currentSchoolYearStart + 1);
-        if (! in_array($currentSchoolYearName, $windowYears, true)) {
-            $currentSchoolYearName = (string) collect($windowYears)->last();
-        }
+        app(RollingIndicatorYearWindow::class)->sync();
 
-        AcademicYear::query()->update(['is_current' => false]);
-
-        foreach ($windowYears as $schoolYearName) {
-            [$startYear, $endYear] = array_map('intval', explode('-', $schoolYearName));
-
-            AcademicYear::query()->updateOrCreate(
-                ['name' => $schoolYearName],
-                [
-                    'name' => $schoolYearName,
-                    'start_date' => sprintf('%04d-06-01', $startYear),
-                    'end_date' => sprintf('%04d-03-31', $endYear),
-                    'is_current' => $schoolYearName === $currentSchoolYearName,
-                ],
-            );
-        }
-
-        return AcademicYear::query()->where('name', $currentSchoolYearName)->firstOrFail();
+        return AcademicYear::query()
+            ->where('is_current', true)
+            ->firstOr(static fn (): AcademicYear => AcademicYear::query()->orderByDesc('start_date')->firstOrFail());
     }
 
     /**

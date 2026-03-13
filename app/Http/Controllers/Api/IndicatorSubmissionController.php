@@ -35,6 +35,7 @@ class IndicatorSubmissionController extends Controller
     public function academicYears(Request $request): JsonResponse
     {
         $this->requireUser($request);
+        $this->syncRollingIndicatorYears();
 
         $years = AcademicYear::query()
             ->orderByDesc('is_current')

@@ -2,23 +2,29 @@
 
 namespace App\Support\Indicators;
 
+use App\Models\AcademicYear;
 use App\Models\IndicatorSubmissionItem;
 use App\Models\PerformanceMetric;
 use App\Support\Domain\MetricDataType;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class RollingIndicatorYearWindow
 {
     private const BASE_START_YEAR = 2025;
     private const WINDOW_SIZE = 5;
     private const SCHOOL_YEAR_START_MONTH = 6;
+    private const SCHOOL_YEAR_END_MONTH = 3;
+    private const SCHOOL_YEAR_END_DAY = 31;
     private const CACHE_SIGNATURE_KEY = 'cspams.indicators.year_window_signature';
 
     /**
      * @return array{
      *     years: array<int, string>,
+     *     academicYearsUpserted: int,
+     *     academicYearsDeleted: int,
      *     metricsUpdated: int,
      *     itemsUpdated: int
      * }
@@ -26,11 +32,14 @@ class RollingIndicatorYearWindow
     public function sync(): array
     {
         $years = $this->windowYears();
+        ['upserted' => $academicYearsUpserted, 'deleted' => $academicYearsDeleted] = $this->syncAcademicYears($years);
         $signature = implode('|', $years);
 
         if (Cache::get(self::CACHE_SIGNATURE_KEY) === $signature) {
             return [
                 'years' => $years,
+                'academicYearsUpserted' => $academicYearsUpserted,
+                'academicYearsDeleted' => $academicYearsDeleted,
                 'metricsUpdated' => 0,
                 'itemsUpdated' => 0,
             ];
@@ -48,6 +57,8 @@ class RollingIndicatorYearWindow
 
         return [
             'years' => $years,
+            'academicYearsUpserted' => $academicYearsUpserted,
+            'academicYearsDeleted' => $academicYearsDeleted,
             'metricsUpdated' => $metricsUpdated,
             'itemsUpdated' => $itemsUpdated,
         ];
@@ -72,19 +83,101 @@ class RollingIndicatorYearWindow
 
     private function rollingStartYear(): int
     {
-        $now = CarbonImmutable::now();
-        $currentSchoolYearStart = $now->month >= self::SCHOOL_YEAR_START_MONTH
-            ? (int) $now->year
-            : ((int) $now->year - 1);
-
         // Keep the initial 5-year window anchored at 2025-2026 until a true
         // 6th school year appears, then slide forward by one each school year.
         $windowEndYear = max(
             self::BASE_START_YEAR + self::WINDOW_SIZE - 1,
-            $currentSchoolYearStart,
+            $this->currentSchoolYearStartYear(),
         );
 
         return $windowEndYear - (self::WINDOW_SIZE - 1);
+    }
+
+    private function currentSchoolYearStartYear(): int
+    {
+        $now = CarbonImmutable::now();
+
+        return $now->month >= self::SCHOOL_YEAR_START_MONTH
+            ? (int) $now->year
+            : ((int) $now->year - 1);
+    }
+
+    private function currentSchoolYearName(array $years): string
+    {
+        if ($years === []) {
+            throw new \RuntimeException('Cannot resolve current school year from an empty rolling window.');
+        }
+
+        $windowStartYear = $this->rollingStartYear();
+        $windowEndYear = $windowStartYear + self::WINDOW_SIZE - 1;
+        $currentStartYear = $this->currentSchoolYearStartYear();
+        $clampedStartYear = max($windowStartYear, min($currentStartYear, $windowEndYear));
+
+        return "{$clampedStartYear}-" . ($clampedStartYear + 1);
+    }
+
+    /**
+     * @param array<int, string> $years
+     *
+     * @return array{upserted: int, deleted: int}
+     */
+    private function syncAcademicYears(array $years): array
+    {
+        $currentSchoolYearName = $this->currentSchoolYearName($years);
+
+        return DB::transaction(function () use ($years, $currentSchoolYearName): array {
+            $upserted = 0;
+
+            foreach ($years as $schoolYearName) {
+                [$startYear, $endYear] = $this->splitSchoolYear($schoolYearName);
+
+                $academicYear = AcademicYear::query()->updateOrCreate(
+                    ['name' => $schoolYearName],
+                    [
+                        'start_date' => sprintf('%04d-%02d-01', $startYear, self::SCHOOL_YEAR_START_MONTH),
+                        'end_date' => sprintf(
+                            '%04d-%02d-%02d',
+                            $endYear,
+                            self::SCHOOL_YEAR_END_MONTH,
+                            self::SCHOOL_YEAR_END_DAY,
+                        ),
+                        'is_current' => $schoolYearName === $currentSchoolYearName,
+                    ],
+                );
+
+                if (
+                    $academicYear->wasRecentlyCreated
+                    || $academicYear->wasChanged(['start_date', 'end_date', 'is_current'])
+                ) {
+                    $upserted++;
+                }
+            }
+
+            $deleted = AcademicYear::query()
+                ->whereNotIn('name', $years)
+                ->delete();
+
+            return [
+                'upserted' => $upserted,
+                'deleted' => $deleted,
+            ];
+        });
+    }
+
+    /**
+     * @return array{0: int, 1: int}
+     */
+    private function splitSchoolYear(string $schoolYearName): array
+    {
+        [$rawStartYear, $rawEndYear] = explode('-', $schoolYearName, 2) + [1 => ''];
+        $startYear = (int) trim($rawStartYear);
+        $endYear = (int) trim($rawEndYear);
+
+        if ($startYear <= 0 || $endYear !== $startYear + 1) {
+            throw new \RuntimeException("Invalid school year format: {$schoolYearName}");
+        }
+
+        return [$startYear, $endYear];
     }
 
     /**
