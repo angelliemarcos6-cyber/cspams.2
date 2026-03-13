@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { AlertCircle, CalendarDays, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload } from "@/types";
@@ -122,16 +123,19 @@ export function StudentRecordsPanel({
     isSaving,
     error,
     lastSyncedAt,
+    dataVersion,
     refreshStudents,
     listStudents,
     addStudent,
     updateStudent,
     deleteStudent,
   } = useStudentData();
+  const { academicYears } = useIndicatorData();
   const { teachers } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StudentEnrollmentStatus | "all">("all");
+  const [academicYearFilter, setAcademicYearFilter] = useState("current");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<StudentFormState>(EMPTY_FORM);
@@ -147,6 +151,15 @@ export function StudentRecordsPanel({
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [pageError, setPageError] = useState("");
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
+  const studentDataVersionRef = useRef(0);
+  const academicYearOptions = useMemo(
+    () =>
+      academicYears.map((year) => ({
+        value: String(year.id),
+        label: year.isCurrent ? `${year.name} (Current)` : year.name,
+      })),
+    [academicYears],
+  );
 
   useEffect(() => {
     if (externalSearchTerm === null) return;
@@ -179,6 +192,7 @@ export function StudentRecordsPanel({
           search: search.trim() || null,
           status: statusFilter === "all" ? null : statusFilter,
           schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
+          academicYear: academicYearFilter,
         });
 
         setPagedStudents(result.data);
@@ -199,7 +213,7 @@ export function StudentRecordsPanel({
         }
       }
     },
-    [listStudents, schoolFilterKeys, scopedSchoolCodes, search, statusFilter],
+    [listStudents, schoolFilterKeys, scopedSchoolCodes, search, statusFilter, academicYearFilter],
   );
 
   const scopedTeachers = useMemo(() => {
@@ -266,6 +280,7 @@ export function StudentRecordsPanel({
 
   const safePage = Math.max(1, Math.min(page, totalPages));
   const paginatedStudents = pagedStudents;
+  const showAcademicYearColumn = academicYearFilter === "all";
   const selectedCount = batchDeleteEnabled ? selectedStudentIds.size : 0;
   const allVisibleSelected =
     batchDeleteEnabled
@@ -278,7 +293,18 @@ export function StudentRecordsPanel({
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, schoolFilterKeys, scopedSchoolCodes]);
+  }, [search, statusFilter, schoolFilterKeys, scopedSchoolCodes, academicYearFilter]);
+
+  useEffect(() => {
+    if (academicYearFilter === "current" || academicYearFilter === "all") {
+      return;
+    }
+
+    const yearExists = academicYearOptions.some((option) => option.value === academicYearFilter);
+    if (!yearExists) {
+      setAcademicYearFilter("current");
+    }
+  }, [academicYearFilter, academicYearOptions]);
 
   useEffect(() => {
     setSelectedStudentIds((current) => {
@@ -310,6 +336,19 @@ export function StudentRecordsPanel({
   useEffect(() => {
     void loadStudentsPage(page, false);
   }, [page, loadStudentsPage]);
+
+  useEffect(() => {
+    if (dataVersion <= 0) {
+      return;
+    }
+
+    if (studentDataVersionRef.current === dataVersion) {
+      return;
+    }
+
+    studentDataVersionRef.current = dataVersion;
+    void loadStudentsPage(page, true);
+  }, [dataVersion, loadStudentsPage, page]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -644,7 +683,7 @@ export function StudentRecordsPanel({
         </p>
       </div>
 
-      <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto]">
+      <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-[1fr_auto_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -664,6 +703,22 @@ export function StudentRecordsPanel({
           >
             <option value="all">All status</option>
             {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+          <CalendarDays className="h-4 w-4 text-slate-400" />
+          <select
+            value={academicYearFilter}
+            onChange={(event) => setAcademicYearFilter(event.target.value)}
+            className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+          >
+            <option value="current">Current year</option>
+            <option value="all">All records</option>
+            {academicYearOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -826,6 +881,9 @@ export function StudentRecordsPanel({
                 )}
                 <p className="text-sm font-semibold text-slate-900">{student.fullName}</p>
                 <p className="text-xs text-slate-600">LRN: {student.lrn}</p>
+                {showAcademicYearColumn && (
+                  <p className="text-xs text-slate-500">School year: {student.academicYear?.name ?? "N/A"}</p>
+                )}
                 <p className="mt-1 text-xs text-slate-600">
                   Section: {student.section ?? student.currentLevel ?? "N/A"} | Teacher: {student.teacher ?? "N/A"}
                 </p>
@@ -877,6 +935,7 @@ export function StudentRecordsPanel({
                     </th>
                   )}
                   {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
+                  {showAcademicYearColumn && <th className="px-2 py-2 text-left">School Year</th>}
                   <th className="px-2 py-2 text-left">LRN</th>
                   <th className="px-2 py-2 text-left">Name</th>
                   <th className="px-2 py-2 text-center">Age</th>
@@ -908,6 +967,9 @@ export function StudentRecordsPanel({
                         <p className="text-sm font-semibold text-slate-900">{student.school?.name ?? "N/A"}</p>
                         <p className="text-xs text-slate-500">{student.school?.schoolCode ?? ""}</p>
                       </td>
+                    )}
+                    {showAcademicYearColumn && (
+                      <td className="px-2 py-2 text-sm text-slate-700">{student.academicYear?.name ?? "N/A"}</td>
                     )}
                     <td className="px-2 py-2 text-sm font-semibold text-slate-900">{student.lrn}</td>
                     <td className="px-2 py-2 text-sm text-slate-700">{student.fullName}</td>

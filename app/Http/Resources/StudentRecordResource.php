@@ -30,6 +30,11 @@ class StudentRecordResource extends JsonResource
                 'schoolCode' => $this->school?->school_code,
                 'name' => $this->school?->name,
             ],
+            'academicYear' => [
+                'id' => (string) ($this->academicYear?->id ?? $this->academic_year_id),
+                'name' => $this->academicYear?->name,
+                'isCurrent' => (bool) ($this->academicYear?->is_current ?? false),
+            ],
             'lrn' => $this->lrn,
             'firstName' => $this->first_name,
             'middleName' => $this->middle_name,

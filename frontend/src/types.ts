@@ -187,6 +187,11 @@ export interface StudentRecord {
     schoolCode: string | null;
     name: string | null;
   };
+  academicYear?: {
+    id: string;
+    name: string | null;
+    isCurrent: boolean;
+  };
   lrn: string;
   firstName: string;
   middleName: string | null;

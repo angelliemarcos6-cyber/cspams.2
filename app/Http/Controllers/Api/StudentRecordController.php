@@ -14,6 +14,7 @@ use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
+use App\Support\Indicators\RollingIndicatorYearWindow;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -37,13 +38,20 @@ class StudentRecordController extends Controller
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
+        $this->syncRollingAcademicYears();
+        [$academicYearFilterMode, $academicYearFilterId] = $this->resolveAcademicYearFilter($request);
+        $academicYearScope = $academicYearFilterMode === 'all'
+            ? 'academic-year:all'
+            : 'academic-year:' . ($academicYearFilterId ?? 'none');
+
         $scope = $isSchoolHead ? 'school' : 'division';
         $scopeKey = $isSchoolHead
             ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
             : 'division:all';
+        $scopeKey .= '|' . $academicYearScope;
 
         $query = Student::query()
-            ->with(['school:id,school_code,name', 'section:id,name'])
+            ->with(['school:id,school_code,name', 'section:id,name', 'academicYear:id,name,is_current'])
             ->orderByDesc('updated_at')
             ->orderByDesc('id');
 
@@ -52,6 +60,14 @@ class StudentRecordController extends Controller
                 $query->whereRaw('1 = 0');
             } else {
                 $query->where('school_id', $user->school_id);
+            }
+        }
+
+        if ($academicYearFilterMode !== 'all') {
+            if ($academicYearFilterId) {
+                $query->where('academic_year_id', $academicYearFilterId);
+            } else {
+                $query->whereRaw('1 = 0');
             }
         }
 
@@ -120,6 +136,11 @@ class StudentRecordController extends Controller
         $students = $query->paginate($perPage)->appends($request->query());
         $studentRows = collect($students->items());
         $syncedAt = now()->toISOString();
+        $activeAcademicYear = $academicYearFilterMode === 'all' || ! $academicYearFilterId
+            ? null
+            : AcademicYear::query()
+                ->select(['id', 'name', 'is_current'])
+                ->find($academicYearFilterId);
 
         $response = response()->json([
             'data' => StudentRecordResource::collection($studentRows)->resolve(),
@@ -127,6 +148,14 @@ class StudentRecordController extends Controller
                 'syncedAt' => $syncedAt,
                 'scope' => $scope,
                 'scopeKey' => $scopeKey,
+                'academicYearFilter' => $academicYearFilterMode,
+                'academicYear' => $activeAcademicYear
+                    ? [
+                        'id' => (string) $activeAcademicYear->id,
+                        'name' => $activeAcademicYear->name,
+                        'isCurrent' => (bool) $activeAcademicYear->is_current,
+                    ]
+                    : null,
                 'recordCount' => $students->total(),
                 'currentPage' => $students->currentPage(),
                 'lastPage' => $students->lastPage(),
@@ -159,6 +188,7 @@ class StudentRecordController extends Controller
             );
         }
 
+        $this->syncRollingAcademicYears();
         $academicYearId = $this->resolveAcademicYearId();
         if (! $academicYearId) {
             return response()->json(
@@ -182,7 +212,7 @@ class StudentRecordController extends Controller
         ]));
 
         return response()->json([
-            'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name'])))->resolve(),
+            'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name', 'academicYear:id,name,is_current'])))->resolve(),
             'meta' => [
                 'syncedAt' => now()->toISOString(),
             ],
@@ -211,7 +241,7 @@ class StudentRecordController extends Controller
         ]));
 
         return response()->json([
-            'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name'])))->resolve(),
+            'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name', 'academicYear:id,name,is_current'])))->resolve(),
             'meta' => [
                 'syncedAt' => now()->toISOString(),
             ],
@@ -259,6 +289,40 @@ class StudentRecordController extends Controller
         );
 
         return $user;
+    }
+
+    private function syncRollingAcademicYears(): void
+    {
+        app(RollingIndicatorYearWindow::class)->sync();
+    }
+
+    /**
+     * @return array{0: 'all'|'current'|'specific', 1: ?int}
+     */
+    private function resolveAcademicYearFilter(Request $request): array
+    {
+        $rawFilter = trim((string) $request->query('academicYear', $request->query('academicYearId', '')));
+        if ($rawFilter === '') {
+            return ['current', $this->resolveAcademicYearId()];
+        }
+
+        $normalizedFilter = strtolower($rawFilter);
+        if (in_array($normalizedFilter, ['all', 'all_records', 'all-records'], true)) {
+            return ['all', null];
+        }
+
+        if (in_array($normalizedFilter, ['current', 'latest'], true)) {
+            return ['current', $this->resolveAcademicYearId()];
+        }
+
+        if (ctype_digit($normalizedFilter)) {
+            $academicYearId = (int) $normalizedFilter;
+            if ($academicYearId > 0) {
+                return ['specific', $academicYearId];
+            }
+        }
+
+        return ['current', $this->resolveAcademicYearId()];
     }
 
     private function resolveAcademicYearId(): ?int

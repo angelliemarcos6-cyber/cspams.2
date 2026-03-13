@@ -18,6 +18,7 @@ interface StudentSyncMeta {
   syncedAt?: string;
   scope?: string;
   scopeKey?: string;
+  academicYearFilter?: string;
   recordCount?: number;
   currentPage?: number;
   lastPage?: number;
@@ -52,6 +53,7 @@ export interface StudentListParams {
   status?: StudentEnrollmentStatus | "all" | string | null;
   schoolCode?: string | null;
   schoolCodes?: string[] | null;
+  academicYear?: string | number | null;
 }
 
 export interface StudentListMeta {
@@ -80,6 +82,7 @@ interface StudentDataContextType {
   lastSyncedAt: string | null;
   syncScope: StudentSyncScope;
   totalCount: number;
+  dataVersion: number;
   refreshStudents: () => Promise<void>;
   listStudents: (params?: StudentListParams) => Promise<StudentListResult>;
   addStudent: (payload: StudentRecordPayload) => Promise<void>;
@@ -94,6 +97,7 @@ interface NormalizedStudentListParams {
   status: string;
   schoolCode: string;
   schoolCodes: string[];
+  academicYear: string;
 }
 
 const DataContext = createContext<StudentDataContextType | undefined>(undefined);
@@ -163,6 +167,23 @@ function sanitizeSchoolCodes(values: string[] | null | undefined): string[] {
   return [...new Set(normalized)];
 }
 
+function sanitizeAcademicYear(value: StudentListParams["academicYear"]): string {
+  const normalized = (value ?? "").toString().trim().toLowerCase();
+  if (!normalized || normalized === "current" || normalized === "latest") {
+    return "";
+  }
+
+  if (normalized === "all" || normalized === "all_records" || normalized === "all-records") {
+    return "all";
+  }
+
+  if (/^\d+$/.test(normalized) && Number(normalized) > 0) {
+    return normalized;
+  }
+
+  return "";
+}
+
 function sanitizeParams(params?: StudentListParams): NormalizedStudentListParams {
   const page = toPositiveInt(params?.page, 1);
   const perPage = Math.min(toPositiveInt(params?.perPage, DEFAULT_PER_PAGE), MAX_PER_PAGE);
@@ -170,6 +191,7 @@ function sanitizeParams(params?: StudentListParams): NormalizedStudentListParams
   const status = sanitizeStatus(params?.status);
   const schoolCode = sanitizeSchoolCode(params?.schoolCode);
   const schoolCodes = sanitizeSchoolCodes(params?.schoolCodes);
+  const academicYear = sanitizeAcademicYear(params?.academicYear);
 
   return {
     page,
@@ -178,6 +200,7 @@ function sanitizeParams(params?: StudentListParams): NormalizedStudentListParams
     status,
     schoolCode,
     schoolCodes,
+    academicYear,
   };
 }
 
@@ -198,6 +221,10 @@ function buildListPath(params: NormalizedStudentListParams): string {
     query.set("schoolCodes", params.schoolCodes.join(","));
   } else if (params.schoolCode) {
     query.set("schoolCode", params.schoolCode);
+  }
+
+  if (params.academicYear) {
+    query.set("academicYear", params.academicYear);
   }
 
   const serialized = query.toString();
@@ -237,6 +264,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncScope, setSyncScope] = useState<StudentSyncScope>(null);
   const [totalCount, setTotalCount] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
   const [snapshotMeta, setSnapshotMeta] = useState<StudentListMeta>(EMPTY_META);
 
   const snapshotParamsRef = useRef<NormalizedStudentListParams>(
@@ -265,6 +293,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(null);
     setSyncScope(null);
     setTotalCount(0);
+    setDataVersion(0);
     setSnapshotMeta(EMPTY_META);
   }, [token]);
 
@@ -373,6 +402,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setTotalCount(result.meta.total);
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? result.meta.syncedAt ?? new Date().toISOString());
         setSyncScope(normalizeScope(response.data?.meta?.scope) ?? scopeFromHeaders ?? result.meta.scope);
+        setDataVersion((current) => current + 1);
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
           return;
@@ -600,6 +630,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       syncScope,
       totalCount,
+      dataVersion,
       refreshStudents,
       listStudents,
       addStudent,
@@ -614,6 +645,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       syncScope,
       totalCount,
+      dataVersion,
       refreshStudents,
       listStudents,
       addStudent,

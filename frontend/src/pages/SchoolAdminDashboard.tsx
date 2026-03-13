@@ -622,7 +622,7 @@ export function SchoolAdminDashboard() {
     let currentPage = 1;
 
     while (true) {
-      const result = await listStudents({ page: currentPage, perPage: 200 });
+      const result = await listStudents({ page: currentPage, perPage: 200, academicYear: "all" });
       allRows.push(...result.data);
 
       if (!result.meta.hasMorePages || currentPage >= result.meta.lastPage) {
