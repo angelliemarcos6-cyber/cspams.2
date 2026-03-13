@@ -1,4 +1,15 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type FormEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
@@ -616,10 +627,18 @@ export function SchoolIndicatorPanel({
   const [serverAutosaveAt, setServerAutosaveAt] = useState<string | null>(null);
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
+  const [isIndicatorTablePanning, setIsIndicatorTablePanning] = useState(false);
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
+  const indicatorTableRef = useRef<HTMLDivElement | null>(null);
+  const indicatorTablePanRef = useRef<{ active: boolean; pointerId: number | null; startX: number; startScrollLeft: number }>({
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startScrollLeft: 0,
+  });
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -1085,6 +1104,90 @@ export function SchoolIndicatorPanel({
     handleSelectCategory(nextCategory.id);
     scrollCategoryRail(direction);
   }, [activeCategoryId, handleSelectCategory, scrollCategoryRail, visibleCategoryMetrics]);
+
+  const slideIndicatorTable = useCallback((direction: 1 | -1) => {
+    const tableContainer = indicatorTableRef.current;
+    if (!tableContainer) return;
+
+    const distance = Math.max(280, Math.floor(tableContainer.clientWidth * 0.65));
+    tableContainer.scrollBy({
+      left: direction * distance,
+      behavior: "smooth",
+    });
+  }, []);
+
+  const endIndicatorTablePan = useCallback((pointerId?: number) => {
+    const tableContainer = indicatorTableRef.current;
+    const pan = indicatorTablePanRef.current;
+    if (!pan.active) return;
+    if (typeof pointerId === "number" && pan.pointerId !== pointerId) return;
+
+    if (tableContainer && pan.pointerId !== null && tableContainer.hasPointerCapture(pan.pointerId)) {
+      tableContainer.releasePointerCapture(pan.pointerId);
+    }
+
+    pan.active = false;
+    pan.pointerId = null;
+    setIsIndicatorTablePanning(false);
+  }, []);
+
+  const handleIndicatorTablePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    if (isTypingTarget(event.target)) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, label")) {
+      return;
+    }
+
+    const tableContainer = indicatorTableRef.current;
+    if (!tableContainer || tableContainer.scrollWidth <= tableContainer.clientWidth) {
+      return;
+    }
+
+    indicatorTablePanRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: tableContainer.scrollLeft,
+    };
+    tableContainer.setPointerCapture(event.pointerId);
+    setIsIndicatorTablePanning(true);
+    event.preventDefault();
+  }, []);
+
+  const handleIndicatorTablePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = indicatorTablePanRef.current;
+    if (!pan.active || pan.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const tableContainer = indicatorTableRef.current;
+    if (!tableContainer) {
+      return;
+    }
+
+    const deltaX = event.clientX - pan.startX;
+    tableContainer.scrollLeft = pan.startScrollLeft - deltaX;
+    event.preventDefault();
+  }, []);
+
+  const handleIndicatorTableKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      slideIndicatorTable(-1);
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      slideIndicatorTable(1);
+    }
+  }, [slideIndicatorTable]);
 
   useEffect(() => {
     if (!activeCategory) return;
@@ -2225,11 +2328,43 @@ export function SchoolIndicatorPanel({
             <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{categoryTabLabel(activeCategory)}</h3>
-                  <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-                    {activeCategoryProgress.complete}/{activeCategoryProgress.total}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => slideIndicatorTable(-1)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100"
+                      title="Slide table left"
+                      aria-label="Slide table left"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => slideIndicatorTable(1)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100"
+                      title="Slide table right"
+                      aria-label="Slide table right"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                      {activeCategoryProgress.complete}/{activeCategoryProgress.total}
+                    </span>
+                  </div>
                 </div>
-                <div className="overflow-x-auto rounded-sm border border-slate-200 bg-white">
+                <div
+                  ref={indicatorTableRef}
+                  tabIndex={0}
+                  onKeyDown={handleIndicatorTableKeyDown}
+                  onPointerDown={handleIndicatorTablePointerDown}
+                  onPointerMove={handleIndicatorTablePointerMove}
+                  onPointerUp={(event) => endIndicatorTablePan(event.pointerId)}
+                  onPointerCancel={(event) => endIndicatorTablePan(event.pointerId)}
+                  className={`overflow-x-auto rounded-sm border border-slate-200 bg-white scroll-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100 ${
+                    isIndicatorTablePanning ? "cursor-grabbing select-none" : "cursor-grab"
+                  }`}
+                  title="Drag left or right to pan the table. Use Arrow Left/Right keys for quick slide."
+                >
                   <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1240px]" : "min-w-[980px]"} w-full border-collapse`}>
                     <thead>
                       <tr className="bg-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
