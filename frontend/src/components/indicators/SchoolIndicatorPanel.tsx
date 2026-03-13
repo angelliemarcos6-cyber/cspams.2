@@ -2274,7 +2274,7 @@ export function SchoolIndicatorPanel({
                         data-category-id={category.id}
                         type="button"
                         onClick={() => handleSelectCategory(category.id)}
-                        className={`inline-flex min-w-[220px] items-center justify-between gap-2 rounded-sm border px-2.5 py-1.5 text-left transition ${
+                        className={`inline-flex min-w-[188px] items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-left transition ${
                           isActive
                             ? "border-primary-300 bg-primary-50 text-primary-700"
                             : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -2478,10 +2478,10 @@ export function SchoolIndicatorPanel({
                   className="max-h-[68vh] overflow-auto rounded-sm border border-slate-200 bg-white scroll-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
                   title="Use mouse wheel to scroll rows. Use Shift+wheel, trackpad sideways pan, or arrow buttons for left/right."
                 >
-                  <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1320px]" : "min-w-[860px]"} w-full border-collapse`}>
+                  <table className={`${activeCategory.mode === "target_actual" ? "min-w-[1120px]" : "min-w-[760px]"} w-full border-collapse`}>
                     <thead>
                       <tr className="bg-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                        <th rowSpan={2} className="sticky left-0 top-0 z-40 min-w-[260px] border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-left">
+                        <th rowSpan={2} className="sticky left-0 top-0 z-40 min-w-[220px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-left">
                           Indicators
                         </th>
                         {activeCategory.mode === "target_actual" ? (
@@ -2505,13 +2505,13 @@ export function SchoolIndicatorPanel({
                           ? activeSchoolYears.flatMap((year) => [
                               <th
                                 key={`${activeCategory.id}-${year}-target`}
-                                className="sticky top-[29px] z-30 min-w-[180px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
+                                className="sticky top-[29px] z-30 min-w-[150px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 Target
                               </th>,
                               <th
                                 key={`${activeCategory.id}-${year}-actual`}
-                                className="sticky top-[29px] z-30 min-w-[180px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
+                                className="sticky top-[29px] z-30 min-w-[150px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 Actual
                               </th>,
@@ -2519,7 +2519,7 @@ export function SchoolIndicatorPanel({
                           : activeSchoolYears.map((year) => (
                               <th
                                 key={`${activeCategory.id}-${year}`}
-                                className="sticky top-[29px] z-30 min-w-[240px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
+                                className="sticky top-[29px] z-30 min-w-[170px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
                               >
                                 {year}
                               </th>
@@ -2559,7 +2559,7 @@ export function SchoolIndicatorPanel({
 
                       return (
                         <tr key={`${activeCategory.id}-${metric.id}`} className={rowTone}>
-                          <td className={`sticky left-0 z-20 min-w-[260px] max-w-[320px] border border-slate-300 px-2.5 py-1.5 align-top ${stickyTone}`}>
+                          <td className={`sticky left-0 z-20 min-w-[220px] max-w-[280px] border border-slate-300 px-2 py-1.5 align-top ${stickyTone}`}>
                             <p
                               className="truncate text-[11px] font-semibold leading-4 text-slate-900"
                               title={metricDisplayLabel(metric)}
@@ -2626,7 +2626,7 @@ export function SchoolIndicatorPanel({
 
                             if (activeCategory.mode !== "target_actual") {
                               return (
-                                <td key={`${metric.id}-${year}`} className="relative min-w-[240px] border border-slate-300 p-1 align-middle">
+                                <td key={`${metric.id}-${year}`} className="relative min-w-[170px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={valueCellId}
@@ -2694,7 +2694,7 @@ export function SchoolIndicatorPanel({
 
                             return (
                               <Fragment key={`${metric.id}-${year}`}>
-                                <td className="relative min-w-[180px] border border-slate-300 p-1 align-middle">
+                                <td className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={targetCellId}
@@ -2749,7 +2749,7 @@ export function SchoolIndicatorPanel({
                                     </span>
                                   )}
                                 </td>
-                                <td className="relative min-w-[180px] border border-slate-300 p-1 align-middle">
+                                <td className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={actualCellId}
