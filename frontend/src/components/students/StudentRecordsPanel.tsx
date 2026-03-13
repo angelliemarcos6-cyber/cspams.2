@@ -761,7 +761,7 @@ export function StudentRecordsPanel({
       const deletedCount = deletedIds.length;
       const failedCount = Math.max(0, idsToDelete.length - deletedCount);
 
-      if (historyStudent && deletedIds.includes(historyStudent.id)) {
+      if (historyStudent && (deletedIds.includes(historyStudent.id) || missingIds.includes(historyStudent.id))) {
         closeHistory();
       }
 

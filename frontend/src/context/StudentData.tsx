@@ -501,16 +501,22 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       const path = buildListPath(params);
       const cacheKey = buildListCacheKey(params);
       const cached = listCacheRef.current.get(cacheKey);
+      const hasScopeMismatch = Boolean(
+        cached?.scopeKey
+          && syncScopeKeyRef.current
+          && cached.scopeKey !== syncScopeKeyRef.current,
+      );
+      const cacheEntry = hasScopeMismatch ? null : cached;
 
       let response = await apiRequestRaw<StudentRecordsResponse>(path, {
         token: tokenValue,
         signal,
-        extraHeaders: cached?.etag ? { "If-None-Match": cached.etag } : undefined,
+        extraHeaders: cacheEntry?.etag ? { "If-None-Match": cacheEntry.etag } : undefined,
       });
 
       if (response.status === 304) {
-        if (cached) {
-          return cached.result;
+        if (cacheEntry) {
+          return cacheEntry.result;
         }
 
         response = await apiRequestRaw<StudentRecordsResponse>(path, {
