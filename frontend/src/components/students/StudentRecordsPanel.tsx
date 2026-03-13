@@ -137,7 +137,9 @@ export function StudentRecordsPanel({
   const [form, setForm] = useState<StudentFormState>(EMPTY_FORM);
   const [formError, setFormError] = useState("");
   const [formMessage, setFormMessage] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
+  const [batchDeleteEnabled, setBatchDeleteEnabled] = useState(false);
   const [page, setPage] = useState(1);
   const [pagedStudents, setPagedStudents] = useState<StudentRecord[]>([]);
   const [totalStudents, setTotalStudents] = useState(0);
@@ -264,10 +266,46 @@ export function StudentRecordsPanel({
 
   const safePage = Math.max(1, Math.min(page, totalPages));
   const paginatedStudents = pagedStudents;
+  const selectedCount = batchDeleteEnabled ? selectedStudentIds.size : 0;
+  const allVisibleSelected =
+    batchDeleteEnabled
+    && paginatedStudents.length > 0
+    && paginatedStudents.every((student) => selectedStudentIds.has(student.id));
+  const hasVisibleSelection =
+    batchDeleteEnabled
+    && paginatedStudents.some((student) => selectedStudentIds.has(student.id));
+  const isDeletingAny = deletingIds.size > 0;
 
   useEffect(() => {
     setPage(1);
   }, [search, statusFilter, schoolFilterKeys, scopedSchoolCodes]);
+
+  useEffect(() => {
+    setSelectedStudentIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+
+      const visibleIds = new Set(paginatedStudents.map((student) => student.id));
+      const next = new Set<string>();
+
+      for (const id of current) {
+        if (visibleIds.has(id)) {
+          next.add(id);
+        }
+      }
+
+      return next.size === current.size ? current : next;
+    });
+  }, [paginatedStudents]);
+
+  useEffect(() => {
+    if (batchDeleteEnabled) {
+      return;
+    }
+
+    setSelectedStudentIds((current) => (current.size === 0 ? current : new Set()));
+  }, [batchDeleteEnabled]);
 
   useEffect(() => {
     void loadStudentsPage(page, false);
@@ -309,6 +347,57 @@ export function StudentRecordsPanel({
   const closeForm = () => {
     setShowForm(false);
     resetForm();
+  };
+
+  const toggleStudentSelection = (studentId: string) => {
+    if (!batchDeleteEnabled) {
+      return;
+    }
+
+    setSelectedStudentIds((current) => {
+      const next = new Set(current);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (!batchDeleteEnabled) {
+      return;
+    }
+
+    setSelectedStudentIds((current) => {
+      const next = new Set(current);
+
+      if (allVisibleSelected) {
+        for (const student of paginatedStudents) {
+          next.delete(student.id);
+        }
+      } else {
+        for (const student of paginatedStudents) {
+          next.add(student.id);
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedStudentIds(new Set());
+  };
+
+  const toggleBatchDeleteMode = () => {
+    if (isDeletingAny) {
+      return;
+    }
+
+    setBatchDeleteEnabled((current) => !current);
   };
 
   const validateForm = (): boolean => {
@@ -393,7 +482,19 @@ export function StudentRecordsPanel({
       setPage(fallbackPage);
     }
 
-    setDeletingId(student.id);
+    setDeletingIds((current) => {
+      const next = new Set(current);
+      next.add(student.id);
+      return next;
+    });
+    setSelectedStudentIds((current) => {
+      if (!current.has(student.id)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(student.id);
+      return next;
+    });
     setFormError("");
     setFormMessage("");
     try {
@@ -405,10 +506,88 @@ export function StudentRecordsPanel({
       setTotalStudents(previousTotal);
       setTotalPages(previousTotalPages);
       setPage(previousPage);
+      setSelectedStudentIds((current) => {
+        const next = new Set(current);
+        next.add(student.id);
+        return next;
+      });
       setFormError(err instanceof Error ? err.message : "Unable to delete student record.");
     } finally {
-      setDeletingId(null);
+      setDeletingIds((current) => {
+        const next = new Set(current);
+        next.delete(student.id);
+        return next;
+      });
     }
+  };
+
+  const handleBatchDelete = async () => {
+    if (!batchDeleteEnabled || selectedStudentIds.size === 0) {
+      return;
+    }
+
+    const selectedRows = paginatedStudents.filter((student) => selectedStudentIds.has(student.id));
+    if (selectedRows.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${selectedRows.length} selected student record(s)?`);
+    if (!confirmed) {
+      return;
+    }
+
+    const idsToDelete = selectedRows.map((student) => student.id);
+    const previousPage = page;
+    const previousRows = paginatedStudents;
+    const previousTotal = totalStudents;
+    const previousTotalPages = totalPages;
+    const optimisticRows = previousRows.filter((student) => !selectedStudentIds.has(student.id));
+    const optimisticTotal = Math.max(0, previousTotal - idsToDelete.length);
+    const optimisticTotalPages = Math.max(1, Math.ceil(Math.max(optimisticTotal, 1) / STUDENT_PAGE_SIZE));
+    const fallbackPage = optimisticRows.length === 0 && previousPage > 1
+      ? Math.max(1, Math.min(previousPage - 1, optimisticTotalPages))
+      : previousPage;
+
+    setPagedStudents(optimisticRows);
+    setTotalStudents(optimisticTotal);
+    setTotalPages(optimisticTotalPages);
+    if (fallbackPage !== previousPage) {
+      setPage(fallbackPage);
+    }
+
+    setDeletingIds(new Set(idsToDelete));
+    setSelectedStudentIds(new Set());
+    setFormError("");
+    setFormMessage("");
+
+    const failedDeletes: string[] = [];
+    for (const studentId of idsToDelete) {
+      try {
+        await deleteStudent(studentId);
+      } catch {
+        failedDeletes.push(studentId);
+      }
+    }
+
+    if (failedDeletes.length === 0) {
+      setFormMessage(
+        `${idsToDelete.length} student record${idsToDelete.length === 1 ? "" : "s"} deleted.`,
+      );
+      void loadStudentsPage(fallbackPage, true);
+    } else {
+      setPagedStudents(previousRows);
+      setTotalStudents(previousTotal);
+      setTotalPages(previousTotalPages);
+      setPage(previousPage);
+      setFormError(
+        failedDeletes.length === idsToDelete.length
+          ? "Unable to delete selected student records."
+          : `${failedDeletes.length} of ${idsToDelete.length} selected records could not be deleted.`,
+      );
+      void loadStudentsPage(previousPage, true);
+    }
+
+    setDeletingIds(new Set());
   };
 
   const handleRefresh = async () => {
@@ -433,6 +612,21 @@ export function StudentRecordsPanel({
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
             </button>
+            {editable && (
+              <button
+                type="button"
+                onClick={toggleBatchDeleteMode}
+                disabled={isDeletingAny}
+                className={`inline-flex items-center gap-2 rounded-sm border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                  batchDeleteEnabled
+                    ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {batchDeleteEnabled ? "Batch Delete: Enabled" : "Batch Delete: Disabled"}
+              </button>
+            )}
             {editable && (
               <button
                 type="button"
@@ -479,6 +673,37 @@ export function StudentRecordsPanel({
         <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
           Showing {paginatedStudents.length} of {totalStudents}
         </div>
+        {editable && batchDeleteEnabled && paginatedStudents.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 md:col-span-3">
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              disabled={isDeletingAny}
+              className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {allVisibleSelected ? "Unselect page" : "Select page"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleBatchDelete()}
+              disabled={!hasVisibleSelection || isDeletingAny}
+              className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {isDeletingAny ? "Deleting..." : `Delete Selected (${selectedCount})`}
+            </button>
+            {selectedCount > 0 && (
+              <button
+                type="button"
+                onClick={clearSelection}
+                disabled={isDeletingAny}
+                className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {(error || pageError || formError) && (
@@ -582,6 +807,18 @@ export function StudentRecordsPanel({
           <div className="space-y-3 px-4 py-4 md:hidden">
             {paginatedStudents.map((student) => (
               <article key={student.id} className="rounded-sm border border-slate-200 bg-white p-3">
+                {editable && batchDeleteEnabled && (
+                  <label className="mb-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={selectedStudentIds.has(student.id)}
+                      onChange={() => toggleStudentSelection(student.id)}
+                      disabled={isDeletingAny || deletingIds.has(student.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    Select
+                  </label>
+                )}
                 {showSchoolColumn && (
                   <p className="text-xs text-slate-500">
                     {student.school?.schoolCode ?? "N/A"} - {student.school?.name ?? "N/A"}
@@ -611,11 +848,11 @@ export function StudentRecordsPanel({
                     <button
                       type="button"
                       onClick={() => void handleDelete(student)}
-                      disabled={deletingId === student.id}
+                      disabled={isDeletingAny || deletingIds.has(student.id)}
                       className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      {deletingId === student.id ? "Deleting..." : "Delete"}
+                      {deletingIds.has(student.id) ? "Deleting..." : "Delete"}
                     </button>
                   </div>
                 )}
@@ -627,6 +864,18 @@ export function StudentRecordsPanel({
             <table className="min-w-full">
               <thead className="table-head-sticky">
                 <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  {editable && batchDeleteEnabled && (
+                    <th className="px-2 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleSelectAllVisible}
+                        disabled={paginatedStudents.length === 0 || isDeletingAny}
+                        aria-label={allVisibleSelected ? "Unselect all students on page" : "Select all students on page"}
+                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                    </th>
+                  )}
                   {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
                   <th className="px-2 py-2 text-left">LRN</th>
                   <th className="px-2 py-2 text-left">Name</th>
@@ -642,6 +891,18 @@ export function StudentRecordsPanel({
               <tbody className="divide-y divide-slate-100">
                 {paginatedStudents.map((student) => (
                   <tr key={student.id}>
+                    {editable && batchDeleteEnabled && (
+                      <td className="px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudentIds.has(student.id)}
+                          onChange={() => toggleStudentSelection(student.id)}
+                          disabled={isDeletingAny || deletingIds.has(student.id)}
+                          aria-label={`Select ${student.fullName}`}
+                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                      </td>
+                    )}
                     {showSchoolColumn && (
                       <td className="px-2 py-2">
                         <p className="text-sm font-semibold text-slate-900">{student.school?.name ?? "N/A"}</p>
@@ -674,11 +935,11 @@ export function StudentRecordsPanel({
                           <button
                             type="button"
                             onClick={() => void handleDelete(student)}
-                            disabled={deletingId === student.id}
+                            disabled={isDeletingAny || deletingIds.has(student.id)}
                             className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                            {deletingId === student.id ? "Deleting..." : "Delete"}
+                            {deletingIds.has(student.id) ? "Deleting..." : "Delete"}
                           </button>
                         </div>
                       </td>
