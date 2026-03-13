@@ -755,7 +755,9 @@ export function StudentRecordsPanel({
     setFormMessage("");
 
     try {
-      const deletedIds = await deleteStudents(idsToDelete, { revalidate: false });
+      const result = await deleteStudents(idsToDelete, { revalidate: false });
+      const deletedIds = result.deletedIds;
+      const missingIds = result.missingIds;
       const deletedCount = deletedIds.length;
       const failedCount = Math.max(0, idsToDelete.length - deletedCount);
 
@@ -768,8 +770,19 @@ export function StudentRecordsPanel({
           `${idsToDelete.length} student record${idsToDelete.length === 1 ? "" : "s"} deleted.`,
         );
         void loadStudentsPage(fallbackPage, true);
+      } else if (missingIds.length === idsToDelete.length) {
+        setFormMessage("Selected student records were already removed.");
+        void loadStudentsPage(fallbackPage, true);
       } else if (deletedCount > 0) {
-        setFormError(`${failedCount} of ${idsToDelete.length} selected records could not be deleted.`);
+        const missingCount = missingIds.length;
+        const unresolvedCount = Math.max(0, failedCount - missingCount);
+        if (missingCount > 0 && unresolvedCount === 0) {
+          setFormMessage(
+            `${deletedCount} deleted. ${missingCount} already removed.`,
+          );
+        } else {
+          setFormError(`${failedCount} of ${idsToDelete.length} selected records could not be deleted.`);
+        }
         void loadStudentsPage(fallbackPage, true);
       } else {
         setPagedStudents(previousRows);

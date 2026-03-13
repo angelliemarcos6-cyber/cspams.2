@@ -25,6 +25,7 @@ interface StudentSyncMeta {
   scope?: string;
   scopeKey?: string;
   academicYearFilter?: string;
+  schoolId?: string;
   recordCount?: number;
   currentPage?: number;
   lastPage?: number;
@@ -48,6 +49,9 @@ interface StudentRecordMutationResponse {
 interface StudentRecordDeleteResponse {
   data: {
     id: string;
+    schoolId?: string;
+    deleted?: boolean;
+    deletedCount?: number;
   };
   meta?: StudentSyncMeta;
 }
@@ -69,6 +73,12 @@ interface StudentBatchDeleteResponse {
     requestedCount?: number;
   };
   meta?: StudentSyncMeta;
+}
+
+export interface StudentBatchDeleteResult {
+  deletedIds: string[];
+  missingIds: string[];
+  requestedCount: number;
 }
 
 export interface StudentListParams {
@@ -126,7 +136,7 @@ interface StudentDataContextType {
   addStudent: (payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
   updateStudent: (id: string, payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
   deleteStudent: (id: string, options?: { revalidate?: boolean }) => Promise<void>;
-  deleteStudents: (ids: string[], options?: { revalidate?: boolean }) => Promise<string[]>;
+  deleteStudents: (ids: string[], options?: { revalidate?: boolean }) => Promise<StudentBatchDeleteResult>;
 }
 
 interface NormalizedStudentListParams {
@@ -357,6 +367,29 @@ function applyDeleteMetaSnapshot(current: StudentListMeta, deletedCount: number,
     hasMorePages: currentPage < lastPage,
     syncedAt: syncedAt ?? current.syncedAt,
   };
+}
+
+function normalizeSchoolId(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function emitStudentUpdateEvent(schoolId: unknown): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const detail: { entity: "students"; schoolId?: string } = { entity: "students" };
+  const normalizedSchoolId = normalizeSchoolId(schoolId);
+  if (normalizedSchoolId) {
+    detail.schoolId = normalizedSchoolId;
+  }
+
+  window.dispatchEvent(new CustomEvent("cspams:update", { detail }));
 }
 
 export function StudentDataProvider({ children }: { children: ReactNode }) {
@@ -663,6 +696,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
         historyCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
+        emitStudentUpdateEvent(nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -674,7 +709,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError],
+    [token, syncStudents, handleApiError, user?.schoolId],
   );
 
   const updateStudent = useCallback(
@@ -707,6 +742,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         }));
         etagRef.current = "";
         historyCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
+        emitStudentUpdateEvent(nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -718,7 +755,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError],
+    [token, syncStudents, handleApiError, user?.schoolId],
   );
 
   const deleteStudent = useCallback(
@@ -744,6 +781,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
         historyCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
+        emitStudentUpdateEvent(response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -755,11 +794,11 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError],
+    [token, syncStudents, handleApiError, user?.schoolId],
   );
 
   const deleteStudents = useCallback(
-    async (ids: string[], options?: { revalidate?: boolean }): Promise<string[]> => {
+    async (ids: string[], options?: { revalidate?: boolean }): Promise<StudentBatchDeleteResult> => {
       if (!token) {
         const authError = new Error("You are signed out. Please sign in again.");
         setError(authError.message);
@@ -768,7 +807,11 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
       const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0))];
       if (uniqueIds.length === 0) {
-        return [];
+        return {
+          deletedIds: [],
+          missingIds: [],
+          requestedCount: 0,
+        };
       }
 
       setIsSaving(true);
@@ -782,14 +825,20 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         });
 
         const deletedIds = Array.isArray(response.data?.data?.deletedIds)
-          ? response.data?.data?.deletedIds.filter((id): id is string => typeof id === "string")
+          ? response.data?.data?.deletedIds
+            .map((value) => String(value).trim())
+            .filter((value): value is string => value.length > 0)
           : [];
         const missingIds = Array.isArray(response.data?.data?.missingIds)
-          ? response.data?.data?.missingIds.filter((id): id is string => typeof id === "string")
+          ? response.data?.data?.missingIds
+            .map((value) => String(value).trim())
+            .filter((value): value is string => value.length > 0)
           : [];
-        const resolvedIds = [...new Set([...deletedIds, ...missingIds])];
-        const deletedIdSet = new Set(deletedIds);
-        const deletedCount = deletedIds.length;
+        const normalizedDeletedIds = [...new Set(deletedIds)];
+        const normalizedMissingIds = [...new Set(missingIds)];
+        const requestedCount = toPositiveInt(response.data?.data?.requestedCount, uniqueIds.length);
+        const deletedIdSet = new Set(normalizedDeletedIds);
+        const deletedCount = normalizedDeletedIds.length;
 
         if (deletedCount > 0) {
           setStudents((current) => current.filter((item) => !deletedIdSet.has(item.id)));
@@ -802,12 +851,18 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(response.data?.meta?.syncedAt ?? new Date().toISOString());
         etagRef.current = "";
         historyCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
+        emitStudentUpdateEvent(response.data?.meta?.schoolId ?? user?.schoolId ?? null);
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
         }
 
-        return resolvedIds;
+        return {
+          deletedIds: normalizedDeletedIds,
+          missingIds: normalizedMissingIds,
+          requestedCount,
+        };
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -815,7 +870,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError],
+    [token, syncStudents, handleApiError, user?.schoolId],
   );
 
   useEffect(() => {

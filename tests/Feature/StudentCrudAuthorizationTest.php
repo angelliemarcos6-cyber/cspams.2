@@ -91,14 +91,17 @@ class StudentCrudAuthorizationTest extends TestCase
             'ids' => [$batchStudentId],
         ]);
         $ownerBatchDelete->assertOk()
-            ->assertJsonPath('data.deletedIds.0', $batchStudentId);
+            ->assertJsonPath('data.deletedIds.0', $batchStudentId)
+            ->assertJsonPath('meta.deletedCount', 1);
 
         $otherHeadDelete = $this->withToken($tokenTwo)->deleteJson("/api/dashboard/students/{$studentId}");
         $otherHeadDelete->assertStatus(Response::HTTP_FORBIDDEN);
 
         $ownerDelete = $this->withToken($tokenOne)->deleteJson("/api/dashboard/students/{$studentId}");
         $ownerDelete->assertOk()
-            ->assertJsonPath('data.id', $studentId);
+            ->assertJsonPath('data.id', $studentId)
+            ->assertJsonPath('data.deleted', true)
+            ->assertJsonPath('data.deletedCount', 1);
 
         $recreateAfterDelete = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $payload);
         $recreateAfterDelete->assertStatus(Response::HTTP_CREATED)
@@ -157,6 +160,47 @@ class StudentCrudAuthorizationTest extends TestCase
         $schoolTwo->refresh();
         $this->assertSame($initialOne, (int) $schoolOne->reported_student_count);
         $this->assertSame($initialTwo, (int) $schoolTwo->reported_student_count);
+    }
+
+    public function test_batch_delete_reports_missing_ids_without_false_success(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHeadOne */
+        $schoolHeadOne = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $tokenOne = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadOne));
+
+        $payload = [
+            'lrn' => '9912000' . (string) random_int(1000, 9999),
+            'firstName' => 'Missing',
+            'middleName' => null,
+            'lastName' => 'Delete',
+            'sex' => 'male',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ];
+
+        $created = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $payload);
+        $created->assertStatus(Response::HTTP_CREATED);
+        $studentId = (string) $created->json('data.id');
+
+        $this->withToken($tokenOne)->deleteJson("/api/dashboard/students/{$studentId}")
+            ->assertOk();
+
+        $batchDelete = $this->withToken($tokenOne)->deleteJson('/api/dashboard/students', [
+            'ids' => [$studentId],
+        ]);
+
+        $batchDelete->assertOk()
+            ->assertJsonPath('data.deletedIds', [])
+            ->assertJsonPath('data.missingIds.0', $studentId)
+            ->assertJsonPath('data.requestedCount', 1)
+            ->assertJsonPath('meta.deletedCount', 0);
     }
 
     private function loginToken(string $role, string $login): string

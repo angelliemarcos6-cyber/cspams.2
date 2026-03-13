@@ -249,6 +249,7 @@ class StudentRecordController extends Controller
             'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name', 'academicYear:id,name,is_current'])))->resolve(),
             'meta' => [
                 'syncedAt' => now()->toISOString(),
+                'schoolId' => (string) $student->school_id,
             ],
         ], Response::HTTP_CREATED);
     }
@@ -278,6 +279,7 @@ class StudentRecordController extends Controller
             'data' => (new StudentRecordResource($student->load(['school:id,school_code,name', 'section:id,name', 'academicYear:id,name,is_current'])))->resolve(),
             'meta' => [
                 'syncedAt' => now()->toISOString(),
+                'schoolId' => (string) $student->school_id,
             ],
         ]);
     }
@@ -293,22 +295,44 @@ class StudentRecordController extends Controller
             );
         }
 
-        $student->forceDelete();
-        $this->syncSchoolStudentCount((int) $student->school_id);
+        $studentId = (int) $student->id;
+        $schoolId = (int) $student->school_id;
+
+        $deletedCount = DB::transaction(function () use ($studentId, $schoolId): int {
+            return (int) Student::query()
+                ->whereKey($studentId)
+                ->where('school_id', $schoolId)
+                ->forceDelete();
+        });
+
+        if ($deletedCount <= 0) {
+            return response()->json(
+                ['message' => 'Student record was already removed.'],
+                Response::HTTP_NOT_FOUND,
+            );
+        }
+
+        $this->syncSchoolStudentCount($schoolId);
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'students',
             'eventType' => 'students.deleted',
             'studentId' => (string) $student->id,
-            'schoolId' => (string) $student->school_id,
+            'schoolId' => (string) $schoolId,
+            'deletedCount' => $deletedCount,
         ]));
 
         return response()->json([
             'data' => [
                 'id' => (string) $student->id,
+                'schoolId' => (string) $schoolId,
+                'deleted' => true,
+                'deletedCount' => $deletedCount,
             ],
             'meta' => [
                 'syncedAt' => now()->toISOString(),
+                'schoolId' => (string) $schoolId,
+                'deletedCount' => $deletedCount,
             ],
         ]);
     }
@@ -460,21 +484,27 @@ class StudentRecordController extends Controller
             );
         }
 
-        $deletableIds = Student::query()
-            ->where('school_id', $user->school_id)
-            ->whereIn('id', $requestedIds->all())
-            ->pluck('id')
-            ->map(static fn (mixed $id): int => (int) $id)
-            ->filter(static fn (int $id): bool => $id > 0)
-            ->values();
+        $deletableIds = DB::transaction(function () use ($requestedIds, $user): Collection {
+            $existingIds = Student::query()
+                ->where('school_id', $user->school_id)
+                ->whereIn('id', $requestedIds->all())
+                ->lockForUpdate()
+                ->pluck('id')
+                ->map(static fn (mixed $id): int => (int) $id)
+                ->filter(static fn (int $id): bool => $id > 0)
+                ->values();
 
-        if ($deletableIds->isNotEmpty()) {
-            DB::transaction(function () use ($deletableIds, $user): void {
+            if ($existingIds->isNotEmpty()) {
                 Student::query()
                     ->where('school_id', $user->school_id)
-                    ->whereIn('id', $deletableIds->all())
+                    ->whereIn('id', $existingIds->all())
                     ->forceDelete();
-            });
+            }
+
+            return $existingIds;
+        });
+
+        if ($deletableIds->isNotEmpty()) {
             $this->syncSchoolStudentCount((int) $user->school_id);
 
             event(new CspamsUpdateBroadcast([
@@ -498,6 +528,9 @@ class StudentRecordController extends Controller
             ],
             'meta' => [
                 'syncedAt' => now()->toISOString(),
+                'schoolId' => (string) $user->school_id,
+                'deletedCount' => $deletableIds->count(),
+                'missingCount' => $missingIds->count(),
             ],
         ]);
     }
