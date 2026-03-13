@@ -3,6 +3,7 @@ import { AlertCircle, CalendarDays, Edit2, Filter, Plus, RefreshCw, Save, Search
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
+import { isApiError } from "@/lib/api";
 import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload } from "@/types";
 
 interface StudentRecordsPanelProps {
@@ -141,6 +142,7 @@ export function StudentRecordsPanel({
     listStudents,
     addStudent,
     updateStudent,
+    deleteStudent,
     deleteStudents,
   } = useStudentData();
   const { academicYears } = useIndicatorData();
@@ -529,6 +531,10 @@ export function StudentRecordsPanel({
   };
 
   const handleDelete = async (student: StudentRecord) => {
+    if (deletingIds.has(student.id)) {
+      return;
+    }
+
     const confirmed = window.confirm(`Delete ${student.fullName}?`);
     if (!confirmed) return;
 
@@ -566,14 +572,16 @@ export function StudentRecordsPanel({
     setFormError("");
     setFormMessage("");
     try {
-      const resolvedIds = await deleteStudents([student.id], { revalidate: false });
-      if (resolvedIds.includes(student.id)) {
-        setFormMessage("Student record deleted.");
-        void loadStudentsPage(fallbackPage, true);
-      } else {
-        throw new Error("Unable to delete student record.");
-      }
+      await deleteStudent(student.id, { revalidate: false });
+      setFormMessage("Student record deleted.");
+      void loadStudentsPage(fallbackPage, true);
     } catch (err) {
+      if (isApiError(err) && err.status === 404) {
+        setFormMessage("Student record was already removed.");
+        void loadStudentsPage(fallbackPage, true);
+        return;
+      }
+
       setPagedStudents(previousRows);
       setTotalStudents(previousTotal);
       setTotalPages(previousTotalPages);

@@ -653,8 +653,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           ? response.data?.data?.missingIds.filter((id): id is string => typeof id === "string")
           : [];
         const resolvedIds = [...new Set([...deletedIds, ...missingIds])];
-        const deletedIdSet = new Set(resolvedIds);
-        const deletedCount = resolvedIds.length;
+        const deletedIdSet = new Set(deletedIds);
+        const deletedCount = deletedIds.length;
 
         if (deletedCount > 0) {
           setStudents((current) => current.filter((item) => !deletedIdSet.has(item.id)));
