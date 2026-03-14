@@ -8,6 +8,7 @@ use App\Support\Auth\SchoolHeadAccountSetupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -181,6 +182,20 @@ class AuthSessionSecurityTest extends TestCase
         $this->assertDatabaseHas('personal_access_tokens', ['id' => $currentTokenId]);
         $this->assertDatabaseMissing('personal_access_tokens', ['id' => $legacyTokenId]);
         $this->assertDatabaseMissing('sessions', ['id' => $legacySessionId]);
+    }
+
+    public function test_logout_succeeds_for_stateful_sanctum_session_without_personal_access_token(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+
+        Sanctum::actingAs($monitor);
+
+        $response = $this->postJson('/api/auth/logout');
+
+        $response->assertStatus(Response::HTTP_NO_CONTENT);
     }
 
 }

@@ -75,4 +75,17 @@ class AuthApiTokenLifecycleTest extends TestCase
         $expiredRequest = $this->withToken($token)->getJson('/api/dashboard/records');
         $expiredRequest->assertStatus(Response::HTTP_UNAUTHORIZED);
     }
+
+    public function test_token_refresh_requires_personal_access_token_for_stateful_sessions(): void
+    {
+        $this->seed();
+
+        $this->actingAs(\App\Models\User::query()->where('email', 'monitor@cspams.local')->firstOrFail());
+
+        $response = $this->postJson('/api/auth/refresh');
+
+        $response
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Token refresh is only available for bearer-token clients.');
+    }
 }

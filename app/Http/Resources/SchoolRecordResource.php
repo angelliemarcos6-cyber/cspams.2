@@ -6,6 +6,7 @@ use App\Models\School;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Schema;
 
 /** @mixin School */
 class SchoolRecordResource extends JsonResource
@@ -57,9 +58,13 @@ class SchoolRecordResource extends JsonResource
             return null;
         }
 
-        $account->loadMissing('latestAccountSetupToken');
         $status = $account->accountStatus();
-        $setupToken = $account->latestAccountSetupToken;
+        $setupToken = null;
+
+        if (Schema::hasTable('account_setup_tokens')) {
+            $account->loadMissing('latestAccountSetupToken');
+            $setupToken = $account->latestAccountSetupToken;
+        }
         $setupLinkExpiresAt = null;
 
         if ($setupToken && $setupToken->used_at === null && $setupToken->expires_at !== null && $setupToken->expires_at->isFuture()) {

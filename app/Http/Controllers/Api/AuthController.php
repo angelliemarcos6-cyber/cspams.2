@@ -1106,7 +1106,7 @@ class AuthController extends Controller
         }
 
         $currentToken = $user->currentAccessToken();
-        if (! $currentToken) {
+        if (! $currentToken instanceof PersonalAccessToken) {
             AuthAuditLogger::record(
                 $request,
                 'auth.token_refresh.failed',
@@ -1398,7 +1398,7 @@ class AuthController extends Controller
             $identifier = $role === UserRoleResolver::SCHOOL_HEAD
                 ? (string) $user->school?->school_code
                 : $user->email;
-            $user->currentAccessToken()?->delete();
+            $this->revokeCurrentPersonalAccessToken($user);
         }
 
         Auth::guard('web')->logout();
@@ -1563,6 +1563,14 @@ class AuthController extends Controller
         }
 
         return $query->delete();
+    }
+
+    private function revokeCurrentPersonalAccessToken(User $user): void
+    {
+        $currentToken = $user->currentAccessToken();
+        if ($currentToken instanceof PersonalAccessToken) {
+            $currentToken->delete();
+        }
     }
 
     private function revokeUserWebSessions(User $user, ?string $exceptSessionId = null): int
@@ -2100,7 +2108,11 @@ class AuthController extends Controller
     {
         $currentToken = $user->currentAccessToken();
         if ($currentToken instanceof PersonalAccessToken) {
-            foreach ($currentToken->abilities as $ability) {
+            $abilities = is_array($currentToken->abilities)
+                ? $currentToken->abilities
+                : [];
+
+            foreach ($abilities as $ability) {
                 if ($ability === 'role:' . UserRoleResolver::MONITOR) {
                     return UserRoleResolver::MONITOR;
                 }

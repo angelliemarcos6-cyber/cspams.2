@@ -17,6 +17,7 @@ use App\Support\Domain\AccountStatus;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolHeadAccountController extends Controller
@@ -87,7 +88,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $account->save();
-        $account->loadMissing('latestAccountSetupToken');
+        $this->loadLatestAccountSetupToken($account);
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -195,7 +196,7 @@ class SchoolHeadAccountController extends Controller
             $deliveryMessage = 'Setup link email delivery failed. Share the setup link manually.';
         }
 
-        $account->loadMissing('latestAccountSetupToken');
+        $this->loadLatestAccountSetupToken($account);
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -259,9 +260,15 @@ class SchoolHeadAccountController extends Controller
 
     private function resolveSchoolHeadAccount(School $school): ?User
     {
-        return User::query()
-            ->with(['roles', 'latestAccountSetupToken'])
-            ->where('school_id', $school->id)
+        $query = User::query()
+            ->with('roles')
+            ->where('school_id', $school->id);
+
+        if ($this->accountSetupTokensAvailable()) {
+            $query->with('latestAccountSetupToken');
+        }
+
+        return $query
             ->get()
             ->first(
                 static fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
@@ -274,7 +281,11 @@ class SchoolHeadAccountController extends Controller
     private function serializeSchoolHeadAccount(User $account): array
     {
         $status = $account->accountStatus();
-        $setupToken = $account->latestAccountSetupToken;
+        $setupToken = null;
+        if ($this->accountSetupTokensAvailable()) {
+            $this->loadLatestAccountSetupToken($account);
+            $setupToken = $account->latestAccountSetupToken;
+        }
         $setupLinkExpiresAt = null;
 
         if ($setupToken && $setupToken->used_at === null && $setupToken->expires_at !== null && $setupToken->expires_at->isFuture()) {
@@ -292,5 +303,17 @@ class SchoolHeadAccountController extends Controller
             'flagReason' => $account->flagged_reason,
             'setupLinkExpiresAt' => $setupLinkExpiresAt,
         ];
+    }
+
+    private function accountSetupTokensAvailable(): bool
+    {
+        return Schema::hasTable('account_setup_tokens');
+    }
+
+    private function loadLatestAccountSetupToken(User $account): void
+    {
+        if ($this->accountSetupTokensAvailable()) {
+            $account->loadMissing('latestAccountSetupToken');
+        }
     }
 }

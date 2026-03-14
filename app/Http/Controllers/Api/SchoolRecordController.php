@@ -26,6 +26,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -84,7 +85,11 @@ class SchoolRecordController extends Controller
                     'school_id',
                     'flagged_at',
                     'flagged_reason',
-                ])->with('latestAccountSetupToken');
+                ]);
+
+                if (Schema::hasTable('account_setup_tokens')) {
+                    $query->with('latestAccountSetupToken');
+                }
             }])
             ->withCount('students')
             ->orderByDesc('submitted_at')
@@ -251,7 +256,11 @@ class SchoolRecordController extends Controller
                     'school_id',
                     'flagged_at',
                     'flagged_reason',
-                ])->with('latestAccountSetupToken');
+                ]);
+
+                if (Schema::hasTable('account_setup_tokens')) {
+                    $query->with('latestAccountSetupToken');
+                }
             }])
             ->withCount('students')
             ->orderByDesc('deleted_at')
@@ -777,7 +786,11 @@ class SchoolRecordController extends Controller
                         'school_id',
                         'flagged_at',
                         'flagged_reason',
-                    ])->with('latestAccountSetupToken');
+                    ]);
+
+                    if (Schema::hasTable('account_setup_tokens')) {
+                        $query->with('latestAccountSetupToken');
+                    }
                 },
             ])))->resolve(),
             'meta' => array_merge([
