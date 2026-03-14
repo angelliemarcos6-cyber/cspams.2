@@ -69,6 +69,10 @@ class CspamsLogin extends BaseLogin
             ->placeholder('Monitor email or 6-digit school code')
             ->helperText('Division Monitor: email only. School Head: 6-digit school code only.')
             ->maxLength(255)
+            ->extraInputAttributes([
+                'x-on:blur' => 'applyLoginNormalization()',
+                'x-on:keydown.enter' => 'applyLoginNormalization()',
+            ])
             ->dehydrateStateUsing(function (?string $state): ?string {
                 $normalized = trim((string) $state);
 

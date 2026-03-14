@@ -399,8 +399,52 @@
             <section class="flex items-center justify-center">
                 <div
                     class="csp-login-card w-full max-w-lg"
-                    x-data="{ tab: @js($defaultLoginRole), forgot: null, tabs: @js($loginTabs) }"
-                    x-init="$nextTick(() => { $wire.set('data.role', tab) })"
+                    x-data="{
+                        tab: @js($defaultLoginRole),
+                        forgot: null,
+                        tabs: @js($loginTabs),
+                        findLoginInput() {
+                            return this.$root.querySelector('input[name=\'data.login\']')
+                                ?? this.$root.querySelector('input[wire\\:model*=\"data.login\"]');
+                        },
+                        normalizeLoginIdentifier(rawValue) {
+                            const trimmed = String(rawValue ?? '').trim();
+
+                            if (this.tab === 'monitor') {
+                                return trimmed.toLowerCase();
+                            }
+
+                            if (this.tab === 'school_head') {
+                                const compact = trimmed.replace(/\s+/g, '');
+
+                                if (/^[0-9-]+$/.test(compact)) {
+                                    return compact.replace(/-/g, '').slice(0, 6);
+                                }
+
+                                return compact;
+                            }
+
+                            return trimmed;
+                        },
+                        applyLoginNormalization() {
+                            const input = this.findLoginInput();
+
+                            if (! input) {
+                                return;
+                            }
+
+                            const normalized = this.normalizeLoginIdentifier(input.value);
+
+                            if (input.value !== normalized) {
+                                input.value = normalized;
+                                input.dispatchEvent(new Event('input', { bubbles: true }));
+                                input.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+
+                            $wire.set('data.login', normalized);
+                        }
+                    }"
+                    x-init="$nextTick(() => { $wire.set('data.role', tab); applyLoginNormalization(); })"
                 >
                     <div class="p-6 sm:p-10">
                         <div class="csp-mobile-brand mb-7 lg:hidden">
@@ -439,6 +483,7 @@
                                         tab = @js($roleKey);
                                         $wire.set('data.role', @js($roleKey));
                                         forgot = null;
+                                        applyLoginNormalization();
                                     "
                                 >
                                     {{ $tabConfig['label'] }}
@@ -451,7 +496,7 @@
                             x-text="tabs[tab] ? tabs[tab].note : ''"
                         ></p>
 
-                        <x-filament-panels::form wire:submit="authenticate" class="space-y-5">
+                        <x-filament-panels::form wire:submit="authenticate" x-on:submit.capture="applyLoginNormalization()" class="space-y-5">
                             {{ $this->form }}
 
                             <div class="flex justify-end">
