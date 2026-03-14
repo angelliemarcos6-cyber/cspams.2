@@ -2,15 +2,28 @@
 
 namespace App\Http\Requests\Api;
 
+use App\Http\Requests\Api\Concerns\NormalizesAuthRoleAndLoginInput;
 use App\Support\Auth\UserRoleResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class RequestMonitorMfaResetRequest extends FormRequest
 {
+    use NormalizesAuthRoleAndLoginInput;
+
     public function authorize(): bool
     {
         return true;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $role = $this->normalizeRoleForLoginPayload($this->input('role'));
+
+        $this->merge([
+            'role' => $role,
+            'login' => $this->normalizeLoginIdentifierForRole($this->input('login'), $role),
+        ]);
     }
 
     /**
