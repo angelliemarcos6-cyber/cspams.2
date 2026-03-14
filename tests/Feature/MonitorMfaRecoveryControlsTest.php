@@ -41,7 +41,10 @@ class MonitorMfaRecoveryControlsTest extends TestCase
             ->assertJsonCount(4, 'backupCodes');
 
         /** @var list<string> $backupCodes */
-        $backupCodes = $regen->json('backupCodes', []);
+        $backupCodes = array_map(
+            static fn (mixed $code): string => (string) $code,
+            array_values((array) $regen->json('backupCodes')),
+        );
         $backupCode = $backupCodes[0] ?? null;
         $this->assertNotNull($backupCode);
 

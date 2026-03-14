@@ -36,7 +36,7 @@ class DashboardFilteringIntegrityTest extends TestCase
 
         $bySchool = $this->withToken($monitorToken)->getJson('/api/dashboard/students?schoolCode=' . urlencode($schoolCode));
         $bySchool->assertOk();
-        foreach ($bySchool->json('data', []) as $row) {
+        foreach ((array) $bySchool->json('data') as $row) {
             $this->assertSame($schoolCode, data_get($row, 'school.schoolCode'));
         }
 
@@ -44,14 +44,14 @@ class DashboardFilteringIntegrityTest extends TestCase
             '/api/dashboard/students?schoolCode=' . urlencode($schoolCode) . '&status=' . urlencode($status),
         );
         $bySchoolAndStatus->assertOk();
-        foreach ($bySchoolAndStatus->json('data', []) as $row) {
+        foreach ((array) $bySchoolAndStatus->json('data') as $row) {
             $this->assertSame($schoolCode, data_get($row, 'school.schoolCode'));
             $this->assertSame($status, (string) data_get($row, 'status'));
         }
 
         $bySearch = $this->withToken($monitorToken)->getJson('/api/dashboard/students?search=' . urlencode($lrn));
         $bySearch->assertOk();
-        $foundIds = collect($bySearch->json('data', []))->pluck('id')->all();
+        $foundIds = collect((array) $bySearch->json('data'))->pluck('id')->all();
         $this->assertContains($studentId, $foundIds);
     }
 
@@ -71,7 +71,7 @@ class DashboardFilteringIntegrityTest extends TestCase
         $response = $this->withToken($token)->getJson('/api/dashboard/students?schoolCode=' . urlencode($otherSchoolCode));
         $response->assertStatus(Response::HTTP_OK);
 
-        foreach ($response->json('data', []) as $row) {
+        foreach ((array) $response->json('data') as $row) {
             $this->assertNotSame($otherSchoolCode, data_get($row, 'school.schoolCode'));
         }
     }

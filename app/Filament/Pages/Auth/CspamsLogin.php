@@ -138,7 +138,7 @@ class CspamsLogin extends BaseLogin
 
         $user = $this->resolveUserForRole($rolePicked, $login);
 
-        if (! $user || ! Hash::check($password, $user->password) || ! UserRoleResolver::has($user, $rolePicked)) {
+        if (! $user || ! Hash::check($password, $user->password)) {
             $this->throwFailedLoginException($rolePicked);
         }
 
@@ -174,33 +174,32 @@ class CspamsLogin extends BaseLogin
             }
 
             $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
+            $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
 
             return User::query()
                 ->with('school')
                 ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
                     $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
                 })
-                ->get()
-                ->first(
-                    fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
-                );
+                ->whereHas('roles', function ($builder) use ($roleAliases): void {
+                    $builder->whereIn('name', $roleAliases);
+                })
+                ->first();
         }
 
         $normalizedEmail = strtolower(trim($login));
         if (filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL) === false) {
             return null;
         }
+        $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::MONITOR);
 
-        /** @var \Illuminate\Support\Collection<int, User> $candidates */
-        $candidates = User::query()
+        return User::query()
             ->with('school')
             ->where('email_normalized', $normalizedEmail)
-            ->limit(5)
-            ->get();
-
-        return $candidates->first(
-            fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::MONITOR),
-        );
+            ->whereHas('roles', function ($builder) use ($roleAliases): void {
+                $builder->whereIn('name', $roleAliases);
+            })
+            ->first();
     }
 
     private function throwFailedLoginException(string $role): never

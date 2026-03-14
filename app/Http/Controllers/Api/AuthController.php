@@ -51,7 +51,7 @@ class AuthController extends Controller
 
         $user = $this->resolveUserForLogin($role, $login);
 
-        if (! $user || ! Hash::check($password, $user->password) || ! UserRoleResolver::has($user, $role)) {
+        if (! $user || ! Hash::check($password, $user->password)) {
             AuthAuditLogger::record(
                 $request,
                 'auth.login.failed',
@@ -189,7 +189,7 @@ class AuthController extends Controller
 
         $user = $this->resolveUserForLogin($role, $login);
 
-        if (! $user || ! Hash::check($currentPassword, $user->password) || ! UserRoleResolver::has($user, $role)) {
+        if (! $user || ! Hash::check($currentPassword, $user->password)) {
             AuthAuditLogger::record(
                 $request,
                 'auth.password_reset.failed',
@@ -308,7 +308,7 @@ class AuthController extends Controller
 
         $user = $this->resolveUserForLogin($role, $login);
 
-        if (! $user || ! UserRoleResolver::has($user, $role)) {
+        if (! $user) {
             AuthAuditLogger::record(
                 $request,
                 'auth.mfa_verify.failed',
@@ -732,7 +732,7 @@ class AuthController extends Controller
         $reason = trim($request->string('reason')->toString());
 
         $user = $this->resolveUserForLogin($role, $login);
-        if (! $user || ! UserRoleResolver::has($user, $role) || ! Hash::check($password, $user->password)) {
+        if (! $user || ! Hash::check($password, $user->password)) {
             AuthAuditLogger::record(
                 $request,
                 'auth.mfa_reset.request.failed',
@@ -984,7 +984,7 @@ class AuthController extends Controller
         $approvalToken = $this->normalizeBackupCode($request->string('approval_token')->toString());
 
         $user = $this->resolveUserForLogin($role, $login);
-        if (! $user || ! UserRoleResolver::has($user, $role) || ! Hash::check($password, $user->password)) {
+        if (! $user || ! Hash::check($password, $user->password)) {
             AuthAuditLogger::record(
                 $request,
                 'auth.mfa_reset.complete.failed',
@@ -1494,29 +1494,29 @@ class AuthController extends Controller
             }
 
             $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
+            $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
 
             return User::query()
                 ->with('school')
                 ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
                     $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
                 })
-                ->get()
-                ->first(
-                    fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
-                );
+                ->whereHas('roles', function ($builder) use ($roleAliases): void {
+                    $builder->whereIn('name', $roleAliases);
+                })
+                ->first();
         }
 
         $normalizedEmail = strtolower(trim($login));
-        $query = User::query()
+        $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::MONITOR);
+
+        return User::query()
             ->with('school')
-            ->where('email_normalized', $normalizedEmail);
-
-        /** @var \Illuminate\Support\Collection<int, User> $candidates */
-        $candidates = $query->limit(5)->get();
-
-        return $candidates->first(
-            fn (User $candidate): bool => UserRoleResolver::has($candidate, $role),
-        );
+            ->where('email_normalized', $normalizedEmail)
+            ->whereHas('roles', function ($builder) use ($roleAliases): void {
+                $builder->whereIn('name', $roleAliases);
+            })
+            ->first();
     }
 
     /**
