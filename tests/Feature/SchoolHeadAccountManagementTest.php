@@ -6,6 +6,7 @@ use App\Models\School;
 use App\Models\User;
 use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -124,5 +125,70 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->refresh();
         $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
         $this->assertTrue((bool) $schoolHead->must_reset_password);
+    }
+
+    public function test_reissuing_setup_link_returns_service_unavailable_when_account_setup_token_storage_is_missing(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        Schema::dropIfExists('account_setup_tokens');
+
+        $response = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/setup-link",
+            [
+                'reason' => 'Re-onboarding requested by monitor.',
+            ],
+        );
+
+        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
+            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+    }
+
+    public function test_creating_school_head_account_returns_service_unavailable_when_account_setup_token_storage_is_missing(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        Schema::dropIfExists('account_setup_tokens');
+
+        $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
+            'schoolId' => '922222',
+            'schoolName' => 'No Token Storage School',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'address' => 'District Test, Region Test',
+            'studentCount' => 0,
+            'teacherCount' => 0,
+            'status' => 'active',
+            'schoolHeadAccount' => [
+                'name' => 'No Token Head',
+                'email' => 'no.token.head@cspams.local',
+            ],
+        ]);
+
+        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
+            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
     }
 }

@@ -646,6 +646,13 @@ class SchoolRecordController extends Controller
             return null;
         }
 
+        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
+            abort(
+                Response::HTTP_SERVICE_UNAVAILABLE,
+                'Account setup token storage is unavailable. Run database migrations first.',
+            );
+        }
+
         if (User::query()->where('email_normalized', $email)->exists()) {
             throw ValidationException::withMessages([
                 'schoolHeadAccount.email' => 'A user account with this email already exists.',

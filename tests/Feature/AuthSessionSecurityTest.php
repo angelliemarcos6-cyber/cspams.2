@@ -198,4 +198,26 @@ class AuthSessionSecurityTest extends TestCase
         $response->assertStatus(Response::HTTP_NO_CONTENT);
     }
 
+    public function test_active_sessions_endpoint_supports_stateful_sanctum_session_without_personal_access_token(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+
+        Sanctum::actingAs($monitor);
+
+        $response = $this->getJson('/api/auth/sessions');
+
+        $response->assertOk()
+            ->assertJsonStructure([
+                'data',
+                'meta' => [
+                    'total',
+                    'currentTokenId',
+                    'currentSessionId',
+                ],
+            ]);
+    }
+
 }

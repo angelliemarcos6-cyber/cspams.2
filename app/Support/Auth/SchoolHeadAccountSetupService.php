@@ -6,6 +6,7 @@ use App\Models\AccountSetupToken;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class SchoolHeadAccountSetupService
@@ -20,6 +21,10 @@ class SchoolHeadAccountSetupService
         ?string $issuedUserAgent = null,
         int $ttlHours = 24,
     ): array {
+        if (! $this->storageAvailable()) {
+            throw new \RuntimeException('Account setup token storage is unavailable. Run database migrations first.');
+        }
+
         $this->expireOpenTokens($user, $issuedIp, $issuedUserAgent);
 
         $expiresAt = CarbonImmutable::now()->addHours(max(1, $ttlHours));
@@ -45,6 +50,10 @@ class SchoolHeadAccountSetupService
 
     public function resolve(string $plainToken): ?AccountSetupToken
     {
+        if (! $this->storageAvailable()) {
+            return null;
+        }
+
         [$tokenId, $secret] = $this->parsePlainToken($plainToken);
         if ($tokenId === null || $secret === null) {
             return null;
@@ -69,6 +78,10 @@ class SchoolHeadAccountSetupService
 
     public function consume(AccountSetupToken $token, ?string $usedIp = null, ?string $usedUserAgent = null): void
     {
+        if (! $this->storageAvailable()) {
+            return;
+        }
+
         $now = now();
 
         $token->forceFill([
@@ -101,8 +114,17 @@ class SchoolHeadAccountSetupService
         return $frontend . '/#/setup-account?token=' . urlencode($plainToken);
     }
 
+    public function storageAvailable(): bool
+    {
+        return Schema::hasTable('account_setup_tokens');
+    }
+
     private function expireOpenTokens(User $user, ?string $usedIp = null, ?string $usedUserAgent = null): void
     {
+        if (! $this->storageAvailable()) {
+            return;
+        }
+
         $now = now();
 
         AccountSetupToken::query()

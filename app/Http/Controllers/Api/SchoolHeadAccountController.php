@@ -136,6 +136,13 @@ class SchoolHeadAccountController extends Controller
         IssueSchoolHeadSetupLinkRequest $request,
         School $school,
     ): JsonResponse {
+        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
+            return response()->json(
+                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
         $monitor = $this->requireMonitor($request);
         $account = $this->resolveSchoolHeadAccount($school);
         if (! $account) {
