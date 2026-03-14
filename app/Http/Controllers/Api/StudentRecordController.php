@@ -18,6 +18,7 @@ use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use Carbon\Carbon;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -31,6 +32,8 @@ class StudentRecordController extends Controller
 {
     private const ROLLING_YEAR_SYNC_CACHE_KEY = 'cspams.students.rolling_year_window.last_sync';
     private const ROLLING_YEAR_SYNC_TTL_MINUTES = 30;
+    private const ROLLING_YEAR_SYNC_LOCK_KEY = 'cspams.students.rolling_year_window.sync_lock';
+    private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
 
     public function index(Request $request): JsonResponse
     {
@@ -641,17 +644,52 @@ class StudentRecordController extends Controller
 
     private function syncRollingAcademicYears(): void
     {
-        $lastSyncedAt = Cache::get(self::ROLLING_YEAR_SYNC_CACHE_KEY);
-        if (is_string($lastSyncedAt)) {
-            try {
-                if (Carbon::parse($lastSyncedAt)->greaterThan(now()->subMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES))) {
-                    return;
-                }
-            } catch (\Throwable) {
-                // Invalid cache payload. Fall through and re-sync.
-            }
+        if ($this->hasFreshRollingAcademicYearSyncMarker()) {
+            return;
         }
 
+        $cacheStore = Cache::getStore();
+        if (! ($cacheStore instanceof LockProvider)) {
+            $this->runRollingAcademicYearSync();
+
+            return;
+        }
+
+        $lock = Cache::lock(self::ROLLING_YEAR_SYNC_LOCK_KEY, self::ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS);
+        if (! $lock->get()) {
+            return;
+        }
+
+        try {
+            // Re-check once we own the lock in case another request already synced.
+            if ($this->hasFreshRollingAcademicYearSyncMarker()) {
+                return;
+            }
+
+            $this->runRollingAcademicYearSync();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function hasFreshRollingAcademicYearSyncMarker(): bool
+    {
+        $lastSyncedAt = Cache::get(self::ROLLING_YEAR_SYNC_CACHE_KEY);
+        if (! is_string($lastSyncedAt)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($lastSyncedAt)
+                ->greaterThan(now()->subMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES));
+        } catch (\Throwable) {
+            // Invalid cache payload. Treat as stale and run sync.
+            return false;
+        }
+    }
+
+    private function runRollingAcademicYearSync(): void
+    {
         app(RollingIndicatorYearWindow::class)->sync();
         Cache::put(
             self::ROLLING_YEAR_SYNC_CACHE_KEY,
