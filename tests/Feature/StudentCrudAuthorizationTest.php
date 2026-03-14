@@ -316,6 +316,55 @@ class StudentCrudAuthorizationTest extends TestCase
             ->assertJsonPath('data.lrn', $legacyLrn);
     }
 
+    public function test_create_reuses_lrn_from_soft_deleted_legacy_row(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $legacyLrn = '9966000' . (string) random_int(1000, 9999);
+
+        $legacyCreate = $this->withToken($token)->postJson('/api/dashboard/students', [
+            'lrn' => $legacyLrn,
+            'firstName' => 'Legacy',
+            'middleName' => null,
+            'lastName' => 'Learner',
+            'sex' => 'male',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+        $legacyCreate->assertStatus(Response::HTTP_CREATED);
+
+        $legacyStudentId = (string) $legacyCreate->json('data.id');
+        Student::query()->whereKey($legacyStudentId)->delete();
+
+        $recreate = $this->withToken($token)->postJson('/api/dashboard/students', [
+            'lrn' => $legacyLrn,
+            'firstName' => 'Fresh',
+            'middleName' => null,
+            'lastName' => 'Learner',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - B',
+            'teacher' => 'Teacher Two',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+
+        $recreate->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.lrn', $legacyLrn)
+            ->assertJsonPath('data.firstName', 'Fresh');
+    }
+
     public function test_unassigned_school_head_cannot_mutate_student_records(): void
     {
         $this->seed();

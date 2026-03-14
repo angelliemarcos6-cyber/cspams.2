@@ -223,24 +223,14 @@ class StudentRecordController extends Controller
             );
         }
 
-        $this->purgeArchivedStudentByLrn(
-            trim($request->string('lrn')->toString()),
-            (int) $user->school_id,
-        );
-
         $student = new Student();
         $student->school_id = $user->school_id;
         $student->academic_year_id = $academicYearId;
 
-        try {
-            $this->applyPayload($student, $request, $user);
-        } catch (QueryException $exception) {
-            if ($this->isSchoolScopedLrnConstraintViolation($exception)) {
-                return $this->buildLrnConflictResponse();
-            }
-
-            throw $exception;
+        if (($errorResponse = $this->persistStudentWithArchivedLrnRecovery($student, $request, $user)) instanceof JsonResponse) {
+            return $errorResponse;
         }
+
         $this->incrementSchoolStudentCount((int) $student->school_id);
 
         event(new CspamsUpdateBroadcast([
@@ -271,19 +261,8 @@ class StudentRecordController extends Controller
             );
         }
 
-        $this->purgeArchivedStudentByLrn(
-            trim($request->string('lrn')->toString()),
-            (int) $student->school_id,
-        );
-
-        try {
-            $this->applyPayload($student, $request, $user);
-        } catch (QueryException $exception) {
-            if ($this->isSchoolScopedLrnConstraintViolation($exception)) {
-                return $this->buildLrnConflictResponse();
-            }
-
-            throw $exception;
+        if (($errorResponse = $this->persistStudentWithArchivedLrnRecovery($student, $request, $user)) instanceof JsonResponse) {
+            return $errorResponse;
         }
 
         event(new CspamsUpdateBroadcast([
@@ -317,12 +296,10 @@ class StudentRecordController extends Controller
         $studentId = (int) $student->id;
         $schoolId = (int) $student->school_id;
 
-        $deletedCount = DB::transaction(function () use ($studentId, $schoolId): int {
-            return (int) Student::query()
-                ->whereKey($studentId)
-                ->where('school_id', $schoolId)
-                ->forceDelete();
-        });
+        $deletedCount = (int) Student::query()
+            ->whereKey($studentId)
+            ->where('school_id', $schoolId)
+            ->forceDelete();
 
         if ($deletedCount <= 0) {
             return response()->json(
@@ -572,17 +549,52 @@ class StudentRecordController extends Controller
         return $user;
     }
 
-    private function purgeArchivedStudentByLrn(string $lrn, int $schoolId): void
+    private function purgeArchivedStudentByLrn(string $lrn, int $schoolId): int
     {
         if ($lrn === '' || $schoolId <= 0) {
-            return;
+            return 0;
         }
 
-        Student::withTrashed()
+        return (int) Student::withTrashed()
             ->where('lrn', $lrn)
             ->where('school_id', $schoolId)
             ->whereNotNull('deleted_at')
             ->forceDelete();
+    }
+
+    private function persistStudentWithArchivedLrnRecovery(
+        Student $student,
+        UpsertStudentRecordRequest $request,
+        User $user,
+    ): ?JsonResponse {
+        $lrn = trim($request->string('lrn')->toString());
+        $schoolId = (int) $student->school_id;
+
+        try {
+            $this->applyPayload($student, $request, $user);
+
+            return null;
+        } catch (QueryException $exception) {
+            if (! $this->isSchoolScopedLrnConstraintViolation($exception)) {
+                throw $exception;
+            }
+
+            // Fast path: only purge archived duplicates when a real uniqueness conflict happens.
+            $purgedArchivedRows = $this->purgeArchivedStudentByLrn($lrn, $schoolId);
+            if ($purgedArchivedRows > 0) {
+                try {
+                    $this->applyPayload($student, $request, $user);
+
+                    return null;
+                } catch (QueryException $retryException) {
+                    if (! $this->isSchoolScopedLrnConstraintViolation($retryException)) {
+                        throw $retryException;
+                    }
+                }
+            }
+
+            return $this->buildLrnConflictResponse();
+        }
     }
 
     private function syncSchoolStudentCount(int $schoolId): void
