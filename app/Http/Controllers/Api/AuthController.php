@@ -149,7 +149,7 @@ class AuthController extends Controller
         }
 
         // Keep bearer token response for backward-compatible non-SPA clients.
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -467,7 +467,7 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -612,7 +612,7 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -1120,7 +1120,7 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, true);
+        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -1340,7 +1340,7 @@ class AuthController extends Controller
             $isCurrentToken = (int) ($user->currentAccessToken()?->id ?? 0) === (int) $token->id;
             $token->delete();
 
-            if ($isCurrentToken) {
+            if ($isCurrentToken && ! $this->isBearerAuthenticatedRequest($request)) {
                 Auth::guard('web')->logout();
                 if ($request->hasSession()) {
                     $request->session()->invalidate();
@@ -1466,10 +1466,14 @@ class AuthController extends Controller
             $this->revokeCurrentPersonalAccessToken($user);
         }
 
-        Auth::guard('web')->logout();
-        if ($request->hasSession()) {
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+        $invalidatedWebSession = false;
+        if (! $this->isBearerAuthenticatedRequest($request)) {
+            Auth::guard('web')->logout();
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+            $invalidatedWebSession = true;
         }
 
         AuthAuditLogger::record(
@@ -1479,10 +1483,15 @@ class AuthController extends Controller
             $user,
             $role,
             $identifier,
-            ['session_invalidated' => $request->hasSession()],
+            ['session_invalidated' => $invalidatedWebSession],
         );
 
         return response()->json([], Response::HTTP_NO_CONTENT);
+    }
+
+    private function isBearerAuthenticatedRequest(Request $request): bool
+    {
+        return trim((string) $request->bearerToken()) !== '';
     }
 
     private function resolveUserForLogin(string $role, string $login): ?User

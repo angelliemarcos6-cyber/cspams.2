@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, isApiError } from "@/lib/api";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -63,6 +63,7 @@ interface AuthContextType {
 
 interface StoredSession {
   user: SessionUser;
+  token: string;
 }
 
 interface AuthenticatedResponse {
@@ -118,16 +119,72 @@ function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequi
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const SESSION_KEY = "cspams.auth.session";
-const REMOTE_LOGOUT_QUEUE_KEY = "cspams.auth.pending_remote_logout";
+const SESSION_KEY = "cspams.auth.session.v2";
+const LEGACY_SESSION_KEY = "cspams.auth.session";
+const REMOTE_LOGOUT_QUEUE_KEY = "cspams.auth.pending_remote_logout.v2";
+const LEGACY_REMOTE_LOGOUT_QUEUE_KEY = "cspams.auth.pending_remote_logout";
 const LOGOUT_REQUEST_TIMEOUT_MS = 4000;
 const LOGOUT_RETRY_BASE_MS = 2000;
 const LOGOUT_RETRY_MAX_MS = 60000;
 
 interface PendingRemoteLogout {
+  token: string;
   queuedAt: number;
   attempts: number;
   lastAttemptAt: number;
+}
+
+function readSessionStorageItem(key: string): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionStorageItem(key: string, value: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (value === null) {
+      window.sessionStorage.removeItem(key);
+      return;
+    }
+
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures in restricted browser contexts.
+  }
+}
+
+function readLocalStorageItem(key: string): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function removeLocalStorageItem(key: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures in restricted browser contexts.
+  }
 }
 
 function normalizeRole(role: string): Exclude<UserRole, null> {
@@ -141,50 +198,53 @@ function normalizeUser(user: SessionUser): SessionUser {
   };
 }
 
-function readStoredSession(): StoredSession | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
+function parseStoredSession(raw: string | null): StoredSession | null {
+  if (!raw) return null;
 
-    const parsed = JSON.parse(raw) as { user?: SessionUser };
+  try {
+    const parsed = JSON.parse(raw) as { user?: SessionUser; token?: unknown };
     if (!parsed || typeof parsed.user !== "object" || !parsed.user) {
+      return null;
+    }
+
+    const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
+    if (!token) {
       return null;
     }
 
     return {
       user: normalizeUser(parsed.user),
+      token,
     };
   } catch {
     return null;
   }
 }
 
-function writeStoredSession(session: StoredSession | null) {
-  if (!session) {
-    localStorage.removeItem(SESSION_KEY);
-    return;
-  }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-}
+function parsePendingRemoteLogout(raw: string | null): PendingRemoteLogout | null {
+  if (!raw) return null;
 
-function readPendingRemoteLogout(): PendingRemoteLogout | null {
   try {
-    const raw = localStorage.getItem(REMOTE_LOGOUT_QUEUE_KEY);
-    if (!raw) return null;
-
     const parsed = JSON.parse(raw) as Partial<PendingRemoteLogout>;
     if (!parsed || typeof parsed !== "object") {
       return null;
     }
 
+    const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
     const queuedAt = Number(parsed.queuedAt);
     const attempts = Number(parsed.attempts);
     const lastAttemptAt = Number(parsed.lastAttemptAt);
-    if (!Number.isFinite(queuedAt) || !Number.isFinite(attempts) || !Number.isFinite(lastAttemptAt)) {
+    if (
+      !token ||
+      !Number.isFinite(queuedAt) ||
+      !Number.isFinite(attempts) ||
+      !Number.isFinite(lastAttemptAt)
+    ) {
       return null;
     }
 
     return {
+      token,
       queuedAt,
       attempts: Math.max(0, Math.floor(attempts)),
       lastAttemptAt,
@@ -194,13 +254,70 @@ function readPendingRemoteLogout(): PendingRemoteLogout | null {
   }
 }
 
-function writePendingRemoteLogout(entry: PendingRemoteLogout | null) {
-  if (!entry) {
-    localStorage.removeItem(REMOTE_LOGOUT_QUEUE_KEY);
+function createStoredSession(user: SessionUser, rawToken: unknown): StoredSession {
+  const token = typeof rawToken === "string" ? rawToken.trim() : "";
+  if (!token) {
+    throw new Error("Authentication token was not issued. Please sign in again.");
+  }
+
+  return {
+    user: normalizeUser(user),
+    token,
+  };
+}
+
+function readStoredSession(): StoredSession | null {
+  const sessionScoped = parseStoredSession(readSessionStorageItem(SESSION_KEY));
+  if (sessionScoped) {
+    return sessionScoped;
+  }
+
+  const legacyShared = parseStoredSession(readLocalStorageItem(LEGACY_SESSION_KEY));
+  if (legacyShared) {
+    writeSessionStorageItem(SESSION_KEY, JSON.stringify(legacyShared));
+    removeLocalStorageItem(LEGACY_SESSION_KEY);
+    return legacyShared;
+  }
+
+  return null;
+}
+
+function writeStoredSession(session: StoredSession | null) {
+  if (!session) {
+    writeSessionStorageItem(SESSION_KEY, null);
+    removeLocalStorageItem(LEGACY_SESSION_KEY);
     return;
   }
 
-  localStorage.setItem(REMOTE_LOGOUT_QUEUE_KEY, JSON.stringify(entry));
+  writeSessionStorageItem(SESSION_KEY, JSON.stringify(session));
+  removeLocalStorageItem(LEGACY_SESSION_KEY);
+}
+
+function readPendingRemoteLogout(): PendingRemoteLogout | null {
+  const sessionScoped = parsePendingRemoteLogout(readSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY));
+  if (sessionScoped) {
+    return sessionScoped;
+  }
+
+  const legacyShared = parsePendingRemoteLogout(readLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY));
+  if (legacyShared) {
+    writeSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY, JSON.stringify(legacyShared));
+    removeLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY);
+    return legacyShared;
+  }
+
+  return null;
+}
+
+function writePendingRemoteLogout(entry: PendingRemoteLogout | null) {
+  if (!entry) {
+    writeSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY, null);
+    removeLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY);
+    return;
+  }
+
+  writeSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY, JSON.stringify(entry));
+  removeLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY);
 }
 
 function nextLogoutRetryDelayMs(attempts: number): number {
@@ -241,6 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       writePendingRemoteLogout({
+        token: pending.token,
         queuedAt: pending.queuedAt,
         attempts: pending.attempts + 1,
         lastAttemptAt: Date.now(),
@@ -256,6 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiRequest("/api/auth/logout", {
         method: "POST",
         signal: controller.signal,
+        token: pending.token,
       });
 
       writePendingRemoteLogout(null);
@@ -269,6 +388,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       writePendingRemoteLogout({
+        token: pending.token,
         queuedAt: pending.queuedAt,
         attempts: pending.attempts + 1,
         lastAttemptAt: Date.now(),
@@ -320,12 +440,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<MeResponse>("/api/auth/me", {
           signal: controller.signal,
+          token: initialSession.token,
         });
 
         if (!active) return;
 
         const normalizedSession: StoredSession = {
           user: normalizeUser(payload.user),
+          token: initialSession.token,
         };
 
         setSession(normalizedSession);
@@ -349,18 +471,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession]);
 
   useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key !== SESSION_KEY) return;
-      setSession(readStoredSession());
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-    };
-  }, []);
-
-  useEffect(() => {
     const handleOnline = () => {
       void flushPendingRemoteLogout();
     };
@@ -370,22 +480,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void flushPendingRemoteLogout();
     };
 
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== REMOTE_LOGOUT_QUEUE_KEY || !event.newValue) return;
-      void flushPendingRemoteLogout();
-    };
-
     void flushPendingRemoteLogout();
 
     window.addEventListener("online", handleOnline);
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("storage", handleStorage);
 
     return () => {
       clearLogoutRetryTimer();
       window.removeEventListener("online", handleOnline);
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("storage", handleStorage);
     };
   }, [clearLogoutRetryTimer, flushPendingRemoteLogout]);
 
@@ -409,9 +512,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const nextSession: StoredSession = {
-        user: normalizeUser(payload.user),
-      };
+      const nextSession = createStoredSession(payload.user, payload.token);
 
       setSession(nextSession);
       writeStoredSession(nextSession);
@@ -440,9 +541,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        const nextSession: StoredSession = {
-          user: normalizeUser(payload.user),
-        };
+        const nextSession = createStoredSession(payload.user, payload.token);
 
         setSession(nextSession);
         writeStoredSession(nextSession);
@@ -476,9 +575,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        const nextSession: StoredSession = {
-          user: normalizeUser(payload.user),
-        };
+        const nextSession = createStoredSession(payload.user, payload.token);
 
         setSession(nextSession);
         writeStoredSession(nextSession);
@@ -504,9 +601,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        const nextSession: StoredSession = {
-          user: normalizeUser(payload.user),
-        };
+        const nextSession = createStoredSession(payload.user, payload.token);
 
         setSession(nextSession);
         writeStoredSession(nextSession);
@@ -520,14 +615,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    const token = session?.token.trim() ?? "";
     clearSession();
+    if (!token) {
+      writePendingRemoteLogout(null);
+      return;
+    }
+
     setIsLoggingOut(true);
 
     const now = Date.now();
     const existing = readPendingRemoteLogout();
     writePendingRemoteLogout({
-      queuedAt: existing?.queuedAt ?? now,
-      attempts: existing?.attempts ?? 0,
+      token,
+      queuedAt: existing?.token === token ? existing.queuedAt : now,
+      attempts: existing?.token === token ? existing.attempts : 0,
       lastAttemptAt: now,
     });
 
@@ -536,13 +638,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoggingOut(false);
     }
-  }, [clearSession, flushPendingRemoteLogout]);
+  }, [clearSession, flushPendingRemoteLogout, session?.token]);
 
   const listActiveSessions = useCallback(async (): Promise<ActiveSessionDevice[]> => {
-    const payload = await apiRequest<ActiveSessionsResponse>("/api/auth/sessions");
+    const token = session?.token.trim() ?? "";
+    if (!token) {
+      throw new Error("You are signed out. Please sign in again.");
+    }
+
+    const payload = await apiRequest<ActiveSessionsResponse>("/api/auth/sessions", { token });
 
     return Array.isArray(payload.data) ? payload.data : [];
-  }, []);
+  }, [session?.token]);
 
   const revokeSessionDevice = useCallback(async (sessionId: string): Promise<void> => {
     const normalized = sessionId.trim();
@@ -550,27 +657,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("Session identifier is required.");
     }
 
+    const token = session?.token.trim() ?? "";
+    if (!token) {
+      throw new Error("You are signed out. Please sign in again.");
+    }
+
     await apiRequest<void>(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
       method: "DELETE",
+      token,
     });
-  }, []);
+  }, [session?.token]);
 
   const revokeOtherSessions = useCallback(async (): Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }> => {
+    const token = session?.token.trim() ?? "";
+    if (!token) {
+      throw new Error("You are signed out. Please sign in again.");
+    }
+
     const payload = await apiRequest<RevokeOtherSessionsResponse>("/api/auth/sessions/revoke-others", {
       method: "POST",
+      token,
     });
 
     return {
       revokedTokenCount: Number(payload.data?.revokedTokenCount ?? 0),
       revokedWebSessionCount: Number(payload.data?.revokedWebSessionCount ?? 0),
     };
-  }, []);
+  }, [session?.token]);
 
   const value = useMemo<AuthContextType>(
     () => ({
       role: session?.user.role ?? null,
       username: session?.user.name ?? "",
-      token: session?.user ? COOKIE_SESSION_TOKEN : "",
+      token: session?.token ?? "",
       user: session?.user ?? null,
       isLoading,
       isAuthenticating,

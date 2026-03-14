@@ -1,6 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
-import { ensureCsrfCookie, getApiBaseUrl, readXsrfToken } from "@/lib/api";
+import { COOKIE_SESSION_TOKEN, ensureCsrfCookie, getApiBaseUrl, readXsrfToken } from "@/lib/api";
 
 declare global {
   interface Window {
@@ -160,6 +160,9 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
               headers: {
                 Accept: "application/json",
                 "Content-Type": "application/json",
+                ...(normalizedToken && normalizedToken !== COOKIE_SESSION_TOKEN
+                  ? { Authorization: `Bearer ${normalizedToken}` }
+                  : {}),
                 ...(xsrfToken ? { "X-XSRF-TOKEN": xsrfToken } : {}),
               },
               body: JSON.stringify({
