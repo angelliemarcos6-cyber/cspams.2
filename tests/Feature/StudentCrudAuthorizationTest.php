@@ -365,6 +365,50 @@ class StudentCrudAuthorizationTest extends TestCase
             ->assertJsonPath('data.firstName', 'Fresh');
     }
 
+    public function test_student_create_and_delete_include_timing_headers(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $payload = [
+            'lrn' => '9977000' . (string) random_int(1000, 9999),
+            'firstName' => 'Timing',
+            'middleName' => null,
+            'lastName' => 'Probe',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ];
+
+        $created = $this->withToken($token)->postJson('/api/dashboard/students', $payload);
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertHeader('X-Student-Request-Duration-Ms')
+            ->assertHeader('Server-Timing');
+
+        $createDuration = (float) $created->headers->get('X-Student-Request-Duration-Ms');
+        $this->assertGreaterThanOrEqual(0.0, $createDuration);
+        $this->assertStringContainsString('studentCrud;dur=', (string) $created->headers->get('Server-Timing'));
+
+        $studentId = (string) $created->json('data.id');
+
+        $deleted = $this->withToken($token)->deleteJson("/api/dashboard/students/{$studentId}");
+        $deleted->assertOk()
+            ->assertHeader('X-Student-Request-Duration-Ms')
+            ->assertHeader('Server-Timing');
+
+        $deleteDuration = (float) $deleted->headers->get('X-Student-Request-Duration-Ms');
+        $this->assertGreaterThanOrEqual(0.0, $deleteDuration);
+        $this->assertStringContainsString('studentCrud;dur=', (string) $deleted->headers->get('Server-Timing'));
+    }
+
     public function test_unassigned_school_head_cannot_mutate_student_records(): void
     {
         $this->seed();

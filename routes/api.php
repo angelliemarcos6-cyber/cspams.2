@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
+use App\Http\Middleware\InstrumentStudentCrudTiming;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -64,12 +65,14 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::delete('/records/{school}', [SchoolRecordController::class, 'destroy']);
 
     Route::get('/students', [StudentRecordController::class, 'index']);
-    Route::post('/students', [StudentRecordController::class, 'store']);
+    Route::post('/students', [StudentRecordController::class, 'store'])
+        ->middleware(InstrumentStudentCrudTiming::class);
     Route::delete('/students', [StudentRecordController::class, 'batchDestroy']);
     Route::get('/students/{student}/history', [StudentRecordController::class, 'history']);
     Route::put('/students/{student}', [StudentRecordController::class, 'update']);
     Route::patch('/students/{student}', [StudentRecordController::class, 'update']);
-    Route::delete('/students/{student}', [StudentRecordController::class, 'destroy']);
+    Route::delete('/students/{student}', [StudentRecordController::class, 'destroy'])
+        ->middleware(InstrumentStudentCrudTiming::class);
 
     Route::get('/teachers', [TeacherRecordController::class, 'index']);
     Route::post('/teachers', [TeacherRecordController::class, 'store']);
