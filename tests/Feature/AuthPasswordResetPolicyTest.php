@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
@@ -63,5 +64,21 @@ class AuthPasswordResetPolicyTest extends TestCase
         $login->assertOk()
             ->assertJsonPath('user.role', 'school_head')
             ->assertJsonPath('user.mustResetPassword', false);
+    }
+
+    public function test_setup_account_returns_service_unavailable_when_setup_token_storage_is_missing(): void
+    {
+        $this->seed();
+
+        Schema::dropIfExists('account_setup_tokens');
+
+        $response = $this->postJson('/api/auth/setup-account', [
+            'token' => '1.invalid-token',
+            'password' => 'NewSchool@2026!123',
+            'password_confirmation' => 'NewSchool@2026!123',
+        ]);
+
+        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
+            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
     }
 }

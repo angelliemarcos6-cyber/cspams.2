@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\Auth\UserRoleResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -128,6 +129,42 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'auth.mfa_reset.requested']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'auth.mfa_reset.approved']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'auth.mfa_reset.completed']);
+    }
+
+    public function test_mfa_reset_request_returns_service_unavailable_when_ticket_storage_is_missing(): void
+    {
+        $this->seed();
+
+        Schema::dropIfExists('monitor_mfa_reset_tickets');
+
+        $requestReset = $this->postJson('/api/auth/mfa/reset/request', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'reason' => 'Lost authenticator device.',
+        ]);
+
+        $requestReset->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
+            ->assertJsonPath('message', 'MFA reset request storage is unavailable. Run database migrations first.');
+    }
+
+    public function test_mfa_reset_approval_returns_service_unavailable_when_ticket_storage_is_missing(): void
+    {
+        $this->seed();
+
+        $monitorToken = $this->monitorTokenAfterMfa(
+            'monitor@cspams.local',
+            $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        );
+
+        Schema::dropIfExists('monitor_mfa_reset_tickets');
+
+        $approve = $this->withToken($monitorToken)->postJson('/api/auth/mfa/reset/requests/1/approve', [
+            'notes' => 'Storage missing test.',
+        ]);
+
+        $approve->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
+            ->assertJsonPath('message', 'MFA reset request storage is unavailable. Run database migrations first.');
     }
 
     private function monitorTokenAfterMfa(string $email, string $password): string
