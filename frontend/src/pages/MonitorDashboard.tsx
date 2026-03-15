@@ -18,6 +18,7 @@ import {
   Edit2,
   Eye,
   Filter,
+  GraduationCap,
   LayoutDashboard,
   ListChecks,
   Plus,
@@ -152,6 +153,14 @@ interface DashboardToast {
   id: number;
   message: string;
   tone: ToastTone;
+}
+
+interface MonitorRadarTotals {
+  students: number;
+  teachers: number;
+  syncedAt: string | null;
+  isLoading: boolean;
+  error: string;
 }
 
 interface SchoolDetailSnapshot {
@@ -1045,8 +1054,21 @@ export function MonitorDashboard() {
   const [schoolScopeDropdownSlot, setSchoolScopeDropdownSlot] = useState<ScopeDropdownSlot | null>(null);
   const [studentLookupQuery, setStudentLookupQuery] = useState("");
   const [teacherLookupQuery, setTeacherLookupQuery] = useState("");
+  const debouncedStudentLookupQuery = useDebouncedValue(studentLookupQuery, SEARCH_DEBOUNCE_MS);
+  const debouncedTeacherLookupQuery = useDebouncedValue(teacherLookupQuery, SEARCH_DEBOUNCE_MS);
   const [selectedStudentLookup, setSelectedStudentLookup] = useState<StudentLookupOption | null>(null);
   const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<string | null>(null);
+  const [dbStudentLookupOptions, setDbStudentLookupOptions] = useState<StudentLookupOption[]>([]);
+  const [dbTeacherLookupOptions, setDbTeacherLookupOptions] = useState<string[]>([]);
+  const [isStudentLookupSyncing, setIsStudentLookupSyncing] = useState(false);
+  const [isTeacherLookupSyncing, setIsTeacherLookupSyncing] = useState(false);
+  const [monitorRadarTotals, setMonitorRadarTotals] = useState<MonitorRadarTotals>({
+    students: 0,
+    teachers: 0,
+    syncedAt: null,
+    isLoading: false,
+    error: "",
+  });
   const [pendingStudentLookupId, setPendingStudentLookupId] = useState<string | null>(null);
   const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
@@ -1720,6 +1742,21 @@ export function MonitorDashboard() {
     return new Set([selectedSchoolScope.key]);
   }, [selectedSchoolScope]);
 
+  const scopedSchoolCodes = useMemo<string[] | null>(() => {
+    if (!selectedSchoolScope) {
+      return null;
+    }
+
+    const normalizedCode = selectedSchoolScope.code.trim().toUpperCase();
+    if (!normalizedCode || normalizedCode === "N/A") {
+      return null;
+    }
+
+    return [normalizedCode];
+  }, [selectedSchoolScope]);
+
+  const totalSchoolsInScope = selectedSchoolScope ? 1 : schoolScopeOptions.length;
+
   const scopedStudentPool = useMemo(() => {
     if (!scopedSchoolKeys) {
       return students;
@@ -1732,7 +1769,7 @@ export function MonitorDashboard() {
     );
   }, [students, scopedSchoolKeys]);
 
-  const studentLookupOptions = useMemo<StudentLookupOption[]>(
+  const localStudentLookupOptions = useMemo<StudentLookupOption[]>(
     () =>
       scopedStudentPool
         .map((student) => ({
@@ -1745,6 +1782,66 @@ export function MonitorDashboard() {
     [scopedStudentPool],
   );
 
+  useEffect(() => {
+    let active = true;
+    setIsStudentLookupSyncing(true);
+
+    const hydrateStudentLookup = async () => {
+      try {
+        const result = await listStudents({
+          page: 1,
+          perPage: 200,
+          search: debouncedStudentLookupQuery.trim() || null,
+          schoolCodes: scopedSchoolCodes,
+          academicYear: "all",
+        });
+        if (!active) return;
+
+        const options = result.data
+          .map((student) => ({
+            id: student.id,
+            lrn: student.lrn,
+            fullName: student.fullName,
+            schoolKey: normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null),
+          }))
+          .sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+        setDbStudentLookupOptions(options);
+      } catch {
+        if (!active) return;
+        setDbStudentLookupOptions([]);
+      } finally {
+        if (active) {
+          setIsStudentLookupSyncing(false);
+        }
+      }
+    };
+
+    void hydrateStudentLookup();
+
+    return () => {
+      active = false;
+    };
+  }, [debouncedStudentLookupQuery, listStudents, scopedSchoolCodes]);
+
+  const studentLookupOptions = useMemo<StudentLookupOption[]>(() => {
+    const merged = new Map<string, StudentLookupOption>();
+
+    for (const option of localStudentLookupOptions) {
+      merged.set(option.id, option);
+    }
+
+    for (const option of dbStudentLookupOptions) {
+      merged.set(option.id, option);
+    }
+
+    if (selectedStudentLookup) {
+      merged.set(selectedStudentLookup.id, selectedStudentLookup);
+    }
+
+    return [...merged.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }, [dbStudentLookupOptions, localStudentLookupOptions, selectedStudentLookup]);
+
   const filteredStudentLookupOptions = useMemo(() => {
     const query = studentLookupQuery.trim().toLowerCase();
     if (!query) return studentLookupOptions;
@@ -1756,7 +1853,7 @@ export function MonitorDashboard() {
     );
   }, [studentLookupOptions, studentLookupQuery]);
 
-  const teacherLookupOptions = useMemo(
+  const localTeacherLookupOptions = useMemo(
     () =>
       [...new Set(
         scopedStudentPool
@@ -1766,11 +1863,123 @@ export function MonitorDashboard() {
     [scopedStudentPool],
   );
 
+  useEffect(() => {
+    let active = true;
+    setIsTeacherLookupSyncing(true);
+
+    const hydrateTeacherLookup = async () => {
+      try {
+        const result = await listTeachers({
+          page: 1,
+          perPage: 200,
+          search: debouncedTeacherLookupQuery.trim() || null,
+          schoolCodes: scopedSchoolCodes,
+        });
+        if (!active) return;
+
+        const names = [...new Set(
+          result.data
+            .map((teacher) => teacher.name.trim())
+            .filter((name) => name.length > 0),
+        )].sort((a, b) => a.localeCompare(b));
+
+        setDbTeacherLookupOptions(names);
+      } catch {
+        if (!active) return;
+        setDbTeacherLookupOptions([]);
+      } finally {
+        if (active) {
+          setIsTeacherLookupSyncing(false);
+        }
+      }
+    };
+
+    void hydrateTeacherLookup();
+
+    return () => {
+      active = false;
+    };
+  }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes]);
+
+  const teacherLookupOptions = useMemo(() => {
+    const merged = new Set<string>([
+      ...localTeacherLookupOptions,
+      ...dbTeacherLookupOptions,
+      ...(selectedTeacherLookup ? [selectedTeacherLookup] : []),
+    ]);
+
+    return [...merged].sort((a, b) => a.localeCompare(b));
+  }, [dbTeacherLookupOptions, localTeacherLookupOptions, selectedTeacherLookup]);
+
   const filteredTeacherLookupOptions = useMemo(() => {
     const query = teacherLookupQuery.trim().toLowerCase();
     if (!query) return teacherLookupOptions;
     return teacherLookupOptions.filter((name) => name.toLowerCase().includes(query));
   }, [teacherLookupOptions, teacherLookupQuery]);
+
+  useEffect(() => {
+    let active = true;
+
+    const hydrateRadarTotals = async () => {
+      setMonitorRadarTotals((current) => ({
+        ...current,
+        isLoading: true,
+        error: "",
+      }));
+
+      try {
+        const [studentsResult, teachersResult] = await Promise.all([
+          listStudents({
+            page: 1,
+            perPage: 1,
+            schoolCodes: scopedSchoolCodes,
+            academicYear: "all",
+          }),
+          listTeachers({
+            page: 1,
+            perPage: 1,
+            schoolCodes: scopedSchoolCodes,
+          }),
+        ]);
+
+        if (!active) return;
+
+        setMonitorRadarTotals({
+          students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? 0),
+          teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? 0),
+          syncedAt: new Date().toISOString(),
+          isLoading: false,
+          error: "",
+        });
+      } catch (err) {
+        if (!active) return;
+        setMonitorRadarTotals((current) => ({
+          ...current,
+          isLoading: false,
+          error: err instanceof Error ? err.message : "Unable to sync totals.",
+        }));
+      }
+    };
+
+    void hydrateRadarTotals();
+
+    const handleRealtimeTotalsRefresh = (event: Event) => {
+      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      if (!payload?.entity) return;
+      if (payload.entity !== "students" && payload.entity !== "teachers" && payload.entity !== "dashboard") {
+        return;
+      }
+
+      void hydrateRadarTotals();
+    };
+
+    window.addEventListener("cspams:update", handleRealtimeTotalsRefresh);
+
+    return () => {
+      active = false;
+      window.removeEventListener("cspams:update", handleRealtimeTotalsRefresh);
+    };
+  }, [listStudents, listTeachers, scopedSchoolCodes]);
 
   const selectedTeacherSchoolKeys = useMemo(() => {
     if (!selectedTeacherLookup) return null;
@@ -3202,12 +3411,12 @@ export function MonitorDashboard() {
     }
   };
 
-  const renderSchoolScopeSelector = () => {
+  const renderSchoolScopeSelector = (rootClassName = "relative mt-3") => {
     const isOpen = schoolScopeDropdownSlot === "schools";
     const isLockedByContext = Boolean(lockedSchoolContextKey);
 
     return (
-      <div className="relative mt-3">
+      <div className={rootClassName}>
         <button
           type="button"
           onClick={() => {
@@ -3293,18 +3502,21 @@ export function MonitorDashboard() {
     );
   };
 
-  const renderStudentLookupSelector = () => {
+  const renderStudentLookupSelector = (rootClassName = "relative mt-3") => {
     const isOpen = schoolScopeDropdownSlot === "students";
 
     return (
-      <div className="relative mt-3">
+      <div className={rootClassName}>
         <button
           type="button"
           onClick={() => setSchoolScopeDropdownSlot((current) => (current === "students" ? null : "students"))}
           className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
         >
           <span className="truncate">{selectedStudentLabel}</span>
-          <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+          <span className="inline-flex items-center gap-1">
+            {isStudentLookupSyncing && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+            <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+          </span>
         </button>
         {isOpen && (
           <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
@@ -3371,18 +3583,21 @@ export function MonitorDashboard() {
     );
   };
 
-  const renderTeacherLookupSelector = () => {
+  const renderTeacherLookupSelector = (rootClassName = "relative mt-3") => {
     const isOpen = schoolScopeDropdownSlot === "teachers";
 
     return (
-      <div className="relative mt-3">
+      <div className={rootClassName}>
         <button
           type="button"
           onClick={() => setSchoolScopeDropdownSlot((current) => (current === "teachers" ? null : "teachers"))}
           className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
         >
           <span className="truncate">{selectedTeacherLabel}</span>
-          <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+          <span className="inline-flex items-center gap-1">
+            {isTeacherLookupSyncing && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+            <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+          </span>
         </button>
         {isOpen && (
           <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
@@ -4397,6 +4612,63 @@ export function MonitorDashboard() {
 
       {!showNavigatorManual && activeTopNavigator === "schools" && (
         <>
+        <section id="monitor-school-radar" className={`dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3 ${sectionFocusClass("monitor-school-radar")}`}>
+          <div className="grid gap-3 lg:grid-cols-3">
+            <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Schools</p>
+                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">{totalSchoolsInScope.toLocaleString()}</p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                  <Building2 className="h-5 w-5" />
+                </span>
+              </div>
+              {renderSchoolScopeSelector("relative mt-2")}
+            </article>
+
+            <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Students</p>
+                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
+                    {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.students.toLocaleString()}
+                  </p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                  <GraduationCap className="h-5 w-5" />
+                </span>
+              </div>
+              {renderStudentLookupSelector("relative mt-2")}
+            </article>
+
+            <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Teachers</p>
+                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
+                    {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.teachers.toLocaleString()}
+                  </p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                  <Users className="h-5 w-5" />
+                </span>
+              </div>
+              {renderTeacherLookupSelector("relative mt-2")}
+            </article>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+            <span>
+              {monitorRadarTotals.error
+                ? monitorRadarTotals.error
+                : monitorRadarTotals.syncedAt
+                  ? `Synced ${new Date(monitorRadarTotals.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                  : "Waiting for sync"}
+            </span>
+            <span>Totals are read live from students and teachers records.</span>
+          </div>
+        </section>
+
         <section id="monitor-school-records" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}>
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
