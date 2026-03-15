@@ -3605,7 +3605,7 @@ export function MonitorDashboard() {
       title="Division Monitor Dashboard"
       subtitle="My Queue workspace for triage, review, schools, and reports."
       actions={
-        <div className="inline-flex min-w-0 items-center gap-2 rounded-sm border border-white/20 bg-white/10 p-1.5">
+        <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm border border-white/20 bg-white/10 p-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => void refreshRecords()}
@@ -3615,7 +3615,7 @@ export function MonitorDashboard() {
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
-          <span className="inline-flex max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 lg:max-w-[21rem]">
+          <span className="hidden max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 sm:inline-flex lg:max-w-[21rem]">
             {syncStatus === "up_to_date" ? "Up to date" : "Updated"}
             {" | "}
             {lastSyncedAt
@@ -3633,11 +3633,11 @@ export function MonitorDashboard() {
       )}
 
       <div
-        className={`dashboard-left-layout mb-5 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[700ms] lg:ease-in-out ${
+        className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[700ms] lg:ease-in-out ${
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-        <aside className="dashboard-side-rail ml-3 rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:self-stretch lg:min-h-full lg:rounded-none">
+        <aside className="dashboard-side-rail ml-0 w-full rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:ml-3 lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
           <div className="flex min-h-full flex-col lg:sticky lg:top-2">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
@@ -3790,7 +3790,7 @@ export function MonitorDashboard() {
             </div>
           </div>
         </aside>
-        <div className="dashboard-main-pane mt-4 lg:mt-0 lg:pl-5">
+        <div className="dashboard-main-pane mt-4 min-w-0 lg:mt-0 lg:pl-5">
           {showNavigatorManual && (
             <section id="monitor-user-manual" className="dashboard-shell mb-5 overflow-hidden rounded-sm border border-slate-200 bg-white animate-fade-slide">
               <div className="min-h-[72vh] p-4 md:p-6 xl:p-8">
