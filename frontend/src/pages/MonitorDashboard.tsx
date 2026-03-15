@@ -1015,6 +1015,7 @@ function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImportRowP
 export function MonitorDashboard() {
   const {
     records,
+    recordCount,
     targetsMet,
     syncAlerts,
     isLoading,
@@ -1697,15 +1698,17 @@ export function MonitorDashboard() {
     const optionsByKey = new Map<string, SchoolScopeOption>();
 
     for (const record of records) {
-      const key = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-      if (key === "unknown") continue;
+      const normalizedKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
+      const key = normalizedKey === "unknown" ? `id:${record.id}` : normalizedKey;
 
       if (optionsByKey.has(key)) continue;
 
+      const schoolCode = (record.schoolId ?? record.schoolCode ?? "").trim();
+      const schoolName = record.schoolName?.trim() || "Unknown School";
       optionsByKey.set(key, {
         key,
-        code: (record.schoolId ?? record.schoolCode ?? "").trim() || "N/A",
-        name: record.schoolName?.trim() || "Unknown School",
+        code: schoolCode || "N/A",
+        name: schoolName,
       });
     }
 
@@ -1755,7 +1758,9 @@ export function MonitorDashboard() {
     return [normalizedCode];
   }, [selectedSchoolScope]);
 
-  const totalSchoolsInScope = selectedSchoolScope ? 1 : schoolScopeOptions.length;
+  const totalSchoolsInScope = selectedSchoolScope
+    ? 1
+    : Math.max(recordCount, schoolScopeOptions.length);
 
   const scopedStudentPool = useMemo(() => {
     if (!scopedSchoolKeys) {

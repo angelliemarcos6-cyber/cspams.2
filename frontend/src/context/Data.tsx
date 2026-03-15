@@ -93,6 +93,7 @@ interface SchoolHeadSetupLinkResponse {
 
 interface DataContextType {
   records: SchoolRecord[];
+  recordCount: number;
   targetsMet: TargetsMetSnapshot | null;
   syncAlerts: SyncAlert[];
   isLoading: boolean;
@@ -140,10 +141,19 @@ function normalizeEtag(value: string | null): string {
   return (value || "").replace(/^W\//, "").replace(/"/g, "");
 }
 
+function normalizeRecordCount(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return Math.trunc(parsed);
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { token, logout } = useAuth();
 
   const [records, setRecords] = useState<SchoolRecord[]>([]);
+  const [recordCount, setRecordCount] = useState(0);
   const [targetsMet, setTargetsMet] = useState<TargetsMetSnapshot | null>(null);
   const [syncAlerts, setSyncAlerts] = useState<SyncAlert[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -169,6 +179,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     etagRef.current = "";
     syncScopeKeyRef.current = "";
     setRecords([]);
+    setRecordCount(0);
     setTargetsMet(null);
     setSyncAlerts([]);
     setIsLoading(false);
@@ -198,6 +209,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (!token) {
         setRecords([]);
+        setRecordCount(0);
         setTargetsMet(null);
         setSyncAlerts([]);
         setIsLoading(false);
@@ -246,6 +258,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         if (response.status === 304) {
+          setRecordCount((current) =>
+            normalizeRecordCount(response.headers.get("X-Sync-Record-Count"), current),
+          );
           setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
           if (scopeFromHeaders) {
             setSyncScope(scopeFromHeaders);
@@ -266,6 +281,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         setRecords(Array.isArray(payload?.data) ? payload.data : []);
+        setRecordCount(normalizeRecordCount(payload?.meta?.recordCount, payload?.data?.length ?? 0));
         setTargetsMet(payload?.meta?.targetsMet ?? null);
         setSyncAlerts(Array.isArray(payload?.meta?.alerts) ? payload.meta.alerts : []);
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? payload?.meta?.syncedAt ?? new Date().toISOString());
@@ -823,6 +839,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DataContextType>(
     () => ({
       records,
+      recordCount,
       targetsMet,
       syncAlerts,
       isLoading,
@@ -845,6 +862,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }),
     [
       records,
+      recordCount,
       targetsMet,
       syncAlerts,
       isLoading,
