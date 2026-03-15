@@ -299,10 +299,20 @@ class StudentRecordController extends Controller
         $studentId = (int) $student->id;
         $schoolId = (int) $student->school_id;
 
-        $deletedCount = (int) Student::query()
-            ->whereKey($studentId)
-            ->where('school_id', $schoolId)
-            ->forceDelete();
+        try {
+            // Soft-delete first for a faster and more resilient UX on large schools.
+            $deletedCount = (int) Student::query()
+                ->whereKey($studentId)
+                ->where('school_id', $schoolId)
+                ->delete();
+        } catch (QueryException $exception) {
+            report($exception);
+
+            return response()->json(
+                ['message' => 'Unable to delete student record right now. Please try again.'],
+                Response::HTTP_CONFLICT,
+            );
+        }
 
         if ($deletedCount <= 0) {
             return response()->json(
@@ -483,25 +493,34 @@ class StudentRecordController extends Controller
             );
         }
 
-        $deletableIds = DB::transaction(function () use ($requestedIds, $user): Collection {
-            $existingIds = Student::query()
-                ->where('school_id', $user->school_id)
-                ->whereIn('id', $requestedIds->all())
-                ->lockForUpdate()
-                ->pluck('id')
-                ->map(static fn (mixed $id): int => (int) $id)
-                ->filter(static fn (int $id): bool => $id > 0)
-                ->values();
-
-            if ($existingIds->isNotEmpty()) {
-                Student::query()
+        try {
+            $deletableIds = DB::transaction(function () use ($requestedIds, $user): Collection {
+                $existingIds = Student::query()
                     ->where('school_id', $user->school_id)
-                    ->whereIn('id', $existingIds->all())
-                    ->forceDelete();
-            }
+                    ->whereIn('id', $requestedIds->all())
+                    ->lockForUpdate()
+                    ->pluck('id')
+                    ->map(static fn (mixed $id): int => (int) $id)
+                    ->filter(static fn (int $id): bool => $id > 0)
+                    ->values();
 
-            return $existingIds;
-        });
+                if ($existingIds->isNotEmpty()) {
+                    Student::query()
+                        ->where('school_id', $user->school_id)
+                        ->whereIn('id', $existingIds->all())
+                        ->delete();
+                }
+
+                return $existingIds;
+            });
+        } catch (QueryException $exception) {
+            report($exception);
+
+            return response()->json(
+                ['message' => 'Unable to delete selected student records right now. Please try again.'],
+                Response::HTTP_CONFLICT,
+            );
+        }
 
         if ($deletableIds->isNotEmpty()) {
             $this->decrementSchoolStudentCount((int) $user->school_id, $deletableIds->count());

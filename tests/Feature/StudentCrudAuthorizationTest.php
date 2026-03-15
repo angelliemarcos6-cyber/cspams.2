@@ -93,6 +93,7 @@ class StudentCrudAuthorizationTest extends TestCase
         $ownerBatchDelete->assertOk()
             ->assertJsonPath('data.deletedIds.0', $batchStudentId)
             ->assertJsonPath('meta.deletedCount', 1);
+        $this->assertSoftDeleted('students', ['id' => (int) $batchStudentId]);
 
         $otherHeadDelete = $this->withToken($tokenTwo)->deleteJson("/api/dashboard/students/{$studentId}");
         $otherHeadDelete->assertStatus(Response::HTTP_FORBIDDEN);
@@ -102,6 +103,7 @@ class StudentCrudAuthorizationTest extends TestCase
             ->assertJsonPath('data.id', $studentId)
             ->assertJsonPath('data.deleted', true)
             ->assertJsonPath('data.deletedCount', 1);
+        $this->assertSoftDeleted('students', ['id' => (int) $studentId]);
 
         $recreateAfterDelete = $this->withToken($tokenOne)->postJson('/api/dashboard/students', $payload);
         $recreateAfterDelete->assertStatus(Response::HTTP_CREATED)
@@ -449,6 +451,17 @@ class StudentCrudAuthorizationTest extends TestCase
         ]);
         $batchDelete->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonPath('message', 'Your account is not linked to any school.');
+    }
+
+    public function test_unauthenticated_student_delete_returns_unauthorized_instead_of_redirect_error(): void
+    {
+        $this->seed();
+
+        /** @var Student $student */
+        $student = Student::query()->firstOrFail();
+
+        $response = $this->delete("/api/dashboard/students/{$student->id}");
+        $response->assertStatus(Response::HTTP_UNAUTHORIZED);
     }
 
     private function loginToken(string $role, string $login): string

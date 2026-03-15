@@ -695,8 +695,12 @@ export function StudentRecordsPanel({
       }
       void loadStudentsPage(fallbackPage, true);
     } catch (err) {
-      if (isApiError(err) && err.status === 404) {
-        setFormMessage("Student record was already removed.");
+      if (isApiError(err) && (err.status === 404 || err.status === 403)) {
+        setFormMessage(
+          err.status === 404
+            ? "Student record was already removed."
+            : "Student list was refreshed because that record is no longer in your current access scope.",
+        );
         if (historyStudent?.id === student.id) {
           closeHistory();
         }
