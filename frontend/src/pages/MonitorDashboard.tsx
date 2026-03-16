@@ -362,6 +362,7 @@ const ADVANCED_ANALYTICS_HIDE_MS = 520;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
+const SCHOOL_DRAWER_SUBMISSION_CACHE_TTL_MS = 60_000;
 const SCHOOL_YEAR_START_MONTH = 6;
 
 const SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL = "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES";
@@ -1222,6 +1223,14 @@ export function MonitorDashboard() {
   const [schoolDrawerSubmissions, setSchoolDrawerSubmissions] = useState<IndicatorSubmission[] | null>(null);
   const [isSchoolDrawerSubmissionsLoading, setIsSchoolDrawerSubmissionsLoading] = useState(false);
   const [schoolDrawerSubmissionsError, setSchoolDrawerSubmissionsError] = useState("");
+  const [schoolDrawerSubmissionSyncTick, setSchoolDrawerSubmissionSyncTick] = useState(0);
+  const schoolDrawerSubmissionCacheRef = useRef<Map<string, { rows: IndicatorSubmission[]; fetchedAt: number }>>(
+    new Map(),
+  );
+
+  useEffect(() => {
+    schoolDrawerSubmissionCacheRef.current.clear();
+  }, [token]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1246,6 +1255,10 @@ export function MonitorDashboard() {
       }
       if (payload.entity === "teachers" || payload.entity === "dashboard" || payload.entity === "school_records") {
         setTeacherLookupSyncTick((current) => current + 1);
+      }
+      if (payload.entity === "indicators") {
+        schoolDrawerSubmissionCacheRef.current.clear();
+        setSchoolDrawerSubmissionSyncTick((current) => current + 1);
       }
     };
 
@@ -2915,22 +2928,46 @@ export function MonitorDashboard() {
     }
 
     let active = true;
+    const abortController = new AbortController();
 
     const loadSchoolSubmissions = async () => {
+      const now = Date.now();
+      const cached = schoolDrawerSubmissionCacheRef.current.get(schoolDrawerRecordId) ?? null;
+      const cacheIsFresh = cached && now - cached.fetchedAt <= SCHOOL_DRAWER_SUBMISSION_CACHE_TTL_MS;
+
+      if (cached) {
+        setSchoolDrawerSubmissions(cached.rows);
+      } else {
+        setSchoolDrawerSubmissions(null);
+      }
+
+      if (cacheIsFresh && schoolDrawerSubmissionSyncTick === 0) {
+        setIsSchoolDrawerSubmissionsLoading(false);
+        setSchoolDrawerSubmissionsError("");
+        return;
+      }
+
       setIsSchoolDrawerSubmissionsLoading(true);
       setSchoolDrawerSubmissionsError("");
-      setSchoolDrawerSubmissions(null);
 
       try {
         const perPage = 100;
         const basePath = `/api/indicators/submissions?per_page=${perPage}&school_id=${encodeURIComponent(schoolDrawerRecordId)}`;
-        const firstPayload = await apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=1`, { token });
+        const firstPayload = await apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=1`, {
+          token,
+          signal: abortController.signal,
+        });
         const firstRows = Array.isArray(firstPayload.data) ? firstPayload.data : [];
         const lastPage = Math.max(1, Number(firstPayload.meta?.last_page ?? 1));
 
         const pageRequests: Array<Promise<IndicatorSubmissionListResponse>> = [];
         for (let page = 2; page <= lastPage; page += 1) {
-          pageRequests.push(apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=${page}`, { token }));
+          pageRequests.push(
+            apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=${page}`, {
+              token,
+              signal: abortController.signal,
+            }),
+          );
         }
 
         const extraPayloads = pageRequests.length > 0 ? await Promise.all(pageRequests) : [];
@@ -2943,10 +2980,19 @@ export function MonitorDashboard() {
         );
 
         if (!active) return;
+        schoolDrawerSubmissionCacheRef.current.set(schoolDrawerRecordId, {
+          rows: allRows,
+          fetchedAt: Date.now(),
+        });
         setSchoolDrawerSubmissions(allRows);
       } catch (err) {
         if (!active) return;
-        setSchoolDrawerSubmissions([]);
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        if (!cached) {
+          setSchoolDrawerSubmissions([]);
+        }
         setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
       } finally {
         if (active) {
@@ -2958,8 +3004,9 @@ export function MonitorDashboard() {
     void loadSchoolSubmissions();
     return () => {
       active = false;
+      abortController.abort();
     };
-  }, [schoolDrawerRecordId, token]);
+  }, [schoolDrawerRecordId, schoolDrawerSubmissionSyncTick, token]);
 
   const schoolDrawerIndicatorSubmissions = useMemo(
     () => schoolDrawerSubmissions ?? schoolIndicatorSubmissions,

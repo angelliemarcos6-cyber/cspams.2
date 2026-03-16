@@ -58,6 +58,7 @@ interface IndicatorDataContextType {
 
 const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>(undefined);
 const AUTO_SYNC_INTERVAL_MS = 15_000;
+const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const { token, logout } = useAuth();
@@ -73,6 +74,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncInFlightRef = useRef(false);
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
+  const referenceDataSyncedAtRef = useRef(0);
 
   useEffect(() => {
     if (previousTokenRef.current === token) {
@@ -82,6 +84,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     previousTokenRef.current = token;
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
+    referenceDataSyncedAtRef.current = 0;
     setSubmissions([]);
     setMetrics([]);
     setAcademicYears([]);
@@ -111,6 +114,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setSubmissions([]);
         setMetrics([]);
         setAcademicYears([]);
+        referenceDataSyncedAtRef.current = 0;
         setIsLoading(false);
         setIsSaving(false);
         setError("");
@@ -127,10 +131,19 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
+        const shouldRefreshReferenceData =
+          metrics.length === 0 ||
+          academicYears.length === 0 ||
+          Date.now() - referenceDataSyncedAtRef.current > REFERENCE_DATA_SYNC_INTERVAL_MS;
+
         const [submissionPayload, metricPayload, yearPayload] = await Promise.all([
           apiRequest<IndicatorSubmissionsResponse>("/api/indicators/submissions?per_page=100", { token }),
-          apiRequest<IndicatorMetricsResponse>("/api/indicators/metrics", { token }),
-          apiRequest<IndicatorAcademicYearsResponse>("/api/indicators/academic-years", { token }),
+          shouldRefreshReferenceData
+            ? apiRequest<IndicatorMetricsResponse>("/api/indicators/metrics", { token })
+            : Promise.resolve<IndicatorMetricsResponse | null>(null),
+          shouldRefreshReferenceData
+            ? apiRequest<IndicatorAcademicYearsResponse>("/api/indicators/academic-years", { token })
+            : Promise.resolve<IndicatorAcademicYearsResponse | null>(null),
         ]);
 
         if (requestGeneration !== syncGenerationRef.current) {
@@ -138,8 +151,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
 
         setSubmissions(Array.isArray(submissionPayload.data) ? submissionPayload.data : []);
-        setMetrics(Array.isArray(metricPayload.data) ? metricPayload.data : []);
-        setAcademicYears(Array.isArray(yearPayload.data) ? yearPayload.data : []);
+        if (shouldRefreshReferenceData) {
+          setMetrics(Array.isArray(metricPayload?.data) ? metricPayload?.data : []);
+          setAcademicYears(Array.isArray(yearPayload?.data) ? yearPayload?.data : []);
+          referenceDataSyncedAtRef.current = Date.now();
+        }
         setLastSyncedAt(new Date().toISOString());
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
@@ -155,7 +171,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [token, handleApiError],
+    [academicYears.length, handleApiError, metrics.length, token],
   );
 
   const refreshSubmissions = useCallback(async () => {
