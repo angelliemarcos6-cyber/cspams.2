@@ -148,6 +148,7 @@ One-click launcher (Windows):
    - start Vite frontend (`127.0.0.1:5173`) with API proxy
    - start Cloudflare tunnel and print/open the public `trycloudflare.com` URL
 3. To stop everything, double-click [preview-cloudflare-stop.cmd](preview-cloudflare-stop.cmd)
+4. To restart everything in one click, double-click [preview-cloudflare-restart.cmd](preview-cloudflare-restart.cmd)
 
 Manual commands (alternative):
 
