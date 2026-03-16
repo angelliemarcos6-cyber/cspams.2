@@ -37,11 +37,12 @@ import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
 import { MonitorIndicatorPanel } from "@/components/indicators/MonitorIndicatorPanel";
 import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
+import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
-import { isApiError } from "@/lib/api";
+import { apiRequest, isApiError } from "@/lib/api";
 import type {
   IndicatorSubmission,
   SchoolBulkImportResult,
@@ -217,6 +218,14 @@ interface SchoolIndicatorPackageRow {
   reviewedAt: string | null;
   complianceRatePercent: number | null;
   reviewedBy: string;
+}
+
+interface IndicatorSubmissionListResponse {
+  data: IndicatorSubmission[];
+  meta?: {
+    current_page?: number;
+    last_page?: number;
+  };
 }
 
 interface PersistedMonitorFilters {
@@ -1085,6 +1094,7 @@ function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImportRowP
 }
 
 export function MonitorDashboard() {
+  const { token } = useAuth();
   const {
     records,
     recordCount,
@@ -1209,6 +1219,9 @@ export function MonitorDashboard() {
     moved: boolean;
   } | null>(null);
   const [isSchoolsTableDragging, setIsSchoolsTableDragging] = useState(false);
+  const [schoolDrawerSubmissions, setSchoolDrawerSubmissions] = useState<IndicatorSubmission[] | null>(null);
+  const [isSchoolDrawerSubmissionsLoading, setIsSchoolDrawerSubmissionsLoading] = useState(false);
+  const [schoolDrawerSubmissionsError, setSchoolDrawerSubmissionsError] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2888,8 +2901,73 @@ export function MonitorDashboard() {
       );
   }, [indicatorSubmissions, schoolDrawerKey]);
 
+  const schoolDrawerRecordId = useMemo(() => {
+    if (!schoolDrawerKey) return "";
+    return (recordBySchoolKey.get(schoolDrawerKey)?.id ?? "").trim();
+  }, [recordBySchoolKey, schoolDrawerKey]);
+
+  useEffect(() => {
+    if (!schoolDrawerRecordId || !token) {
+      setSchoolDrawerSubmissions(null);
+      setIsSchoolDrawerSubmissionsLoading(false);
+      setSchoolDrawerSubmissionsError("");
+      return;
+    }
+
+    let active = true;
+
+    const loadSchoolSubmissions = async () => {
+      setIsSchoolDrawerSubmissionsLoading(true);
+      setSchoolDrawerSubmissionsError("");
+      setSchoolDrawerSubmissions(null);
+
+      try {
+        const perPage = 100;
+        const basePath = `/api/indicators/submissions?per_page=${perPage}&school_id=${encodeURIComponent(schoolDrawerRecordId)}`;
+        const firstPayload = await apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=1`, { token });
+        const firstRows = Array.isArray(firstPayload.data) ? firstPayload.data : [];
+        const lastPage = Math.max(1, Number(firstPayload.meta?.last_page ?? 1));
+
+        const pageRequests: Array<Promise<IndicatorSubmissionListResponse>> = [];
+        for (let page = 2; page <= lastPage; page += 1) {
+          pageRequests.push(apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=${page}`, { token }));
+        }
+
+        const extraPayloads = pageRequests.length > 0 ? await Promise.all(pageRequests) : [];
+        const allRows = [
+          ...firstRows,
+          ...extraPayloads.flatMap((payload) => (Array.isArray(payload.data) ? payload.data : [])),
+        ].sort(
+          (a, b) =>
+            toTime(b.updatedAt, b.submittedAt, b.createdAt) - toTime(a.updatedAt, a.submittedAt, a.createdAt),
+        );
+
+        if (!active) return;
+        setSchoolDrawerSubmissions(allRows);
+      } catch (err) {
+        if (!active) return;
+        setSchoolDrawerSubmissions([]);
+        setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
+      } finally {
+        if (active) {
+          setIsSchoolDrawerSubmissionsLoading(false);
+        }
+      }
+    };
+
+    void loadSchoolSubmissions();
+    return () => {
+      active = false;
+    };
+  }, [schoolDrawerRecordId, token]);
+
+  const schoolDrawerIndicatorSubmissions = useMemo(
+    () => schoolDrawerSubmissions ?? schoolIndicatorSubmissions,
+    [schoolDrawerSubmissions, schoolIndicatorSubmissions],
+  );
+
   const schoolIndicatorMatrix = useMemo(() => {
-    if (schoolIndicatorSubmissions.length === 0) {
+    if (schoolDrawerIndicatorSubmissions.length === 0) {
       return {
         years: [] as string[],
         rows: [] as IndicatorMatrixRow[],
@@ -2900,7 +2978,7 @@ export function MonitorDashboard() {
     const years = new Set<string>();
     const rowMap = new Map<string, IndicatorMatrixRow>();
 
-    for (const submission of schoolIndicatorSubmissions) {
+    for (const submission of schoolDrawerIndicatorSubmissions) {
       const fallbackYear =
         (submission.academicYear?.name ?? "").trim() ||
         deriveSchoolYearLabel(submission.submittedAt ?? submission.updatedAt ?? submission.createdAt);
@@ -3007,9 +3085,9 @@ export function MonitorDashboard() {
     return {
       years: sortedYears,
       rows: sortedRows,
-      latestSubmission: schoolIndicatorSubmissions[0] ?? null,
+      latestSubmission: schoolDrawerIndicatorSubmissions[0] ?? null,
     };
-  }, [schoolIndicatorSubmissions]);
+  }, [schoolDrawerIndicatorSubmissions]);
 
   const schoolIndicatorRowsByCategory = useMemo(
     () =>
@@ -3028,7 +3106,7 @@ export function MonitorDashboard() {
 
   const schoolIndicatorPackageRows = useMemo<SchoolIndicatorPackageRow[]>(
     () =>
-      schoolIndicatorSubmissions.map((submission) => ({
+      schoolDrawerIndicatorSubmissions.map((submission) => ({
         id: submission.id,
         schoolYear:
           (submission.academicYear?.name ?? "").trim() ||
@@ -3043,7 +3121,7 @@ export function MonitorDashboard() {
             : null,
         reviewedBy: submission.reviewedBy?.name?.trim() || "Unassigned",
       })),
-    [schoolIndicatorSubmissions],
+    [schoolDrawerIndicatorSubmissions],
   );
 
   const schoolDetail = useMemo<SchoolDetailSnapshot | null>(() => {
@@ -5857,6 +5935,10 @@ export function MonitorDashboard() {
                       Total packages:{" "}
                       <span className="font-semibold text-slate-900">{schoolIndicatorPackageRows.length.toLocaleString()}</span>
                     </p>
+                    {isSchoolDrawerSubmissionsLoading && <p className="text-primary-700">Syncing latest submissions...</p>}
+                    {!isSchoolDrawerSubmissionsLoading && schoolDrawerSubmissionsError && (
+                      <p className="text-rose-600">{schoolDrawerSubmissionsError}</p>
+                    )}
                   </div>
                 </div>
 
@@ -5936,7 +6018,9 @@ export function MonitorDashboard() {
 
                 {schoolIndicatorMatrix.rows.length === 0 ? (
                   <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
-                    {schoolIndicatorSubmissions.length === 0
+                    {isSchoolDrawerSubmissionsLoading
+                      ? "Loading submitted indicators for this school..."
+                      : schoolDrawerIndicatorSubmissions.length === 0
                       ? "No indicator package submitted yet for this school."
                       : "Indicator package exists, but no indicator rows were found in the latest submission."}
                   </div>
