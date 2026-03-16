@@ -49,6 +49,8 @@ import type {
   SchoolHeadAccountStatusUpdatePayload,
   SchoolRecord,
   SchoolStatus,
+  StudentRecord,
+  TeacherRecord,
 } from "@/types";
 import {
   buildRegionAggregates,
@@ -138,6 +140,16 @@ interface StudentLookupOption {
   lrn: string;
   fullName: string;
   schoolKey: string;
+  schoolCode: string;
+  schoolName: string;
+}
+
+interface TeacherLookupOption {
+  id: string;
+  name: string;
+  schoolKey: string;
+  schoolCode: string;
+  schoolName: string;
 }
 
 type NavigatorIcon = ComponentType<{ className?: string }>;
@@ -214,6 +226,7 @@ interface PersistedMonitorFilters {
   queueLane?: QueueLane;
   schoolScopeKey?: string;
   studentLookupId?: string | null;
+  teacherLookupId?: string | null;
   teacherLookup?: string | null;
   filterDateFrom?: string;
   filterDateTo?: string;
@@ -666,6 +679,65 @@ function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: s
   return "unknown";
 }
 
+function normalizeSchoolCodeLabel(value: string | null | undefined): string {
+  const normalized = value?.trim() ?? "";
+  return normalized.length > 0 ? normalized : "N/A";
+}
+
+function normalizeSchoolNameLabel(value: string | null | undefined): string {
+  const normalized = value?.trim() ?? "";
+  return normalized.length > 0 ? normalized : "Unknown School";
+}
+
+function resolveStudentSchoolKey(student: StudentRecord): string {
+  const fromCodeOrName = normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null);
+  if (fromCodeOrName !== "unknown") {
+    return fromCodeOrName;
+  }
+
+  const schoolId = student.school?.id?.trim() ?? "";
+  if (schoolId.length > 0) {
+    return `id:${schoolId}`;
+  }
+
+  return "unknown";
+}
+
+function toStudentLookupOption(student: StudentRecord): StudentLookupOption {
+  return {
+    id: student.id,
+    lrn: student.lrn,
+    fullName: student.fullName,
+    schoolKey: resolveStudentSchoolKey(student),
+    schoolCode: normalizeSchoolCodeLabel(student.school?.schoolCode ?? null),
+    schoolName: normalizeSchoolNameLabel(student.school?.name ?? null),
+  };
+}
+
+function resolveTeacherSchoolKey(teacher: TeacherRecord): string {
+  const fromCodeOrName = normalizeSchoolKey(teacher.school?.schoolCode ?? null, teacher.school?.name ?? null);
+  if (fromCodeOrName !== "unknown") {
+    return fromCodeOrName;
+  }
+
+  const schoolId = teacher.school?.id?.trim() ?? "";
+  if (schoolId.length > 0) {
+    return `id:${schoolId}`;
+  }
+
+  return "unknown";
+}
+
+function toTeacherLookupOption(teacher: TeacherRecord): TeacherLookupOption {
+  return {
+    id: teacher.id,
+    name: teacher.name.trim(),
+    schoolKey: resolveTeacherSchoolKey(teacher),
+    schoolCode: normalizeSchoolCodeLabel(teacher.school?.schoolCode ?? null),
+    schoolName: normalizeSchoolNameLabel(teacher.school?.name ?? null),
+  };
+}
+
 function normalizeSearchTerms(value: string): string[] {
   return value
     .trim()
@@ -1058,11 +1130,13 @@ export function MonitorDashboard() {
   const debouncedStudentLookupQuery = useDebouncedValue(studentLookupQuery, SEARCH_DEBOUNCE_MS);
   const debouncedTeacherLookupQuery = useDebouncedValue(teacherLookupQuery, SEARCH_DEBOUNCE_MS);
   const [selectedStudentLookup, setSelectedStudentLookup] = useState<StudentLookupOption | null>(null);
-  const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<string | null>(null);
+  const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<TeacherLookupOption | null>(null);
   const [dbStudentLookupOptions, setDbStudentLookupOptions] = useState<StudentLookupOption[]>([]);
-  const [dbTeacherLookupOptions, setDbTeacherLookupOptions] = useState<string[]>([]);
+  const [dbTeacherLookupOptions, setDbTeacherLookupOptions] = useState<TeacherLookupOption[]>([]);
   const [isStudentLookupSyncing, setIsStudentLookupSyncing] = useState(false);
   const [isTeacherLookupSyncing, setIsTeacherLookupSyncing] = useState(false);
+  const [studentLookupSyncTick, setStudentLookupSyncTick] = useState(0);
+  const [teacherLookupSyncTick, setTeacherLookupSyncTick] = useState(0);
   const [monitorRadarTotals, setMonitorRadarTotals] = useState<MonitorRadarTotals>({
     students: 0,
     teachers: 0,
@@ -1071,6 +1145,7 @@ export function MonitorDashboard() {
     error: "",
   });
   const [pendingStudentLookupId, setPendingStudentLookupId] = useState<string | null>(null);
+  const [pendingTeacherLookupId, setPendingTeacherLookupId] = useState<string | null>(null);
   const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -1146,6 +1221,24 @@ export function MonitorDashboard() {
     window.addEventListener("resize", syncViewport);
     return () => {
       window.removeEventListener("resize", syncViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleRealtimeLookupRefresh = (event: Event) => {
+      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      if (!payload?.entity) return;
+      if (payload.entity === "students" || payload.entity === "dashboard" || payload.entity === "school_records") {
+        setStudentLookupSyncTick((current) => current + 1);
+      }
+      if (payload.entity === "teachers" || payload.entity === "dashboard" || payload.entity === "school_records") {
+        setTeacherLookupSyncTick((current) => current + 1);
+      }
+    };
+
+    window.addEventListener("cspams:update", handleRealtimeLookupRefresh);
+    return () => {
+      window.removeEventListener("cspams:update", handleRealtimeLookupRefresh);
     };
   }, []);
 
@@ -1256,7 +1349,7 @@ export function MonitorDashboard() {
         queueLane: (params.get("lane") as QueueLane | null) ?? undefined,
         schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
         studentLookupId: params.get("student"),
-        teacherLookup: params.get("teacher"),
+        teacherLookupId: params.get("teacher"),
         filterDateFrom: params.get("from") ?? "",
         filterDateTo: params.get("to") ?? "",
         activeTopNavigator: (params.get("tab") as MonitorTopNavigatorId | null) ?? undefined,
@@ -1286,8 +1379,10 @@ export function MonitorDashboard() {
       if (persisted.schoolScopeKey) {
         setSelectedSchoolScopeKey(persisted.schoolScopeKey);
       }
-      if (persisted.teacherLookup) {
-        setSelectedTeacherLookup(persisted.teacherLookup);
+      const persistedTeacherLookupId = persisted.teacherLookupId ?? null;
+      if (persistedTeacherLookupId) {
+        setPendingTeacherLookupId(persistedTeacherLookupId);
+      } else if (persisted.teacherLookup) {
         setTeacherLookupQuery(persisted.teacherLookup);
       }
       setFilterDateFrom(normalizeDateInput(persisted.filterDateFrom));
@@ -1316,7 +1411,7 @@ export function MonitorDashboard() {
       queueLane,
       schoolScopeKey: selectedSchoolScopeKey,
       studentLookupId: selectedStudentLookup?.id ?? pendingStudentLookupId ?? null,
-      teacherLookup: selectedTeacherLookup,
+      teacherLookupId: selectedTeacherLookup?.id ?? pendingTeacherLookupId ?? null,
       filterDateFrom,
       filterDateTo,
     };
@@ -1342,7 +1437,7 @@ export function MonitorDashboard() {
     setOrDelete("lane", queueLane !== "all" ? queueLane : null);
     setOrDelete("school", selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
     setOrDelete("student", selectedStudentLookup?.id ?? pendingStudentLookupId ?? null);
-    setOrDelete("teacher", selectedTeacherLookup ?? null);
+    setOrDelete("teacher", selectedTeacherLookup?.id ?? pendingTeacherLookupId ?? null);
     setOrDelete("from", filterDateFrom.trim() ? filterDateFrom.trim() : null);
     setOrDelete("to", filterDateTo.trim() ? filterDateTo.trim() : null);
 
@@ -1354,12 +1449,13 @@ export function MonitorDashboard() {
     filterDateTo,
     filtersHydrated,
     pendingStudentLookupId,
+    pendingTeacherLookupId,
     queueLane,
     requirementFilter,
     search,
     selectedSchoolScopeKey,
     selectedStudentLookup?.id,
-    selectedTeacherLookup,
+    selectedTeacherLookup?.id,
     statusFilter,
   ]);
 
@@ -1777,12 +1873,7 @@ export function MonitorDashboard() {
   const localStudentLookupOptions = useMemo<StudentLookupOption[]>(
     () =>
       scopedStudentPool
-        .map((student) => ({
-          id: student.id,
-          lrn: student.lrn,
-          fullName: student.fullName,
-          schoolKey: normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null),
-        }))
+        .map((student) => toStudentLookupOption(student))
         .sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [scopedStudentPool],
   );
@@ -1803,12 +1894,7 @@ export function MonitorDashboard() {
         if (!active) return;
 
         const options = result.data
-          .map((student) => ({
-            id: student.id,
-            lrn: student.lrn,
-            fullName: student.fullName,
-            schoolKey: normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null),
-          }))
+          .map((student) => toStudentLookupOption(student))
           .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
         setDbStudentLookupOptions(options);
@@ -1827,7 +1913,7 @@ export function MonitorDashboard() {
     return () => {
       active = false;
     };
-  }, [debouncedStudentLookupQuery, listStudents, scopedSchoolCodes]);
+  }, [debouncedStudentLookupQuery, listStudents, scopedSchoolCodes, studentLookupSyncTick]);
 
   const studentLookupOptions = useMemo<StudentLookupOption[]>(() => {
     const merged = new Map<string, StudentLookupOption>();
@@ -1854,19 +1940,36 @@ export function MonitorDashboard() {
     return studentLookupOptions.filter(
       (option) =>
         option.fullName.toLowerCase().includes(query) ||
-        option.lrn.toLowerCase().includes(query),
+        option.lrn.toLowerCase().includes(query) ||
+        option.schoolCode.toLowerCase().includes(query) ||
+        option.schoolName.toLowerCase().includes(query),
     );
   }, [studentLookupOptions, studentLookupQuery]);
 
-  const localTeacherLookupOptions = useMemo(
-    () =>
-      [...new Set(
-        scopedStudentPool
-          .map((student) => student.teacher?.trim() ?? "")
-          .filter((value) => value.length > 0),
-      )].sort((a, b) => a.localeCompare(b)),
-    [scopedStudentPool],
-  );
+  const localTeacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
+    const optionsById = new Map<string, TeacherLookupOption>();
+
+    for (const student of scopedStudentPool) {
+      const teacherName = student.teacher?.trim() ?? "";
+      if (!teacherName) continue;
+
+      const schoolKey = resolveStudentSchoolKey(student);
+      const optionId = `local:${teacherName.toLowerCase()}|${schoolKey}`;
+      if (optionsById.has(optionId)) continue;
+
+      optionsById.set(optionId, {
+        id: optionId,
+        name: teacherName,
+        schoolKey,
+        schoolCode: normalizeSchoolCodeLabel(student.school?.schoolCode ?? null),
+        schoolName: normalizeSchoolNameLabel(student.school?.name ?? null),
+      });
+    }
+
+    return [...optionsById.values()].sort((a, b) =>
+      a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName),
+    );
+  }, [scopedStudentPool]);
 
   useEffect(() => {
     let active = true;
@@ -1882,13 +1985,12 @@ export function MonitorDashboard() {
         });
         if (!active) return;
 
-        const names = [...new Set(
-          result.data
-            .map((teacher) => teacher.name.trim())
-            .filter((name) => name.length > 0),
-        )].sort((a, b) => a.localeCompare(b));
+        const options = result.data
+          .map((teacher) => toTeacherLookupOption(teacher))
+          .filter((option) => option.name.length > 0)
+          .sort((a, b) => a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName));
 
-        setDbTeacherLookupOptions(names);
+        setDbTeacherLookupOptions(options);
       } catch {
         if (!active) return;
         setDbTeacherLookupOptions([]);
@@ -1904,22 +2006,35 @@ export function MonitorDashboard() {
     return () => {
       active = false;
     };
-  }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes]);
+  }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes, teacherLookupSyncTick]);
 
-  const teacherLookupOptions = useMemo(() => {
-    const merged = new Set<string>([
-      ...localTeacherLookupOptions,
-      ...dbTeacherLookupOptions,
-      ...(selectedTeacherLookup ? [selectedTeacherLookup] : []),
-    ]);
+  const teacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
+    const merged = new Map<string, TeacherLookupOption>();
 
-    return [...merged].sort((a, b) => a.localeCompare(b));
+    for (const option of localTeacherLookupOptions) {
+      merged.set(option.id, option);
+    }
+    for (const option of dbTeacherLookupOptions) {
+      merged.set(option.id, option);
+    }
+    if (selectedTeacherLookup) {
+      merged.set(selectedTeacherLookup.id, selectedTeacherLookup);
+    }
+
+    return [...merged.values()].sort((a, b) =>
+      a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName),
+    );
   }, [dbTeacherLookupOptions, localTeacherLookupOptions, selectedTeacherLookup]);
 
   const filteredTeacherLookupOptions = useMemo(() => {
     const query = teacherLookupQuery.trim().toLowerCase();
     if (!query) return teacherLookupOptions;
-    return teacherLookupOptions.filter((name) => name.toLowerCase().includes(query));
+    return teacherLookupOptions.filter(
+      (option) =>
+        option.name.toLowerCase().includes(query) ||
+        option.schoolCode.toLowerCase().includes(query) ||
+        option.schoolName.toLowerCase().includes(query),
+    );
   }, [teacherLookupOptions, teacherLookupQuery]);
 
   useEffect(() => {
@@ -1989,13 +2104,17 @@ export function MonitorDashboard() {
   const selectedTeacherSchoolKeys = useMemo(() => {
     if (!selectedTeacherLookup) return null;
 
-    const normalizedTeacher = selectedTeacherLookup.trim().toLowerCase();
+    if (selectedTeacherLookup.schoolKey !== "unknown") {
+      return new Set([selectedTeacherLookup.schoolKey]);
+    }
+
+    const normalizedTeacher = selectedTeacherLookup.name.trim().toLowerCase();
     const keys = new Set<string>();
 
     for (const student of scopedStudentPool) {
       if ((student.teacher ?? "").trim().toLowerCase() !== normalizedTeacher) continue;
 
-      const key = normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null);
+      const key = resolveStudentSchoolKey(student);
       if (key !== "unknown") {
         keys.add(key);
       }
@@ -2005,12 +2124,14 @@ export function MonitorDashboard() {
   }, [scopedStudentPool, selectedTeacherLookup]);
 
   const selectedStudentLabel = selectedStudentLookup
-    ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn}`
-    : "Find student (name or LRN)";
-  const selectedTeacherLabel = selectedTeacherLookup ?? "Find teacher";
+    ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn} (${selectedStudentLookup.schoolCode})`
+    : "Find student (name, LRN, school)";
+  const selectedTeacherLabel = selectedTeacherLookup
+    ? `${selectedTeacherLookup.name} (${selectedTeacherLookup.schoolCode})`
+    : "Find teacher (name, school)";
   const studentRecordsLookupTerm = selectedStudentLookup
     ? selectedStudentLookup.lrn
-    : selectedTeacherLookup ?? "";
+    : selectedTeacherLookup?.name ?? "";
 
   useEffect(() => {
     if (!selectedStudentLookup) return;
@@ -2041,9 +2162,29 @@ export function MonitorDashboard() {
 
   useEffect(() => {
     if (!selectedTeacherLookup) return;
-    if (teacherLookupOptions.includes(selectedTeacherLookup)) return;
+    if (teacherLookupOptions.some((option) => option.id === selectedTeacherLookup.id)) return;
     setSelectedTeacherLookup(null);
   }, [selectedTeacherLookup, teacherLookupOptions]);
+
+  useEffect(() => {
+    if (!pendingTeacherLookupId) return;
+    const restored = teacherLookupOptions.find((option) => option.id === pendingTeacherLookupId);
+    if (!restored) return;
+
+    setSelectedTeacherLookup(restored);
+    if (restored.schoolKey !== "unknown") {
+      setSelectedSchoolScopeKey(restored.schoolKey);
+    }
+    setPendingTeacherLookupId(null);
+  }, [pendingTeacherLookupId, teacherLookupOptions]);
+
+  useEffect(() => {
+    if (!pendingTeacherLookupId) return;
+    if (isTeacherLookupSyncing) return;
+    if (teacherLookupOptions.some((option) => option.id === pendingTeacherLookupId)) return;
+
+    setPendingTeacherLookupId(null);
+  }, [isTeacherLookupSyncing, pendingTeacherLookupId, teacherLookupOptions]);
 
   useEffect(() => {
     if (!lockedSchoolContextKey) return;
@@ -3030,7 +3171,7 @@ export function MonitorDashboard() {
     if (lockedSchoolContextKey) chips.push({ id: "context", label: "Context: Locked School" });
     if (selectedSchoolScope) chips.push({ id: "school", label: `School: ${selectedSchoolScope.code}` });
     if (selectedStudentLookup) chips.push({ id: "student", label: `Student: ${selectedStudentLookup.fullName}` });
-    if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup}` });
+    if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup.name}` });
 
     return chips;
   }, [
@@ -3042,7 +3183,7 @@ export function MonitorDashboard() {
     search,
     selectedSchoolScope,
     selectedStudentLookup,
-    selectedTeacherLookup,
+    selectedTeacherLookup?.id,
     statusFilter,
   ]);
 
@@ -3056,7 +3197,7 @@ export function MonitorDashboard() {
     search,
     selectedSchoolScopeKey,
     selectedStudentLookup?.id,
-    selectedTeacherLookup,
+    selectedTeacherLookup?.id,
     statusFilter,
   ]);
 
@@ -3083,6 +3224,7 @@ export function MonitorDashboard() {
     setSelectedStudentLookup(null);
     setPendingStudentLookupId(null);
     setSelectedTeacherLookup(null);
+    setPendingTeacherLookupId(null);
     setSchoolScopeQuery("");
     setStudentLookupQuery("");
     setTeacherLookupQuery("");
@@ -3118,6 +3260,7 @@ export function MonitorDashboard() {
         setSelectedStudentLookup(null);
         setPendingStudentLookupId(null);
         setSelectedTeacherLookup(null);
+        setPendingTeacherLookupId(null);
         setSchoolScopeQuery("");
         setStudentLookupQuery("");
         setTeacherLookupQuery("");
@@ -3129,6 +3272,7 @@ export function MonitorDashboard() {
         break;
       case "teacher":
         setSelectedTeacherLookup(null);
+        setPendingTeacherLookupId(null);
         setTeacherLookupQuery("");
         break;
       case "context":
@@ -3467,6 +3611,7 @@ export function MonitorDashboard() {
                   setSelectedStudentLookup(null);
                   setPendingStudentLookupId(null);
                   setSelectedTeacherLookup(null);
+                  setPendingTeacherLookupId(null);
                   setSchoolScopeQuery("");
                   setSchoolScopeDropdownSlot(null);
                 }}
@@ -3485,6 +3630,7 @@ export function MonitorDashboard() {
                     setSelectedStudentLookup(null);
                     setPendingStudentLookupId(null);
                     setSelectedTeacherLookup(null);
+                    setPendingTeacherLookupId(null);
                     setSchoolScopeQuery("");
                     setSchoolScopeDropdownSlot(null);
                   }}
@@ -3532,7 +3678,7 @@ export function MonitorDashboard() {
                   type="text"
                   value={studentLookupQuery}
                   onChange={(event) => setStudentLookupQuery(event.target.value)}
-                  placeholder="Type student name or LRN"
+                  placeholder="Type student name, LRN, or school"
                   className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
               </div>
@@ -3544,6 +3690,7 @@ export function MonitorDashboard() {
                   setSelectedStudentLookup(null);
                   setPendingStudentLookupId(null);
                   setSelectedTeacherLookup(null);
+                  setPendingTeacherLookupId(null);
                   setStudentLookupQuery("");
                   setSchoolScopeDropdownSlot(null);
                 }}
@@ -3561,6 +3708,7 @@ export function MonitorDashboard() {
                     setSelectedStudentLookup(option);
                     setPendingStudentLookupId(null);
                     setSelectedTeacherLookup(null);
+                    setPendingTeacherLookupId(null);
                     if (option.schoolKey !== "unknown") {
                       setSelectedSchoolScopeKey(option.schoolKey);
                     }
@@ -3576,6 +3724,7 @@ export function MonitorDashboard() {
                 >
                   <span className="font-semibold">{option.fullName}</span>
                   <span className="ml-1 text-slate-500">({option.lrn})</span>
+                  <span className="ml-1 text-slate-400">{option.schoolCode} - {option.schoolName}</span>
                 </button>
               ))}
               {filteredStudentLookupOptions.length === 0 && (
@@ -3613,7 +3762,7 @@ export function MonitorDashboard() {
                   type="text"
                   value={teacherLookupQuery}
                   onChange={(event) => setTeacherLookupQuery(event.target.value)}
-                  placeholder="Type teacher name"
+                  placeholder="Type teacher name or school"
                   className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
               </div>
@@ -3623,6 +3772,7 @@ export function MonitorDashboard() {
                 type="button"
                 onClick={() => {
                   setSelectedTeacherLookup(null);
+                  setPendingTeacherLookupId(null);
                   setSelectedStudentLookup(null);
                   setPendingStudentLookupId(null);
                   setTeacherLookupQuery("");
@@ -3634,25 +3784,30 @@ export function MonitorDashboard() {
               >
                 Show all teachers
               </button>
-              {filteredTeacherLookupOptions.map((name) => (
+              {filteredTeacherLookupOptions.map((option) => (
                 <button
-                  key={name}
+                  key={option.id}
                   type="button"
                   onClick={() => {
-                    setSelectedTeacherLookup(name);
+                    setSelectedTeacherLookup(option);
+                    setPendingTeacherLookupId(null);
                     setSelectedStudentLookup(null);
                     setPendingStudentLookupId(null);
-                    setTeacherLookupQuery(name);
+                    if (option.schoolKey !== "unknown") {
+                      setSelectedSchoolScopeKey(option.schoolKey);
+                    }
+                    setTeacherLookupQuery(option.name);
                     setSchoolScopeDropdownSlot(null);
                     openStudentRecordsFromCard();
                   }}
                   className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                    selectedTeacherLookup === name
+                    selectedTeacherLookup?.id === option.id
                       ? "bg-primary-50 text-primary-800"
                       : "text-slate-700 hover:bg-slate-50"
                   }`}
                 >
-                  <span className="font-semibold">{name}</span>
+                  <span className="font-semibold">{option.name}</span>
+                  <span className="ml-1 text-slate-400">{option.schoolCode} - {option.schoolName}</span>
                 </button>
               ))}
               {filteredTeacherLookupOptions.length === 0 && (
