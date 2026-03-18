@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
+import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type { TeacherRecord, TeacherRecordPayload } from "@/types";
 
 type TeacherSyncScope = "division" | "school" | null;
@@ -52,6 +53,7 @@ export interface TeacherListParams {
   sex?: "all" | "male" | "female" | string | null;
   schoolCode?: string | null;
   schoolCodes?: string[] | null;
+  signal?: AbortSignal;
 }
 
 export interface TeacherListMeta {
@@ -97,7 +99,6 @@ interface NormalizedTeacherListParams {
 }
 
 const DataContext = createContext<TeacherDataContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 12_000;
 const SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 25;
 const MAX_PER_PAGE = 200;
@@ -281,8 +282,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   );
 
   const requestTeachers = useCallback(
-    async (tokenValue: string, params: NormalizedTeacherListParams): Promise<TeacherListResult> => {
-      const response = await apiRequestRaw<TeacherRecordsResponse>(buildListPath(params), { token: tokenValue });
+    async (tokenValue: string, params: NormalizedTeacherListParams, signal?: AbortSignal): Promise<TeacherListResult> => {
+      const response = await apiRequestRaw<TeacherRecordsResponse>(buildListPath(params), { token: tokenValue, signal });
       const data = Array.isArray(response.data?.data) ? response.data.data : [];
       const meta = normalizeMeta(response.data?.meta, params, data.length);
 
@@ -403,8 +404,11 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       const normalized = sanitizeParams(params);
 
       try {
-        return await requestTeachers(token, normalized);
+        return await requestTeachers(token, normalized, params?.signal);
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw err;
+        }
         await handleApiError(err);
         throw err;
       }
@@ -519,31 +523,17 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return;
 
-    const interval = window.setInterval(() => {
-      void syncTeachers(true);
-    }, AUTO_SYNC_INTERVAL_MS);
-
-    const syncOnFocus = () => {
-      void syncTeachers(true);
-    };
-    const syncOnRealtime = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string }>).detail;
-      if (!payload?.entity) return;
-      if (payload.entity === "teachers" || payload.entity === "dashboard" || payload.entity === "students") {
-        void syncTeachers(true);
+    return subscribeSharedSyncPolling((trigger, payload) => {
+      if (trigger === "realtime") {
+        const entity = payload?.entity ?? "";
+        if (entity === "teachers" || entity === "dashboard" || entity === "students") {
+          void syncTeachers(true);
+        }
+        return;
       }
-    };
 
-    window.addEventListener("focus", syncOnFocus);
-    window.addEventListener("online", syncOnFocus);
-    window.addEventListener("cspams:update", syncOnRealtime);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", syncOnFocus);
-      window.removeEventListener("online", syncOnFocus);
-      window.removeEventListener("cspams:update", syncOnRealtime);
-    };
+      void syncTeachers(true);
+    });
   }, [token, syncTeachers]);
 
   const value = useMemo<TeacherDataContextType>(

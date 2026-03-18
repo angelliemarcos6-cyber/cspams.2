@@ -67,13 +67,16 @@ class SchoolRecordController extends Controller
         $recordCount = $syncFingerprint['recordCount'];
         $latestAt = $syncFingerprint['latestAt'];
         $etag = $this->buildSyncEtag($scope, $scopeKey, $syncFingerprint);
+        $requestedPerPage = $request->integer('per_page');
+        $shouldPaginate = $request->boolean('paginate') || $requestedPerPage > 0;
+        $perPage = $this->resolvePerPage($request);
 
         $incomingEtag = trim((string) $request->header('If-None-Match'));
         if ($incomingEtag !== '' && trim($incomingEtag, '"') === $etag) {
             return $this->buildNotModifiedResponse($etag, $scope, $scopeKey, $recordCount, $latestAt);
         }
 
-        $records = (clone $baseQuery)
+        $query = (clone $baseQuery)
             ->with('submittedBy:id,name')
             ->with(['schoolHeadAccounts' => function ($query): void {
                 $query->select([
@@ -93,8 +96,26 @@ class SchoolRecordController extends Controller
             }])
             ->withCount('students')
             ->orderByDesc('submitted_at')
-            ->orderByDesc('updated_at')
-            ->get();
+            ->orderByDesc('updated_at');
+
+        $records = collect();
+        $paginationMeta = null;
+
+        if ($shouldPaginate) {
+            $paginator = $query->paginate($perPage)->appends($request->query());
+            $records = collect($paginator->items());
+            $paginationMeta = [
+                'currentPage' => $paginator->currentPage(),
+                'lastPage' => $paginator->lastPage(),
+                'perPage' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+                'hasMorePages' => $paginator->hasMorePages(),
+            ];
+        } else {
+            $records = $query->get();
+        }
 
         $targetsMet = $this->buildTargetsMetSummary(clone $baseQuery);
         $syncAlerts = $this->buildSyncAlerts($targetsMet);
@@ -105,7 +126,8 @@ class SchoolRecordController extends Controller
                 'syncedAt' => $syncedAt,
                 'scope' => $scope,
                 'scopeKey' => $scopeKey,
-                'recordCount' => $records->count(),
+                'recordCount' => $recordCount,
+                'pagination' => $paginationMeta,
                 'targetsMet' => $targetsMet,
                 'alerts' => $syncAlerts,
             ],
@@ -1213,6 +1235,17 @@ class SchoolRecordController extends Controller
             (string) $syncFingerprint['studentCount'],
             $syncFingerprint['latestAt']?->format('U.u') ?? '0',
         ]));
+    }
+
+    private function resolvePerPage(Request $request, int $default = 50, int $max = 200): int
+    {
+        $perPage = $request->integer('per_page');
+
+        if ($perPage <= 0) {
+            return $default;
+        }
+
+        return min($perPage, $max);
     }
 
     private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon

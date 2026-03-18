@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
+import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   StudentEnrollmentStatus,
   StudentRecord,
@@ -156,7 +157,6 @@ interface NormalizedStudentListParams {
 }
 
 const DataContext = createContext<StudentDataContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 12_000;
 const SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 25;
 const MAX_PER_PAGE = 200;
@@ -992,37 +992,33 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       }, delayMs);
     };
 
-    const interval = window.setInterval(() => {
-      void syncStudents(true);
-    }, AUTO_SYNC_INTERVAL_MS);
+    const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
+      if (trigger === "realtime") {
+        if (!payload?.entity) return;
+        if (payload.entity !== "students" && payload.entity !== "dashboard") return;
 
-    const syncOnFocus = () => {
-      scheduleSync(0);
-    };
-    const syncOnRealtime = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string; schoolId?: string | number }>).detail;
-      if (!payload?.entity) return;
-      if (payload.entity !== "students" && payload.entity !== "dashboard") return;
-
-      if (role === "school_head" && user?.schoolId !== null && user?.schoolId !== undefined && payload.schoolId !== undefined && payload.schoolId !== null) {
-        if (String(payload.schoolId) !== String(user.schoolId)) {
-          return;
+        if (
+          role === "school_head"
+          && user?.schoolId !== null
+          && user?.schoolId !== undefined
+          && payload.schoolId !== undefined
+          && payload.schoolId !== null
+        ) {
+          if (String(payload.schoolId) !== String(user.schoolId)) {
+            return;
+          }
         }
+
+        scheduleSync(220);
+        return;
       }
 
-      scheduleSync(220);
-    };
-
-    window.addEventListener("focus", syncOnFocus);
-    window.addEventListener("online", syncOnFocus);
-    window.addEventListener("cspams:update", syncOnRealtime);
+      scheduleSync(0);
+    });
 
     return () => {
-      window.clearInterval(interval);
+      unsubscribe();
       clearRealtimeSyncTimer();
-      window.removeEventListener("focus", syncOnFocus);
-      window.removeEventListener("online", syncOnFocus);
-      window.removeEventListener("cspams:update", syncOnRealtime);
     };
   }, [token, syncStudents, role, user?.schoolId]);
 

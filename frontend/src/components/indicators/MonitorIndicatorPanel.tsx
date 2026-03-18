@@ -98,6 +98,11 @@ const ESCALATION_NOTE_TEMPLATES = [
   "Escalated due to missing evidence after multiple follow-ups.",
   "Escalated for policy guidance before final validation.",
 ];
+const BULK_VALIDATE_NOTE_TEMPLATES = [
+  "Validated in bulk after review of submitted indicators and notes.",
+  "Validated in bulk. No blocking data issues detected.",
+  "Validated in bulk after confirming required fields are complete.",
+];
 
 function savedViewButtonClass(view: ReviewSavedView, active: boolean): string {
   const base =
@@ -314,6 +319,40 @@ function buildDecisionNotes(action: ReviewDecisionAction, notes: string): string
   return `Escalation raised by monitor: ${trimmed}`;
 }
 
+function indicatorKey(entry: IndicatorSubmission["indicators"][number]): string {
+  return String(entry.metric?.id ?? "").trim() || String(entry.metric?.code ?? "").trim() || entry.id;
+}
+
+function normalizeComparable(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value).trim();
+}
+
+function indicatorChanged(
+  current: IndicatorSubmission["indicators"][number],
+  previous: IndicatorSubmission["indicators"][number] | null | undefined,
+): boolean {
+  if (!previous) return true;
+
+  const comparableFields: Array<[unknown, unknown]> = [
+    [current.targetDisplay ?? current.targetValue, previous.targetDisplay ?? previous.targetValue],
+    [current.actualDisplay ?? current.actualValue, previous.actualDisplay ?? previous.actualValue],
+    [current.targetTypedValue ?? null, previous.targetTypedValue ?? null],
+    [current.actualTypedValue ?? null, previous.actualTypedValue ?? null],
+    [current.complianceStatus ?? "", previous.complianceStatus ?? ""],
+    [current.remarks ?? "", previous.remarks ?? ""],
+  ];
+
+  return comparableFields.some(([left, right]) => normalizeComparable(left) !== normalizeComparable(right));
+}
+
 function toExportRows(rows: ReviewQueueRow[]): string[][] {
   const header = [
     "School",
@@ -387,6 +426,10 @@ export function MonitorIndicatorPanel({
   const [reviewAssignments, setReviewAssignments] = useState<Record<string, string>>({});
   const [batchReviewer, setBatchReviewer] = useState("");
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
+  const [bulkDecisionNotes, setBulkDecisionNotes] = useState("");
+  const [bulkSelectedTemplate, setBulkSelectedTemplate] = useState("");
+  const [bulkActionError, setBulkActionError] = useState("");
+  const [isBulkActionRunning, setIsBulkActionRunning] = useState(false);
 
   const [reviewAction, setReviewAction] = useState<ReviewActionState | null>(null);
   const [reviewActionNotes, setReviewActionNotes] = useState("");
@@ -781,6 +824,15 @@ export function MonitorIndicatorPanel({
     () => filteredRows.filter((row) => selectedIdSet.has(row.submission.id)),
     [filteredRows, selectedIdSet],
   );
+  const selectedActionableRows = useMemo(
+    () => selectedRows.filter((row) => row.status === "submitted"),
+    [selectedRows],
+  );
+
+  useEffect(() => {
+    if (selectedRows.length > 0) return;
+    setBulkActionError("");
+  }, [selectedRows.length]);
 
   const allVisibleSelected = filteredRows.length > 0 && selectedRows.length === filteredRows.length;
 
@@ -821,6 +873,24 @@ export function MonitorIndicatorPanel({
 
   const detailHistory = detailSubmissionId ? historyBySubmissionId[detailSubmissionId] ?? [] : [];
   const isDetailHistoryLoading = detailSubmissionId !== null && historyLoadingSubmissionId === detailSubmissionId;
+  const previousIndicatorByKey = useMemo(() => {
+    if (!detailRow?.previousSubmission) {
+      return new Map<string, IndicatorSubmission["indicators"][number]>();
+    }
+
+    return new Map(
+      detailRow.previousSubmission.indicators
+        .map((entry) => [indicatorKey(entry), entry] as const)
+        .filter(([key]) => key.length > 0),
+    );
+  }, [detailRow?.previousSubmission]);
+  const changedIndicatorCount = useMemo(() => {
+    if (!detailRow) return 0;
+    return detailRow.submission.indicators.reduce((count, entry) => {
+      const previous = previousIndicatorByKey.get(indicatorKey(entry));
+      return count + Number(indicatorChanged(entry, previous));
+    }, 0);
+  }, [detailRow, previousIndicatorByKey]);
 
   const ensureHistoryLoaded = async (submissionId: string) => {
     if (historyBySubmissionId[submissionId]) {
@@ -1136,6 +1206,83 @@ export function MonitorIndicatorPanel({
         : `Assigned ${batchReviewer.trim()} to ${selectedRows.length} package(s).`;
 
     onToast?.(message, "success");
+  };
+
+  const applyBulkNoteTemplate = () => {
+    if (!bulkSelectedTemplate.trim()) {
+      setBulkActionError("Select a note template to assign.");
+      return;
+    }
+
+    setBulkDecisionNotes(bulkSelectedTemplate.trim());
+    setBulkActionError("");
+  };
+
+  const runBulkReviewAction = async (decision: "validated" | "returned") => {
+    if (isBulkActionRunning) {
+      return;
+    }
+
+    if (selectedActionableRows.length === 0) {
+      setBulkActionError("Select submitted rows before running bulk review.");
+      onToast?.("Only submitted rows can be processed in bulk.", "warning");
+      return;
+    }
+
+    const trimmedNotes = bulkDecisionNotes.trim();
+    if (decision === "returned" && trimmedNotes.length === 0) {
+      setBulkActionError("Bulk return requires a note. Assign a template or write a note.");
+      return;
+    }
+
+    setBulkActionError("");
+    setActionError("");
+    setActionMessage("");
+    setIsBulkActionRunning(true);
+
+    const successfulIds: string[] = [];
+    const failedRows: Array<{ submissionId: string; reason: string }> = [];
+    const backendNotes =
+      decision === "validated"
+        ? trimmedNotes || undefined
+        : buildDecisionNotes("returned", trimmedNotes) ?? trimmedNotes;
+
+    for (const row of selectedActionableRows) {
+      try {
+        await reviewSubmission(row.submission.id, decision, backendNotes);
+        successfulIds.push(row.submission.id);
+        await ensureHistoryLoaded(row.submission.id);
+        if (row.schoolKey !== "unknown") {
+          onReviewCompleted?.({
+            schoolKey: row.schoolKey,
+            schoolName: row.schoolName,
+            action: decision,
+            submissionId: row.submission.id,
+          });
+        }
+      } catch (err) {
+        failedRows.push({
+          submissionId: row.submission.id,
+          reason: err instanceof Error ? err.message : "Request failed.",
+        });
+      }
+    }
+
+    if (successfulIds.length > 0) {
+      const actionLabel = decision === "validated" ? "validated" : "returned";
+      const successMessage = `Bulk action complete: ${successfulIds.length} package(s) ${actionLabel}.`;
+      setActionMessage(successMessage);
+      onToast?.(successMessage, decision === "validated" ? "success" : "warning");
+      setSelectedSubmissionIds((current) => current.filter((id) => !successfulIds.includes(id)));
+    }
+
+    if (failedRows.length > 0) {
+      const errorMessage = `Bulk action had ${failedRows.length} failure(s).`;
+      setBulkActionError(errorMessage);
+      onToast?.(errorMessage, "warning");
+    }
+
+    setIsBulkActionRunning(false);
   };
 
   const sendBatchReminders = async () => {
@@ -1573,64 +1720,138 @@ export function MonitorIndicatorPanel({
             </div>
 
             {selectedRows.length > 0 ? (
-              <div className="mt-3 flex flex-wrap items-end gap-2">
-                <div>
-                  <label className="mb-1 block text-[11px] font-medium text-slate-600">Batch reviewer</label>
-                  <div className="inline-flex items-center gap-2">
-                    <select
-                      value={batchReviewer}
-                      onChange={(event) => setBatchReviewer(event.target.value)}
-                      className="rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                    >
-                      <option value={UNASSIGNED_REVIEWER_VALUE}>Unassigned</option>
-                      {reviewerOptions.map((reviewer) => (
-                        <option key={`batch-reviewer-${reviewer}`} value={reviewer}>
-                          {reviewer}
-                        </option>
-                      ))}
-                    </select>
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-600">Batch reviewer</label>
+                    <div className="inline-flex items-center gap-2">
+                      <select
+                        value={batchReviewer}
+                        onChange={(event) => setBatchReviewer(event.target.value)}
+                        className="rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                      >
+                        <option value={UNASSIGNED_REVIEWER_VALUE}>Unassigned</option>
+                        {reviewerOptions.map((reviewer) => (
+                          <option key={`batch-reviewer-${reviewer}`} value={reviewer}>
+                            {reviewer}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={applyBatchReviewer}
+                        className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void sendBatchReminders()}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    Send reminders
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={exportSelectedRows}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export selected
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={exportFilteredRows}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export filtered
+                  </button>
+
+                  <p className="text-xs text-slate-500">
+                    {selectedRows.length} selected | {selectedActionableRows.length} actionable
+                  </p>
+                </div>
+
+                <div className="rounded-sm border border-slate-200 bg-white p-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Bulk Review Actions</p>
+                  <div className="mt-2 grid gap-2 md:grid-cols-[240px_auto]">
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-medium text-slate-600">Note template</label>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={bulkSelectedTemplate}
+                          onChange={(event) => setBulkSelectedTemplate(event.target.value)}
+                          className="min-w-0 flex-1 rounded-sm border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        >
+                          <option value="">Select template</option>
+                          {[...RETURN_NOTE_TEMPLATES, ...BULK_VALIDATE_NOTE_TEMPLATES].map((template) => (
+                            <option key={`bulk-template-${template}`} value={template}>
+                              {template}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={applyBulkNoteTemplate}
+                          className="rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                        >
+                          Assign
+                        </button>
+                      </div>
+                    </div>
+                    <label className="block">
+                      <span className="mb-1 block text-[11px] font-medium text-slate-600">Bulk notes</span>
+                      <textarea
+                        value={bulkDecisionNotes}
+                        onChange={(event) => {
+                          setBulkDecisionNotes(event.target.value);
+                          setBulkActionError("");
+                        }}
+                        rows={3}
+                        placeholder="Optional for validate. Required for return."
+                        className={`w-full rounded-sm border bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition ${
+                          bulkActionError
+                            ? "border-rose-300 focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                            : "border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        }`}
+                      />
+                    </label>
+                  </div>
+                  {bulkActionError && (
+                    <p className="mt-2 text-[11px] font-semibold text-rose-700">{bulkActionError}</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={applyBatchReviewer}
-                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                      onClick={() => void runBulkReviewAction("validated")}
+                      disabled={isBulkActionRunning || isSaving || isLoading || selectedActionableRows.length === 0}
+                      className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      <UserPlus className="h-3.5 w-3.5" />
-                      Apply
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      {isBulkActionRunning ? "Processing..." : "Validate selected"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void runBulkReviewAction("returned")}
+                      disabled={isBulkActionRunning || isSaving || isLoading || selectedActionableRows.length === 0}
+                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {isBulkActionRunning ? "Processing..." : "Return selected"}
                     </button>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => void sendBatchReminders()}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <Mail className="h-3.5 w-3.5" />
-                  Send reminders
-                </button>
-
-                <button
-                  type="button"
-                  onClick={exportSelectedRows}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Export selected
-                </button>
-
-                <button
-                  type="button"
-                  onClick={exportFilteredRows}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Export filtered
-                </button>
-
-                <p className="text-xs text-slate-500">{selectedRows.length} selected</p>
               </div>
             ) : (
-              <p className="mt-3 text-xs text-slate-500">Select queue rows to enable batch assignment, reminders, and exports.</p>
+              <p className="mt-3 text-xs text-slate-500">Select queue rows to enable batch actions, reminders, and exports.</p>
             )}
           </div>
         )}
@@ -2003,6 +2224,9 @@ export function MonitorIndicatorPanel({
                     Submitted indicators: <span className="font-semibold text-slate-700">{detailRow.metIndicatorCount}/{detailRow.indicatorCount}</span> met
                     {" "}({detailRow.complianceRatePercent.toFixed(2)}% compliance)
                   </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Changed since last package: <span className="font-semibold text-slate-700">{changedIndicatorCount}</span>
+                  </p>
                   <div className="mt-2 overflow-x-auto">
                     <table className="min-w-full">
                       <thead className="table-head-sticky">
@@ -2015,14 +2239,34 @@ export function MonitorIndicatorPanel({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {detailRow.submission.indicators.map((entry) => (
-                          <tr key={entry.id}>
+                        {detailRow.submission.indicators.map((entry) => {
+                          const previousEntry = previousIndicatorByKey.get(indicatorKey(entry));
+                          const isChanged = indicatorChanged(entry, previousEntry);
+                          return (
+                          <tr key={entry.id} className={isChanged ? "bg-amber-50/60" : ""}>
                             <td className="px-2 py-2 text-xs text-slate-700">
-                              <p className="font-semibold text-slate-900">{entry.metric?.code || "N/A"}</p>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <p className="font-semibold text-slate-900">{entry.metric?.code || "N/A"}</p>
+                                {isChanged && (
+                                  <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                    Changed
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-slate-500">{entry.metric?.name || "Unknown metric"}</p>
                             </td>
-                            <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetDisplay ?? entry.targetValue}</td>
-                            <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualDisplay ?? entry.actualValue}</td>
+                            <td className="px-2 py-2 text-right text-xs text-slate-700">
+                              <p>{entry.targetDisplay ?? entry.targetValue}</p>
+                              {isChanged && previousEntry && (
+                                <p className="text-[10px] text-slate-500">Prev: {previousEntry.targetDisplay ?? previousEntry.targetValue}</p>
+                              )}
+                            </td>
+                            <td className="px-2 py-2 text-right text-xs text-slate-700">
+                              <p>{entry.actualDisplay ?? entry.actualValue}</p>
+                              {isChanged && previousEntry && (
+                                <p className="text-[10px] text-slate-500">Prev: {previousEntry.actualDisplay ?? previousEntry.actualValue}</p>
+                              )}
+                            </td>
                             <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.varianceValue}</td>
                             <td className="px-2 py-2 text-center">
                               <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${complianceTone(entry.complianceStatus)}`}>
@@ -2030,7 +2274,8 @@ export function MonitorIndicatorPanel({
                               </span>
                             </td>
                           </tr>
-                        ))}
+                        );
+                        })}
                       </tbody>
                     </table>
                   </div>

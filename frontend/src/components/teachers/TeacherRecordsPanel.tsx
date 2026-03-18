@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useTeacherData } from "@/context/TeacherData";
 import type { TeacherRecord, TeacherRecordPayload } from "@/types";
@@ -21,7 +21,21 @@ const EMPTY_FORM: TeacherFormState = {
   sex: "",
 };
 
-const TEACHER_PAGE_SIZE = 10;
+const TEACHER_PAGE_SIZE = 100;
+const SEARCH_DEBOUNCE_MS = 280;
+const TEACHER_TABLE_ROW_HEIGHT_PX = 54;
+const TEACHER_TABLE_OVERSCAN_ROWS = 8;
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [value, delayMs]);
+
+  return debouncedValue;
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) return "N/A";
@@ -77,6 +91,7 @@ export function TeacherRecordsPanel({
   } = useTeacherData();
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [sexFilter, setSexFilter] = useState<"all" | "male" | "female">("all");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,10 +106,18 @@ export function TeacherRecordsPanel({
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [pageError, setPageError] = useState("");
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
+  const pageAbortRef = useRef<AbortController | null>(null);
+  const pageRequestIdRef = useRef(0);
+  const tableViewportRef = useRef<HTMLDivElement | null>(null);
+  const [tableViewportHeight, setTableViewportHeight] = useState(0);
+  const [tableScrollTop, setTableScrollTop] = useState(0);
 
   const loadTeachersPage = useCallback(
     async (nextPage: number, silent = false) => {
       if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
+        pageRequestIdRef.current += 1;
+        pageAbortRef.current?.abort();
+        pageAbortRef.current = null;
         setPagedTeachers([]);
         setTotalTeachers(0);
         setTotalPages(1);
@@ -109,16 +132,27 @@ export function TeacherRecordsPanel({
         setIsPageLoading(true);
       }
 
+      if (pageAbortRef.current) {
+        pageAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      pageAbortRef.current = controller;
+      const requestId = ++pageRequestIdRef.current;
       setPageError("");
 
       try {
         const result = await listTeachers({
           page: nextPage,
           perPage: TEACHER_PAGE_SIZE,
-          search: search.trim() || null,
+          search: debouncedSearch.trim() || null,
           sex: sexFilter === "all" ? null : sexFilter,
           schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
+          signal: controller.signal,
         });
+
+        if (controller.signal.aborted || requestId !== pageRequestIdRef.current) {
+          return;
+        }
 
         setPagedTeachers(result.data);
         setTotalTeachers(result.meta.total);
@@ -128,29 +162,103 @@ export function TeacherRecordsPanel({
           setPage(result.meta.currentPage);
         }
       } catch (err) {
+        if (controller.signal.aborted || requestId !== pageRequestIdRef.current) {
+          return;
+        }
         setPagedTeachers([]);
         setTotalTeachers(0);
         setTotalPages(1);
         setPageError(err instanceof Error ? err.message : "Unable to load teacher records.");
       } finally {
-        if (!silent) {
+        if (pageAbortRef.current === controller) {
+          pageAbortRef.current = null;
+        }
+        if (!silent && requestId === pageRequestIdRef.current) {
           setIsPageLoading(false);
         }
       }
     },
-    [listTeachers, schoolFilterKeys, scopedSchoolCodes, search, sexFilter],
+    [listTeachers, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, sexFilter],
   );
 
   const safePage = Math.max(1, Math.min(page, totalPages));
   const paginatedTeachers = pagedTeachers;
+  const desktopTableColumnCount =
+    (showSchoolColumn ? 1 : 0)
+    + 3
+    + (editable ? 1 : 0);
+  const virtualTeacherWindow = useMemo(() => {
+    if (paginatedTeachers.length === 0) {
+      return {
+        startIndex: 0,
+        endIndexExclusive: 0,
+        topPaddingPx: 0,
+        bottomPaddingPx: 0,
+      };
+    }
+
+    const visibleRows = tableViewportHeight > 0
+      ? Math.ceil(tableViewportHeight / TEACHER_TABLE_ROW_HEIGHT_PX)
+      : paginatedTeachers.length;
+    const startIndex = Math.max(0, Math.floor(tableScrollTop / TEACHER_TABLE_ROW_HEIGHT_PX) - TEACHER_TABLE_OVERSCAN_ROWS);
+    const endIndexExclusive = Math.min(
+      paginatedTeachers.length,
+      startIndex + visibleRows + TEACHER_TABLE_OVERSCAN_ROWS * 2,
+    );
+    const topPaddingPx = startIndex * TEACHER_TABLE_ROW_HEIGHT_PX;
+    const bottomPaddingPx = Math.max(
+      0,
+      (paginatedTeachers.length - endIndexExclusive) * TEACHER_TABLE_ROW_HEIGHT_PX,
+    );
+
+    return {
+      startIndex,
+      endIndexExclusive,
+      topPaddingPx,
+      bottomPaddingPx,
+    };
+  }, [paginatedTeachers.length, tableScrollTop, tableViewportHeight]);
+  const virtualizedTeachers = useMemo(
+    () => paginatedTeachers.slice(virtualTeacherWindow.startIndex, virtualTeacherWindow.endIndexExclusive),
+    [paginatedTeachers, virtualTeacherWindow.endIndexExclusive, virtualTeacherWindow.startIndex],
+  );
 
   useEffect(() => {
     setPage(1);
-  }, [search, sexFilter, schoolFilterKeys, scopedSchoolCodes]);
+  }, [debouncedSearch, sexFilter, schoolFilterKeys, scopedSchoolCodes]);
+
+  useEffect(() => {
+    const viewport = tableViewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    const updateSize = () => setTableViewportHeight(viewport.clientHeight);
+    updateSize();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateSize);
+      return () => window.removeEventListener("resize", updateSize);
+    }
+
+    const resizeObserver = new ResizeObserver(() => updateSize());
+    resizeObserver.observe(viewport);
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   useEffect(() => {
     void loadTeachersPage(page, false);
   }, [page, loadTeachersPage]);
+
+  useEffect(() => () => {
+    pageAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    tableViewportRef.current?.scrollTo({ top: 0 });
+    setTableScrollTop(0);
+  }, [page, debouncedSearch, sexFilter, schoolFilterKeys, scopedSchoolCodes]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -412,56 +520,72 @@ export function TeacherRecordsPanel({
             ))}
           </div>
 
-          <div className="hidden overflow-x-auto px-5 py-4 md:block">
-            <table className="min-w-full">
-              <thead className="table-head-sticky">
-                <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                  {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
-                  <th className="px-2 py-2 text-left">Name</th>
-                  <th className="px-2 py-2 text-left">Sex</th>
-                  <th className="px-2 py-2 text-left">Last Updated</th>
-                  {editable && <th className="px-2 py-2 text-center">Action</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginatedTeachers.map((teacher) => (
-                  <tr key={teacher.id}>
-                    {showSchoolColumn && (
-                      <td className="px-2 py-2">
-                        <p className="text-sm font-semibold text-slate-900">{teacher.school?.name ?? "N/A"}</p>
-                        <p className="text-xs text-slate-500">{teacher.school?.schoolCode ?? ""}</p>
-                      </td>
-                    )}
-                    <td className="px-2 py-2 text-sm font-semibold text-slate-900">{teacher.name}</td>
-                    <td className="px-2 py-2 text-sm text-slate-700">{teacher.sex ? teacher.sex.charAt(0).toUpperCase() + teacher.sex.slice(1) : "N/A"}</td>
-                    <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(teacher.updatedAt)}</td>
-                    {editable && (
-                      <td className="px-2 py-2">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(teacher)}
-                            className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(teacher)}
-                            disabled={deletingId === teacher.id}
-                            className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {deletingId === teacher.id ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
-                      </td>
-                    )}
+          <div className="hidden px-5 py-4 md:block">
+            <div
+              ref={tableViewportRef}
+              onScroll={(event) => setTableScrollTop(event.currentTarget.scrollTop)}
+              className="max-h-[64vh] overflow-auto"
+            >
+              <table className="min-w-full">
+                <thead className="table-head-sticky">
+                  <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                    {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
+                    <th className="px-2 py-2 text-left">Name</th>
+                    <th className="px-2 py-2 text-left">Sex</th>
+                    <th className="px-2 py-2 text-left">Last Updated</th>
+                    {editable && <th className="px-2 py-2 text-center">Action</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {virtualTeacherWindow.topPaddingPx > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={desktopTableColumnCount} className="border-0 p-0" style={{ height: `${virtualTeacherWindow.topPaddingPx}px` }} />
+                    </tr>
+                  )}
+                  {virtualizedTeachers.map((teacher) => (
+                    <tr key={teacher.id}>
+                      {showSchoolColumn && (
+                        <td className="px-2 py-2">
+                          <p className="text-sm font-semibold text-slate-900">{teacher.school?.name ?? "N/A"}</p>
+                          <p className="text-xs text-slate-500">{teacher.school?.schoolCode ?? ""}</p>
+                        </td>
+                      )}
+                      <td className="px-2 py-2 text-sm font-semibold text-slate-900">{teacher.name}</td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{teacher.sex ? teacher.sex.charAt(0).toUpperCase() + teacher.sex.slice(1) : "N/A"}</td>
+                      <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(teacher.updatedAt)}</td>
+                      {editable && (
+                        <td className="px-2 py-2">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(teacher)}
+                              className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDelete(teacher)}
+                              disabled={deletingId === teacher.id}
+                              className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {deletingId === teacher.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {virtualTeacherWindow.bottomPaddingPx > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={desktopTableColumnCount} className="border-0 p-0" style={{ height: `${virtualTeacherWindow.bottomPaddingPx}px` }} />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">

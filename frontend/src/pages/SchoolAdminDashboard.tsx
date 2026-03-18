@@ -1215,7 +1215,7 @@ export function SchoolAdminDashboard() {
         }`}
       >
       <aside className="dashboard-side-rail ml-0 w-full rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:ml-3 lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
-        <div className="flex min-h-full flex-col lg:sticky lg:top-2">
+        <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
             <div className="flex items-center">

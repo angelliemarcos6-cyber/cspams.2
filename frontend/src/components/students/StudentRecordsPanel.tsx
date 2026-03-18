@@ -63,9 +63,11 @@ const EMPTY_FORM: StudentFormState = {
   riskLevel: "low",
 };
 
-const STUDENT_PAGE_SIZE = 10;
+const STUDENT_PAGE_SIZE = 100;
 const SEARCH_DEBOUNCE_MS = 280;
 const HISTORY_PAGE_SIZE = 12;
+const STUDENT_TABLE_ROW_HEIGHT_PX = 58;
+const STUDENT_TABLE_OVERSCAN_ROWS = 8;
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -335,6 +337,9 @@ export function StudentRecordsPanel({
   const paginatedStudents = pagedStudents;
   const showAcademicYearColumn = academicYearFilter === "all";
   const selectedCount = batchDeleteEnabled ? selectedStudentIds.size : 0;
+  const tableViewportRef = useRef<HTMLDivElement | null>(null);
+  const [tableViewportHeight, setTableViewportHeight] = useState(0);
+  const [tableScrollTop, setTableScrollTop] = useState(0);
   const allVisibleSelected =
     batchDeleteEnabled
     && paginatedStudents.length > 0
@@ -344,10 +349,71 @@ export function StudentRecordsPanel({
     && paginatedStudents.some((student) => selectedStudentIds.has(student.id));
   const isDeletingAny = deletingIds.size > 0;
   const showActionColumn = true;
+  const desktopTableColumnCount =
+    (editable && batchDeleteEnabled ? 1 : 0)
+    + (showSchoolColumn ? 1 : 0)
+    + (showAcademicYearColumn ? 1 : 0)
+    + 8
+    + (showActionColumn ? 1 : 0);
+  const virtualStudentWindow = useMemo(() => {
+    if (paginatedStudents.length === 0) {
+      return {
+        startIndex: 0,
+        endIndexExclusive: 0,
+        topPaddingPx: 0,
+        bottomPaddingPx: 0,
+      };
+    }
+
+    const visibleRows = tableViewportHeight > 0
+      ? Math.ceil(tableViewportHeight / STUDENT_TABLE_ROW_HEIGHT_PX)
+      : paginatedStudents.length;
+    const startIndex = Math.max(0, Math.floor(tableScrollTop / STUDENT_TABLE_ROW_HEIGHT_PX) - STUDENT_TABLE_OVERSCAN_ROWS);
+    const endIndexExclusive = Math.min(
+      paginatedStudents.length,
+      startIndex + visibleRows + STUDENT_TABLE_OVERSCAN_ROWS * 2,
+    );
+    const topPaddingPx = startIndex * STUDENT_TABLE_ROW_HEIGHT_PX;
+    const bottomPaddingPx = Math.max(
+      0,
+      (paginatedStudents.length - endIndexExclusive) * STUDENT_TABLE_ROW_HEIGHT_PX,
+    );
+
+    return {
+      startIndex,
+      endIndexExclusive,
+      topPaddingPx,
+      bottomPaddingPx,
+    };
+  }, [paginatedStudents.length, tableScrollTop, tableViewportHeight]);
+  const virtualizedStudents = useMemo(
+    () => paginatedStudents.slice(virtualStudentWindow.startIndex, virtualStudentWindow.endIndexExclusive),
+    [paginatedStudents, virtualStudentWindow.endIndexExclusive, virtualStudentWindow.startIndex],
+  );
 
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter, schoolFilterKeys, scopedSchoolCodes, academicYearFilter]);
+
+  useEffect(() => {
+    const viewport = tableViewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    const updateSize = () => setTableViewportHeight(viewport.clientHeight);
+    updateSize();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateSize);
+      return () => window.removeEventListener("resize", updateSize);
+    }
+
+    const resizeObserver = new ResizeObserver(() => updateSize());
+    resizeObserver.observe(viewport);
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   useEffect(() => {
     if (academicYearFilter === "current" || academicYearFilter === "all") {
@@ -408,6 +474,11 @@ export function StudentRecordsPanel({
     pageAbortRef.current?.abort();
     historyAbortRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    tableViewportRef.current?.scrollTo({ top: 0 });
+    setTableScrollTop(0);
+  }, [page, debouncedSearch, statusFilter, academicYearFilter, schoolFilterKeys, scopedSchoolCodes, showAcademicYearColumn, batchDeleteEnabled]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -1113,110 +1184,126 @@ export function StudentRecordsPanel({
             ))}
           </div>
 
-          <div className="hidden overflow-x-auto px-5 py-4 md:block">
-            <table className="min-w-full">
-              <thead className="table-head-sticky">
-                <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                  {editable && batchDeleteEnabled && (
-                    <th className="px-2 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={allVisibleSelected}
-                        onChange={toggleSelectAllVisible}
-                        disabled={paginatedStudents.length === 0 || isDeletingAny}
-                        aria-label={allVisibleSelected ? "Unselect all students on page" : "Select all students on page"}
-                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
-                      />
-                    </th>
-                  )}
-                  {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
-                  {showAcademicYearColumn && <th className="px-2 py-2 text-left">School Year</th>}
-                  <th className="px-2 py-2 text-left">LRN</th>
-                  <th className="px-2 py-2 text-left">Name</th>
-                  <th className="px-2 py-2 text-center">Age</th>
-                  <th className="px-2 py-2 text-left">Sex</th>
-                  <th className="px-2 py-2 text-left">Section</th>
-                  <th className="px-2 py-2 text-left">Teacher</th>
-                  <th className="px-2 py-2 text-center">Status</th>
-                  <th className="px-2 py-2 text-left">Last Updated</th>
-                  {showActionColumn && <th className="px-2 py-2 text-center">Action</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginatedStudents.map((student) => (
-                  <tr key={student.id}>
+          <div className="hidden px-5 py-4 md:block">
+            <div
+              ref={tableViewportRef}
+              onScroll={(event) => setTableScrollTop(event.currentTarget.scrollTop)}
+              className="max-h-[64vh] overflow-auto"
+            >
+              <table className="min-w-full">
+                <thead className="table-head-sticky">
+                  <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                     {editable && batchDeleteEnabled && (
-                      <td className="px-2 py-2 text-center">
+                      <th className="px-2 py-2 text-center">
                         <input
                           type="checkbox"
-                          checked={selectedStudentIds.has(student.id)}
-                          onChange={() => toggleStudentSelection(student.id)}
-                          disabled={isDeletingAny || deletingIds.has(student.id)}
-                          aria-label={`Select ${student.fullName}`}
+                          checked={allVisibleSelected}
+                          onChange={toggleSelectAllVisible}
+                          disabled={paginatedStudents.length === 0 || isDeletingAny}
+                          aria-label={allVisibleSelected ? "Unselect all students on page" : "Select all students on page"}
                           className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
                         />
+                      </th>
+                    )}
+                    {showSchoolColumn && <th className="px-2 py-2 text-left">School</th>}
+                    {showAcademicYearColumn && <th className="px-2 py-2 text-left">School Year</th>}
+                    <th className="px-2 py-2 text-left">LRN</th>
+                    <th className="px-2 py-2 text-left">Name</th>
+                    <th className="px-2 py-2 text-center">Age</th>
+                    <th className="px-2 py-2 text-left">Sex</th>
+                    <th className="px-2 py-2 text-left">Section</th>
+                    <th className="px-2 py-2 text-left">Teacher</th>
+                    <th className="px-2 py-2 text-center">Status</th>
+                    <th className="px-2 py-2 text-left">Last Updated</th>
+                    {showActionColumn && <th className="px-2 py-2 text-center">Action</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {virtualStudentWindow.topPaddingPx > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={desktopTableColumnCount} className="border-0 p-0" style={{ height: `${virtualStudentWindow.topPaddingPx}px` }} />
+                    </tr>
+                  )}
+                  {virtualizedStudents.map((student) => (
+                    <tr key={student.id}>
+                      {editable && batchDeleteEnabled && (
+                        <td className="px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedStudentIds.has(student.id)}
+                            onChange={() => toggleStudentSelection(student.id)}
+                            disabled={isDeletingAny || deletingIds.has(student.id)}
+                            aria-label={`Select ${student.fullName}`}
+                            className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                          />
+                        </td>
+                      )}
+                      {showSchoolColumn && (
+                        <td className="px-2 py-2">
+                          <p className="text-sm font-semibold text-slate-900">{student.school?.name ?? "N/A"}</p>
+                          <p className="text-xs text-slate-500">{student.school?.schoolCode ?? ""}</p>
+                        </td>
+                      )}
+                      {showAcademicYearColumn && (
+                        <td className="px-2 py-2 text-sm text-slate-700">{student.academicYear?.name ?? "N/A"}</td>
+                      )}
+                      <td className="px-2 py-2 text-sm font-semibold text-slate-900">{student.lrn}</td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{student.fullName}</td>
+                      <td className="px-2 py-2 text-center text-sm text-slate-700">{student.age ?? "N/A"}</td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{student.sex ? `${student.sex.charAt(0).toUpperCase()}${student.sex.slice(1)}` : "N/A"}</td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{student.section ?? student.currentLevel ?? "N/A"}</td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{student.teacher ?? "N/A"}</td>
+                      <td className="px-2 py-2 text-center">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(student.status)}`}>
+                          {student.statusLabel}
+                        </span>
                       </td>
-                    )}
-                    {showSchoolColumn && (
-                      <td className="px-2 py-2">
-                        <p className="text-sm font-semibold text-slate-900">{student.school?.name ?? "N/A"}</p>
-                        <p className="text-xs text-slate-500">{student.school?.schoolCode ?? ""}</p>
-                      </td>
-                    )}
-                    {showAcademicYearColumn && (
-                      <td className="px-2 py-2 text-sm text-slate-700">{student.academicYear?.name ?? "N/A"}</td>
-                    )}
-                    <td className="px-2 py-2 text-sm font-semibold text-slate-900">{student.lrn}</td>
-                    <td className="px-2 py-2 text-sm text-slate-700">{student.fullName}</td>
-                    <td className="px-2 py-2 text-center text-sm text-slate-700">{student.age ?? "N/A"}</td>
-                    <td className="px-2 py-2 text-sm text-slate-700">{student.sex ? `${student.sex.charAt(0).toUpperCase()}${student.sex.slice(1)}` : "N/A"}</td>
-                    <td className="px-2 py-2 text-sm text-slate-700">{student.section ?? student.currentLevel ?? "N/A"}</td>
-                    <td className="px-2 py-2 text-sm text-slate-700">{student.teacher ?? "N/A"}</td>
-                    <td className="px-2 py-2 text-center">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(student.status)}`}>
-                        {student.statusLabel}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(student.updatedAt)}</td>
-                    {showActionColumn && (
-                      <td className="px-2 py-2">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openHistory(student)}
-                            className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
-                          >
-                            <History className="h-3.5 w-3.5" />
-                            History
-                          </button>
-                          {editable && (
+                      <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(student.updatedAt)}</td>
+                      {showActionColumn && (
+                        <td className="px-2 py-2">
+                          <div className="flex items-center justify-center gap-2">
                             <button
                               type="button"
-                              onClick={() => openEdit(student)}
+                              onClick={() => openHistory(student)}
                               className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
                             >
-                              <Edit2 className="h-3.5 w-3.5" />
-                              Edit
+                              <History className="h-3.5 w-3.5" />
+                              History
                             </button>
-                          )}
-                          {editable && (
-                            <button
-                              type="button"
-                              onClick={() => void handleDelete(student)}
-                              disabled={isDeletingAny || deletingIds.has(student.id)}
-                              className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              {deletingIds.has(student.id) ? "Deleting..." : "Delete"}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                            {editable && (
+                              <button
+                                type="button"
+                                onClick={() => openEdit(student)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                            )}
+                            {editable && (
+                              <button
+                                type="button"
+                                onClick={() => void handleDelete(student)}
+                                disabled={isDeletingAny || deletingIds.has(student.id)}
+                                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {deletingIds.has(student.id) ? "Deleting..." : "Delete"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {virtualStudentWindow.bottomPaddingPx > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={desktopTableColumnCount} className="border-0 p-0" style={{ height: `${virtualStudentWindow.bottomPaddingPx}px` }} />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">

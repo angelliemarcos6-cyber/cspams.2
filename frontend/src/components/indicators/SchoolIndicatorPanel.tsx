@@ -164,6 +164,12 @@ const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
 
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
+const SYNC_LOCKED_METRIC_CODES = new Set([
+  "IMETA_ENROLL_TOTAL",
+  "TEACHERS_TOTAL",
+  "TEACHERS_MALE",
+  "TEACHERS_FEMALE",
+]);
 const BASE_SCHOOL_YEAR_START = 2025;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
@@ -298,6 +304,10 @@ function metricDisplayLabel(metric: IndicatorMetric): string {
 
 function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
   return Boolean(metric.isAutoCalculated);
+}
+
+function metricUsesSyncedLockedTotals(metric: IndicatorMetric): boolean {
+  return SYNC_LOCKED_METRIC_CODES.has(metric.code);
 }
 
 function categoryTabLabel(category: ComplianceCategory): string {
@@ -554,7 +564,7 @@ function collectMissingFieldsForMetric(
   categoryId: string,
   categoryLabel: string,
 ): MissingFieldTarget[] {
-  if (metricIsAutoCalculated(metric)) {
+  if (metricIsAutoCalculated(metric) || metricUsesSyncedLockedTotals(metric)) {
     return [];
   }
 
@@ -1157,7 +1167,7 @@ export function SchoolIndicatorPanel({
       const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
       const scopedYears = resolveMetricYearsInScope(metric, activeSchoolYears);
       const requiredYears = scopedYears.filter((year) => requiredSchoolYearSet.has(year));
-      if (metricIsAutoCalculated(metric)) {
+      if (metricIsAutoCalculated(metric) || metricUsesSyncedLockedTotals(metric)) {
         map.set(metric.id, true);
         continue;
       }
@@ -1730,6 +1740,7 @@ export function SchoolIndicatorPanel({
 
         const type = metricDataType(metric);
         const isAutoCalculated = metricIsAutoCalculated(metric);
+        const isSyncedLocked = metricUsesSyncedLockedTotals(metric);
 
         if (isAutoCalculated) {
           return {
@@ -1742,6 +1753,7 @@ export function SchoolIndicatorPanel({
             type,
             requiresTargetActual: false,
             isAutoCalculated: true,
+            isSyncedLocked: false,
             requiredYears: [] as string[],
             isRequired: false,
           };
@@ -1847,6 +1859,7 @@ export function SchoolIndicatorPanel({
           type,
           requiresTargetActual,
           isAutoCalculated: false,
+          isSyncedLocked,
           requiredYears,
           isRequired,
         };
@@ -1857,7 +1870,7 @@ export function SchoolIndicatorPanel({
     }
 
     const invalidEntry = entries.find((entry) => {
-      if (entry.isAutoCalculated || !entry.isRequired) {
+      if (entry.isAutoCalculated || entry.isSyncedLocked || !entry.isRequired) {
         return false;
       }
 
@@ -1997,7 +2010,7 @@ export function SchoolIndicatorPanel({
       const next = { ...entries };
 
       for (const metric of orderedComplianceMetrics) {
-        if (metricIsAutoCalculated(metric)) {
+        if (metricIsAutoCalculated(metric) || metricUsesSyncedLockedTotals(metric)) {
           continue;
         }
 
@@ -2074,7 +2087,7 @@ export function SchoolIndicatorPanel({
       const next = { ...entries };
 
       for (const metric of orderedComplianceMetrics) {
-        if (metricIsAutoCalculated(metric)) {
+        if (metricIsAutoCalculated(metric) || metricUsesSyncedLockedTotals(metric)) {
           continue;
         }
 
@@ -2181,6 +2194,15 @@ export function SchoolIndicatorPanel({
 
     const prepared = buildSubmissionPayload();
     if (!prepared.payload) {
+      if (missingFieldTargets.length > 0) {
+        setSubmitError("");
+        setShowMissingFields(true);
+        const firstMissing = missingFieldTargets[0];
+        if (firstMissing) {
+          focusMissingTarget(firstMissing, missingFieldTargets.length > 1 ? 1 : 0);
+        }
+        return;
+      }
       setSubmitError(prepared.reason);
       return;
     }
@@ -2198,6 +2220,15 @@ export function SchoolIndicatorPanel({
 
     const prepared = buildSubmissionPayload();
     if (!prepared.payload) {
+      if (missingFieldTargets.length > 0) {
+        setSubmitError("");
+        setShowMissingFields(true);
+        const firstMissing = missingFieldTargets[0];
+        if (firstMissing) {
+          focusMissingTarget(firstMissing, missingFieldTargets.length > 1 ? 1 : 0);
+        }
+        return;
+      }
       setSubmitError(prepared.reason);
       return;
     }
@@ -2755,6 +2786,7 @@ export function SchoolIndicatorPanel({
                       const useSelectInput = selectOptions.length > 0;
                       const isComplete = metricCompletionById.get(metric.id) ?? false;
                       const isAutoCalculated = metricIsAutoCalculated(metric);
+                      const isSyncedLockedMetric = metricUsesSyncedLockedTotals(metric);
                       const baseRowTone =
                         metric.code === "IMETA_HEAD_NAME"
                           ? "bg-primary-50"
@@ -2780,6 +2812,11 @@ export function SchoolIndicatorPanel({
                                 Auto-calculated
                               </p>
                             )}
+                            {!isAutoCalculated && isSyncedLockedMetric && (
+                              <p className="mt-0.5 text-[10px] font-medium text-primary-700">
+                                Synced total (locked)
+                              </p>
+                            )}
                           </td>
                           {activeSchoolYears.map((year) => {
                             const placeholder =
@@ -2794,6 +2831,7 @@ export function SchoolIndicatorPanel({
                             const valueMissing = missingFieldByCellId.get(valueCellId);
                             const targetMissing = missingFieldByCellId.get(targetCellId);
                             const actualMissing = missingFieldByCellId.get(actualCellId);
+                            const isLockedSyncedYear = isSyncedLockedMetric && autoSyncTargetYears.includes(year);
                             const autoTargetValue = String(current.targetMatrix[year] ?? "").trim();
                             const autoActualValue = String(current.actualMatrix[year] ?? "").trim();
                             const autoSingleValue = autoActualValue !== "" ? autoActualValue : autoTargetValue;
@@ -2841,6 +2879,33 @@ export function SchoolIndicatorPanel({
                               );
                             }
 
+                            if (isLockedSyncedYear) {
+                              if (activeCategory.mode !== "target_actual") {
+                                return (
+                                  <td key={`${metric.id}-${year}-synced`} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                    <span className="text-[11px] font-semibold text-primary-700">
+                                      {autoSingleValue !== "" ? autoSingleValue : "Synced"}
+                                    </span>
+                                  </td>
+                                );
+                              }
+
+                              return (
+                                <Fragment key={`${metric.id}-${year}-synced`}>
+                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                    <span className="text-[11px] font-semibold text-primary-700">
+                                      {autoTargetValue !== "" ? autoTargetValue : "Synced"}
+                                    </span>
+                                  </td>
+                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                    <span className="text-[11px] font-semibold text-primary-700">
+                                      {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "Synced")}
+                                    </span>
+                                  </td>
+                                </Fragment>
+                              );
+                            }
+
                             if (activeCategory.mode !== "target_actual") {
                               return (
                                 <td key={`${metric.id}-${year}`} className="relative min-w-[170px] border border-slate-300 p-1 align-middle">
@@ -2874,6 +2939,11 @@ export function SchoolIndicatorPanel({
                                     <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
                                       Req
                                     </span>
+                                  )}
+                                  {valueMissing && (
+                                    <p className="mt-1 text-[10px] font-medium text-amber-700">
+                                      Required
+                                    </p>
                                   )}
                                 </td>
                               );
@@ -2913,6 +2983,11 @@ export function SchoolIndicatorPanel({
                                       Req
                                     </span>
                                   )}
+                                  {targetMissing && (
+                                    <p className="mt-1 text-[10px] font-medium text-amber-700">
+                                      Required target
+                                    </p>
+                                  )}
                                 </td>
                                 <td className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
@@ -2945,6 +3020,11 @@ export function SchoolIndicatorPanel({
                                     <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
                                       Req
                                     </span>
+                                  )}
+                                  {actualMissing && (
+                                    <p className="mt-1 text-[10px] font-medium text-amber-700">
+                                      Required actual
+                                    </p>
                                   )}
                                 </td>
                               </Fragment>
@@ -2995,12 +3075,6 @@ export function SchoolIndicatorPanel({
             All records is view-only. Select a specific academic year to save or submit.
           </p>
         )}
-        {missingFieldTargets.length > 0 && (
-          <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-            Submit is disabled until required fields are complete. {submitBlockedReason}
-          </p>
-        )}
-
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="submit"

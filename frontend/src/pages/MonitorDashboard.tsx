@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -66,9 +66,11 @@ type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 type WorkflowStatus = Exclude<RequirementFilter, "all">;
 type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
-type MonitorTopNavigatorId = "action_queue" | "schools" | "compliance_review" | "reports";
+type SchoolQuickPreset = "all" | "pending" | "returned" | "no_submission" | "high_risk";
+type SchoolDrawerTab = "snapshot" | "submissions" | "history";
+type MonitorTopNavigatorId = "overview" | "schools" | "reviews";
 type ScopeDropdownSlot = "schools" | "students" | "teachers";
-type FilterChipId = "search" | "status" | "requirement" | "lane" | "school" | "student" | "teacher" | "date" | "context";
+type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date" | "context";
 type ToastTone = "success" | "info" | "warning";
 
 interface MonitorTopNavigatorItem {
@@ -233,6 +235,7 @@ interface PersistedMonitorFilters {
   statusFilter?: SchoolStatus | "all";
   requirementFilter?: RequirementFilter;
   queueLane?: QueueLane;
+  schoolQuickPreset?: SchoolQuickPreset;
   schoolScopeKey?: string;
   studentLookupId?: string | null;
   teacherLookupId?: string | null;
@@ -244,59 +247,47 @@ interface PersistedMonitorFilters {
 
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
-  { id: "action_queue", label: "My Queue" },
+  { id: "overview", label: "Overview" },
   { id: "schools", label: "Schools" },
-  { id: "reports", label: "Reports" },
+  { id: "reviews", label: "Reviews" },
 ];
 
 const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIcon> = {
-  action_queue: ListChecks,
+  overview: LayoutDashboard,
   schools: Building2,
-  compliance_review: ClipboardList,
-  reports: LayoutDashboard,
+  reviews: ClipboardList,
 };
 
 const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
-    id: "action_queue",
-    title: "My Queue",
-    objective: "Start in one workspace for urgent schools and live review actions.",
+    id: "overview",
+    title: "Overview",
+    objective: "Start with overall status and analytics before opening school-level work.",
     actions: [
-      "Check lanes first: Urgent, Returned, For Review, and Waiting Data.",
-      "Open a school once and complete review actions from the same workspace.",
+      "Check summary totals for needs action, returned, and submitted.",
+      "Use analytics to spot trends or spikes that need follow-up.",
     ],
-    doneWhen: "No urgent schools are left without an action.",
-  },
-  {
-    id: "compliance_review",
-    title: "Compliance Review",
-    objective: "Validate submissions or return them with clear feedback.",
-    actions: [
-      "Review pending packages and decide whether to validate or return.",
-      "Write specific notes so school heads know exactly what to fix.",
-    ],
-    doneWhen: "Every pending submission has a review decision.",
+    doneWhen: "Priority issues are identified for this review cycle.",
   },
   {
     id: "schools",
     title: "Schools",
-    objective: "Inspect school profile, status, learner records, and latest activity in one place.",
+    objective: "Open school-level records and verify synchronized student and teacher data.",
     actions: [
-      "Review school profile and activity updates before contacting schools.",
-      "Open learner records directly when deeper checks are needed.",
-      "Use row actions for follow-up without leaving the page.",
+      "Use search and school filters to find the school you need quickly.",
+      "Inspect school details and learner records without leaving the dashboard.",
     ],
-    doneWhen: "School details and recent updates are verified.",
+    doneWhen: "The selected school context is verified and ready for review.",
   },
   {
-    id: "reports",
-    title: "Reports",
-    objective: "Review summaries, history, and analytics for decision support.",
+    id: "reviews",
+    title: "Reviews",
+    objective: "Work through pending compliance reviews in one focused workspace.",
     actions: [
-      "Review sync history and KPI snapshot first.",
-      "Open advanced analytics only when deeper trend checks are needed.",
+      "Review queue items, validate submissions, or return with clear notes.",
+      "Use lane and workflow filters to process urgent schools first.",
     ],
-    doneWhen: "Key trends are checked and notable issues are documented.",
+    doneWhen: "Each queued school has a clear review action.",
   },
 ];
 
@@ -317,8 +308,21 @@ const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }
   { id: "validated", label: "Validated" },
 ];
 
+const SCHOOL_QUICK_PRESET_OPTIONS: Array<{ id: SchoolQuickPreset; label: string; hint: string }> = [
+  { id: "all", label: "All", hint: "Show every school in the current scope." },
+  { id: "pending", label: "Pending", hint: "Schools with submissions waiting for monitor review." },
+  { id: "returned", label: "Returned", hint: "Schools with returned submissions that need correction." },
+  { id: "no_submission", label: "No Submission", hint: "Schools with no compliance/indicator submission yet." },
+  { id: "high_risk", label: "High Risk", hint: "Schools with missing or returned requirements." },
+];
+
 const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
-  action_queue: [
+  overview: [
+    { id: "filters_overview", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
+    { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
+    { id: "overview_analytics", label: "Analytics", targetId: "monitor-targets-snapshot", icon: TrendingUp },
+  ],
+  reviews: [
     { id: "filters_queue", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
     { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },
     { id: "queue_workspace", label: "Review Workspace", targetId: "monitor-queue-workspace", icon: ClipboardList },
@@ -327,14 +331,6 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
     { id: "filters_schools", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
     { id: "school_records", label: "School List", targetId: "monitor-school-records", icon: Building2 },
     { id: "school_learners", label: "Learner Records", targetId: "monitor-school-learners", icon: Users },
-  ],
-  compliance_review: [
-    { id: "filters_review", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "indicators_queue", label: "Review Queue", targetId: "monitor-indicators-queue", icon: ClipboardList },
-  ],
-  reports: [
-    { id: "reports_summary", label: "Reports Summary", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
-    { id: "reports_analytics", label: "Show Analytics", targetId: "monitor-analytics-toggle", icon: TrendingUp },
   ],
 };
 
@@ -363,6 +359,7 @@ const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
 const SCHOOL_DRAWER_SUBMISSION_CACHE_TTL_MS = 60_000;
+const SCHOOL_DETAIL_COUNTS_CACHE_TTL_MS = 45_000;
 const SCHOOL_YEAR_START_MONTH = 6;
 
 const SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL = "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES";
@@ -608,12 +605,28 @@ function isValidQueueLane(value: string | null | undefined): value is QueueLane 
   return value === "all" || value === "urgent" || value === "returned" || value === "for_review" || value === "waiting_data";
 }
 
+function isValidSchoolQuickPreset(value: string | null | undefined): value is SchoolQuickPreset {
+  return value === "all" || value === "pending" || value === "returned" || value === "no_submission" || value === "high_risk";
+}
+
 function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {
   return value === "all" || value === "active" || value === "inactive" || value === "pending";
 }
 
-function isValidMonitorTopNavigator(value: string | null | undefined): value is MonitorTopNavigatorId {
-  return value === "action_queue" || value === "schools" || value === "compliance_review" || value === "reports";
+function resolveMonitorTopNavigator(value: string | null | undefined): MonitorTopNavigatorId | null {
+  if (value === "overview" || value === "schools" || value === "reviews") {
+    return value;
+  }
+
+  if (value === "reports") {
+    return "overview";
+  }
+
+  if (value === "action_queue" || value === "compliance_review") {
+    return "reviews";
+  }
+
+  return null;
 }
 
 function normalizeDateInput(value: string | null | undefined): string {
@@ -677,6 +690,42 @@ function navigatorButtonClass(active: boolean, compact: boolean): string {
       ? "border-l-primary-100 border-r-primary-300/90 border-y-primary-300/90 bg-primary-700 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
       : "border-l-transparent border-r-primary-400/30 border-y-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-r-primary-200/60 hover:border-y-primary-200/60 hover:bg-primary-700/80 hover:text-white"
   }`;
+}
+
+function toCsvCell(value: string | number | null | undefined): string {
+  const raw = value == null ? "" : String(value);
+  if (/[",\n]/.test(raw)) {
+    return `"${raw.replace(/"/g, "\"\"")}"`;
+  }
+  return raw;
+}
+
+function downloadCsvFile(filename: string, headers: string[], rows: Array<Array<string | number | null | undefined>>) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+
+  const content = [headers.map((value) => toCsvCell(value)).join(","), ...rows.map((row) => row.map((value) => toCsvCell(value)).join(","))].join("\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+}
+
+function truncateIndicatorDescription(value: string, maxLength = 48): string {
+  const normalized = value.trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, Math.max(12, maxLength - 3)).trimEnd()}...`;
+}
+
+function sanitizeAnchorToken(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "row";
 }
 
 function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
@@ -846,6 +895,14 @@ function queueLaneLabel(lane: QueueLane): string {
   if (lane === "returned") return "Returned";
   if (lane === "for_review") return "For Review";
   return "Waiting Data";
+}
+
+function matchesSchoolQuickPreset(row: SchoolRequirementSummary, preset: SchoolQuickPreset): boolean {
+  if (preset === "all") return true;
+  if (preset === "pending") return row.awaitingReviewCount > 0 || row.indicatorStatus === "submitted";
+  if (preset === "returned") return row.indicatorStatus === "returned";
+  if (preset === "no_submission") return !row.hasComplianceRecord && !row.hasAnySubmitted;
+  return isUrgentRequirement(row);
 }
 
 function latestBySchool<
@@ -1160,7 +1217,7 @@ export function MonitorDashboard() {
   const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("action_queue");
+  const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("overview");
   const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= 768,
@@ -1170,7 +1227,6 @@ export function MonitorDashboard() {
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [showContextAdvancedFilters, setShowContextAdvancedFilters] = useState(false);
   const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [renderAdvancedAnalytics, setRenderAdvancedAnalytics] = useState(false);
@@ -1179,6 +1235,7 @@ export function MonitorDashboard() {
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
   const [queueLane, setQueueLane] = useState<QueueLane>("all");
+  const [schoolQuickPreset, setSchoolQuickPreset] = useState<SchoolQuickPreset>("all");
   const [lockedSchoolContextKey, setLockedSchoolContextKey] = useState<string | null>(null);
   const [lastReviewCompletion, setLastReviewCompletion] = useState<{
     schoolKey: string;
@@ -1187,6 +1244,9 @@ export function MonitorDashboard() {
     action: "validated" | "returned";
   } | null>(null);
   const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
+  const [activeSchoolDrawerTab, setActiveSchoolDrawerTab] = useState<SchoolDrawerTab>("snapshot");
+  const [expandedDrawerIndicatorRows, setExpandedDrawerIndicatorRows] = useState<Record<string, boolean>>({});
+  const [highlightedDrawerIndicatorKey, setHighlightedDrawerIndicatorKey] = useState<string | null>(null);
   const [accurateSyncedCountsBySchoolKey, setAccurateSyncedCountsBySchoolKey] = useState<
     Record<string, { students: number; teachers: number }>
   >({});
@@ -1209,7 +1269,10 @@ export function MonitorDashboard() {
   const [bulkImportSummary, setBulkImportSummary] = useState<SchoolBulkImportResult | null>(null);
   const [bulkImportError, setBulkImportError] = useState("");
   const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const [isSchoolActionsMenuOpen, setIsSchoolActionsMenuOpen] = useState(false);
+  const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const bulkImportInputRef = useRef<HTMLInputElement | null>(null);
+  const schoolActionsMenuRef = useRef<HTMLDivElement | null>(null);
   const schoolsTableScrollerRef = useRef<HTMLDivElement | null>(null);
   const schoolsTableDragStateRef = useRef<{
     active: boolean;
@@ -1227,9 +1290,16 @@ export function MonitorDashboard() {
   const schoolDrawerSubmissionCacheRef = useRef<Map<string, { rows: IndicatorSubmission[]; fetchedAt: number }>>(
     new Map(),
   );
+  const schoolDetailCountsCacheRef = useRef<Map<string, { students: number; teachers: number; fetchedAt: number }>>(
+    new Map(),
+  );
+  const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     schoolDrawerSubmissionCacheRef.current.clear();
+    schoolDetailCountsCacheRef.current.clear();
+    schoolDetailCountsAbortRef.current?.abort();
+    schoolDetailCountsAbortRef.current = null;
   }, [token]);
 
   useEffect(() => {
@@ -1245,6 +1315,30 @@ export function MonitorDashboard() {
       window.removeEventListener("resize", syncViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isSchoolActionsMenuOpen || typeof window === "undefined") return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      const menu = schoolActionsMenuRef.current;
+      if (!menu) return;
+      if (menu.contains(event.target as Node)) return;
+      setIsSchoolActionsMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsSchoolActionsMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isSchoolActionsMenuOpen]);
 
   useEffect(() => {
     const handleRealtimeLookupRefresh = (event: Event) => {
@@ -1360,7 +1454,7 @@ export function MonitorDashboard() {
     if (typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
-    const hasQueryFilters = ["q", "status", "workflow", "lane", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
+    const hasQueryFilters = ["q", "status", "workflow", "lane", "preset", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
       params.has(key),
     );
     const requestedTab = params.get("tab");
@@ -1373,6 +1467,7 @@ export function MonitorDashboard() {
         statusFilter: (params.get("status") as SchoolStatus | "all" | null) ?? undefined,
         requirementFilter: (params.get("workflow") as RequirementFilter | null) ?? undefined,
         queueLane: (params.get("lane") as QueueLane | null) ?? undefined,
+        schoolQuickPreset: (params.get("preset") as SchoolQuickPreset | null) ?? undefined,
         schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
         studentLookupId: params.get("student"),
         teacherLookupId: params.get("teacher"),
@@ -1402,6 +1497,9 @@ export function MonitorDashboard() {
       if (isValidQueueLane(persisted.queueLane)) {
         setQueueLane(persisted.queueLane);
       }
+      if (isValidSchoolQuickPreset(persisted.schoolQuickPreset)) {
+        setSchoolQuickPreset(persisted.schoolQuickPreset);
+      }
       if (persisted.schoolScopeKey) {
         setSelectedSchoolScopeKey(persisted.schoolScopeKey);
       }
@@ -1418,10 +1516,11 @@ export function MonitorDashboard() {
       }
     }
 
-    if (isValidMonitorTopNavigator(requestedTab)) {
-      setActiveTopNavigator(requestedTab === "compliance_review" ? "action_queue" : requestedTab);
+    const resolvedNavigator = resolveMonitorTopNavigator(requestedTab);
+    if (resolvedNavigator) {
+      setActiveTopNavigator(resolvedNavigator);
     } else {
-      setActiveTopNavigator("action_queue");
+      setActiveTopNavigator("overview");
     }
 
     setFiltersHydrated(true);
@@ -1435,6 +1534,7 @@ export function MonitorDashboard() {
       statusFilter,
       requirementFilter,
       queueLane,
+      schoolQuickPreset,
       schoolScopeKey: selectedSchoolScopeKey,
       studentLookupId: selectedStudentLookup?.id ?? pendingStudentLookupId ?? null,
       teacherLookupId: selectedTeacherLookup?.id ?? pendingTeacherLookupId ?? null,
@@ -1461,6 +1561,7 @@ export function MonitorDashboard() {
     setOrDelete("status", statusFilter !== "all" ? statusFilter : null);
     setOrDelete("workflow", requirementFilter !== "all" ? requirementFilter : null);
     setOrDelete("lane", queueLane !== "all" ? queueLane : null);
+    setOrDelete("preset", schoolQuickPreset !== "all" ? schoolQuickPreset : null);
     setOrDelete("school", selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
     setOrDelete("student", selectedStudentLookup?.id ?? pendingStudentLookupId ?? null);
     setOrDelete("teacher", selectedTeacherLookup?.id ?? pendingTeacherLookupId ?? null);
@@ -1478,6 +1579,7 @@ export function MonitorDashboard() {
     pendingTeacherLookupId,
     queueLane,
     requirementFilter,
+    schoolQuickPreset,
     search,
     selectedSchoolScopeKey,
     selectedStudentLookup?.id,
@@ -2409,11 +2511,11 @@ export function MonitorDashboard() {
   );
 
   const visibleRequirementFilterIds = useMemo<RequirementFilter[]>(() => {
-    if (activeTopNavigator === "action_queue") {
+    if (activeTopNavigator === "reviews") {
       return ["all", "missing", "waiting", "returned"];
     }
 
-    if (activeTopNavigator === "compliance_review" || activeTopNavigator === "reports") {
+    if (activeTopNavigator === "overview") {
       return ["all", "waiting", "returned", "submitted", "validated"];
     }
 
@@ -2460,6 +2562,8 @@ export function MonitorDashboard() {
         record?.type ?? "",
         record?.address ?? record?.district ?? "",
         record?.submittedBy ?? "",
+        record?.schoolHeadAccount?.name ?? "",
+        record?.schoolHeadAccount?.email ?? "",
         ]
         .join(" ")
         .toLowerCase();
@@ -2491,6 +2595,7 @@ export function MonitorDashboard() {
     searchTerms.length > 0 ||
     statusFilter !== "all" ||
     requirementFilter !== "all" ||
+    schoolQuickPreset !== "all" ||
     Boolean(selectedSchoolScope) ||
     filterDateFrom.length > 0 ||
     filterDateTo.length > 0 ||
@@ -2505,8 +2610,12 @@ export function MonitorDashboard() {
       return null;
     }
 
-    return new Set(filteredRequirementRows.map((row) => row.schoolKey));
-  }, [filteredRequirementRows, hasDashboardFilters, lockedSchoolContextKey, scopedSchoolKeys]);
+    const scopeRows =
+      schoolQuickPreset === "all"
+        ? filteredRequirementRows
+        : filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, schoolQuickPreset));
+    return new Set(scopeRows.map((row) => row.schoolKey));
+  }, [filteredRequirementRows, hasDashboardFilters, lockedSchoolContextKey, schoolQuickPreset, scopedSchoolKeys]);
 
   const requirementCounts = useMemo(
     () => ({
@@ -2558,6 +2667,29 @@ export function MonitorDashboard() {
     () => actionQueueRows.filter((row) => matchesQueueLane(row, queueLane)),
     [actionQueueRows, queueLane],
   );
+  const schoolPresetCounts = useMemo<Record<SchoolQuickPreset, number>>(
+    () => ({
+      all: filteredRequirementRows.length,
+      pending: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "pending")).length,
+      returned: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "returned")).length,
+      no_submission: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "no_submission")).length,
+      high_risk: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "high_risk")).length,
+    }),
+    [filteredRequirementRows],
+  );
+  const filteredSchoolsByPreset = useMemo(
+    () => filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, schoolQuickPreset)),
+    [filteredRequirementRows, schoolQuickPreset],
+  );
+  const stickySummaryStats = useMemo(
+    () => ({
+      totalSchools: filteredSchoolsByPreset.length,
+      pending: filteredSchoolsByPreset.filter((row) => row.awaitingReviewCount > 0 || row.indicatorStatus === "submitted").length,
+      returned: filteredSchoolsByPreset.filter((row) => row.indicatorStatus === "returned").length,
+      atRisk: filteredSchoolsByPreset.filter((row) => isUrgentRequirement(row)).length,
+    }),
+    [filteredSchoolsByPreset],
+  );
   const queueWorkspaceSchoolFilterKeys = useMemo(() => {
     if (lockedSchoolContextKey) {
       return new Set([lockedSchoolContextKey]);
@@ -2567,7 +2699,7 @@ export function MonitorDashboard() {
     }
     return filteredSchoolKeys;
   }, [filteredSchoolKeys, lockedSchoolContextKey, selectedSchoolScopeKey]);
-  const showSubmissionFilters = !isMobileViewport || showAdvancedFilters;
+  const showSubmissionFilters = showAdvancedFilters;
   const returnedCount = requirementCounts.returned;
   const submittedCount = requirementCounts.submittedAny;
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
@@ -2576,25 +2708,23 @@ export function MonitorDashboard() {
     Record<MonitorTopNavigatorId, { primary?: number; secondary?: number; urgency: "none" | "high" | "medium" }>
   >(
     () => ({
-      action_queue: {
+      overview: {
+        primary: returnedCount,
+        urgency: returnedCount > 0 ? "high" : needsActionCount > 0 ? "medium" : "none",
+      },
+      reviews: {
         primary: needsActionCount,
         urgency: requirementCounts.missing > 0 ? "high" : needsActionCount > 0 ? "medium" : "none",
       },
       schools: { urgency: "none" },
-      compliance_review: {
-        primary: requirementCounts.awaitingReview,
-        secondary: requirementCounts.returned,
-        urgency: requirementCounts.returned > 0 ? "high" : requirementCounts.awaitingReview > 0 ? "medium" : "none",
-      },
-      reports: { urgency: "none" },
     }),
-    [needsActionCount, requirementCounts.awaitingReview, requirementCounts.missing, requirementCounts.returned],
+    [needsActionCount, requirementCounts.missing, returnedCount],
   );
   const quickJumpItems = useMemo(
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
   );
-  const shouldShowQuickJump = quickJumpItems.length > 1;
+  const shouldShowQuickJump = false;
 
   const clearFocusAfterDelay = (targetId: string) => {
     if (typeof window === "undefined") return;
@@ -2886,6 +3016,31 @@ export function MonitorDashboard() {
     return map;
   }, [students]);
 
+  const compactSchoolRows = useMemo(
+    () =>
+      filteredSchoolsByPreset
+        .map((summary) => {
+          const record = scopedRecordBySchoolKey.get(summary.schoolKey) ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
+          return { summary, record };
+        })
+        .sort((a, b) => {
+          const priorityDiff = queuePriorityScore(a.summary) - queuePriorityScore(b.summary);
+          if (priorityDiff !== 0) return priorityDiff;
+
+          const missingDiff = b.summary.missingCount - a.summary.missingCount;
+          if (missingDiff !== 0) return missingDiff;
+
+          const waitingDiff = b.summary.awaitingReviewCount - a.summary.awaitingReviewCount;
+          if (waitingDiff !== 0) return waitingDiff;
+
+          const activityDiff = b.summary.lastActivityTime - a.summary.lastActivityTime;
+          if (activityDiff !== 0) return activityDiff;
+
+          return a.summary.schoolName.localeCompare(b.summary.schoolName);
+        }),
+    [filteredSchoolsByPreset, recordBySchoolKey, scopedRecordBySchoolKey],
+  );
+
   const totalRequirementPages = Math.max(1, Math.ceil(laneFilteredQueueRows.length / REQUIREMENT_PAGE_SIZE));
   const safeRequirementsPage = Math.min(requirementsPage, totalRequirementPages);
   const paginatedRequirementRows = useMemo(() => {
@@ -2893,12 +3048,12 @@ export function MonitorDashboard() {
     return laneFilteredQueueRows.slice(start, start + REQUIREMENT_PAGE_SIZE);
   }, [laneFilteredQueueRows, safeRequirementsPage]);
 
-  const totalRecordPages = Math.max(1, Math.ceil(filteredRecords.length / RECORD_PAGE_SIZE));
+  const totalRecordPages = Math.max(1, Math.ceil(compactSchoolRows.length / RECORD_PAGE_SIZE));
   const safeRecordsPage = Math.min(recordsPage, totalRecordPages);
-  const paginatedRecords = useMemo(() => {
+  const paginatedCompactSchoolRows = useMemo(() => {
     const start = (safeRecordsPage - 1) * RECORD_PAGE_SIZE;
-    return filteredRecords.slice(start, start + RECORD_PAGE_SIZE);
-  }, [filteredRecords, safeRecordsPage]);
+    return compactSchoolRows.slice(start, start + RECORD_PAGE_SIZE);
+  }, [compactSchoolRows, safeRecordsPage]);
 
   const schoolIndicatorSubmissions = useMemo(() => {
     if (!schoolDrawerKey) return [] as IndicatorSubmission[];
@@ -3171,6 +3326,52 @@ export function MonitorDashboard() {
     [schoolDrawerIndicatorSubmissions],
   );
 
+  const latestSchoolPackage = useMemo(
+    () => schoolIndicatorPackageRows[0] ?? null,
+    [schoolIndicatorPackageRows],
+  );
+
+  const latestSchoolIndicatorYear = useMemo(
+    () => schoolIndicatorMatrix.years[schoolIndicatorMatrix.years.length - 1] ?? "",
+    [schoolIndicatorMatrix.years],
+  );
+
+  const schoolIndicatorRowKeySet = useMemo(
+    () => new Set(schoolIndicatorMatrix.rows.map((row) => row.key)),
+    [schoolIndicatorMatrix.rows],
+  );
+
+  const missingDrawerIndicatorKeys = useMemo(() => {
+    if (!latestSchoolIndicatorYear) return [] as string[];
+    return schoolIndicatorMatrix.rows
+      .filter((row) => {
+        const values = row.valuesByYear[latestSchoolIndicatorYear] ?? { target: "", actual: "" };
+        return values.target.trim().length === 0 || values.actual.trim().length === 0;
+      })
+      .map((row) => row.key);
+  }, [latestSchoolIndicatorYear, schoolIndicatorMatrix.rows]);
+
+  const returnedDrawerIndicatorKeys = useMemo(() => {
+    const latestSubmission = schoolIndicatorMatrix.latestSubmission;
+    if (!latestSubmission) return [] as string[];
+
+    const mappedKeys = latestSubmission.indicators
+      .filter((entry) => String(entry.complianceStatus ?? "").toLowerCase().includes("returned"))
+      .map((entry) => entry.metric?.code?.trim() || entry.metric?.id?.trim() || entry.id)
+      .filter((value): value is string => Boolean(value && value.trim().length > 0));
+
+    return [...new Set(mappedKeys)].filter((key) => schoolIndicatorRowKeySet.has(key));
+  }, [schoolIndicatorMatrix.latestSubmission, schoolIndicatorRowKeySet]);
+
+  const missingDrawerIndicatorKeySet = useMemo(
+    () => new Set(missingDrawerIndicatorKeys),
+    [missingDrawerIndicatorKeys],
+  );
+  const returnedDrawerIndicatorKeySet = useMemo(
+    () => new Set(returnedDrawerIndicatorKeys),
+    [returnedDrawerIndicatorKeys],
+  );
+
   const schoolDetail = useMemo<SchoolDetailSnapshot | null>(() => {
     if (!schoolDrawerKey) return null;
 
@@ -3201,11 +3402,84 @@ export function MonitorDashboard() {
     };
   }, [schoolDrawerKey, schoolRequirementByKey, recordBySchoolKey, studentStatsBySchoolKey, accurateSyncedCountsBySchoolKey]);
 
+  const schoolDrawerCriticalAlerts = useMemo(() => {
+    if (!schoolDetail) return [] as Array<{ id: string; tone: "warning" | "info"; title: string; detail: string }>;
+
+    const alerts: Array<{ id: string; tone: "warning" | "info"; title: string; detail: string }> = [];
+
+    if (!schoolDetail.hasComplianceRecord) {
+      alerts.push({
+        id: "missing-compliance-record",
+        tone: "warning",
+        title: "No Compliance Record",
+        detail: "School has not submitted a compliance record yet.",
+      });
+    }
+
+    if (schoolDetail.indicatorStatus === "returned") {
+      alerts.push({
+        id: "returned-package",
+        tone: "warning",
+        title: "Package Returned",
+        detail: "Latest indicator package was returned for correction.",
+      });
+    }
+
+    if (schoolDetail.missingCount > 0) {
+      alerts.push({
+        id: "missing-required-indicators",
+        tone: "warning",
+        title: "Missing Indicators",
+        detail: `${schoolDetail.missingCount} required indicator cells are still missing.`,
+      });
+    }
+
+    if (schoolDetail.awaitingReviewCount > 0) {
+      alerts.push({
+        id: "pending-review",
+        tone: "info",
+        title: "Pending Review",
+        detail: `${schoolDetail.awaitingReviewCount} submissions are waiting for monitor review.`,
+      });
+    }
+
+    if (schoolDetail.reportedStudents !== schoolDetail.synchronizedStudents) {
+      alerts.push({
+        id: "student-count-mismatch",
+        tone: "warning",
+        title: "Student Count Mismatch",
+        detail: `Reported ${schoolDetail.reportedStudents}, synced ${schoolDetail.synchronizedStudents}.`,
+      });
+    }
+
+    if (schoolDetail.reportedTeachers !== schoolDetail.synchronizedTeachers) {
+      alerts.push({
+        id: "teacher-count-mismatch",
+        tone: "warning",
+        title: "Teacher Count Mismatch",
+        detail: `Reported ${schoolDetail.reportedTeachers}, synced ${schoolDetail.synchronizedTeachers}.`,
+      });
+    }
+
+    if (schoolDrawerSubmissionsError) {
+      alerts.push({
+        id: "submission-load-issue",
+        tone: "warning",
+        title: "Submission Sync Issue",
+        detail: schoolDrawerSubmissionsError,
+      });
+    }
+
+    return alerts;
+  }, [schoolDetail, schoolDrawerSubmissionsError]);
+
   const schoolDetailKey = schoolDetail?.schoolKey ?? null;
   const schoolDetailCode = schoolDetail?.schoolCode ?? "";
 
   useEffect(() => {
     if (!schoolDetailKey) {
+      schoolDetailCountsAbortRef.current?.abort();
+      schoolDetailCountsAbortRef.current = null;
       setSyncedCountsLoadingSchoolKey(null);
       setSyncedCountsError("");
       return;
@@ -3213,47 +3487,82 @@ export function MonitorDashboard() {
 
     const normalizedSchoolCode = schoolDetailCode.trim();
     if (!/^\d+$/.test(normalizedSchoolCode)) {
+      schoolDetailCountsAbortRef.current?.abort();
+      schoolDetailCountsAbortRef.current = null;
       setSyncedCountsLoadingSchoolKey(null);
       setSyncedCountsError("");
       return;
     }
 
     let active = true;
-    setSyncedCountsLoadingSchoolKey(schoolDetailKey);
-    setSyncedCountsError("");
+    const readCachedCounts = () => {
+      const cached = schoolDetailCountsCacheRef.current.get(schoolDetailKey) ?? null;
+      if (!cached) return null;
+      if (Date.now() - cached.fetchedAt > SCHOOL_DETAIL_COUNTS_CACHE_TTL_MS) return null;
+      return cached;
+    };
 
-    const hydrateAccurateSyncedCounts = async () => {
-      try {
-        const [studentsResult, teachersResult] = await Promise.all([
-          listStudents({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode }),
-          listTeachers({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode }),
-        ]);
-
-        if (!active) {
-          return;
-        }
-
+    const hydrateAccurateSyncedCounts = async (force = false) => {
+      const cached = force ? null : readCachedCounts();
+      if (cached) {
         setAccurateSyncedCountsBySchoolKey((current) => ({
           ...current,
           [schoolDetailKey]: {
-            students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? studentsResult.data.length ?? 0),
-            teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? teachersResult.data.length ?? 0),
+            students: cached.students,
+            teachers: cached.teachers,
           },
+        }));
+        setSyncedCountsLoadingSchoolKey(null);
+        setSyncedCountsError("");
+        return;
+      }
+
+      schoolDetailCountsAbortRef.current?.abort();
+      const controller = new AbortController();
+      schoolDetailCountsAbortRef.current = controller;
+      setSyncedCountsLoadingSchoolKey(schoolDetailKey);
+      setSyncedCountsError("");
+
+      try {
+        const [studentsResult, teachersResult] = await Promise.all([
+          listStudents({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
+          listTeachers({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
+        ]);
+
+        if (!active || controller.signal.aborted) {
+          return;
+        }
+
+        const nextCounts = {
+          students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? studentsResult.data.length ?? 0),
+          teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? teachersResult.data.length ?? 0),
+        };
+        schoolDetailCountsCacheRef.current.set(schoolDetailKey, {
+          ...nextCounts,
+          fetchedAt: Date.now(),
+        });
+        setAccurateSyncedCountsBySchoolKey((current) => ({
+          ...current,
+          [schoolDetailKey]: nextCounts,
         }));
       } catch (err) {
         if (!active) {
           return;
         }
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
 
         setSyncedCountsError(err instanceof Error ? err.message : "Unable to refresh synced counts.");
       } finally {
-        if (active) {
+        if (active && schoolDetailCountsAbortRef.current === controller) {
+          schoolDetailCountsAbortRef.current = null;
           setSyncedCountsLoadingSchoolKey((current) => (current === schoolDetailKey ? null : current));
         }
       }
     };
 
-    void hydrateAccurateSyncedCounts();
+    void hydrateAccurateSyncedCounts(false);
 
     const handleRealtimeCountsRefresh = (event: Event) => {
       const payload = (event as CustomEvent<{ entity?: string; schoolId?: string }>).detail;
@@ -3269,13 +3578,15 @@ export function MonitorDashboard() {
         return;
       }
 
-      void hydrateAccurateSyncedCounts();
+      void hydrateAccurateSyncedCounts(true);
     };
 
     window.addEventListener("cspams:update", handleRealtimeCountsRefresh);
 
     return () => {
       active = false;
+      schoolDetailCountsAbortRef.current?.abort();
+      schoolDetailCountsAbortRef.current = null;
       window.removeEventListener("cspams:update", handleRealtimeCountsRefresh);
     };
   }, [schoolDetailKey, schoolDetailCode, listStudents, listTeachers]);
@@ -3287,6 +3598,10 @@ export function MonitorDashboard() {
     if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
     if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Queue: ${requirementFilterLabel(requirementFilter)}` });
     if (queueLane !== "all") chips.push({ id: "lane", label: `Lane: ${queueLaneLabel(queueLane)}` });
+    if (schoolQuickPreset !== "all") {
+      const presetLabel = SCHOOL_QUICK_PRESET_OPTIONS.find((option) => option.id === schoolQuickPreset)?.label ?? schoolQuickPreset;
+      chips.push({ id: "preset", label: `Preset: ${presetLabel}` });
+    }
     if (filterDateFrom || filterDateTo) {
       chips.push({
         id: "date",
@@ -3305,6 +3620,7 @@ export function MonitorDashboard() {
     lockedSchoolContextKey,
     queueLane,
     requirementFilter,
+    schoolQuickPreset,
     search,
     selectedSchoolScope,
     selectedStudentLookup,
@@ -3319,6 +3635,7 @@ export function MonitorDashboard() {
     filterDateFrom,
     filterDateTo,
     requirementFilter,
+    schoolQuickPreset,
     search,
     selectedSchoolScopeKey,
     selectedStudentLookup?.id,
@@ -3345,6 +3662,7 @@ export function MonitorDashboard() {
     setFilterDateTo("");
     setRequirementFilter("all");
     setQueueLane("all");
+    setSchoolQuickPreset("all");
     setSelectedSchoolScopeKey(lockedSchoolContextKey ?? ALL_SCHOOL_SCOPE);
     setSelectedStudentLookup(null);
     setPendingStudentLookupId(null);
@@ -3354,7 +3672,6 @@ export function MonitorDashboard() {
     setStudentLookupQuery("");
     setTeacherLookupQuery("");
     setSchoolScopeDropdownSlot(null);
-    setShowContextAdvancedFilters(false);
   };
 
   const resetQueueFilters = () => {
@@ -3375,6 +3692,9 @@ export function MonitorDashboard() {
         break;
       case "lane":
         setQueueLane("all");
+        break;
+      case "preset":
+        setSchoolQuickPreset("all");
         break;
       case "date":
         setFilterDateFrom("");
@@ -3410,10 +3730,14 @@ export function MonitorDashboard() {
 
   const openSchoolDrawer = (schoolKey: string) => {
     setSchoolDrawerKey(schoolKey);
+    setActiveSchoolDrawerTab("snapshot");
+    setExpandedDrawerIndicatorRows({});
+    setHighlightedDrawerIndicatorKey(null);
   };
 
   const closeSchoolDrawer = () => {
     setSchoolDrawerKey(null);
+    setHighlightedDrawerIndicatorKey(null);
   };
 
   const sendReminderForSchool = async (schoolKey: string, schoolName: string, notes?: string | null) => {
@@ -3450,7 +3774,7 @@ export function MonitorDashboard() {
     setLockedSchoolContextKey(summary.schoolKey);
     setSelectedSchoolScopeKey(summary.schoolKey);
     openSchoolDrawer(summary.schoolKey);
-    setActiveTopNavigator("action_queue");
+    setActiveTopNavigator("reviews");
     window.setTimeout(() => {
       focusAndScrollTo("monitor-queue-workspace");
     }, 80);
@@ -3460,10 +3784,10 @@ export function MonitorDashboard() {
   const handleOpenSchool = (summary: SchoolRequirementSummary) => {
     setLockedSchoolContextKey(summary.schoolKey);
     setSelectedSchoolScopeKey(summary.schoolKey);
-    setActiveTopNavigator("action_queue");
+    setActiveTopNavigator("schools");
     openSchoolDrawer(summary.schoolKey);
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-queue-workspace");
+      focusAndScrollTo("monitor-school-records");
     }, 80);
     pushToast(`Opened school details for ${summary.schoolName}.`, "info");
   };
@@ -3488,7 +3812,7 @@ export function MonitorDashboard() {
     setLockedSchoolContextKey(schoolKey);
     setSelectedSchoolScopeKey(schoolKey);
     openSchoolDrawer(schoolKey);
-    setActiveTopNavigator("action_queue");
+    setActiveTopNavigator("reviews");
     window.setTimeout(() => {
       focusAndScrollTo("monitor-queue-workspace");
     }, 80);
@@ -3503,12 +3827,12 @@ export function MonitorDashboard() {
     }
     setLockedSchoolContextKey(schoolKey);
     setSelectedSchoolScopeKey(schoolKey);
-    setActiveTopNavigator("action_queue");
+    setActiveTopNavigator("schools");
     openSchoolDrawer(schoolKey);
     window.setTimeout(() => {
-      focusAndScrollTo("monitor-queue-workspace");
+      focusAndScrollTo("monitor-school-records");
     }, 80);
-    pushToast(`Review workspace opened for ${record.schoolName}.`, "info");
+    pushToast(`Opened school details for ${record.schoolName}.`, "info");
   };
 
   const handleSendReminderRecord = (record: SchoolRecord) => {
@@ -3608,7 +3932,7 @@ export function MonitorDashboard() {
     setLockedSchoolContextKey(schoolKey);
     setSelectedSchoolScopeKey(schoolKey);
     openSchoolDrawer(schoolKey);
-    setActiveTopNavigator("action_queue");
+    setActiveTopNavigator("reviews");
   };
 
   const handleQueueReviewCompleted = (payload: {
@@ -3648,20 +3972,65 @@ export function MonitorDashboard() {
     setSortDirection("asc");
   };
 
+  const jumpToDrawerIndicator = (targetKey: string, emptyMessage: string) => {
+    if (!targetKey) {
+      pushToast(emptyMessage, "info");
+      return;
+    }
+
+    setActiveSchoolDrawerTab("history");
+    const targetId = `school-drawer-indicator-${sanitizeAnchorToken(targetKey)}`;
+
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    window.setTimeout(() => {
+      const row = document.getElementById(targetId);
+      if (!row) {
+        pushToast("Indicator row was not found in this package.", "warning");
+        return;
+      }
+
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedDrawerIndicatorKey(targetKey);
+      window.setTimeout(() => {
+        setHighlightedDrawerIndicatorKey((current) => (current === targetKey ? null : current));
+      }, 2200);
+    }, 120);
+  };
+
+  const handleJumpToMissingIndicators = () => {
+    const targetKey = missingDrawerIndicatorKeys[0] ?? "";
+    jumpToDrawerIndicator(targetKey, "No missing indicators were detected.");
+  };
+
+  const handleJumpToReturnedIndicators = () => {
+    const fallbackKey =
+      returnedDrawerIndicatorKeys[0] ??
+      (schoolIndicatorMatrix.latestSubmission?.status === "returned" ? schoolIndicatorMatrix.rows[0]?.key ?? "" : "");
+    jumpToDrawerIndicator(fallbackKey, "No returned indicators were found in the latest package.");
+  };
+
+  const toggleDrawerIndicatorLabel = (key: string) => {
+    setExpandedDrawerIndicatorRows((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
   const handleMonitorTopNavigate = (id: MonitorTopNavigatorId) => {
-    const normalizedTarget = id === "compliance_review" ? "action_queue" : id;
     setShowNavigatorManual(false);
-    setActiveTopNavigator(normalizedTarget);
+    setActiveTopNavigator(id);
 
     if (typeof window !== "undefined") {
       const targetByNav: Record<MonitorTopNavigatorId, string> = {
-        action_queue: "monitor-action-queue",
-        compliance_review: "monitor-indicators-queue",
+        overview: "monitor-overview-metrics",
         schools: "monitor-school-records",
-        reports: "monitor-overview-metrics",
+        reviews: "monitor-action-queue",
       };
 
-      const targetId = targetByNav[normalizedTarget];
+      const targetId = targetByNav[id];
       if (targetId) {
         window.setTimeout(() => {
           focusAndScrollTo(targetId);
@@ -3673,6 +4042,108 @@ export function MonitorDashboard() {
       setIsNavigatorVisible(false);
     }
   };
+
+  const focusGlobalSearch = useCallback(() => {
+    const input = globalSearchInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, []);
+
+  const cycleSchoolFocus = useCallback(
+    (direction: 1 | -1) => {
+      if (compactSchoolRows.length === 0) {
+        pushToast("No school available in the current scope.", "warning");
+        return;
+      }
+
+      const activeSchoolKey =
+        schoolDrawerKey ??
+        lockedSchoolContextKey ??
+        (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
+      const activeIndex = activeSchoolKey
+        ? compactSchoolRows.findIndex((entry) => entry.summary.schoolKey === activeSchoolKey)
+        : -1;
+
+      let nextIndex = direction > 0 ? 0 : compactSchoolRows.length - 1;
+      if (activeIndex >= 0) {
+        nextIndex = activeIndex + direction;
+        if (nextIndex < 0) nextIndex = compactSchoolRows.length - 1;
+        if (nextIndex >= compactSchoolRows.length) nextIndex = 0;
+      }
+
+      const nextSummary = compactSchoolRows[nextIndex]?.summary;
+      if (!nextSummary) return;
+
+      setLockedSchoolContextKey(nextSummary.schoolKey);
+      setSelectedSchoolScopeKey(nextSummary.schoolKey);
+      setShowNavigatorManual(false);
+      setActiveTopNavigator("schools");
+      openSchoolDrawer(nextSummary.schoolKey);
+      window.setTimeout(() => {
+        focusAndScrollTo("monitor-school-records");
+      }, 60);
+    },
+    [compactSchoolRows, focusAndScrollTo, lockedSchoolContextKey, openSchoolDrawer, pushToast, schoolDrawerKey, selectedSchoolScopeKey],
+  );
+
+  const triggerKeyboardReview = useCallback(() => {
+    const activeSummary =
+      (schoolDrawerKey ? schoolRequirementByKey.get(schoolDrawerKey) ?? null : null) ??
+      (lockedSchoolContextKey ? schoolRequirementByKey.get(lockedSchoolContextKey) ?? null : null) ??
+      laneFilteredQueueRows[0] ??
+      actionQueueRows[0] ??
+      compactSchoolRows[0]?.summary ??
+      null;
+
+    if (!activeSummary) {
+      pushToast("No school is ready for review right now.", "warning");
+      return;
+    }
+
+    handleReviewSchool(activeSummary);
+  }, [actionQueueRows, compactSchoolRows, handleReviewSchool, laneFilteredQueueRows, lockedSchoolContextKey, pushToast, schoolDrawerKey, schoolRequirementByKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onKeyboardShortcut = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (event.key === "/") {
+        event.preventDefault();
+        focusGlobalSearch();
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "j") {
+        event.preventDefault();
+        cycleSchoolFocus(1);
+        return;
+      }
+      if (key === "k") {
+        event.preventDefault();
+        cycleSchoolFocus(-1);
+        return;
+      }
+      if (key === "r") {
+        event.preventDefault();
+        triggerKeyboardReview();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyboardShortcut);
+    return () => window.removeEventListener("keydown", onKeyboardShortcut);
+  }, [cycleSchoolFocus, focusGlobalSearch, triggerKeyboardReview]);
 
   const openStudentRecordsFromCard = () => {
     setShowSchoolLearnerRecords(true);
@@ -3945,29 +4416,105 @@ export function MonitorDashboard() {
     );
   };
 
-  const hasContextAdvancedFiltersActive =
-    requirementFilter !== "all" ||
-    queueLane !== "all" ||
-    Boolean(selectedSchoolScope) ||
-    Boolean(selectedStudentLookup) ||
-    Boolean(selectedTeacherLookup) ||
-    filterDateFrom.length > 0 ||
-    filterDateTo.length > 0;
+  const activeScreenMeta = useMemo(() => {
+    switch (activeTopNavigator) {
+      case "overview":
+        return {
+          title: "Overview",
+          description: "Division-wide status and trend snapshot.",
+          primaryLabel: "Export",
+        };
+      case "schools":
+        return {
+          title: "Schools",
+          description: "Open school-level records and synchronized totals.",
+          primaryLabel: "Open School",
+        };
+      case "reviews":
+      default:
+        return {
+          title: "Reviews",
+          description: "Review pending submissions and complete monitor actions.",
+          primaryLabel: "Review",
+        };
+    }
+  }, [activeTopNavigator]);
+
+  const isPrimaryActionDisabled =
+    activeTopNavigator === "overview"
+      ? filteredRequirementRows.length === 0
+      : activeTopNavigator === "schools"
+        ? compactSchoolRows.length === 0
+        : laneFilteredQueueRows.length === 0 && actionQueueRows.length === 0;
+
+  const handlePrimaryAction = () => {
+    if (activeTopNavigator === "overview") {
+      if (filteredRequirementRows.length === 0) {
+        pushToast("No rows available to export with current filters.", "warning");
+        return;
+      }
+
+      const rows = filteredRequirementRows.map((row) => [
+        row.schoolCode,
+        row.schoolName,
+        row.region,
+        row.schoolStatus ?? "N/A",
+        workflowLabel(row.indicatorStatus),
+        row.missingCount,
+        row.awaitingReviewCount,
+        row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A",
+      ]);
+      const fileDate = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(
+        `monitor-overview-${fileDate}.csv`,
+        [
+          "school_code",
+          "school_name",
+          "region",
+          "school_status",
+          "indicator_status",
+          "missing_count",
+          "for_review_count",
+          "last_activity",
+        ],
+        rows,
+      );
+      pushToast(`Exported ${rows.length} school rows.`, "success");
+      return;
+    }
+
+    if (activeTopNavigator === "schools") {
+      const preferredSchoolKey = lockedSchoolContextKey ?? (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
+      if (preferredSchoolKey) {
+        const preferredSummary =
+          compactSchoolRows.find((entry) => entry.summary.schoolKey === preferredSchoolKey)?.summary ??
+          schoolRequirementByKey.get(preferredSchoolKey);
+        if (preferredSummary) {
+          handleOpenSchool(preferredSummary);
+          return;
+        }
+      }
+
+      if (compactSchoolRows.length > 0) {
+        handleOpenSchool(compactSchoolRows[0].summary);
+        return;
+      }
+
+      pushToast("No school available to open in the current scope.", "warning");
+      return;
+    }
+
+    const nextReview = laneFilteredQueueRows[0] ?? actionQueueRows[0] ?? null;
+    if (!nextReview) {
+      pushToast("No school is queued for review right now.", "warning");
+      return;
+    }
+    handleReviewSchool(nextReview);
+  };
 
   const quickFiltersPanelContent = (
     <>
-      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Find school by name, code, address, level, or region"
-            className="w-full rounded-sm border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-          />
-        </div>
-
+      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]">
         <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
           <Filter className="h-4 w-4 text-slate-400" />
           <select
@@ -3981,115 +4528,135 @@ export function MonitorDashboard() {
             <option value="pending">Pending ({schoolStatusCounts.pending})</option>
           </select>
         </label>
-
-        <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => setShowContextAdvancedFilters((current) => !current)}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            {showContextAdvancedFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            {showContextAdvancedFilters ? "Hide filters" : "More filters"}
-            {hasContextAdvancedFiltersActive && !showContextAdvancedFilters ? " - active" : ""}
-          </button>
-          {activeFilterChips.length > 0 && (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
-            >
-              Clear all
-            </button>
-          )}
+        <div className="rounded-sm border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700">
+          Global search is pinned above. Use <span className="font-semibold">school code, school name, or school head</span>.
         </div>
       </div>
 
-      {showContextAdvancedFilters && (
-        <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
-          <div className="grid gap-3 md:grid-cols-4">
-            <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-              <Filter className="h-4 w-4 text-slate-400" />
-              <select
-                value={requirementFilter}
-                onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
-                className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-              >
-                {visibleRequirementFilterOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-              <ListChecks className="h-4 w-4 text-slate-400" />
-              <select
-                value={queueLane}
-                onChange={(event) => setQueueLane(event.target.value as QueueLane)}
-                className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
-              >
-                <option value="all">All lanes ({queueLaneCounts.all})</option>
-                <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
-                <option value="returned">Returned ({queueLaneCounts.returned})</option>
-                <option value="for_review">For Review ({queueLaneCounts.for_review})</option>
-                <option value="waiting_data">Waiting Data ({queueLaneCounts.waiting_data})</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date From</span>
-              <input
-                type="date"
-                value={filterDateFrom}
-                onChange={(event) => setFilterDateFrom(event.target.value)}
-                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date To</span>
-              <input
-                type="date"
-                value={filterDateTo}
-                onChange={(event) => setFilterDateTo(event.target.value)}
-                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-            </label>
-          </div>
-
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <article className="border border-slate-200 bg-white px-3 py-2.5">
-              <p className="text-xs font-semibold text-slate-700">Which school</p>
-              {renderSchoolScopeSelector()}
-            </article>
-            <article className="border border-slate-200 bg-white px-3 py-2.5">
-              <p className="text-xs font-semibold text-slate-700">Find a student</p>
-              {renderStudentLookupSelector()}
-            </article>
-            <article className="border border-slate-200 bg-white px-3 py-2.5">
-              <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
-              {renderTeacherLookupSelector()}
-            </article>
-          </div>
+      <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
+        <div className="grid gap-3 md:grid-cols-5">
+          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+            <Filter className="h-4 w-4 text-slate-400" />
+            <select
+              value={requirementFilter}
+              onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
+              className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+            >
+              {visibleRequirementFilterOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+            <ListChecks className="h-4 w-4 text-slate-400" />
+            <select
+              value={queueLane}
+              onChange={(event) => setQueueLane(event.target.value as QueueLane)}
+              className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+            >
+              <option value="all">All lanes ({queueLaneCounts.all})</option>
+              <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
+              <option value="returned">Returned ({queueLaneCounts.returned})</option>
+              <option value="for_review">For Review ({queueLaneCounts.for_review})</option>
+              <option value="waiting_data">Waiting Data ({queueLaneCounts.waiting_data})</option>
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
+            <AlertTriangle className="h-4 w-4 text-slate-400" />
+            <select
+              value={schoolQuickPreset}
+              onChange={(event) => setSchoolQuickPreset(event.target.value as SchoolQuickPreset)}
+              className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+            >
+              {SCHOOL_QUICK_PRESET_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label} ({schoolPresetCounts[option.id]})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date From</span>
+            <input
+              type="date"
+              value={filterDateFrom}
+              onChange={(event) => setFilterDateFrom(event.target.value)}
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date To</span>
+            <input
+              type="date"
+              value={filterDateTo}
+              onChange={(event) => setFilterDateTo(event.target.value)}
+              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            />
+          </label>
         </div>
-      )}
+
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <article className="border border-slate-200 bg-white px-3 py-2.5">
+            <p className="text-xs font-semibold text-slate-700">Which school</p>
+            {renderSchoolScopeSelector()}
+          </article>
+          <article className="border border-slate-200 bg-white px-3 py-2.5">
+            <p className="text-xs font-semibold text-slate-700">Find a student</p>
+            {renderStudentLookupSelector()}
+          </article>
+          <article className="border border-slate-200 bg-white px-3 py-2.5">
+            <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
+            {renderTeacherLookupSelector()}
+          </article>
+        </div>
+
+        {activeTopNavigator === "overview" && (
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-3 py-2.5">
+            <p className="text-xs font-semibold text-slate-700">Advanced analytics</p>
+            <button
+              id="monitor-analytics-toggle"
+              type="button"
+              onClick={() => setShowAdvancedAnalytics((current) => !current)}
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              {showAdvancedAnalytics ? "Hide" : "Show"}
+            </button>
+          </div>
+        )}
+      </div>
 
       {activeFilterChips.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {activeFilterChips.map((chip) => (
+        <div className="mt-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Active Filters</p>
             <button
-              key={chip.id}
               type="button"
-              onClick={() => clearFilterChip(chip.id)}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
             >
-              {chip.label}
-              <X className="h-3.5 w-3.5" />
+              Clear all
             </button>
-          ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {activeFilterChips.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => clearFilterChip(chip.id)}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+              >
+                {chip.label}
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       <p className="mt-3 text-xs text-slate-600">
-        Showing <span className="font-semibold text-slate-900">{filteredRequirementRows.length}</span> of{" "}
+        Showing <span className="font-semibold text-slate-900">{filteredSchoolsByPreset.length}</span> of{" "}
         <span className="font-semibold text-slate-900">{scopedRequirementRows.length}</span> schools in scope.
         {" "}
         Queue rows: <span className="font-semibold text-slate-900">{laneFilteredQueueRows.length}</span>{" "}
@@ -4103,7 +4670,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="My Queue workspace for triage, review, schools, and reports."
+      subtitle="Three-screen workflow: Overview, Schools, Reviews."
       actions={
         <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm border border-white/20 bg-white/10 p-1.5 sm:gap-2">
           <button
@@ -4138,7 +4705,7 @@ export function MonitorDashboard() {
         }`}
       >
         <aside className="dashboard-side-rail ml-0 w-full rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:ml-3 lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
-          <div className="flex min-h-full flex-col lg:sticky lg:top-2">
+          <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
                 <div className="flex items-center">
@@ -4241,7 +4808,7 @@ export function MonitorDashboard() {
                           <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold text-primary-700">
                             {meta.primary}
                           </span>
-                          {item.id === "compliance_review" && hasSecondaryBadge && (
+                          {item.id === "reviews" && hasSecondaryBadge && (
                             <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
                               R{meta.secondary}
                             </span>
@@ -4362,29 +4929,121 @@ export function MonitorDashboard() {
             </section>
           )}
 
-          {!showNavigatorManual && (activeTopNavigator === "reports" || isMobileViewport) && (
-            <section className="dashboard-workflow-hero mb-5 rounded-sm p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {activeTopNavigator === "reports" && (
+          {!showNavigatorManual && (
+            <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">{activeScreenMeta.title}</h2>
+                  <p className="mt-1 text-xs text-slate-600">{activeScreenMeta.description}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    id="monitor-analytics-toggle"
                     type="button"
-                    onClick={() => setShowAdvancedAnalytics((current) => !current)}
-                    className="dashboard-quick-jump-btn rounded-sm"
+                    onClick={handlePrimaryAction}
+                    disabled={isPrimaryActionDisabled}
+                    className="inline-flex items-center gap-1 rounded-sm border border-primary-300/70 bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {showAdvancedAnalytics ? "Hide Advanced Analytics" : "Show Advanced Analytics"}
+                    <Save className="h-3.5 w-3.5" />
+                    {activeScreenMeta.primaryLabel}
                   </button>
-                )}
-                {isMobileViewport && (
                   <button
                     id="monitor-submission-filters-toggle"
                     type="button"
                     onClick={() => setShowAdvancedFilters((current) => !current)}
-                    className="dashboard-quick-jump-btn rounded-sm"
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                   >
-                    {showAdvancedFilters ? "Hide Filters" : "Show Filters"}
+                    <Filter className="h-3.5 w-3.5" />
+                    {showAdvancedFilters ? "Hide Filters" : "Filters"}
                   </button>
-                )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {!showNavigatorManual && (
+            <section className="dashboard-shell sticky top-2 z-40 mb-5 rounded-sm border border-slate-200 bg-white/95 p-2 backdrop-blur">
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <label className="relative w-full lg:max-w-lg">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      ref={globalSearchInputRef}
+                      type="text"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search school code, school name, or school head"
+                      className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-10 pr-20 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-sm border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                      /
+                    </span>
+                  </label>
+                  <p className="text-[11px] font-medium text-slate-600">
+                    <span className="font-semibold text-slate-800">/</span> Search ·{" "}
+                    <span className="font-semibold text-slate-800">J/K</span> Navigate ·{" "}
+                    <span className="font-semibold text-slate-800">R</span> Review
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    title="Schools in the current scope."
+                    className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                  >
+                    Total Schools: {stickySummaryStats.totalSchools}
+                  </span>
+                  <span
+                    title="Submitted packages waiting for monitor review."
+                    className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-semibold text-primary-700"
+                  >
+                    Pending: {stickySummaryStats.pending}
+                  </span>
+                  <span
+                    title="Packages returned to school heads for correction."
+                    className="inline-flex items-center rounded-sm border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+                  >
+                    Returned: {stickySummaryStats.returned}
+                  </span>
+                  <span
+                    title="Schools flagged as high risk (missing or returned)."
+                    className="inline-flex items-center rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700"
+                  >
+                    At Risk: {stickySummaryStats.atRisk}
+                  </span>
+                  <span
+                    title="Most recent dashboard synchronization time."
+                    className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600"
+                  >
+                    Last Sync: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "N/A"}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Presets</span>
+                  {SCHOOL_QUICK_PRESET_OPTIONS.map((preset) => {
+                    const isActive = schoolQuickPreset === preset.id;
+                    const count = schoolPresetCounts[preset.id];
+
+                    return (
+                      <button
+                        key={`sticky-preset-${preset.id}`}
+                        type="button"
+                        title={preset.hint}
+                        onClick={() => setSchoolQuickPreset(preset.id)}
+                        className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
+                          isActive
+                            ? "border-primary-300 bg-primary-100 text-primary-800"
+                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        <span>{preset.label}</span>
+                        <span className="rounded-sm bg-slate-100 px-1 text-[10px] font-bold text-slate-700">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </section>
           )}
@@ -4394,8 +5053,7 @@ export function MonitorDashboard() {
               id="monitor-submission-filters"
               className={`surface-panel dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}
             >
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Monitor Context Bar</h2>
-              <p className="mt-1 text-xs text-slate-600">Persistent filters for search, status, date range, and school scope.</p>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Filters</h2>
               {quickFiltersPanelContent}
             </section>
           )}
@@ -4410,56 +5068,27 @@ export function MonitorDashboard() {
               />
               <section id="monitor-submission-filters" className="fixed inset-x-0 bottom-0 z-[73] max-h-[84vh] overflow-y-auto rounded-t-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Monitor Context Bar</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Filters</h2>
                   <button
                     type="button"
                     onClick={() => setShowAdvancedFilters(false)}
                     className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                 </div>
-                <p className="mt-1 text-xs text-slate-600">Persistent filters for search, status, date range, and school scope.</p>
                 {quickFiltersPanelContent}
               </section>
             </>
           )}
 
-          {!showNavigatorManual && isMobileViewport && !showAdvancedFilters && activeFilterChips.length > 0 && (
-            <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Active Filters</p>
-                <button
-                  type="button"
-                  onClick={clearAllFilters}
-                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
-                >
-                  Clear all
-                </button>
-              </div>
-              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                {activeFilterChips.map((chip) => (
-                  <button
-                    key={`mobile-chip-${chip.id}`}
-                    type="button"
-                    onClick={() => clearFilterChip(chip.id)}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                  >
-                    {chip.label}
-                    <X className="h-3 w-3" />
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-
-      {!showNavigatorManual && activeTopNavigator === "reports" && (
+      {!showNavigatorManual && activeTopNavigator === "overview" && (
         <>
           <section className={`surface-panel dashboard-shell mb-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-reports-header")}`}>
             <div id="monitor-reports-header" className="border-b border-slate-200 bg-white px-4 py-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Reports</h2>
+                  <h2 className="text-base font-bold text-slate-900">Overview</h2>
                   <p className="mt-1 text-xs text-slate-600">Summary cards and analytics for division monitoring.</p>
                 </div>
                 {!isMobileViewport && renderQuickJumpChips(false)}
@@ -4554,12 +5183,12 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {!showNavigatorManual && activeTopNavigator === "action_queue" && (
+      {!showNavigatorManual && activeTopNavigator === "reviews" && (
         <>
           <section id="monitor-action-queue" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-action-queue")}`}>
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-base font-bold text-slate-900">My Queue</h2>
+                <h2 className="text-base font-bold text-slate-900">Reviews</h2>
                 <p className="mt-1 text-xs text-slate-600">Single workspace for triage, school context, and review actions.</p>
               </div>
               {!isMobileViewport && renderQuickJumpChips(false)}
@@ -4569,34 +5198,6 @@ export function MonitorDashboard() {
               <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
               <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
               <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Queue Lanes</span>
-              {(
-                [
-                  { key: "all", label: "All", count: queueLaneCounts.all },
-                  { key: "urgent", label: "Urgent", count: queueLaneCounts.urgent },
-                  { key: "returned", label: "Returned", count: queueLaneCounts.returned },
-                  { key: "for_review", label: "For Review", count: queueLaneCounts.for_review },
-                  { key: "waiting_data", label: "Waiting Data", count: queueLaneCounts.waiting_data },
-                ] as Array<{ key: QueueLane; label: string; count: number }>
-              ).map((lane) => (
-                <button
-                  key={`queue-lane-${lane.key}`}
-                  type="button"
-                  onClick={() => setQueueLane(lane.key)}
-                  className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                    queueLane === lane.key
-                      ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {lane.label}
-                  <span className="rounded-sm border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] text-slate-600">
-                    {lane.count}
-                  </span>
-                </button>
-              ))}
             </div>
             {(lockedSchoolContextKey || schoolDrawerKey) && (
               <div className="mt-3 flex flex-wrap items-center gap-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2">
@@ -4868,33 +5469,6 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {!showNavigatorManual && activeTopNavigator === "compliance_review" && (
-        <section
-          id="monitor-indicators-queue"
-          className={`surface-panel dashboard-shell animate-fade-slide overflow-hidden rounded-sm ${sectionFocusClass("monitor-indicators-queue")}`}
-        >
-          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Review Queue</h2>
-                <p className="mt-1 text-xs text-slate-600">Validate or return submitted compliance packages.</p>
-              </div>
-              {!isMobileViewport && renderQuickJumpChips(false)}
-            </div>
-            {isMobileViewport && renderQuickJumpChips(true)}
-          </div>
-          <MonitorIndicatorPanel
-            embedded
-            schoolFilterKeys={queueWorkspaceSchoolFilterKeys}
-            schoolRecords={records}
-            onToast={pushToast}
-            onSendReminder={sendReminderForSchool}
-            onSchoolFocusChange={(schoolKey) => handleQueueSchoolFocus(schoolKey)}
-            onReviewCompleted={handleQueueReviewCompleted}
-          />
-        </section>
-      )}
-
       {!showNavigatorManual && activeTopNavigator === "schools" && (
         <>
         <section id="monitor-school-radar" className={`dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3 ${sectionFocusClass("monitor-school-radar")}`}>
@@ -4969,9 +5543,9 @@ export function MonitorDashboard() {
           <div className="border-b border-slate-100 px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-                Showing {paginatedRecords.length} of {filteredRecords.length}
+                Showing {paginatedCompactSchoolRows.length} of {compactSchoolRows.length} (Needs Attention First)
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div ref={schoolActionsMenuRef} className="relative flex flex-wrap items-center gap-2">
                 <input
                   ref={bulkImportInputRef}
                   type="file"
@@ -4981,41 +5555,63 @@ export function MonitorDashboard() {
                 />
                 <button
                   type="button"
-                  onClick={openCreateRecordForm}
-                  className="inline-flex items-center gap-1 rounded-sm border border-primary-300/60 bg-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add School
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenBulkImportPicker}
-                  disabled={isBulkImporting}
+                  onClick={() => setIsSchoolActionsMenuOpen((current) => !current)}
                   className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  <Database className="h-3.5 w-3.5" />
-                  {isBulkImporting ? "Importing..." : "Import CSV"}
+                  Actions
+                  <ChevronDown className={`h-3.5 w-3.5 transition ${isSchoolActionsMenuOpen ? "rotate-180" : ""}`} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void handleToggleArchivedRecords()}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {showArchivedRecords ? "Hide Archived" : "Show Archived"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSchoolLearnerRecords((current) => !current)}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  {showSchoolLearnerRecords ? "Hide Learners" : "Show Learners"}
-                </button>
+                {isSchoolActionsMenuOpen && (
+                  <div className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSchoolActionsMenuOpen(false);
+                        openCreateRecordForm();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Plus className="h-3.5 w-3.5 text-primary-600" />
+                      Add School
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSchoolActionsMenuOpen(false);
+                        handleOpenBulkImportPicker();
+                      }}
+                      disabled={isBulkImporting}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <Database className="h-3.5 w-3.5 text-primary-600" />
+                      {isBulkImporting ? "Importing..." : "Import CSV"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSchoolActionsMenuOpen(false);
+                        void handleToggleArchivedRecords();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-primary-600" />
+                      {showArchivedRecords ? "Hide Archived" : "Show Archived"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSchoolActionsMenuOpen(false);
+                        setShowSchoolLearnerRecords((current) => !current);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Users className="h-3.5 w-3.5 text-primary-600" />
+                      {showSchoolLearnerRecords ? "Hide Learners" : "Show Learners"}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-            <p className="mt-2 text-xs text-slate-500">Global filters are applied to this list.</p>
-            <p className="mt-1 text-[11px] text-slate-500">Tip: Drag left/right in the table (left or right mouse hold) or use two-finger touchpad swipe.</p>
           </div>
 
           {deleteError && (
@@ -5285,7 +5881,7 @@ export function MonitorDashboard() {
               </div>
               <p className="text-xs text-slate-500">Syncing data from the backend...</p>
             </div>
-          ) : filteredRecords.length === 0 ? (
+          ) : compactSchoolRows.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
               <AlertCircle className="h-9 w-9 text-slate-400" />
               <p className="text-sm font-semibold">No records found</p>
@@ -5309,444 +5905,89 @@ export function MonitorDashboard() {
             </div>
           ) : (
             <>
-              <div className="space-y-3 px-4 py-4 md:hidden">
-                {paginatedRecords.map((record) => {
-                  const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-                  const summary = schoolRequirementByKey.get(schoolKey);
-                  const urgent = summary ? isUrgentRequirement(summary) : false;
-                  const schoolHeadAccount = record.schoolHeadAccount ?? null;
-                  const schoolHeadStatus = schoolHeadAccount ? String(schoolHeadAccount.accountStatus ?? "") : "";
-                  const accountBusy = accountActionKey?.startsWith(`${record.id}:`) ?? false;
+              <div className="space-y-2 px-4 py-4">
+                {paginatedCompactSchoolRows.map(({ summary, record }) => {
+                  const schoolKey = summary.schoolKey;
+                  const rowStatus = summary.schoolStatus ?? "pending";
+                  const rowTone = isUrgentRequirement(summary) ? urgencyRowTone(summary) : "bg-white";
+                  const updatedLabel = summary.lastActivityAt ?? record?.lastUpdated ?? null;
 
                   return (
-                    <article key={record.id} className={`rounded-sm border border-slate-200 bg-white p-3 ${urgent && summary ? urgencyRowTone(summary) : ""}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
-                          <p className="text-xs text-slate-500">{record.schoolId ?? record.schoolCode ?? "N/A"} - {record.region}</p>
+                    <article key={schoolKey} className={`rounded-sm border border-slate-200 p-3 ${rowTone}`}>
+                      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{summary.schoolName}</p>
+                          <p className="truncate text-[11px] text-slate-500">
+                            {summary.schoolCode} | {summary.region}
+                          </p>
                         </div>
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusTone(record.status)}`}>
-                          {statusLabel(record.status)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-slate-600">{record.address ?? record.district ?? "N/A"}</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${accountStatusTone(schoolHeadStatus)}`}>
-                          Head Account: {schoolHeadAccount ? accountStatusLabel(schoolHeadStatus) : "None"}
-                        </span>
-                        {schoolHeadAccount?.flagged && (
-                          <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-700 ring-1 ring-rose-200">
-                            Flagged
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            title="Indicator workflow status"
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${workflowTone(summary.indicatorStatus)}`}
+                          >
+                            {workflowLabel(summary.indicatorStatus)}
                           </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Students: <span className="font-semibold text-slate-900">{record.studentCount.toLocaleString()}</span> | Teachers:{" "}
-                        <span className="font-semibold text-slate-900">{record.teacherCount.toLocaleString()}</span>
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">Updated {formatDateTime(record.lastUpdated)}</p>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleReviewRecord(record)}
-                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1.5 text-[11px] font-semibold text-primary-700"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          Review
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSchoolRecord(record)}
-                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700"
-                        >
-                          <Building2 className="h-3.5 w-3.5" />
-                          Open School
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSendReminderRecord(record)}
-                          disabled={remindingSchoolKey === schoolKey}
-                          className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          <BellRing className="h-3.5 w-3.5" />
-                          {remindingSchoolKey === schoolKey ? "Sending..." : "Send Reminder"}
-                        </button>
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        {schoolHeadAccount && (
-                          <>
-                            {schoolHeadStatus === "pending_setup" ? (
-                              <button
-                                type="button"
-                                onClick={() => void handleIssueSchoolHeadSetupLink(record)}
-                                disabled={accountBusy}
-                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {accountBusy ? "Working..." : "Setup Link"}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleUpdateSchoolHeadAccount(
-                                    record,
-                                    {
-                                      accountStatus: schoolHeadStatus === "active" ? "suspended" : "active",
-                                    },
-                                    schoolHeadStatus === "active" ? "suspending account" : "activating account",
-                                  )
-                                }
-                                disabled={accountBusy}
-                                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {accountBusy
-                                  ? "Working..."
-                                  : schoolHeadStatus === "active"
-                                    ? "Suspend Head"
-                                    : "Activate Head"}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void handleUpdateSchoolHeadAccount(
-                                  record,
-                                  {
-                                    flagged: !schoolHeadAccount.flagged,
-                                  },
-                                  schoolHeadAccount.flagged ? "clearing account flag" : "flagging account",
-                                )
-                              }
-                              disabled={accountBusy}
-                              className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
+                          <span
+                            title="School account status"
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusTone(rowStatus)}`}
+                          >
+                            {statusLabel(rowStatus)}
+                          </span>
+                          {summary.missingCount > 0 && (
+                            <span
+                              title="Required fields still missing."
+                              className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700"
                             >
-                              {accountBusy ? "Working..." : schoolHeadAccount.flagged ? "Clear Flag" : "Flag"}
-                            </button>
-                            {schoolHeadStatus !== "archived" && schoolHeadStatus !== "locked" && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleUpdateSchoolHeadAccount(
-                                    record,
-                                    {
-                                      accountStatus: "locked",
-                                    },
-                                    "locking account",
-                                  )
-                                }
-                                disabled={accountBusy}
-                                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {accountBusy ? "Working..." : "Lock"}
-                              </button>
-                            )}
-                            {schoolHeadStatus !== "archived" && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleUpdateSchoolHeadAccount(
-                                    record,
-                                    {
-                                      accountStatus: "archived",
-                                    },
-                                    "archiving account",
-                                  )
-                                }
-                                disabled={accountBusy}
-                                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                {accountBusy ? "Working..." : "Archive Head"}
-                              </button>
-                            )}
-                          </>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => openEditRecordForm(record)}
-                          className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteRecord(record)}
-                          disabled={deletingRecordId === record.id}
-                          className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          {deletingRecordId === record.id ? "Archiving..." : "Archive"}
-                        </button>
+                              Missing {summary.missingCount}
+                            </span>
+                          )}
+                          {summary.awaitingReviewCount > 0 && (
+                            <span
+                              title="Submitted and waiting for monitor review."
+                              className="inline-flex rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700"
+                            >
+                              Pending {summary.awaitingReviewCount}
+                            </span>
+                          )}
+                          {isUrgentRequirement(summary) && (
+                            <span
+                              title="Needs attention first."
+                              className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700"
+                            >
+                              High Risk
+                            </span>
+                          )}
+                          {!summary.hasComplianceRecord && !summary.hasAnySubmitted && (
+                            <span
+                              title="No compliance or indicator submission yet."
+                              className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700"
+                            >
+                              No Submission
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            title="Last activity time"
+                            className="inline-flex rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600"
+                          >
+                            {updatedLabel ? formatDateTime(updatedLabel) : "N/A"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSchool(summary)}
+                            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                          >
+                            <Building2 className="h-3.5 w-3.5" />
+                            Open
+                          </button>
+                        </div>
                       </div>
                     </article>
                   );
                 })}
               </div>
-
-              <div
-                ref={schoolsTableScrollerRef}
-                className={`hidden overflow-x-auto md:block ${isSchoolsTableDragging ? "cursor-grabbing select-none" : "cursor-grab"}`}
-                onPointerDown={handleSchoolsTablePointerDown}
-                onPointerMove={handleSchoolsTablePointerMove}
-                onPointerUp={(event) => endSchoolsTableDrag(event.pointerId)}
-                onPointerCancel={(event) => endSchoolsTableDrag(event.pointerId)}
-                onLostPointerCapture={(event) => endSchoolsTableDrag(event.pointerId)}
-                onContextMenu={handleSchoolsTableContextMenu}
-              >
-                <table className="min-w-full">
-                  <thead className="table-head-sticky">
-                    <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      <th className="px-5 py-3 text-left">School Code</th>
-                      <th className="px-5 py-3 text-left">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("schoolName")}
-                          className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                        >
-                          School
-                          <SortIndicator active={sortColumn === "schoolName"} direction={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-5 py-3 text-left">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("region")}
-                          className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                        >
-                          Region
-                          <SortIndicator active={sortColumn === "region"} direction={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-5 py-3 text-left">Level</th>
-                      <th className="px-5 py-3 text-left">Type</th>
-                      <th className="px-5 py-3 text-left">Address</th>
-                      <th className="px-5 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("studentCount")}
-                          className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                        >
-                          Students
-                          <SortIndicator active={sortColumn === "studentCount"} direction={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-5 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("teacherCount")}
-                          className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                        >
-                          Teachers
-                          <SortIndicator active={sortColumn === "teacherCount"} direction={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-5 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("status")}
-                          className="mx-auto inline-flex items-center gap-1.5 hover:text-slate-900"
-                        >
-                          Status
-                          <SortIndicator active={sortColumn === "status"} direction={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-5 py-3 text-left">
-                        <button
-                          type="button"
-                          onClick={() => handleSort("lastUpdated")}
-                          className="inline-flex items-center gap-1.5 hover:text-slate-900"
-                        >
-                          Last Updated
-                          <SortIndicator active={sortColumn === "lastUpdated"} direction={sortDirection} />
-                        </button>
-                      </th>
-                      <th className="px-5 py-3 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedRecords.map((record) => {
-                      const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-                      const summary = schoolRequirementByKey.get(schoolKey);
-                      const urgent = summary ? isUrgentRequirement(summary) : false;
-                      const schoolHeadAccount = record.schoolHeadAccount ?? null;
-                      const schoolHeadStatus = schoolHeadAccount ? String(schoolHeadAccount.accountStatus ?? "") : "";
-                      const accountBusy = accountActionKey?.startsWith(`${record.id}:`) ?? false;
-
-                      return (
-                        <tr key={record.id} className={urgent && summary ? urgencyRowTone(summary) : "dashboard-table-row"}>
-                          <td className="px-5 py-3.5 align-top">
-                            <p className="text-sm font-semibold text-slate-900">{record.schoolId ?? record.schoolCode ?? "N/A"}</p>
-                          </td>
-                          <td className="px-5 py-3.5 align-top">
-                            <p className="text-sm font-semibold text-slate-900">{record.schoolName}</p>
-                            <p className="mt-0.5 text-xs text-slate-500">Submitted by {record.submittedBy}</p>
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${accountStatusTone(schoolHeadStatus)}`}>
-                                Head: {schoolHeadAccount ? accountStatusLabel(schoolHeadStatus) : "No Account"}
-                              </span>
-                              {schoolHeadAccount?.flagged && (
-                                <span className="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-700 ring-1 ring-rose-200">
-                                  Flagged
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.region}</td>
-                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.level ?? "N/A"}</td>
-                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{schoolTypeLabel(record.type)}</td>
-                          <td className="px-5 py-3.5 align-top text-sm text-slate-700">{record.address ?? record.district ?? "N/A"}</td>
-                          <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
-                            {record.studentCount.toLocaleString()}
-                          </td>
-                          <td className="px-5 py-3.5 text-right text-sm font-semibold text-slate-900">
-                            {record.teacherCount.toLocaleString()}
-                          </td>
-                          <td className="px-5 py-3.5 text-center">
-                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone(record.status)}`}>
-                              {statusLabel(record.status)}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-slate-600">{formatDateTime(record.lastUpdated)}</td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex flex-wrap items-center justify-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleReviewRecord(record)}
-                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                                Review
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenSchoolRecord(record)}
-                                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700"
-                              >
-                                <Building2 className="h-3.5 w-3.5" />
-                                Open School
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSendReminderRecord(record)}
-                                disabled={remindingSchoolKey === schoolKey}
-                                className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                <BellRing className="h-3.5 w-3.5" />
-                                {remindingSchoolKey === schoolKey ? "Sending..." : "Send Reminder"}
-                              </button>
-                              {schoolHeadAccount && (
-                                <>
-                                  {schoolHeadStatus === "pending_setup" ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleIssueSchoolHeadSetupLink(record)}
-                                      disabled={accountBusy}
-                                      className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      {accountBusy ? "Working..." : "Setup Link"}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        void handleUpdateSchoolHeadAccount(
-                                          record,
-                                          {
-                                            accountStatus: schoolHeadStatus === "active" ? "suspended" : "active",
-                                          },
-                                          schoolHeadStatus === "active" ? "suspending account" : "activating account",
-                                        )
-                                      }
-                                      disabled={accountBusy}
-                                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      {accountBusy
-                                        ? "Working..."
-                                        : schoolHeadStatus === "active"
-                                          ? "Suspend Head"
-                                          : "Activate Head"}
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleUpdateSchoolHeadAccount(
-                                        record,
-                                        {
-                                          flagged: !schoolHeadAccount.flagged,
-                                        },
-                                        schoolHeadAccount.flagged ? "clearing account flag" : "flagging account",
-                                      )
-                                    }
-                                    disabled={accountBusy}
-                                    className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
-                                  >
-                                    {accountBusy ? "Working..." : schoolHeadAccount.flagged ? "Clear Flag" : "Flag"}
-                                  </button>
-                                  {schoolHeadStatus !== "archived" && schoolHeadStatus !== "locked" && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        void handleUpdateSchoolHeadAccount(
-                                          record,
-                                          {
-                                            accountStatus: "locked",
-                                          },
-                                          "locking account",
-                                        )
-                                      }
-                                      disabled={accountBusy}
-                                      className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      {accountBusy ? "Working..." : "Lock"}
-                                    </button>
-                                  )}
-                                  {schoolHeadStatus !== "archived" && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        void handleUpdateSchoolHeadAccount(
-                                          record,
-                                          {
-                                            accountStatus: "archived",
-                                          },
-                                          "archiving account",
-                                        )
-                                      }
-                                      disabled={accountBusy}
-                                      className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      {accountBusy ? "Working..." : "Archive Head"}
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => openEditRecordForm(record)}
-                                className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-primary hover:bg-primary-50 hover:text-primary"
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteRecord(record)}
-                                disabled={deletingRecordId === record.id}
-                                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                {deletingRecordId === record.id ? "Archiving..." : "Archive"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-xs text-slate-600">
                   Page <span className="font-semibold text-slate-900">{safeRecordsPage}</span> of{" "}
@@ -5869,7 +6110,7 @@ export function MonitorDashboard() {
         </>
       )}
 
-      {!showNavigatorManual && schoolDrawerKey && activeTopNavigator !== "action_queue" && (
+      {!showNavigatorManual && schoolDrawerKey && activeTopNavigator !== "reviews" && (
         <button
           type="button"
           onClick={closeSchoolDrawer}
@@ -5880,7 +6121,7 @@ export function MonitorDashboard() {
 
       <aside
         className={
-          activeTopNavigator === "action_queue"
+          activeTopNavigator === "reviews"
             ? !showNavigatorManual && schoolDrawerKey
               ? "surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
               : "hidden"
@@ -5903,236 +6144,354 @@ export function MonitorDashboard() {
           </button>
         </div>
 
-        <div className={activeTopNavigator === "action_queue" ? "p-4" : "h-[calc(100%-3.5rem)] overflow-y-auto p-4"}>
+        <div className={activeTopNavigator === "reviews" ? "p-4" : "h-[calc(100%-3.5rem)] overflow-y-auto p-4"}>
           {schoolDetail ? (
             <div className="space-y-3">
-              <article className="rounded-sm border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold text-slate-700">School Code</p>
-                <p className="mt-0.5 text-sm font-semibold text-slate-900">{schoolDetail.schoolCode}</p>
-                <p className="mt-2 text-xs text-slate-600">{schoolDetail.level} | {schoolDetail.type}</p>
-                <p className="mt-1 text-xs text-slate-600">{schoolDetail.region}</p>
-                <p className="mt-1 text-xs text-slate-600">{schoolDetail.address}</p>
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold text-slate-700">Requirement Status</p>
-                <div className="mt-2 space-y-2 text-xs text-slate-700">
-                  <p>
-                    Compliance record:{" "}
-                    <span className="font-semibold text-slate-900">
-                      {schoolDetail.hasComplianceRecord ? "Submitted" : "Missing"}
-                    </span>
-                  </p>
-                  <p>
-                    Indicator package:{" "}
-                    <span className="font-semibold text-slate-900">{workflowLabel(schoolDetail.indicatorStatus)}</span>
-                  </p>
-                  <p>
-                    Missing requirements: <span className="font-semibold text-slate-900">{schoolDetail.missingCount}</span>
-                  </p>
-                  <p>
-                    For Review: <span className="font-semibold text-slate-900">{schoolDetail.awaitingReviewCount}</span>
-                  </p>
-                  <p>
-                    Last activity:{" "}
-                    <span className="font-semibold text-slate-900">
-                      {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
-                    </span>
-                  </p>
-                </div>
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold text-slate-700">Counts</p>
-                {syncedCountsLoadingSchoolKey === schoolDetail.schoolKey ? (
-                  <p className="mt-1 text-[11px] text-slate-500">Refreshing synced totals...</p>
-                ) : syncedCountsError ? (
-                  <p className="mt-1 text-[11px] text-amber-700">{syncedCountsError}</p>
-                ) : null}
-                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                    <p className="text-slate-600">Reported Students</p>
-                    <p className="font-semibold text-slate-900">{schoolDetail.reportedStudents.toLocaleString()}</p>
+              <article className="rounded-sm border border-slate-200 bg-white p-2.5">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="inline-flex rounded-sm border border-slate-200 bg-slate-50 p-1">
+                    {([
+                      { id: "snapshot", label: "Snapshot" },
+                      { id: "submissions", label: "Submissions" },
+                      { id: "history", label: "History" },
+                    ] as Array<{ id: SchoolDrawerTab; label: string }>).map((tab) => (
+                      <button
+                        key={`school-drawer-tab-${tab.id}`}
+                        type="button"
+                        onClick={() => setActiveSchoolDrawerTab(tab.id)}
+                        className={`rounded-sm px-2.5 py-1.5 text-xs font-semibold transition ${
+                          activeSchoolDrawerTab === tab.id
+                            ? "bg-primary-700 text-white"
+                            : "text-slate-700 hover:bg-slate-200"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                    <p className="text-slate-600">Reported Teachers</p>
-                    <p className="font-semibold text-slate-900">{schoolDetail.reportedTeachers.toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                    <p className="text-slate-600">Synced Students</p>
-                    <p className="font-semibold text-slate-900">{schoolDetail.synchronizedStudents.toLocaleString()}</p>
-                  </div>
-                  <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                    <p className="text-slate-600">Synced Teachers</p>
-                    <p className="font-semibold text-slate-900">{schoolDetail.synchronizedTeachers.toLocaleString()}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleJumpToMissingIndicators}
+                      disabled={missingDrawerIndicatorKeys.length === 0}
+                      className="inline-flex items-center rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Jump to Missing {missingDrawerIndicatorKeys.length > 0 ? `(${missingDrawerIndicatorKeys.length})` : ""}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleJumpToReturnedIndicators}
+                      disabled={returnedDrawerIndicatorKeys.length === 0}
+                      className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Jump to Returned {returnedDrawerIndicatorKeys.length > 0 ? `(${returnedDrawerIndicatorKeys.length})` : ""}
+                    </button>
                   </div>
                 </div>
+                <p className="mt-2 text-[11px] text-slate-600">
+                  {schoolDetail.schoolCode} | {schoolDetail.level} | {schoolDetail.type}
+                </p>
               </article>
 
-              <article className="rounded-sm border border-slate-200 bg-white p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Submitted Packages</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Indicator package history for this school.
-                    </p>
-                  </div>
-                  <div className="text-right text-[11px] text-slate-600">
-                    <p>
-                      Total packages:{" "}
-                      <span className="font-semibold text-slate-900">{schoolIndicatorPackageRows.length.toLocaleString()}</span>
-                    </p>
-                    {isSchoolDrawerSubmissionsLoading && <p className="text-primary-700">Syncing latest submissions...</p>}
-                    {!isSchoolDrawerSubmissionsLoading && schoolDrawerSubmissionsError && (
-                      <p className="text-rose-600">{schoolDrawerSubmissionsError}</p>
-                    )}
-                  </div>
-                </div>
+              {activeSchoolDrawerTab === "snapshot" && (
+                <div className="space-y-3">
+                  <article className="rounded-sm border border-slate-200 bg-white p-3">
+                    {syncedCountsLoadingSchoolKey === schoolDetail.schoolKey ? (
+                      <p className="text-[11px] text-slate-500">Refreshing synced totals...</p>
+                    ) : syncedCountsError ? (
+                      <p className="text-[11px] text-amber-700">{syncedCountsError}</p>
+                    ) : null}
+                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-4">
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Compliance</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.hasComplianceRecord ? "Submitted" : "Missing"}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Package</p>
+                        <p className="text-sm font-semibold text-slate-900">{workflowLabel(schoolDetail.indicatorStatus)}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Missing</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.missingCount.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">For Review</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.awaitingReviewCount.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Reported Students</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedStudents.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Synced Students</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedStudents.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Reported Teachers</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedTeachers.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Synced Teachers</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedTeachers.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </article>
 
-                {schoolIndicatorPackageRows.length === 0 ? (
-                  <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
-                    No indicator package submitted yet for this school.
-                  </div>
-                ) : (
-                  <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200">
-                    <table className="min-w-[760px] w-full border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                          <th className="border border-slate-300 px-2 py-2 text-left">Package</th>
-                          <th className="border border-slate-300 px-2 py-2 text-left">School Year</th>
-                          <th className="border border-slate-300 px-2 py-2 text-left">Period</th>
-                          <th className="border border-slate-300 px-2 py-2 text-center">Status</th>
-                          <th className="border border-slate-300 px-2 py-2 text-right">Compliance</th>
-                          <th className="border border-slate-300 px-2 py-2 text-left">Submitted</th>
-                          <th className="border border-slate-300 px-2 py-2 text-left">Reviewed</th>
-                          <th className="border border-slate-300 px-2 py-2 text-left">Reviewer</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {schoolIndicatorPackageRows.map((row) => (
-                          <tr key={`monitor-school-package-${row.id}`} className="bg-white">
-                            <td className="border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-900">#{row.id}</td>
-                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.schoolYear}</td>
-                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reportingPeriod}</td>
-                            <td className="border border-slate-300 px-2 py-2 text-center">
-                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(row.status)}`}>
-                                {workflowLabel(row.status)}
-                              </span>
-                            </td>
-                            <td className="border border-slate-300 px-2 py-2 text-right text-xs text-slate-700">
-                              {row.complianceRatePercent === null ? "N/A" : `${row.complianceRatePercent.toFixed(2)}%`}
-                            </td>
-                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.submittedAt ? formatDateTime(row.submittedAt) : "N/A"}</td>
-                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reviewedAt ? formatDateTime(row.reviewedAt) : "N/A"}</td>
-                            <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reviewedBy}</td>
-                          </tr>
+                  <article className="rounded-sm border border-slate-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Critical Alerts</p>
+                      <p className="text-[11px] text-slate-500">
+                        Last activity: {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
+                      </p>
+                    </div>
+                    {schoolDrawerCriticalAlerts.length === 0 ? (
+                      <div className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-2 text-xs font-medium text-primary-700">
+                        No critical alerts for this school.
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {schoolDrawerCriticalAlerts.map((alert) => (
+                          <div
+                            key={`school-critical-alert-${alert.id}`}
+                            className={`rounded-sm border px-2.5 py-2 ${
+                              alert.tone === "warning"
+                                ? "border-amber-300 bg-amber-50 text-amber-800"
+                                : "border-primary-200 bg-primary-50 text-primary-700"
+                            }`}
+                          >
+                            <p className="text-xs font-semibold">{alert.title}</p>
+                            <p className="mt-0.5 text-xs">{alert.detail}</p>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-white p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Submitted Indicators Matrix</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Same table layout as school head workspace, shown here in read-only mode.
-                    </p>
-                  </div>
-                  <div className="text-right text-[11px] text-slate-600">
-                    <p>
-                      Latest package:{" "}
-                      <span className="font-semibold text-slate-900">
-                        {schoolIndicatorMatrix.latestSubmission ? `#${schoolIndicatorMatrix.latestSubmission.id}` : "N/A"}
-                      </span>
-                    </p>
-                    <p>
-                      Updated:{" "}
-                      <span className="font-semibold text-slate-900">
-                        {(() => {
-                          const latestTimestamp =
-                            schoolIndicatorMatrix.latestSubmission?.updatedAt ??
-                            schoolIndicatorMatrix.latestSubmission?.submittedAt ??
-                            schoolIndicatorMatrix.latestSubmission?.createdAt;
-                          return latestTimestamp ? formatDateTime(latestTimestamp) : "N/A";
-                        })()}
-                      </span>
-                    </p>
-                  </div>
+                      </div>
+                    )}
+                  </article>
                 </div>
+              )}
 
-                {schoolIndicatorMatrix.rows.length === 0 ? (
-                  <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
-                    {isSchoolDrawerSubmissionsLoading
-                      ? "Loading submitted indicators for this school..."
-                      : schoolDrawerIndicatorSubmissions.length === 0
-                      ? "No indicator package submitted yet for this school."
-                      : "Indicator package exists, but no indicator rows were found in the latest submission."}
-                  </div>
-                ) : (
-                  <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200">
-                    <table className="min-w-[1240px] w-full border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                          <th rowSpan={2} className="sticky left-0 z-20 min-w-[320px] border border-slate-300 bg-slate-100 px-3 py-2 text-left">
-                            Indicators
-                          </th>
-                          {schoolIndicatorMatrix.years.map((year) => (
-                            <th key={`monitor-indicator-year-${year}`} colSpan={2} className="border border-slate-300 px-2 py-2 text-center">
-                              {year}
-                            </th>
-                          ))}
-                        </tr>
-                        <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                          {schoolIndicatorMatrix.years.map((year) => (
-                            <Fragment key={`monitor-indicator-year-columns-${year}`}>
-                              <th className="border border-slate-300 px-2 py-2 text-center">Target</th>
-                              <th className="border border-slate-300 px-2 py-2 text-center">Actual</th>
-                            </Fragment>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {schoolIndicatorRowsByCategory.map((group) => (
-                          <Fragment key={`monitor-indicator-category-${group.category}`}>
-                            <tr className="bg-primary-50/70">
-                              <td
-                                colSpan={schoolIndicatorMatrix.years.length * 2 + 1}
-                                className="border border-slate-300 px-3 py-2 text-xs font-bold uppercase tracking-wide text-primary-800"
-                              >
-                                {group.category}
-                              </td>
+              {activeSchoolDrawerTab === "submissions" && (
+                <div className="space-y-3">
+                  <article className="rounded-sm border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Latest Package</p>
+                        <p className="mt-0.5 text-[11px] text-slate-500">Most recent indicator submission for this school.</p>
+                      </div>
+                      <div className="text-right text-[11px] text-slate-600">
+                        <p>
+                          Total packages: <span className="font-semibold text-slate-900">{schoolIndicatorPackageRows.length.toLocaleString()}</span>
+                        </p>
+                        {isSchoolDrawerSubmissionsLoading && <p className="text-primary-700">Syncing latest submissions...</p>}
+                        {!isSchoolDrawerSubmissionsLoading && schoolDrawerSubmissionsError && (
+                          <p className="text-rose-600">{schoolDrawerSubmissionsError}</p>
+                        )}
+                      </div>
+                    </div>
+                    {latestSchoolPackage ? (
+                      <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                        <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                          <p className="text-[11px] text-slate-600">Package</p>
+                          <p className="text-sm font-semibold text-slate-900">#{latestSchoolPackage.id}</p>
+                        </div>
+                        <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                          <p className="text-[11px] text-slate-600">School Year</p>
+                          <p className="text-sm font-semibold text-slate-900">{latestSchoolPackage.schoolYear}</p>
+                        </div>
+                        <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                          <p className="text-[11px] text-slate-600">Status</p>
+                          <span className={`mt-0.5 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(latestSchoolPackage.status)}`}>
+                            {workflowLabel(latestSchoolPackage.status)}
+                          </span>
+                        </div>
+                        <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                          <p className="text-[11px] text-slate-600">Compliance</p>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {latestSchoolPackage.complianceRatePercent === null
+                              ? "N/A"
+                              : `${latestSchoolPackage.complianceRatePercent.toFixed(2)}%`}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                        No indicator package submitted yet for this school.
+                      </div>
+                    )}
+                  </article>
+
+                  <article className="rounded-sm border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Submission Table</p>
+                    {schoolIndicatorPackageRows.length === 0 ? (
+                      <div className="mt-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                        No package history found.
+                      </div>
+                    ) : (
+                      <div className="mt-2 overflow-x-auto rounded-sm border border-slate-200">
+                        <table className="min-w-[720px] w-full border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                              <th className="border border-slate-300 px-2 py-2 text-left">Package</th>
+                              <th className="border border-slate-300 px-2 py-2 text-left">School Year</th>
+                              <th className="border border-slate-300 px-2 py-2 text-left">Period</th>
+                              <th className="border border-slate-300 px-2 py-2 text-center">Status</th>
+                              <th className="border border-slate-300 px-2 py-2 text-right">Compliance</th>
+                              <th className="border border-slate-300 px-2 py-2 text-left">Submitted</th>
+                              <th className="border border-slate-300 px-2 py-2 text-left">Reviewed</th>
                             </tr>
-                            {group.rows.map((row) => (
-                              <tr key={`monitor-indicator-row-${row.key}`} className="bg-white">
-                                <td className="sticky left-0 z-10 min-w-[320px] border border-slate-300 bg-white px-3 py-2 align-top">
-                                  <p className="text-[13px] font-semibold leading-5 text-slate-900 break-words">{row.label}</p>
-                                  <p className="mt-0.5 text-[11px] text-slate-500">{row.code}</p>
+                          </thead>
+                          <tbody>
+                            {schoolIndicatorPackageRows.map((row) => (
+                              <tr key={`monitor-school-package-${row.id}`} className="bg-white">
+                                <td className="border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-900">#{row.id}</td>
+                                <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.schoolYear}</td>
+                                <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reportingPeriod}</td>
+                                <td className="border border-slate-300 px-2 py-2 text-center">
+                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(row.status)}`}>
+                                    {workflowLabel(row.status)}
+                                  </span>
                                 </td>
-                                {schoolIndicatorMatrix.years.map((year) => {
-                                  const values = row.valuesByYear[year] ?? { target: "", actual: "" };
-                                  return (
-                                    <Fragment key={`monitor-indicator-cell-${row.key}-${year}`}>
-                                      <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
-                                        {values.target || "-"}
-                                      </td>
-                                      <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
-                                        {values.actual || "-"}
-                                      </td>
-                                    </Fragment>
-                                  );
-                                })}
+                                <td className="border border-slate-300 px-2 py-2 text-right text-xs text-slate-700">
+                                  {row.complianceRatePercent === null ? "N/A" : `${row.complianceRatePercent.toFixed(2)}%`}
+                                </td>
+                                <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.submittedAt ? formatDateTime(row.submittedAt) : "N/A"}</td>
+                                <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.reviewedAt ? formatDateTime(row.reviewedAt) : "N/A"}</td>
                               </tr>
                             ))}
-                          </Fragment>
-                        ))}
-                      </tbody>
-                    </table>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </article>
+                </div>
+              )}
+
+              {activeSchoolDrawerTab === "history" && (
+                <article className="rounded-sm border border-slate-200 bg-white p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Indicator History</p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">Compact view. Hover or expand for full descriptions.</p>
+                    </div>
+                    <div className="text-right text-[11px] text-slate-600">
+                      <p>
+                        Latest package: <span className="font-semibold text-slate-900">{schoolIndicatorMatrix.latestSubmission ? `#${schoolIndicatorMatrix.latestSubmission.id}` : "N/A"}</span>
+                      </p>
+                      <p>
+                        Focus year: <span className="font-semibold text-slate-900">{latestSchoolIndicatorYear || "N/A"}</span>
+                      </p>
+                    </div>
                   </div>
-                )}
-              </article>
+
+                  {schoolIndicatorMatrix.rows.length === 0 ? (
+                    <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
+                      {isSchoolDrawerSubmissionsLoading
+                        ? "Loading submitted indicators for this school..."
+                        : schoolDrawerIndicatorSubmissions.length === 0
+                        ? "No indicator package submitted yet for this school."
+                        : "Indicator package exists, but no indicator rows were found in the latest submission."}
+                    </div>
+                  ) : (
+                    <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200">
+                      <table className="min-w-[1080px] w-full border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                            <th rowSpan={2} className="sticky left-0 z-20 min-w-[270px] border border-slate-300 bg-slate-100 px-2 py-2 text-left">
+                              Indicators
+                            </th>
+                            {schoolIndicatorMatrix.years.map((year) => (
+                              <th key={`monitor-indicator-year-${year}`} colSpan={2} className="border border-slate-300 px-2 py-2 text-center">
+                                {year}
+                              </th>
+                            ))}
+                          </tr>
+                          <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                            {schoolIndicatorMatrix.years.map((year) => (
+                              <Fragment key={`monitor-indicator-year-columns-${year}`}>
+                                <th className="border border-slate-300 px-2 py-2 text-center">Target</th>
+                                <th className="border border-slate-300 px-2 py-2 text-center">Actual</th>
+                              </Fragment>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {schoolIndicatorRowsByCategory.map((group) => (
+                            <Fragment key={`monitor-indicator-category-${group.category}`}>
+                              <tr className="bg-primary-50/70">
+                                <td
+                                  colSpan={schoolIndicatorMatrix.years.length * 2 + 1}
+                                  className="border border-slate-300 px-3 py-2 text-xs font-bold uppercase tracking-wide text-primary-800"
+                                >
+                                  {group.category}
+                                </td>
+                              </tr>
+                              {group.rows.map((row) => {
+                                const rowId = `school-drawer-indicator-${sanitizeAnchorToken(row.key)}`;
+                                const isExpanded = Boolean(expandedDrawerIndicatorRows[row.key]);
+                                const shortLabel = truncateIndicatorDescription(row.label, 46);
+                                const isHighlighted = highlightedDrawerIndicatorKey === row.key;
+                                const isMissing = missingDrawerIndicatorKeySet.has(row.key);
+                                const isReturned = returnedDrawerIndicatorKeySet.has(row.key);
+
+                                return (
+                                  <tr
+                                    id={rowId}
+                                    key={`monitor-indicator-row-${row.key}`}
+                                    className={isHighlighted ? "bg-amber-50 transition-colors" : "bg-white"}
+                                  >
+                                    <td className="sticky left-0 z-10 min-w-[270px] border border-slate-300 bg-white px-2 py-2 align-top">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          title={row.label}
+                                          onClick={() => toggleDrawerIndicatorLabel(row.key)}
+                                          className="text-left text-[12px] font-semibold leading-4 text-slate-900 hover:text-primary-700"
+                                        >
+                                          {isExpanded ? row.label : shortLabel}
+                                        </button>
+                                        {isMissing && (
+                                          <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                            Missing
+                                          </span>
+                                        )}
+                                        {isReturned && (
+                                          <span className="inline-flex rounded-full border border-primary-300 bg-primary-50 px-1.5 py-0.5 text-[10px] font-semibold text-primary-700">
+                                            Returned
+                                          </span>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleDrawerIndicatorLabel(row.key)}
+                                          className="rounded-sm border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                                        >
+                                          {isExpanded ? "Less" : "More"}
+                                        </button>
+                                      </div>
+                                      <p className="mt-0.5 text-[10px] text-slate-500">{row.code}</p>
+                                    </td>
+                                    {schoolIndicatorMatrix.years.map((year) => {
+                                      const values = row.valuesByYear[year] ?? { target: "", actual: "" };
+                                      return (
+                                        <Fragment key={`monitor-indicator-cell-${row.key}-${year}`}>
+                                          <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
+                                            {values.target || "-"}
+                                          </td>
+                                          <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
+                                            {values.actual || "-"}
+                                          </td>
+                                        </Fragment>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
+                            </Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </article>
+              )}
             </div>
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-500">

@@ -290,6 +290,14 @@ th {
   .dashboard-side-rail {
     height: 100%;
   }
+
+  .dashboard-side-rail-sticky {
+    position: sticky;
+    top: 0.5rem;
+    max-height: calc(100dvh - 1rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
 }
 
 .dashboard-quick-jump-btn {

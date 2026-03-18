@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
+import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   SchoolHeadAccountProvisioningReceipt,
   SchoolHeadAccountStatusUpdatePayload,
@@ -125,7 +126,6 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 12_000;
 
 function normalizeScope(value: string | undefined): SyncScope {
   if (value === "division" || value === "school") return value;
@@ -809,31 +809,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return;
 
-    const interval = window.setInterval(() => {
-      void syncRecords(true);
-    }, AUTO_SYNC_INTERVAL_MS);
-
-    const syncOnFocus = () => {
-      void syncRecords(true);
-    };
-    const syncOnRealtime = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string }>).detail;
-      if (!payload?.entity) return;
-      if (["dashboard", "students", "forms", "indicators"].includes(payload.entity)) {
-        void syncRecords(true);
+    return subscribeSharedSyncPolling((trigger, payload) => {
+      if (trigger === "realtime") {
+        const entity = payload?.entity ?? "";
+        if (["dashboard", "students", "forms", "indicators"].includes(entity)) {
+          void syncRecords(true);
+        }
+        return;
       }
-    };
 
-    window.addEventListener("focus", syncOnFocus);
-    window.addEventListener("online", syncOnFocus);
-    window.addEventListener("cspams:update", syncOnRealtime);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", syncOnFocus);
-      window.removeEventListener("online", syncOnFocus);
-      window.removeEventListener("cspams:update", syncOnRealtime);
-    };
+      void syncRecords(true);
+    });
   }, [token, syncRecords]);
 
   const value = useMemo<DataContextType>(
