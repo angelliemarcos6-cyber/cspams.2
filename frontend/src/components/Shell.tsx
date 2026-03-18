@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ActiveSessionsCenter } from "@/components/ActiveSessionsCenter";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { useAuth } from "@/context/Auth";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 interface ShellProps {
   title: string;
@@ -16,6 +16,8 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
   const { role, logout, isLoggingOut } = useAuth();
   const navigate = useNavigate();
   const signInHref = "#/";
+  const headerRef = useRef<HTMLElement | null>(null);
+  const [shellCssVars, setShellCssVars] = useState<{ headerHeight: number; stickyTop: number } | null>(null);
 
   const roleLabel = role === "school_head" ? "School Head" : "Division Monitor";
 
@@ -25,9 +27,47 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
     navigate("/");
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const header = headerRef.current;
+    if (!header) return;
+
+    const measure = () => {
+      const height = Math.max(0, Math.round(header.getBoundingClientRect().height));
+      if (height === 0) return;
+
+      const stickyTop = height + 8;
+      setShellCssVars((current) => {
+        if (current?.headerHeight === height && current.stickyTop === stickyTop) {
+          return current;
+        }
+        return { headerHeight: height, stickyTop };
+      });
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  const shellStyle: CSSProperties | undefined = shellCssVars
+    ? ({
+        ["--shell-header-height" as any]: `${shellCssVars.headerHeight}px`,
+        ["--shell-sticky-top" as any]: `${shellCssVars.stickyTop}px`,
+      } as CSSProperties)
+    : undefined;
+
   return (
-    <div className="min-h-screen overflow-x-hidden bg-page-bg">
-      <header className="sticky top-0 z-50 border-b border-primary-200/25 bg-primary-800 shadow-2xl shadow-primary-900/30">
+    <div className="min-h-screen overflow-x-hidden bg-page-bg" style={shellStyle}>
+      <header ref={headerRef} className="sticky top-0 z-50 border-b border-primary-200/25 bg-primary-800 shadow-2xl shadow-primary-900/30">
         <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-2 px-3 py-2 sm:h-16 sm:flex-nowrap sm:px-6 lg:px-8">
           <a
             href={signInHref}

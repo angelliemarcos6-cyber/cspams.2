@@ -4700,11 +4700,11 @@ export function MonitorDashboard() {
       )}
 
       <div
-        className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[700ms] lg:ease-in-out ${
+        className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-6 lg:transition-[grid-template-columns] lg:duration-[700ms] lg:ease-in-out ${
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-        <aside className="dashboard-side-rail ml-0 w-full rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:ml-3 lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
+        <aside className="dashboard-side-rail w-full rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:w-auto lg:self-stretch lg:min-h-full">
           <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
@@ -4857,7 +4857,7 @@ export function MonitorDashboard() {
             </div>
           </div>
         </aside>
-        <div className="dashboard-main-pane mt-4 min-w-0 lg:mt-0 lg:pl-5">
+        <div className="dashboard-main-pane mt-4 min-w-0 lg:mt-0">
           {showNavigatorManual && (
             <section id="monitor-user-manual" className="dashboard-shell mb-5 overflow-hidden rounded-sm border border-slate-200 bg-white animate-fade-slide">
               <div className="min-h-[72vh] p-4 md:p-6 xl:p-8">
@@ -4961,7 +4961,7 @@ export function MonitorDashboard() {
           )}
 
           {!showNavigatorManual && (
-            <section className="dashboard-shell sticky top-2 z-40 mb-5 rounded-sm border border-slate-200 bg-white/95 p-2 backdrop-blur">
+            <section className="dashboard-shell dashboard-nav-shell z-40 mb-5 rounded-sm border border-slate-200 bg-white/95 p-2 backdrop-blur">
               <div className="flex flex-col gap-2">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                   <label className="relative w-full lg:max-w-lg">
@@ -4978,14 +4978,14 @@ export function MonitorDashboard() {
                       /
                     </span>
                   </label>
-                  <p className="text-[11px] font-medium text-slate-600">
+                  <p className="hidden text-[11px] font-medium text-slate-600 lg:block">
                     <span className="font-semibold text-slate-800">/</span> Search ·{" "}
                     <span className="font-semibold text-slate-800">J/K</span> Navigate ·{" "}
                     <span className="font-semibold text-slate-800">R</span> Review
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                   <span
                     title="Schools in the current scope."
                     className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700"
@@ -6120,12 +6120,17 @@ export function MonitorDashboard() {
       )}
 
       <aside
+        style={
+          activeTopNavigator === "reviews"
+            ? undefined
+            : { top: "var(--shell-sticky-top, 10rem)", height: "calc(100vh - var(--shell-sticky-top, 10rem))" }
+        }
         className={
           activeTopNavigator === "reviews"
             ? !showNavigatorManual && schoolDrawerKey
               ? "surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
               : "hidden"
-            : `fixed right-0 top-24 z-[75] h-[calc(100vh-6rem)] w-[min(78rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
+            : `fixed right-0 z-[75] w-[min(48rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
                 !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
               }`
         }
@@ -6501,7 +6506,10 @@ export function MonitorDashboard() {
         </div>
       </aside>
 
-      <div className="pointer-events-none fixed right-4 top-24 z-[85] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2">
+      <div
+        style={{ top: "calc(var(--shell-sticky-top, 10rem) + 0.75rem)" }}
+        className="pointer-events-none fixed right-4 z-[85] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2"
+      >
         {toasts.map((toast) => (
           <article
             key={toast.id}
