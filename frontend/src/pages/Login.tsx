@@ -228,17 +228,17 @@ export function Login() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_12%,rgba(100,157,216,0.26),transparent_32%),radial-gradient(circle_at_88%_20%,rgba(4,80,140,0.18),transparent_34%),radial-gradient(circle_at_52%_88%,rgba(47,125,196,0.16),transparent_38%)]" />
       <div className="pointer-events-none absolute left-1/2 top-[-13rem] h-[24rem] w-[24rem] -translate-x-1/2 rounded-full border border-primary-200/45 bg-white/40 blur-3xl" />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-2xl items-center px-4 py-8 sm:px-6 xl:max-w-3xl 2xl:max-w-6xl">
-        <div className="w-full overflow-hidden rounded-none border border-slate-200/85 bg-white/85 shadow-[0_30px_70px_-40px_rgba(2,46,80,0.64)] backdrop-blur-sm 2xl:grid 2xl:grid-cols-[0.95fr_1fr]">
-          <section className="relative overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 px-6 py-6 text-white sm:px-8 sm:py-7 2xl:flex 2xl:items-center 2xl:px-10 2xl:py-10">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-2xl items-center px-4 py-8 sm:px-6 xl:max-w-3xl 2xl:max-w-4xl">
+        <div className="w-full overflow-hidden rounded-none border border-slate-200/85 bg-white/85 shadow-[0_30px_70px_-40px_rgba(2,46,80,0.64)] backdrop-blur-sm">
+          <section className="relative overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700 px-6 py-6 text-white sm:px-8 sm:py-7">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(191,219,254,0.26),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.16),transparent_50%)]" />
             <div className="relative">
               <div className="flex items-start gap-4">
-                <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto rounded-md bg-white px-2 py-1.5 2xl:h-20" />
+                <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto rounded-md bg-white px-2 py-1.5" />
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary-100">CSPAMS</p>
-                  <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white 2xl:max-w-none 2xl:text-3xl">Sign In Portal</h1>
-                  <p className="mt-1 max-w-md text-sm font-medium text-primary-100/90 2xl:max-w-none 2xl:text-base" title={appTagline}>
+                  <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">Sign In Portal</h1>
+                  <p className="mt-1 max-w-md text-sm font-medium text-primary-100/90" title={appTagline}>
                     {appTagline}
                   </p>
                 </div>
@@ -246,7 +246,7 @@ export function Login() {
             </div>
           </section>
 
-          <section className="bg-white/94 p-5 sm:p-7 2xl:border-l 2xl:border-slate-200/85 2xl:p-10">
+          <section className="bg-white/94 p-5 sm:p-7">
             <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-2">
               <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sign In Role</p>
               <div className="grid gap-2 sm:grid-cols-2">
