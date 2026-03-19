@@ -328,7 +328,9 @@ function nextLogoutRetryDelayMs(attempts: number): number {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(() => readStoredSession());
-  const [isLoading, setIsLoading] = useState<boolean>(() => readStoredSession() !== null);
+  // Restore instantly from session storage to avoid blocking the UI on `/api/auth/me`
+  // (especially on free-tier hosts that can cold start).
+  const [isLoading] = useState<boolean>(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const logoutRetryTimerRef = useRef<number | null>(null);
@@ -429,7 +431,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initialSession = readStoredSession();
     if (!initialSession) {
-      setIsLoading(false);
       return;
     }
 
@@ -455,10 +456,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         if (!active) return;
         clearSession();
-      } finally {
-        if (active) {
-          setIsLoading(false);
-        }
       }
     };
 
@@ -616,13 +613,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     const token = session?.token.trim() ?? "";
+    setIsLoggingOut(true);
     clearSession();
     if (!token) {
       writePendingRemoteLogout(null);
+      setIsLoggingOut(false);
       return;
     }
-
-    setIsLoggingOut(true);
 
     const now = Date.now();
     const existing = readPendingRemoteLogout();
@@ -633,11 +630,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       lastAttemptAt: now,
     });
 
-    try {
-      await flushPendingRemoteLogout();
-    } finally {
-      setIsLoggingOut(false);
-    }
+    // Fire-and-forget remote logout so the UI can transition instantly.
+    void flushPendingRemoteLogout();
+    setIsLoggingOut(false);
   }, [clearSession, flushPendingRemoteLogout, session?.token]);
 
   const listActiveSessions = useCallback(async (): Promise<ActiveSessionDevice[]> => {

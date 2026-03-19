@@ -1507,13 +1507,28 @@ class AuthController extends Controller
             $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
 
             return User::query()
-                ->with('school')
+                ->select([
+                    'id',
+                    'name',
+                    'email',
+                    'email_verified_at',
+                    'password',
+                    'must_reset_password',
+                    'password_changed_at',
+                    'account_status',
+                    'school_id',
+                    'last_login_at',
+                    'last_login_ip',
+                    'last_login_user_agent',
+                ])
+                ->with(['school:id,school_code,name'])
                 ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
                     $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
                 })
                 ->whereHas('roles', function ($builder) use ($roleAliases): void {
                     $builder->whereIn('name', $roleAliases);
                 })
+                ->orderByDesc('id')
                 ->first();
         }
 
@@ -1521,11 +1536,28 @@ class AuthController extends Controller
         $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::MONITOR);
 
         return User::query()
-            ->with('school')
+            ->select([
+                'id',
+                'name',
+                'email',
+                'email_verified_at',
+                'mfa_backup_codes',
+                'mfa_backup_codes_generated_at',
+                'password',
+                'must_reset_password',
+                'password_changed_at',
+                'account_status',
+                'school_id',
+                'last_login_at',
+                'last_login_ip',
+                'last_login_user_agent',
+            ])
+            ->with(['school:id,school_code,name'])
             ->where('email_normalized', $normalizedEmail)
             ->whereHas('roles', function ($builder) use ($roleAliases): void {
                 $builder->whereIn('name', $roleAliases);
             })
+            ->orderByDesc('id')
             ->first();
     }
 
