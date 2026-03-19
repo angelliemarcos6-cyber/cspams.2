@@ -60,6 +60,7 @@ const ROLE_META: Record<
 export function Login() {
   const navigate = useNavigate();
   const { login, verifyMfa, resetRequiredPassword, isAuthenticating } = useAuth();
+  const appTagline = "Centralized Student Performance Analytics and Monitoring System";
 
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
   const [loginId, setLoginId] = useState("");
@@ -237,6 +238,9 @@ export function Login() {
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary-100">CSPAMS</p>
                   <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">Sign In Portal</h1>
+                  <p className="mt-1 max-w-md text-sm font-medium text-primary-100/90" title={appTagline}>
+                    {appTagline}
+                  </p>
                 </div>
               </div>
             </div>
