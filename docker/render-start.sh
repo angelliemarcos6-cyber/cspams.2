@@ -100,10 +100,17 @@ if [ "${CSPAMS_AUTO_MIGRATE:-true}" != "false" ]; then
   php artisan migrate --force
 fi
 
+echo "Starting HTTP server..."
+php artisan serve --host=0.0.0.0 --port="${PORT:-10000}" &
+server_pid=$!
+
+trap 'echo "Stopping HTTP server..."; kill -TERM "$server_pid" 2>/dev/null || true' INT TERM
+
 if [ "${CSPAMS_AUTO_SEED:-false}" = "true" ]; then
   echo "Seeding database..."
-  php artisan db:seed --force
+  if ! php artisan db:seed --force; then
+    echo "Seeding failed; server will continue running."
+  fi
 fi
 
-echo "Starting HTTP server..."
-exec php artisan serve --host=0.0.0.0 --port="${PORT:-10000}"
+wait "$server_pid"
