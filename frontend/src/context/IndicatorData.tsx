@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestRaw, isApiError } from "@/lib/api";
 import type {
   AcademicYearOption,
   IndicatorMetric,
@@ -60,11 +60,8 @@ const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>
 const AUTO_SYNC_INTERVAL_MS = 15_000;
 const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
 
-function buildSubmissionFingerprint(submissions: IndicatorSubmission[]): string {
-  return submissions
-    .map((entry) => `${entry.id}:${entry.status ?? ""}:${entry.updatedAt ?? entry.submittedAt ?? entry.createdAt ?? ""}`)
-    .sort()
-    .join("|");
+function normalizeEtag(value: string | null): string {
+  return (value || "").replace(/^W\//, "").replace(/"/g, "");
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
@@ -80,10 +77,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
+  const submissionsEtagRef = useRef<string>("");
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const referenceDataSyncedAtRef = useRef(0);
-  const submissionsFingerprintRef = useRef<string>("");
 
   useEffect(() => {
     if (previousTokenRef.current === token) {
@@ -95,7 +92,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
     referenceDataSyncedAtRef.current = 0;
-    submissionsFingerprintRef.current = "";
+    submissionsEtagRef.current = "";
     setSubmissions([]);
     setMetrics([]);
     setAcademicYears([]);
@@ -129,6 +126,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setMetrics([]);
         setAcademicYears([]);
         referenceDataSyncedAtRef.current = 0;
+        submissionsEtagRef.current = "";
         setIsLoading(false);
         setIsSaving(false);
         setError("");
@@ -151,8 +149,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           academicYears.length === 0 ||
           Date.now() - referenceDataSyncedAtRef.current > REFERENCE_DATA_SYNC_INTERVAL_MS;
 
-        const [submissionPayload, metricPayload, yearPayload] = await Promise.all([
-          apiRequest<IndicatorSubmissionsResponse>("/api/indicators/submissions?per_page=100", { token }),
+        const [submissionsResponse, metricPayload, yearPayload] = await Promise.all([
+          apiRequestRaw<IndicatorSubmissionsResponse>("/api/indicators/submissions?per_page=100", {
+            token,
+            extraHeaders: submissionsEtagRef.current ? { "If-None-Match": submissionsEtagRef.current } : undefined,
+          }),
           shouldRefreshReferenceData
             ? apiRequest<IndicatorMetricsResponse>("/api/indicators/metrics", { token })
             : Promise.resolve<IndicatorMetricsResponse | null>(null),
@@ -165,13 +166,17 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const nextSubmissions = Array.isArray(submissionPayload.data) ? submissionPayload.data : [];
-        const nextFingerprint = buildSubmissionFingerprint(nextSubmissions);
-        const submissionsChanged = nextFingerprint !== submissionsFingerprintRef.current;
+        const nextEtag = normalizeEtag(
+          submissionsResponse.headers.get("X-Sync-Etag") || submissionsResponse.headers.get("ETag"),
+        );
+        if (nextEtag) {
+          submissionsEtagRef.current = nextEtag;
+        }
 
-        if (!silent || submissionsChanged) {
+        const submissionsChanged = submissionsResponse.status !== 304;
+        if (submissionsChanged) {
+          const nextSubmissions = Array.isArray(submissionsResponse.data?.data) ? submissionsResponse.data.data : [];
           setSubmissions(nextSubmissions);
-          submissionsFingerprintRef.current = nextFingerprint;
         }
         if (shouldRefreshReferenceData) {
           setMetrics(Array.isArray(metricPayload?.data) ? metricPayload?.data : []);
@@ -179,7 +184,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           referenceDataSyncedAtRef.current = Date.now();
         }
         if (!silent || submissionsChanged || shouldRefreshReferenceData) {
-          setLastSyncedAt(new Date().toISOString());
+          setLastSyncedAt(submissionsResponse.headers.get("X-Synced-At") || new Date().toISOString());
         }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
@@ -370,6 +375,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     if (!token) return;
 
     const interval = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       void syncSubmissions(true);
     }, AUTO_SYNC_INTERVAL_MS);
 
@@ -377,6 +385,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       void syncSubmissions(true);
     };
     const syncOnRealtime = (event: Event) => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       const payload = (event as CustomEvent<{ entity?: string }>).detail;
       if (!payload?.entity) return;
       if (payload.entity === "indicators") {

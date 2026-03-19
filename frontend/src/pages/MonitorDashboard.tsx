@@ -1203,7 +1203,7 @@ export function MonitorDashboard() {
     isLoading: isStudentDataLoading,
     lastSyncedAt: studentLastSyncedAt,
     refreshStudents,
-    listStudents,
+    queryStudents,
   } = useStudentData();
   const {
     isLoading: isTeacherDataLoading,
@@ -1334,6 +1334,9 @@ export function MonitorDashboard() {
     new Map(),
   );
   const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
+  const radarTotalsAbortRef = useRef<AbortController | null>(null);
+  const studentLookupAbortRef = useRef<AbortController | null>(null);
+  const teacherLookupAbortRef = useRef<AbortController | null>(null);
   const didAutoExpandMoreFiltersRef = useRef(false);
 
   useEffect(() => {
@@ -1341,6 +1344,12 @@ export function MonitorDashboard() {
     schoolDetailCountsCacheRef.current.clear();
     schoolDetailCountsAbortRef.current?.abort();
     schoolDetailCountsAbortRef.current = null;
+    radarTotalsAbortRef.current?.abort();
+    radarTotalsAbortRef.current = null;
+    studentLookupAbortRef.current?.abort();
+    studentLookupAbortRef.current = null;
+    teacherLookupAbortRef.current?.abort();
+    teacherLookupAbortRef.current = null;
   }, [token]);
 
   useEffect(() => {
@@ -2165,8 +2174,48 @@ export function MonitorDashboard() {
     [scopedStudentPool],
   );
 
+  const shouldSyncStudentLookup = useMemo(() => {
+    if (openScopeDropdownId === "students_filters" || openScopeDropdownId === "students_radar") {
+      return true;
+    }
+
+    if (pendingStudentLookupId) {
+      return true;
+    }
+
+    if (selectedStudentLookup) {
+      return true;
+    }
+
+    if (debouncedStudentLookupQuery.trim()) {
+      return true;
+    }
+
+    if (selectedTeacherLookup) {
+      return true;
+    }
+
+    return false;
+  }, [
+    debouncedStudentLookupQuery,
+    openScopeDropdownId,
+    pendingStudentLookupId,
+    selectedStudentLookup,
+    selectedTeacherLookup,
+  ]);
+
   useEffect(() => {
+    if (!shouldSyncStudentLookup) {
+      studentLookupAbortRef.current?.abort();
+      studentLookupAbortRef.current = null;
+      setIsStudentLookupSyncing(false);
+      return;
+    }
+
     let active = true;
+    studentLookupAbortRef.current?.abort();
+    const controller = new AbortController();
+    studentLookupAbortRef.current = controller;
     setIsStudentLookupSyncing(true);
 
     const hydrateStudentLookup = async () => {
@@ -2176,26 +2225,31 @@ export function MonitorDashboard() {
         const teacherSchoolCodes =
           normalizedTeacherSchoolCode && normalizedTeacherSchoolCode !== "N/A" ? [normalizedTeacherSchoolCode] : null;
 
-        const result = await listStudents({
+        const result = await queryStudents({
           page: 1,
           perPage: 200,
           search: debouncedStudentLookupQuery.trim() || null,
           teacherName: normalizedTeacherName.length > 0 ? normalizedTeacherName : null,
           schoolCodes: teacherSchoolCodes ?? scopedSchoolCodes,
           academicYear: "all",
+          signal: controller.signal,
         });
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
 
         const options = result.data
           .map((student) => toStudentLookupOption(student))
           .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
         setDbStudentLookupOptions(options);
-      } catch {
+      } catch (err) {
         if (!active) return;
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         setDbStudentLookupOptions([]);
       } finally {
-        if (active) {
+        if (active && studentLookupAbortRef.current === controller) {
+          studentLookupAbortRef.current = null;
           setIsStudentLookupSyncing(false);
         }
       }
@@ -2205,14 +2259,19 @@ export function MonitorDashboard() {
 
     return () => {
       active = false;
+      controller.abort();
+      if (studentLookupAbortRef.current === controller) {
+        studentLookupAbortRef.current = null;
+      }
     };
   }, [
     debouncedStudentLookupQuery,
-    listStudents,
+    queryStudents,
     scopedSchoolCodes,
     selectedTeacherLookup?.name,
     selectedTeacherLookup?.schoolCode,
     studentLookupSyncTick,
+    shouldSyncStudentLookup,
   ]);
 
   const studentLookupOptions = useMemo<StudentLookupOption[]>(() => {
@@ -2298,8 +2357,38 @@ export function MonitorDashboard() {
     );
   }, [scopedStudentPool]);
 
+  const shouldSyncTeacherLookup = useMemo(() => {
+    if (openScopeDropdownId === "teachers_filters" || openScopeDropdownId === "teachers_radar") {
+      return true;
+    }
+
+    if (pendingTeacherLookupId) {
+      return true;
+    }
+
+    if (selectedTeacherLookup) {
+      return true;
+    }
+
+    if (debouncedTeacherLookupQuery.trim()) {
+      return true;
+    }
+
+    return false;
+  }, [debouncedTeacherLookupQuery, openScopeDropdownId, pendingTeacherLookupId, selectedTeacherLookup]);
+
   useEffect(() => {
+    if (!shouldSyncTeacherLookup) {
+      teacherLookupAbortRef.current?.abort();
+      teacherLookupAbortRef.current = null;
+      setIsTeacherLookupSyncing(false);
+      return;
+    }
+
     let active = true;
+    teacherLookupAbortRef.current?.abort();
+    const controller = new AbortController();
+    teacherLookupAbortRef.current = controller;
     setIsTeacherLookupSyncing(true);
 
     const hydrateTeacherLookup = async () => {
@@ -2309,8 +2398,9 @@ export function MonitorDashboard() {
           perPage: 200,
           search: debouncedTeacherLookupQuery.trim() || null,
           schoolCodes: scopedSchoolCodes,
+          signal: controller.signal,
         });
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
 
         const options = result.data
           .map((teacher) => toTeacherLookupOption(teacher))
@@ -2318,11 +2408,15 @@ export function MonitorDashboard() {
           .sort((a, b) => a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName));
 
         setDbTeacherLookupOptions(options);
-      } catch {
+      } catch (err) {
         if (!active) return;
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         setDbTeacherLookupOptions([]);
       } finally {
-        if (active) {
+        if (active && teacherLookupAbortRef.current === controller) {
+          teacherLookupAbortRef.current = null;
           setIsTeacherLookupSyncing(false);
         }
       }
@@ -2332,8 +2426,12 @@ export function MonitorDashboard() {
 
     return () => {
       active = false;
+      controller.abort();
+      if (teacherLookupAbortRef.current === controller) {
+        teacherLookupAbortRef.current = null;
+      }
     };
-  }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes, teacherLookupSyncTick]);
+  }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes, teacherLookupSyncTick, shouldSyncTeacherLookup]);
 
   const teacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
     const merged = new Map<string, TeacherLookupOption>();
@@ -2364,10 +2462,21 @@ export function MonitorDashboard() {
     );
   }, [teacherLookupOptions, teacherLookupQuery]);
 
+  const shouldSyncRadarTotals = !showNavigatorManual && activeTopNavigator === "schools";
+
   useEffect(() => {
+    if (!shouldSyncRadarTotals) {
+      radarTotalsAbortRef.current?.abort();
+      radarTotalsAbortRef.current = null;
+      return;
+    }
+
     let active = true;
 
     const hydrateRadarTotals = async () => {
+      radarTotalsAbortRef.current?.abort();
+      const controller = new AbortController();
+      radarTotalsAbortRef.current = controller;
       setMonitorRadarTotals((current) => ({
         ...current,
         isLoading: true,
@@ -2376,20 +2485,22 @@ export function MonitorDashboard() {
 
       try {
         const [studentsResult, teachersResult] = await Promise.all([
-          listStudents({
+          queryStudents({
             page: 1,
             perPage: 1,
             schoolCodes: scopedSchoolCodes,
             academicYear: "all",
+            signal: controller.signal,
           }),
           listTeachers({
             page: 1,
             perPage: 1,
             schoolCodes: scopedSchoolCodes,
+            signal: controller.signal,
           }),
         ]);
 
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
 
         setMonitorRadarTotals({
           students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? 0),
@@ -2400,11 +2511,18 @@ export function MonitorDashboard() {
         });
       } catch (err) {
         if (!active) return;
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         setMonitorRadarTotals((current) => ({
           ...current,
           isLoading: false,
           error: err instanceof Error ? err.message : "Unable to sync totals.",
         }));
+      } finally {
+        if (active && radarTotalsAbortRef.current === controller) {
+          radarTotalsAbortRef.current = null;
+        }
       }
     };
 
@@ -2424,9 +2542,11 @@ export function MonitorDashboard() {
 
     return () => {
       active = false;
+      radarTotalsAbortRef.current?.abort();
+      radarTotalsAbortRef.current = null;
       window.removeEventListener("cspams:update", handleRealtimeTotalsRefresh);
     };
-  }, [listStudents, listTeachers, scopedSchoolCodes]);
+  }, [queryStudents, listTeachers, scopedSchoolCodes, shouldSyncRadarTotals]);
 
   const selectedTeacherSchoolKeys = useMemo(() => {
     if (!selectedTeacherLookup) return null;
@@ -3837,7 +3957,7 @@ export function MonitorDashboard() {
 
       try {
         const [studentsResult, teachersResult] = await Promise.all([
-          listStudents({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
+          queryStudents({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
           listTeachers({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
         ]);
 
@@ -3901,7 +4021,7 @@ export function MonitorDashboard() {
       schoolDetailCountsAbortRef.current = null;
       window.removeEventListener("cspams:update", handleRealtimeCountsRefresh);
     };
-  }, [schoolDetailKey, schoolDetailCode, listStudents, listTeachers]);
+  }, [schoolDetailKey, schoolDetailCode, queryStudents, listTeachers]);
 
   const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
     const chips: Array<{ id: FilterChipId; label: string }> = [];

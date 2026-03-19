@@ -140,6 +140,7 @@ interface StudentDataContextType {
   dataVersion: number;
   refreshStudents: () => Promise<void>;
   listStudents: (params?: StudentListParams) => Promise<StudentListResult>;
+  queryStudents: (params?: StudentListParams) => Promise<StudentListResult>;
   listStudentHistory: (studentId: string, params?: StudentHistoryParams) => Promise<StudentHistoryResult>;
   addStudent: (payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
   updateStudent: (id: string, payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
@@ -700,6 +701,28 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     [token, requestStudents, handleApiError],
   );
 
+  const queryStudents = useCallback(
+    async (params?: StudentListParams): Promise<StudentListResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const normalized = sanitizeParams(params);
+
+      try {
+        return await requestStudents(token, normalized, params?.signal);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw err;
+        }
+
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, requestStudents, handleApiError],
+  );
+
   const listStudentHistory = useCallback(
     async (studentId: string, params?: StudentHistoryParams): Promise<StudentHistoryResult> => {
       if (!token) {
@@ -1044,6 +1067,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       dataVersion,
       refreshStudents,
       listStudents,
+      queryStudents,
       listStudentHistory,
       addStudent,
       updateStudent,
@@ -1061,6 +1085,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       dataVersion,
       refreshStudents,
       listStudents,
+      queryStudents,
       listStudentHistory,
       addStudent,
       updateStudent,

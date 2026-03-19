@@ -38,6 +38,9 @@ function startSharedPolling(): void {
   }
 
   intervalHandle = window.setInterval(() => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
     notifyListeners("interval");
   }, DEFAULT_SYNC_INTERVAL_MS);
 
@@ -45,9 +48,15 @@ function startSharedPolling(): void {
     notifyListeners("focus");
   };
   onlineHandler = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
     notifyListeners("online");
   };
   realtimeHandler = (event: Event) => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
     const payload = (event as CustomEvent<SharedSyncPayload>).detail;
     notifyListeners("realtime", payload);
   };
@@ -95,4 +104,3 @@ export function subscribeSharedSyncPolling(listener: SharedSyncListener): () => 
     stopSharedPollingIfIdle();
   };
 }
-
