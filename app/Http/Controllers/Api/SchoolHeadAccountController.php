@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
+use App\Http\Requests\Api\UpsertSchoolHeadAccountProfileRequest;
 use App\Http\Requests\Api\UpdateSchoolHeadAccountStatusRequest;
 use App\Models\AuditLog;
 use App\Models\School;
@@ -18,6 +19,8 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolHeadAccountController extends Controller
@@ -25,6 +28,151 @@ class SchoolHeadAccountController extends Controller
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
     ) {
+    }
+
+    public function upsertProfile(
+        UpsertSchoolHeadAccountProfileRequest $request,
+        School $school,
+    ): JsonResponse {
+        $monitor = $this->requireMonitor($request);
+
+        $name = trim($request->string('name')->toString());
+        $email = strtolower(trim($request->string('email')->toString()));
+
+        $account = $this->resolveSchoolHeadAccount($school);
+        if ($account) {
+            $previousEmail = $account->email;
+            $account->forceFill([
+                'name' => $name,
+                'email' => $email,
+            ])->save();
+
+            $this->loadLatestAccountSetupToken($account);
+
+            AuditLog::query()->create([
+                'user_id' => $monitor->id,
+                'action' => 'account.profile_updated',
+                'auditable_type' => User::class,
+                'auditable_id' => $account->id,
+                'metadata' => [
+                    'category' => 'account_management',
+                    'outcome' => 'success',
+                    'actor_role' => UserRoleResolver::MONITOR,
+                    'target_user_id' => $account->id,
+                    'target_email' => $account->email,
+                    'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                    'school_id' => (string) $school->id,
+                    'school_code' => (string) $school->school_code,
+                    'previous_email' => $previousEmail,
+                    'new_email' => $account->email,
+                ],
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'created_at' => now(),
+            ]);
+
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'dashboard',
+                'eventType' => 'school_head_account.profile_updated',
+                'schoolId' => (string) $school->id,
+                'schoolCode' => (string) $school->school_code,
+                'accountStatus' => $account->accountStatus()->value,
+            ]));
+
+            return response()->json([
+                'data' => [
+                    'account' => $this->serializeSchoolHeadAccount($account),
+                    'message' => 'School Head account updated.',
+                ],
+            ]);
+        }
+
+        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
+            return response()->json(
+                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        $account = new User();
+        $account->name = $name;
+        $account->email = $email;
+        $account->password = Hash::make(Str::password(40));
+        $account->must_reset_password = true;
+        $account->password_changed_at = null;
+        $account->account_status = AccountStatus::PENDING_SETUP->value;
+        $account->school_id = $school->id;
+        $account->save();
+        $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
+
+        $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+            $account,
+            $monitor,
+            $request->ip(),
+            $request->userAgent(),
+        );
+
+        $deliveryStatus = 'sent';
+        $deliveryMessage = 'Setup link sent to the School Head email.';
+        try {
+            $account->notify(
+                new SchoolHeadAccountSetupNotification(
+                    $school,
+                    $issuedSetup['setupUrl'],
+                    CarbonImmutable::parse($issuedSetup['expiresAt']),
+                ),
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+            $deliveryStatus = 'failed';
+            $deliveryMessage = 'Setup link email delivery failed. Share the setup link manually.';
+        }
+
+        $this->loadLatestAccountSetupToken($account);
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.created',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'account_status' => $account->accountStatus()->value,
+                'setup_link_expires_at' => $issuedSetup['expiresAt'],
+                'delivery_status' => $deliveryStatus,
+                'delivery_message' => $deliveryMessage,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_head_account.created',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'accountStatus' => $account->accountStatus()->value,
+            'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
+        ]));
+
+        return response()->json([
+            'data' => [
+                'account' => $this->serializeSchoolHeadAccount($account),
+                'setupLink' => $issuedSetup['setupUrl'],
+                'expiresAt' => $issuedSetup['expiresAt'],
+                'delivery' => $deliveryStatus,
+                'deliveryMessage' => $deliveryMessage,
+                'message' => 'School Head account created.',
+            ],
+        ], Response::HTTP_CREATED);
     }
 
     public function update(
@@ -269,7 +417,8 @@ class SchoolHeadAccountController extends Controller
     {
         $query = User::query()
             ->with('roles')
-            ->where('school_id', $school->id);
+            ->where('school_id', $school->id)
+            ->orderByDesc('id');
 
         if ($this->accountSetupTokensAvailable()) {
             $query->with('latestAccountSetupToken');

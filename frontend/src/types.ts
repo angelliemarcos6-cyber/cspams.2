@@ -77,6 +77,15 @@ export interface SchoolHeadSetupLinkResult {
   deliveryMessage: string;
 }
 
+export interface SchoolHeadAccountProfileUpsertResult {
+  account: SchoolHeadAccountSummary;
+  message?: string | null;
+  setupLink?: string | null;
+  expiresAt?: string | null;
+  delivery?: "sent" | "failed" | string | null;
+  deliveryMessage?: string | null;
+}
+
 export interface SchoolHeadAccountProvisioningReceipt {
   id: string;
   name: string;

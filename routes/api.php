@@ -55,6 +55,8 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::get('/records/archived', [SchoolRecordController::class, 'archived']);
     Route::get('/records/{school}/delete-preview', [SchoolRecordController::class, 'deletePreview']);
     Route::post('/records/{school}/send-reminder', [SchoolRecordController::class, 'sendReminder']);
+    Route::put('/records/{school}/school-head-account/profile', [SchoolHeadAccountController::class, 'upsertProfile'])
+        ->middleware('throttle:auth-account-management');
     Route::patch('/records/{school}/school-head-account', [SchoolHeadAccountController::class, 'update'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])

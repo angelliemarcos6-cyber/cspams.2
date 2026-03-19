@@ -12,6 +12,8 @@ import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
+  SchoolHeadAccountPayload,
+  SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountProvisioningReceipt,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
@@ -92,6 +94,10 @@ interface SchoolHeadSetupLinkResponse {
   data: SchoolHeadSetupLinkResult;
 }
 
+interface SchoolHeadAccountProfileResponse {
+  data: SchoolHeadAccountProfileUpsertResult;
+}
+
 interface DataContextType {
   records: SchoolRecord[];
   recordCount: number;
@@ -119,6 +125,10 @@ interface DataContextType {
     schoolId: string,
     reason?: string | null,
   ) => Promise<SchoolHeadSetupLinkResult>;
+  upsertSchoolHeadAccountProfile: (
+    schoolId: string,
+    payload: SchoolHeadAccountPayload,
+  ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
     options?: { updateExisting?: boolean; restoreArchived?: boolean },
@@ -763,6 +773,63 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
+  const upsertSchoolHeadAccountProfile = useCallback(
+    async (schoolId: string, payload: SchoolHeadAccountPayload): Promise<SchoolHeadAccountProfileUpsertResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const name = payload.name?.trim() ?? "";
+      const email = payload.email?.trim() ?? "";
+      if (!name || !email) {
+        throw new Error("Account name and email are required.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountProfileResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/profile`,
+          {
+            method: "PUT",
+            token,
+            body: {
+              name,
+              email,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account) {
+          throw new Error("Account update response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError],
+  );
+
   const bulkImportRecords = useCallback(
     async (
       rows: SchoolBulkImportRowPayload[],
@@ -888,6 +955,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       sendReminder,
       updateSchoolHeadAccountStatus,
       issueSchoolHeadSetupLink,
+      upsertSchoolHeadAccountProfile,
       bulkImportRecords,
     }),
     [
@@ -911,6 +979,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       sendReminder,
       updateSchoolHeadAccountStatus,
       issueSchoolHeadSetupLink,
+      upsertSchoolHeadAccountProfile,
       bulkImportRecords,
     ],
   );
