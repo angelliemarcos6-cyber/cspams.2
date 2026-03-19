@@ -20,8 +20,9 @@ COPY . .
 
 RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-progress
 
+RUN chmod +x docker/render-start.sh
+
 RUN mkdir -p storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
-CMD ["sh", "-lc", "php artisan serve --host=0.0.0.0 --port=${PORT:-10000}"]
-
+CMD ["./docker/render-start.sh"]
