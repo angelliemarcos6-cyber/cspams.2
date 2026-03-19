@@ -602,6 +602,7 @@ class AuthController extends Controller
             'password' => Hash::make($newPassword),
             'must_reset_password' => false,
             'password_changed_at' => now(),
+            'email_verified_at' => now(),
             'account_status' => AccountStatus::ACTIVE->value,
         ])->save();
 

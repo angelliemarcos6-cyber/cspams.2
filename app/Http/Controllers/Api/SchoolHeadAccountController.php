@@ -41,11 +41,59 @@ class SchoolHeadAccountController extends Controller
 
         $account = $this->resolveSchoolHeadAccount($school);
         if ($account) {
-            $previousEmail = $account->email;
+            $previousEmail = strtolower(trim((string) $account->email));
+            $emailChanged = $previousEmail !== $email;
+
+            if ($emailChanged && ! $this->schoolHeadAccountSetupService->storageAvailable()) {
+                return response()->json(
+                    ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                    Response::HTTP_SERVICE_UNAVAILABLE,
+                );
+            }
+
             $account->forceFill([
                 'name' => $name,
                 'email' => $email,
+                ...($emailChanged ? [
+                    'email_verified_at' => null,
+                    'account_status' => AccountStatus::PENDING_SETUP->value,
+                    'must_reset_password' => true,
+                    'password_changed_at' => null,
+                ] : []),
             ])->save();
+
+            $setupLink = null;
+            $setupLinkExpiresAt = null;
+            $deliveryStatus = null;
+            $deliveryMessage = null;
+
+            if ($emailChanged) {
+                $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+                    $account,
+                    $monitor,
+                    $request->ip(),
+                    $request->userAgent(),
+                );
+
+                $setupLink = $issuedSetup['setupUrl'];
+                $setupLinkExpiresAt = $issuedSetup['expiresAt'];
+                $deliveryStatus = 'sent';
+                $deliveryMessage = 'Setup link sent to the School Head email.';
+
+                try {
+                    $account->notify(
+                        new SchoolHeadAccountSetupNotification(
+                            $school,
+                            $issuedSetup['setupUrl'],
+                            CarbonImmutable::parse($issuedSetup['expiresAt']),
+                        ),
+                    );
+                } catch (\Throwable $exception) {
+                    report($exception);
+                    $deliveryStatus = 'failed';
+                    $deliveryMessage = 'Setup link email delivery failed. Share the setup link manually.';
+                }
+            }
 
             $this->loadLatestAccountSetupToken($account);
 
@@ -65,6 +113,12 @@ class SchoolHeadAccountController extends Controller
                     'school_code' => (string) $school->school_code,
                     'previous_email' => $previousEmail,
                     'new_email' => $account->email,
+                    'email_changed' => $emailChanged,
+                    'setup_link_issued' => $emailChanged,
+                    'setup_link_expires_at' => $setupLinkExpiresAt,
+                    'delivery_status' => $deliveryStatus,
+                    'delivery_message' => $deliveryMessage,
+                    'account_status' => $account->accountStatus()->value,
                 ],
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
@@ -77,12 +131,19 @@ class SchoolHeadAccountController extends Controller
                 'schoolId' => (string) $school->id,
                 'schoolCode' => (string) $school->school_code,
                 'accountStatus' => $account->accountStatus()->value,
+                'setupLinkExpiresAt' => $setupLinkExpiresAt,
             ]));
 
             return response()->json([
                 'data' => [
                     'account' => $this->serializeSchoolHeadAccount($account),
-                    'message' => 'School Head account updated.',
+                    'message' => $emailChanged
+                        ? 'School Head account updated. Setup link reissued for email verification.'
+                        : 'School Head account updated.',
+                    'setupLink' => $setupLink,
+                    'expiresAt' => $setupLinkExpiresAt,
+                    'delivery' => $deliveryStatus,
+                    'deliveryMessage' => $deliveryMessage,
                 ],
             ]);
         }
@@ -210,7 +271,6 @@ class SchoolHeadAccountController extends Controller
 
         if (
             $nextStatus === AccountStatus::ACTIVE->value &&
-            $previousStatus === AccountStatus::PENDING_SETUP &&
             ($account->must_reset_password || $account->password_changed_at === null)
         ) {
             return response()->json(
@@ -311,6 +371,9 @@ class SchoolHeadAccountController extends Controller
         }
 
         $statusChangedToPendingSetup = false;
+        if ($account->email_verified_at !== null) {
+            $account->email_verified_at = null;
+        }
         if ($previousStatus !== AccountStatus::PENDING_SETUP) {
             if ($reason === '') {
                 return response()->json(
@@ -323,9 +386,12 @@ class SchoolHeadAccountController extends Controller
                 'account_status' => AccountStatus::PENDING_SETUP->value,
                 'must_reset_password' => true,
                 'password_changed_at' => null,
+                'email_verified_at' => null,
             ])->save();
 
             $statusChangedToPendingSetup = true;
+        } else {
+            $account->save();
         }
 
         $issuedSetup = $this->schoolHeadAccountSetupService->issue(
@@ -452,6 +518,8 @@ class SchoolHeadAccountController extends Controller
             'id' => (string) $account->id,
             'name' => $account->name,
             'email' => $account->email,
+            'emailVerifiedAt' => $account->email_verified_at?->toISOString(),
+            'lastLoginAt' => $account->last_login_at?->toISOString(),
             'accountStatus' => $status->value,
             'mustResetPassword' => (bool) $account->must_reset_password,
             'flagged' => $account->flagged_at !== null,

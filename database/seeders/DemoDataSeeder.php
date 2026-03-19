@@ -102,6 +102,7 @@ class DemoDataSeeder extends Seeder
             $monitor->password = Hash::make($this->demoPasswordForKey('monitor'));
             $monitor->must_reset_password = false;
             $monitor->password_changed_at = now();
+            $monitor->email_verified_at = now();
         }
 
         $monitor->save();
@@ -118,6 +119,7 @@ class DemoDataSeeder extends Seeder
                 $head->password = Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code)));
                 $head->must_reset_password = false;
                 $head->password_changed_at = now();
+                $head->email_verified_at = now();
             }
 
             $head->save();

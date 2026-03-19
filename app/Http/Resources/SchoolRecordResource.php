@@ -106,6 +106,8 @@ class SchoolRecordResource extends JsonResource
             'id' => (string) $account->id,
             'name' => $account->name,
             'email' => $account->email,
+            'emailVerifiedAt' => $account->email_verified_at?->toISOString(),
+            'lastLoginAt' => $account->last_login_at?->toISOString(),
             'accountStatus' => $status->value,
             'mustResetPassword' => (bool) $account->must_reset_password,
             'flagged' => $account->flagged_at !== null,

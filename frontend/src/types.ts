@@ -50,6 +50,8 @@ export interface SchoolHeadAccountSummary {
   id: string;
   name: string;
   email: string;
+  emailVerifiedAt: string | null;
+  lastLoginAt: string | null;
   accountStatus: AccountStatus | string;
   mustResetPassword: boolean;
   flagged: boolean;

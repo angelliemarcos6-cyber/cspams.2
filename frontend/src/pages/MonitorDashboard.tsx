@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Trash2,
   TrendingUp,
@@ -81,6 +82,22 @@ type ScopeDropdownId =
   | "teachers_radar";
 type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date";
 type ToastTone = "success" | "info" | "warning";
+
+type PendingAccountAction =
+  | {
+      kind: "status";
+      schoolId: string;
+      schoolName: string;
+      actionLabel: string;
+      update: Omit<SchoolHeadAccountStatusUpdatePayload, "reason">;
+    }
+  | {
+      kind: "setup_link";
+      schoolId: string;
+      schoolName: string;
+      actionLabel: string;
+      requireReason: boolean;
+    };
 
 interface MonitorTopNavigatorItem {
   id: MonitorTopNavigatorId;
@@ -1303,6 +1320,10 @@ export function MonitorDashboard() {
   const [schoolHeadAccountDraftError, setSchoolHeadAccountDraftError] = useState("");
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
   const [accountActionKey, setAccountActionKey] = useState<string | null>(null);
+  const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
+  const [pendingAccountAction, setPendingAccountAction] = useState<PendingAccountAction | null>(null);
+  const [pendingAccountReason, setPendingAccountReason] = useState("");
+  const [pendingAccountReasonError, setPendingAccountReasonError] = useState("");
   const [archivedRecords, setArchivedRecords] = useState<SchoolRecord[]>([]);
   const [showArchivedRecords, setShowArchivedRecords] = useState(false);
   const [isArchivedRecordsLoading, setIsArchivedRecordsLoading] = useState(false);
@@ -1313,6 +1334,8 @@ export function MonitorDashboard() {
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const bulkImportInputRef = useRef<HTMLInputElement | null>(null);
   const schoolActionsMenuRef = useRef<HTMLDivElement | null>(null);
+  const accountRowMenuRef = useRef<HTMLDivElement | null>(null);
+  const pendingAccountReasonRef = useRef<HTMLTextAreaElement | null>(null);
   const schoolsTableScrollerRef = useRef<HTMLDivElement | null>(null);
   const schoolsTableDragStateRef = useRef<{
     active: boolean;
@@ -1351,6 +1374,15 @@ export function MonitorDashboard() {
     teacherLookupAbortRef.current?.abort();
     teacherLookupAbortRef.current = null;
   }, [token]);
+
+  useEffect(() => {
+    if (showSchoolHeadAccountsPanel) return;
+
+    setOpenAccountRowMenuSchoolId(null);
+    setPendingAccountAction(null);
+    setPendingAccountReason("");
+    setPendingAccountReasonError("");
+  }, [showSchoolHeadAccountsPanel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1428,6 +1460,54 @@ export function MonitorDashboard() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [isSchoolActionsMenuOpen]);
+
+  useEffect(() => {
+    if (!openAccountRowMenuSchoolId || typeof window === "undefined") return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      const menu = accountRowMenuRef.current;
+      if (!menu) {
+        setOpenAccountRowMenuSchoolId(null);
+        return;
+      }
+      if (menu.contains(event.target as Node)) return;
+      setOpenAccountRowMenuSchoolId(null);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenAccountRowMenuSchoolId(null);
+      }
+    };
+
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [openAccountRowMenuSchoolId]);
+
+  useEffect(() => {
+    if (!pendingAccountAction || typeof window === "undefined") return;
+
+    window.setTimeout(() => {
+      pendingAccountReasonRef.current?.focus();
+    }, 0);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPendingAccountAction(null);
+        setPendingAccountReason("");
+        setPendingAccountReasonError("");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pendingAccountAction]);
 
   useEffect(() => {
     const handleRealtimeLookupRefresh = (event: Event) => {
@@ -4255,22 +4335,62 @@ export function MonitorDashboard() {
     void sendReminderForSchool(schoolKey, record.schoolName);
   };
 
-  const requestAccountActionReason = (actionLabel: string): string | null => {
-    const input = window.prompt(`Reason for ${actionLabel}:`, "");
-    if (input === null) {
-      return null;
-    }
-
-    const normalized = input.trim();
-    if (normalized.length < 5) {
-      pushToast("Please provide a reason with at least 5 characters.", "warning");
-      return null;
-    }
-
-    return normalized;
+  const openPendingAccountAction = (action: PendingAccountAction) => {
+    setOpenAccountRowMenuSchoolId(null);
+    setPendingAccountAction(action);
+    setPendingAccountReason("");
+    setPendingAccountReasonError("");
   };
 
-  const handleUpdateSchoolHeadAccount = async (
+  const closePendingAccountAction = () => {
+    setPendingAccountAction(null);
+    setPendingAccountReason("");
+    setPendingAccountReasonError("");
+  };
+
+  const confirmPendingAccountAction = async () => {
+    if (!pendingAccountAction) {
+      return;
+    }
+
+    const reason = pendingAccountReason.trim();
+    const requiresReason =
+      pendingAccountAction.kind === "status" ||
+      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason);
+    if (requiresReason && reason.length < 5) {
+      setPendingAccountReasonError("Please provide a reason with at least 5 characters.");
+      return;
+    }
+
+    const actionKey = `${pendingAccountAction.schoolId}:${pendingAccountAction.actionLabel}`;
+    setAccountActionKey(actionKey);
+    setPendingAccountReasonError("");
+
+    try {
+      if (pendingAccountAction.kind === "status") {
+        const result = await updateSchoolHeadAccountStatus(pendingAccountAction.schoolId, {
+          ...pendingAccountAction.update,
+          reason,
+        });
+        pushToast(result.message || `School Head account updated for ${pendingAccountAction.schoolName}.`, "success");
+      } else {
+        const receipt = await issueSchoolHeadSetupLink(
+          pendingAccountAction.schoolId,
+          reason.length > 0 ? reason : null,
+        );
+        await revealSetupLink(receipt.setupLink, pendingAccountAction.schoolName);
+        pushToast(`Setup link ready for ${pendingAccountAction.schoolName}.`, "success");
+      }
+
+      closePendingAccountAction();
+    } catch (err) {
+      setPendingAccountReasonError(err instanceof Error ? err.message : "Unable to complete account action.");
+    } finally {
+      setAccountActionKey(null);
+    }
+  };
+
+  const handleUpdateSchoolHeadAccount = (
     record: SchoolRecord,
     update: Omit<SchoolHeadAccountStatusUpdatePayload, "reason">,
     actionLabel: string,
@@ -4281,24 +4401,13 @@ export function MonitorDashboard() {
       return;
     }
 
-    const reason = requestAccountActionReason(actionLabel);
-    if (!reason) {
-      return;
-    }
-
-    const actionKey = `${record.id}:${actionLabel}`;
-    setAccountActionKey(actionKey);
-    try {
-      const result = await updateSchoolHeadAccountStatus(record.id, {
-        ...update,
-        reason,
-      });
-      pushToast(result.message || `School Head account updated for ${record.schoolName}.`, "success");
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to update School Head account.", "warning");
-    } finally {
-      setAccountActionKey(null);
-    }
+    openPendingAccountAction({
+      kind: "status",
+      schoolId: record.id,
+      schoolName: record.schoolName,
+      actionLabel,
+      update,
+    });
   };
 
   const handleIssueSchoolHeadSetupLink = async (record: SchoolRecord) => {
@@ -4309,18 +4418,21 @@ export function MonitorDashboard() {
     }
 
     const accountStatus = String(account.accountStatus ?? "").toLowerCase();
-    let reason: string | null = null;
     if (accountStatus !== "pending_setup") {
-      reason = requestAccountActionReason("reissuing setup link");
-      if (!reason) {
-        return;
-      }
+      openPendingAccountAction({
+        kind: "setup_link",
+        schoolId: record.id,
+        schoolName: record.schoolName,
+        actionLabel: "setup-link",
+        requireReason: true,
+      });
+      return;
     }
 
     const actionKey = `${record.id}:setup-link`;
     setAccountActionKey(actionKey);
     try {
-      const receipt = await issueSchoolHeadSetupLink(record.id, reason);
+      const receipt = await issueSchoolHeadSetupLink(record.id, null);
       await revealSetupLink(receipt.setupLink, record.schoolName);
       pushToast(`Setup link ready for ${record.schoolName}.`, "success");
     } catch (err) {
@@ -6165,7 +6277,9 @@ export function MonitorDashboard() {
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
                   <p className="mt-0.5 text-xs text-slate-600">
-                    Passwords are never shown/stored. Use <span className="font-semibold">Reset Link</span> to re-issue a one-time setup link (password reset).
+                    Passwords are never shown/stored. The account becomes{" "}
+                    <span className="font-semibold">Active + Verified</span> after setup. Use{" "}
+                    <span className="font-semibold">Reset Link</span> to re-issue a one-time setup link.
                   </p>
                 </div>
                 <button
@@ -6197,6 +6311,7 @@ export function MonitorDashboard() {
                       <th className="px-3 py-2 text-left">Account Name</th>
                       <th className="px-3 py-2 text-left">Email</th>
                       <th className="px-3 py-2 text-left">Status</th>
+                      <th className="px-3 py-2 text-left">Last Login</th>
                       <th className="px-3 py-2 text-left">Setup Link</th>
                       <th className="px-3 py-2 text-right">Actions</th>
                     </tr>
@@ -6209,7 +6324,7 @@ export function MonitorDashboard() {
                           <tr key={`account-missing-${summary.schoolKey}`}>
                             <td className="px-3 py-2 text-xs font-semibold text-slate-700">{summary.schoolCode}</td>
                             <td className="px-3 py-2 text-xs text-slate-900">{summary.schoolName}</td>
-                            <td className="px-3 py-2 text-xs text-slate-500" colSpan={5}>
+                            <td className="px-3 py-2 text-xs text-slate-500" colSpan={6}>
                               Record missing from sync.
                             </td>
                           </tr>
@@ -6218,7 +6333,19 @@ export function MonitorDashboard() {
 
                       const account = resolvedRecord.schoolHeadAccount ?? null;
                       const isEditing = editingSchoolHeadAccountSchoolId === resolvedRecord.id;
-                      const isRowSaving = accountActionKey === `${resolvedRecord.id}:profile` || accountActionKey === `${resolvedRecord.id}:setup-link`;
+                      const isRowSaving = Boolean(accountActionKey?.startsWith(`${resolvedRecord.id}:`));
+                      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+                      const emailVerified = Boolean(account?.emailVerifiedAt);
+                      const verificationLabel =
+                        normalizedAccountStatus === "pending_setup"
+                          ? "Setup needed"
+                          : emailVerified
+                            ? "Verified"
+                            : "Not verified";
+                      const verificationTone =
+                        normalizedAccountStatus === "pending_setup" || !emailVerified
+                          ? "text-amber-700"
+                          : "text-primary-700";
 
                       return (
                         <tr key={`account-${resolvedRecord.id}`} className={isEditing ? "bg-primary-50/30" : ""}>
@@ -6262,11 +6389,30 @@ export function MonitorDashboard() {
                           </td>
                           <td className="px-3 py-2 text-xs text-slate-700">
                             {account ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                                {String(account.accountStatus ?? "active").replace(/_/g, " ")}
-                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <span
+                                  className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${accountStatusTone(
+                                    account.accountStatus,
+                                  )}`}
+                                >
+                                  {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
+                                  {accountStatusLabel(account.accountStatus)}
+                                </span>
+                                <span className={`text-[11px] font-semibold ${verificationTone}`}>
+                                  {verificationLabel}
+                                </span>
+                              </div>
                             ) : (
                               <span className="text-slate-400">No account</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-700">
+                            {account?.lastLoginAt ? (
+                              <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
+                                {formatDateTime(account.lastLoginAt)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">Never</span>
                             )}
                           </td>
                           <td className="px-3 py-2 text-xs text-slate-700">
@@ -6361,6 +6507,114 @@ export function MonitorDashboard() {
                                     <RefreshCw className="h-3.5 w-3.5" />
                                     Reset Link
                                   </button>
+                                )}
+                                {account && (
+                                  <div
+                                    className="relative inline-flex"
+                                    ref={openAccountRowMenuSchoolId === resolvedRecord.id ? accountRowMenuRef : null}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setOpenAccountRowMenuSchoolId((current) =>
+                                          current === resolvedRecord.id ? null : resolvedRecord.id,
+                                        )
+                                      }
+                                      disabled={isRowSaving || isSaving}
+                                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Actions
+                                      <ChevronDown
+                                        className={`h-3.5 w-3.5 transition ${openAccountRowMenuSchoolId === resolvedRecord.id ? "rotate-180" : ""}`}
+                                      />
+                                    </button>
+                                    {openAccountRowMenuSchoolId === resolvedRecord.id && (
+                                      <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
+                                        {normalizedAccountStatus !== "active" &&
+                                          normalizedAccountStatus !== "pending_setup" && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleUpdateSchoolHeadAccount(
+                                                  resolvedRecord,
+                                                  { accountStatus: "active" },
+                                                  "Activate account",
+                                                )
+                                              }
+                                              disabled={isRowSaving || isSaving}
+                                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                            >
+                                              <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
+                                              Activate
+                                            </button>
+                                          )}
+                                        {normalizedAccountStatus === "active" && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleUpdateSchoolHeadAccount(
+                                                resolvedRecord,
+                                                { accountStatus: "suspended" },
+                                                "Suspend account",
+                                              )
+                                            }
+                                            disabled={isRowSaving || isSaving}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                          >
+                                            <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                                            Suspend
+                                          </button>
+                                        )}
+                                        {normalizedAccountStatus === "active" && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleUpdateSchoolHeadAccount(
+                                                resolvedRecord,
+                                                { accountStatus: "locked" },
+                                                "Lock account",
+                                              )
+                                            }
+                                            disabled={isRowSaving || isSaving}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                          >
+                                            <ShieldCheck className="h-3.5 w-3.5 text-rose-600" />
+                                            Lock
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleUpdateSchoolHeadAccount(
+                                              resolvedRecord,
+                                              { accountStatus: "archived" },
+                                              "Archive account",
+                                            )
+                                          }
+                                          disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5 text-slate-600" />
+                                          Archive
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleUpdateSchoolHeadAccount(
+                                              resolvedRecord,
+                                              { flagged: !account.flagged },
+                                              account.flagged ? "Unflag account" : "Flag account",
+                                            )
+                                          }
+                                          disabled={isRowSaving || isSaving}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                        >
+                                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                                          {account.flagged ? "Unflag" : "Flag"}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             )}
@@ -6596,7 +6850,7 @@ export function MonitorDashboard() {
                           {recordFormErrors.schoolHeadAccountEmail && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountEmail}</p>}
                         </div>
                         <p className="md:col-span-2 rounded-sm border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-semibold text-primary-800">
-                          A one-time setup link (24h expiry) will be generated after save. The account becomes active once the School Head sets a password.
+                          A one-time setup link (24h expiry) will be generated after save. The account becomes active + verified once the School Head completes setup.
                         </p>
                       </div>
                     )}
@@ -7321,6 +7575,92 @@ export function MonitorDashboard() {
           )}
         </div>
       </aside>
+
+      {pendingAccountAction && (
+        <>
+          <button
+            type="button"
+            onClick={closePendingAccountAction}
+            className="fixed inset-0 z-[90] bg-slate-900/40"
+            aria-label="Close account action dialog"
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Account action"
+            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
+              isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">{pendingAccountAction.actionLabel}</h3>
+                <p className="mt-1 text-xs text-slate-600">
+                  {pendingAccountAction.kind === "status"
+                    ? `Reason required for ${pendingAccountAction.schoolName}.`
+                    : pendingAccountAction.requireReason
+                      ? `Reason required to reissue setup link for ${pendingAccountAction.schoolName}.`
+                      : `Optionally add a note for ${pendingAccountAction.schoolName}.`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closePendingAccountAction}
+                className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-3">
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                Reason
+              </label>
+              <textarea
+                ref={pendingAccountReasonRef}
+                value={pendingAccountReason}
+                onChange={(event) => {
+                  setPendingAccountReason(event.target.value);
+                  setPendingAccountReasonError("");
+                }}
+                rows={3}
+                placeholder="Type a short reason (min 5 characters)"
+                className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+              {pendingAccountReasonError && (
+                <p className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+                  {pendingAccountReasonError}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closePendingAccountAction}
+                disabled={isSaving}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmPendingAccountAction()}
+                disabled={
+                  isSaving ||
+                  (pendingAccountReason.trim().length < 5 &&
+                    (pendingAccountAction.kind === "status" ||
+                      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason)))
+                }
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Confirm
+              </button>
+            </div>
+          </section>
+        </>
+      )}
 
       <div
         style={{ top: "calc(var(--shell-sticky-top, 10rem) + 0.75rem)" }}
