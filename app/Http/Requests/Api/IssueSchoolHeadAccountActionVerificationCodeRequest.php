@@ -6,7 +6,7 @@ use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UpdateSchoolHeadAccountStatusRequest extends FormRequest
+class IssueSchoolHeadAccountActionVerificationCodeRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -19,20 +19,16 @@ class UpdateSchoolHeadAccountStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'accountStatus' => [
-                'sometimes',
+            'targetStatus' => [
+                'required',
                 'string',
                 Rule::in([
-                    AccountStatus::ACTIVE->value,
                     AccountStatus::SUSPENDED->value,
                     AccountStatus::LOCKED->value,
                     AccountStatus::ARCHIVED->value,
                 ]),
             ],
-            'flagged' => ['sometimes', 'boolean'],
-            'reason' => ['required', 'string', 'min:5', 'max:500'],
-            'verificationChallengeId' => ['sometimes', 'string', 'uuid'],
-            'verificationCode' => ['sometimes', 'string', 'regex:/^\\d{6}$/'],
         ];
     }
 }
+

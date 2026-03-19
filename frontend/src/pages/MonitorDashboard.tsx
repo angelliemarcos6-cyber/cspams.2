@@ -1207,6 +1207,7 @@ export function MonitorDashboard() {
     restoreRecord,
     sendReminder,
     updateSchoolHeadAccountStatus,
+    issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
     upsertSchoolHeadAccountProfile,
     bulkImportRecords,
@@ -1326,6 +1327,15 @@ export function MonitorDashboard() {
   const [pendingAccountAction, setPendingAccountAction] = useState<PendingAccountAction | null>(null);
   const [pendingAccountReason, setPendingAccountReason] = useState("");
   const [pendingAccountReasonError, setPendingAccountReasonError] = useState("");
+  const [pendingAccountVerificationChallenge, setPendingAccountVerificationChallenge] = useState<{
+    challengeId: string;
+    expiresAt: string;
+    delivery: string;
+    deliveryMessage: string;
+  } | null>(null);
+  const [pendingAccountVerificationCode, setPendingAccountVerificationCode] = useState("");
+  const [pendingAccountVerificationError, setPendingAccountVerificationError] = useState("");
+  const [isPendingAccountVerificationSending, setIsPendingAccountVerificationSending] = useState(false);
   const [archivedRecords, setArchivedRecords] = useState<SchoolRecord[]>([]);
   const [showArchivedRecords, setShowArchivedRecords] = useState(false);
   const [isArchivedRecordsLoading, setIsArchivedRecordsLoading] = useState(false);
@@ -1338,6 +1348,7 @@ export function MonitorDashboard() {
   const schoolActionsMenuRef = useRef<HTMLDivElement | null>(null);
   const accountRowMenuRef = useRef<HTMLDivElement | null>(null);
   const pendingAccountReasonRef = useRef<HTMLTextAreaElement | null>(null);
+  const pendingAccountVerificationCodeRef = useRef<HTMLInputElement | null>(null);
   const schoolsTableScrollerRef = useRef<HTMLDivElement | null>(null);
   const schoolsTableDragStateRef = useRef<{
     active: boolean;
@@ -4344,17 +4355,66 @@ export function MonitorDashboard() {
     void sendReminderForSchool(schoolKey, record.schoolName);
   };
 
+  const normalizeActionVerificationCode = (value: string): string => value.replace(/\D/g, "").slice(0, 6);
+
+  const isDeactivationStatus = (value: unknown): value is "suspended" | "locked" | "archived" => {
+    const normalized = String(value ?? "").toLowerCase();
+    return normalized === "suspended" || normalized === "locked" || normalized === "archived";
+  };
+
   const openPendingAccountAction = (action: PendingAccountAction) => {
     setOpenAccountRowMenuSchoolId(null);
     setPendingAccountAction(action);
     setPendingAccountReason("");
     setPendingAccountReasonError("");
+    setPendingAccountVerificationChallenge(null);
+    setPendingAccountVerificationCode("");
+    setPendingAccountVerificationError("");
   };
 
   const closePendingAccountAction = () => {
     setPendingAccountAction(null);
     setPendingAccountReason("");
     setPendingAccountReasonError("");
+    setPendingAccountVerificationChallenge(null);
+    setPendingAccountVerificationCode("");
+    setPendingAccountVerificationError("");
+  };
+
+  const sendPendingAccountVerificationCode = async () => {
+    if (!pendingAccountAction || pendingAccountAction.kind !== "status") {
+      return;
+    }
+
+    if (!isDeactivationStatus(pendingAccountAction.update.accountStatus)) {
+      return;
+    }
+
+    const targetStatus = String(pendingAccountAction.update.accountStatus).toLowerCase() as
+      | "suspended"
+      | "locked"
+      | "archived";
+
+    setIsPendingAccountVerificationSending(true);
+    setPendingAccountVerificationError("");
+    setPendingAccountVerificationCode("");
+
+    try {
+      const result = await issueSchoolHeadAccountActionVerificationCode(pendingAccountAction.schoolId, targetStatus);
+      setPendingAccountVerificationChallenge(result);
+
+      pushToast(result.deliveryMessage || "Confirmation code sent.", "info");
+
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          pendingAccountVerificationCodeRef.current?.focus();
+        }, 0);
+      }
+    } catch (err) {
+      setPendingAccountVerificationError(err instanceof Error ? err.message : "Unable to send confirmation code.");
+    } finally {
+      setIsPendingAccountVerificationSending(false);
+    }
   };
 
   const confirmPendingAccountAction = async () => {
@@ -4374,9 +4434,35 @@ export function MonitorDashboard() {
     const actionKey = `${pendingAccountAction.schoolId}:${pendingAccountAction.actionLabel}`;
     setAccountActionKey(actionKey);
     setPendingAccountReasonError("");
+    setPendingAccountVerificationError("");
 
     try {
       if (pendingAccountAction.kind === "status") {
+        if (isDeactivationStatus(pendingAccountAction.update.accountStatus)) {
+          const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
+          const code = pendingAccountVerificationCode.trim();
+
+          if (!challengeId) {
+            setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
+            return;
+          }
+
+          if (!/^\d{6}$/.test(code)) {
+            setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
+            return;
+          }
+
+          const result = await updateSchoolHeadAccountStatus(pendingAccountAction.schoolId, {
+            ...pendingAccountAction.update,
+            reason,
+            verificationChallengeId: challengeId,
+            verificationCode: code,
+          });
+          pushToast(result.message || `School Head account updated for ${pendingAccountAction.schoolName}.`, "success");
+          closePendingAccountAction();
+          return;
+        }
+
         const result = await updateSchoolHeadAccountStatus(pendingAccountAction.schoolId, {
           ...pendingAccountAction.update,
           reason,
@@ -4393,7 +4479,12 @@ export function MonitorDashboard() {
 
       closePendingAccountAction();
     } catch (err) {
-      setPendingAccountReasonError(err instanceof Error ? err.message : "Unable to complete account action.");
+      const message = err instanceof Error ? err.message : "Unable to complete account action.";
+      if (pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus)) {
+        setPendingAccountVerificationError(message);
+      } else {
+        setPendingAccountReasonError(message);
+      }
     } finally {
       setAccountActionKey(null);
     }
@@ -7618,7 +7709,9 @@ export function MonitorDashboard() {
                 <h3 className="text-sm font-bold text-slate-900">{pendingAccountAction.actionLabel}</h3>
                 <p className="mt-1 text-xs text-slate-600">
                   {pendingAccountAction.kind === "status"
-                    ? `Reason required for ${pendingAccountAction.schoolName}.`
+                    ? isDeactivationStatus(pendingAccountAction.update.accountStatus)
+                      ? `Reason and confirmation code required for ${pendingAccountAction.schoolName}.`
+                      : `Reason required for ${pendingAccountAction.schoolName}.`
                     : pendingAccountAction.requireReason
                       ? `Reason required to reissue setup link for ${pendingAccountAction.schoolName}.`
                       : `Optionally add a note for ${pendingAccountAction.schoolName}.`}
@@ -7656,6 +7749,58 @@ export function MonitorDashboard() {
               )}
             </div>
 
+            {pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus) && (
+              <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Confirmation Code</p>
+                    <p className="mt-1 text-xs text-amber-700">Send a 6-digit code to your monitor email to confirm this action.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void sendPendingAccountVerificationCode()}
+                    disabled={isPendingAccountVerificationSending || isSaving}
+                    className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isPendingAccountVerificationSending
+                      ? "Sending..."
+                      : pendingAccountVerificationChallenge
+                        ? "Resend"
+                        : "Send code"}
+                  </button>
+                </div>
+
+                {pendingAccountVerificationChallenge && (
+                  <div className="mt-3">
+                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                      6-digit code
+                    </label>
+                    <input
+                      ref={pendingAccountVerificationCodeRef}
+                      type="text"
+                      inputMode="numeric"
+                      value={pendingAccountVerificationCode}
+                      onChange={(event) => {
+                        setPendingAccountVerificationCode(normalizeActionVerificationCode(event.target.value));
+                        setPendingAccountVerificationError("");
+                      }}
+                      placeholder="123456"
+                      className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    />
+                    <p className="mt-1 text-[11px] font-medium text-slate-600">
+                      Expires {formatDateTime(pendingAccountVerificationChallenge.expiresAt)}.
+                    </p>
+                  </div>
+                )}
+
+                {pendingAccountVerificationError && (
+                  <p className="mt-2 rounded-sm border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-800">
+                    {pendingAccountVerificationError}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="mt-4 flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -7670,9 +7815,13 @@ export function MonitorDashboard() {
                 onClick={() => void confirmPendingAccountAction()}
                 disabled={
                   isSaving ||
+                  isPendingAccountVerificationSending ||
                   (pendingAccountReason.trim().length < 5 &&
                     (pendingAccountAction.kind === "status" ||
-                      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason)))
+                      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason))) ||
+                  (pendingAccountAction.kind === "status" &&
+                    isDeactivationStatus(pendingAccountAction.update.accountStatus) &&
+                    (!pendingAccountVerificationChallenge || !/^\d{6}$/.test(pendingAccountVerificationCode.trim())))
                 }
                 className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
               >

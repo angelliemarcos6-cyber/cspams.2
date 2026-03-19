@@ -64,6 +64,8 @@ export interface SchoolHeadAccountStatusUpdatePayload {
   accountStatus?: "active" | "suspended" | "locked" | "archived";
   flagged?: boolean;
   reason: string;
+  verificationChallengeId?: string;
+  verificationCode?: string;
 }
 
 export interface SchoolHeadAccountStatusUpdateResult {
@@ -74,6 +76,13 @@ export interface SchoolHeadAccountStatusUpdateResult {
 export interface SchoolHeadSetupLinkResult {
   account: SchoolHeadAccountSummary;
   setupLink: string;
+  expiresAt: string;
+  delivery: "sent" | "failed" | string;
+  deliveryMessage: string;
+}
+
+export interface SchoolHeadAccountActionVerificationCodeResult {
+  challengeId: string;
   expiresAt: string;
   delivery: "sent" | "failed" | string;
   deliveryMessage: string;

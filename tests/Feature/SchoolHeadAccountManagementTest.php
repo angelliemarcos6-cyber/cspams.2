@@ -65,6 +65,7 @@ class SchoolHeadAccountManagementTest extends TestCase
     public function test_monitor_can_update_school_head_status_and_reissue_setup_link(): void
     {
         $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
@@ -79,12 +80,25 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
+        $codeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::SUSPENDED->value,
+            ],
+        );
+
+        $codeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $challengeId = (string) $codeIssue->json('data.challengeId');
+        $this->assertNotSame('', $challengeId);
+
         $suspend = $this->withToken($monitorToken)->patchJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
             [
                 'accountStatus' => AccountStatus::SUSPENDED->value,
                 'flagged' => true,
                 'reason' => 'Repeated incomplete submissions from this account.',
+                'verificationChallengeId' => $challengeId,
+                'verificationCode' => '123456',
             ],
         );
 

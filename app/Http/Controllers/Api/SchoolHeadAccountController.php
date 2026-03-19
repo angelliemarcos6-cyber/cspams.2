@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\IssueSchoolHeadAccountActionVerificationCodeRequest;
 use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
 use App\Http\Requests\Api\UpsertSchoolHeadAccountProfileRequest;
 use App\Http\Requests\Api\UpdateSchoolHeadAccountStatusRequest;
@@ -12,6 +13,7 @@ use App\Models\School;
 use App\Models\User;
 use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Support\Auth\ApiUserResolver;
+use App\Support\Auth\MonitorActionVerificationService;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
@@ -27,7 +29,73 @@ class SchoolHeadAccountController extends Controller
 {
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
+        private readonly MonitorActionVerificationService $monitorActionVerificationService,
     ) {
+    }
+
+    public function issueActionVerificationCode(
+        IssueSchoolHeadAccountActionVerificationCodeRequest $request,
+        School $school,
+    ): JsonResponse {
+        $monitor = $this->requireMonitor($request);
+
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $targetStatus = (string) $request->string('targetStatus')->toString();
+
+        try {
+            $challenge = $this->monitorActionVerificationService->issue(
+                $monitor,
+                $school,
+                $targetStatus,
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json(
+                ['message' => 'Unable to send confirmation code. Please try again.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.action_verification_code_issued',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'target_status' => $targetStatus,
+                'challenge_id' => $challenge['challengeId'],
+                'expires_at' => $challenge['expiresAt'],
+                'delivery' => 'mail',
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'challengeId' => $challenge['challengeId'],
+                'expiresAt' => $challenge['expiresAt'],
+                'delivery' => 'sent',
+                'deliveryMessage' => 'Confirmation code sent to your monitor email.',
+            ],
+        ]);
     }
 
     public function upsertProfile(
@@ -277,6 +345,40 @@ class SchoolHeadAccountController extends Controller
                 ['message' => 'This account has not completed setup yet. Reissue the setup link instead.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
+        }
+
+        if (
+            $statusChanged &&
+            in_array($nextStatus, [
+                AccountStatus::SUSPENDED->value,
+                AccountStatus::LOCKED->value,
+                AccountStatus::ARCHIVED->value,
+            ], true)
+        ) {
+            $challengeId = trim($request->string('verificationChallengeId')->toString());
+            $code = trim($request->string('verificationCode')->toString());
+
+            if ($challengeId === '' || $code === '') {
+                return response()->json(
+                    ['message' => 'Confirmation code is required to complete this account action.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                );
+            }
+
+            $verified = $this->monitorActionVerificationService->verify(
+                $monitor,
+                $school,
+                $nextStatus,
+                $challengeId,
+                $code,
+            );
+
+            if (! $verified) {
+                return response()->json(
+                    ['message' => 'Confirmation code is invalid or expired. Request a new code and try again.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                );
+            }
         }
 
         if ($statusChanged) {

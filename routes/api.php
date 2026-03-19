@@ -59,6 +59,8 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
         ->middleware('throttle:auth-account-management');
     Route::patch('/records/{school}/school-head-account', [SchoolHeadAccountController::class, 'update'])
         ->middleware('throttle:auth-account-management');
+    Route::post('/records/{school}/school-head-account/verification-code', [SchoolHeadAccountController::class, 'issueActionVerificationCode'])
+        ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/restore', [SchoolRecordController::class, 'restore']);

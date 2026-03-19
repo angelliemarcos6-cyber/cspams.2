@@ -12,6 +12,7 @@ import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
+  SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountProvisioningReceipt,
@@ -90,6 +91,10 @@ interface SchoolHeadAccountStatusResponse {
   data: SchoolHeadAccountStatusUpdateResult;
 }
 
+interface SchoolHeadAccountActionVerificationCodeResponse {
+  data: SchoolHeadAccountActionVerificationCodeResult;
+}
+
 interface SchoolHeadSetupLinkResponse {
   data: SchoolHeadSetupLinkResult;
 }
@@ -121,6 +126,10 @@ interface DataContextType {
     schoolId: string,
     payload: SchoolHeadAccountStatusUpdatePayload,
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
+  issueSchoolHeadAccountActionVerificationCode: (
+    schoolId: string,
+    targetStatus: "suspended" | "locked" | "archived",
+  ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (
     schoolId: string,
     reason?: string | null,
@@ -723,6 +732,41 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
+  const issueSchoolHeadAccountActionVerificationCode = useCallback(
+    async (
+      schoolId: string,
+      targetStatus: "suspended" | "locked" | "archived",
+    ): Promise<SchoolHeadAccountActionVerificationCodeResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountActionVerificationCodeResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/verification-code`,
+          {
+            method: "POST",
+            token,
+            body: {
+              targetStatus,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.challengeId || !result.expiresAt) {
+          throw new Error("Verification code response is empty.");
+        }
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, handleApiError],
+  );
+
   const issueSchoolHeadSetupLink = useCallback(
     async (schoolId: string, reason?: string | null): Promise<SchoolHeadSetupLinkResult> => {
       if (!token) {
@@ -954,6 +998,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       restoreRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
+      issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       upsertSchoolHeadAccountProfile,
       bulkImportRecords,
@@ -978,6 +1023,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       restoreRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
+      issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       upsertSchoolHeadAccountProfile,
       bulkImportRecords,
