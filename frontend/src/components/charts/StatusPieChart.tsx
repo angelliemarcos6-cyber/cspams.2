@@ -15,7 +15,7 @@ export function StatusPieChart({ data }: StatusPieChartProps) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <div className="surface-chart border p-4 transition duration-200 hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.52)]">
+    <div className="surface-chart border p-4 transition duration-[120ms] hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.52)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">School Status Distribution</h3>

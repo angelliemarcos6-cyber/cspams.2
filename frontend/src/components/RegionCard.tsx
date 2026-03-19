@@ -19,7 +19,7 @@ export function RegionCard({ region, schools, activeSchools, students, teachers 
   ];
 
   return (
-    <article className="surface-panel border p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.55)]">
+    <article className="surface-panel border p-4 transition duration-[120ms] hover:-translate-y-0.5 hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.55)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">

@@ -79,6 +79,15 @@ th {
   min-height: 100vh;
 }
 
+.transition:not([class*="duration-"]),
+.transition-colors:not([class*="duration-"]),
+.transition-opacity:not([class*="duration-"]),
+.transition-shadow:not([class*="duration-"]),
+.transition-transform:not([class*="duration-"]),
+.transition-all:not([class*="duration-"]) {
+  transition-duration: 120ms;
+}
+
 @keyframes fadeSlide {
   from {
     opacity: 0;
@@ -91,7 +100,7 @@ th {
 }
 
 .animate-fade-slide {
-  animation: fadeSlide 380ms ease-out;
+  animation: fadeSlide 200ms cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 
 @keyframes shimmer {
@@ -108,9 +117,9 @@ th {
   background: #ffffff;
   box-shadow: 0 18px 36px -30px rgb(2 46 80 / 0.36);
   transition:
-    box-shadow 180ms ease,
-    border-color 180ms ease,
-    transform 180ms ease;
+    box-shadow 110ms ease,
+    border-color 110ms ease,
+    transform 110ms ease;
 }
 
 .surface-panel:hover {
@@ -182,10 +191,10 @@ th {
   color: rgb(51 65 85);
   letter-spacing: 0.05em;
   transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    color 180ms ease,
-    transform 180ms ease;
+    border-color 110ms ease,
+    background-color 110ms ease,
+    color 110ms ease,
+    transform 110ms ease;
 }
 
 .dashboard-nav-button:hover {
@@ -207,9 +216,9 @@ th {
   background: rgb(248 250 252);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.75);
   transition:
-    border-color 170ms ease,
-    transform 170ms ease,
-    box-shadow 170ms ease;
+    border-color 110ms ease,
+    transform 110ms ease,
+    box-shadow 110ms ease;
 }
 
 .dashboard-subtle-panel:hover {
@@ -226,8 +235,8 @@ th {
 
 .dashboard-table-row {
   transition:
-    background-color 150ms ease,
-    transform 150ms ease;
+    background-color 90ms ease,
+    transform 90ms ease;
 }
 
 .dashboard-table-row:hover {
@@ -254,9 +263,9 @@ th {
   border: 1px solid rgb(186 203 220 / 0.75);
   background: #ffffff;
   transition:
-    border-color 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
+    border-color 110ms ease,
+    transform 110ms ease,
+    box-shadow 110ms ease;
 }
 
 .dashboard-workflow-tile:hover {
@@ -312,10 +321,10 @@ th {
   font-weight: 700;
   color: rgb(51 65 85);
   transition:
-    border-color 150ms ease,
-    color 150ms ease,
-    transform 150ms ease,
-    box-shadow 150ms ease;
+    border-color 110ms ease,
+    color 110ms ease,
+    transform 110ms ease,
+    box-shadow 110ms ease;
 }
 
 .dashboard-quick-jump-btn:hover {
@@ -349,7 +358,7 @@ th {
     0 0 0 2px rgb(59 130 246 / 0.26),
     0 0 0 6px rgb(147 197 253 / 0.24),
     0 16px 32px -24px rgb(29 78 216 / 0.52);
-  animation: focusPulse 700ms ease-out 2;
+  animation: focusPulse 420ms ease-out 2;
 }
 
 .login-grid-overlay {
@@ -360,4 +369,15 @@ th {
   border: 1px solid rgb(147 197 253 / 0.45);
   background: #ffffff;
   box-shadow: 0 28px 60px -42px rgb(2 46 80 / 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

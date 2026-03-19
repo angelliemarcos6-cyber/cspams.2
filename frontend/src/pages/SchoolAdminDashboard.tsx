@@ -1210,11 +1210,11 @@ export function SchoolAdminDashboard() {
       )}
 
       <div
-        className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[700ms] lg:ease-in-out ${
+        className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[240ms] lg:ease-in-out ${
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-      <aside className="dashboard-side-rail ml-0 w-full rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:ml-3 lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
+      <aside className="dashboard-side-rail ml-0 w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:ml-3 lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
         <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
@@ -1273,7 +1273,7 @@ export function SchoolAdminDashboard() {
               </button>
             </div>
             <p
-              className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 transition-[max-height,opacity,margin] duration-[700ms] ease-in-out ${
+              className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
                 showNavigatorHeaderText ? "mt-1 max-h-5 opacity-100" : "mt-0 max-h-0 opacity-0"
               }`}
             >
@@ -1282,7 +1282,7 @@ export function SchoolAdminDashboard() {
           </div>
         </div>
         <div
-          className={`overflow-hidden transition-[max-height,opacity,margin] duration-[700ms] ease-in-out ${
+          className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
             shouldRenderNavigatorItems ? "mt-4 max-h-[34rem] opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
           }`}
         >
@@ -1333,7 +1333,7 @@ export function SchoolAdminDashboard() {
           </div>
         </div>
         <div
-          className={`overflow-hidden transition-[max-height,opacity,margin] duration-[700ms] ease-in-out ${
+          className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
             shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
           }`}
         >
@@ -1564,7 +1564,7 @@ export function SchoolAdminDashboard() {
 
           <div
             id="school-head-context-more-filters"
-            className={`overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-out ${
+            className={`overflow-hidden transition-[max-height,opacity,margin] duration-[200ms] ease-out ${
               showContextMoreFilters ? "mt-2 max-h-32 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
             }`}
           >
@@ -1798,7 +1798,7 @@ export function SchoolAdminDashboard() {
                 <p className="text-[11px] font-semibold text-slate-900">{workspaceCompletion}% complete</p>
               </div>
               <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
-                <div className="h-1.5 rounded-full bg-primary transition-[width] duration-300" style={{ width: `${workspaceCompletion}%` }} />
+                <div className="h-1.5 rounded-full bg-primary transition-[width] duration-[200ms]" style={{ width: `${workspaceCompletion}%` }} />
               </div>
               <div className="mt-2.5 space-y-1.5">
                 {requirements.map((item) => {

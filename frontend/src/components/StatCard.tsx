@@ -33,7 +33,7 @@ export function StatCard({ label, value, icon, tone = "primary" }: StatCardProps
   return (
     <article
       className={cn(
-        "group relative overflow-hidden border p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_28px_-24px_rgba(2,46,80,0.55)]",
+        "group relative overflow-hidden border p-4 transition duration-[120ms] hover:-translate-y-0.5 hover:shadow-[0_18px_28px_-24px_rgba(2,46,80,0.55)]",
         toneMap.wrap,
       )}
     >

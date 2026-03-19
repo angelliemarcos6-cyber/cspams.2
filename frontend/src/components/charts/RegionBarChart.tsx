@@ -8,7 +8,7 @@ interface RegionBarChartProps {
 
 export function RegionBarChart({ data }: RegionBarChartProps) {
   return (
-    <div className="surface-chart border p-4 transition duration-200 hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.52)]">
+    <div className="surface-chart border p-4 transition duration-[120ms] hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.52)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">Regional Capacity Snapshot</h3>

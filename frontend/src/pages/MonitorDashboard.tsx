@@ -70,7 +70,7 @@ type SortDirection = "asc" | "desc";
 type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 type WorkflowStatus = Exclude<RequirementFilter, "all">;
 type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
-type SchoolQuickPreset = "all" | "pending" | "returned" | "no_submission" | "high_risk";
+type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission" | "high_risk";
 type SchoolDrawerTab = "snapshot" | "submissions" | "history";
 type MonitorTopNavigatorId = "overview" | "schools" | "reviews";
 type ScopeDropdownId =
@@ -341,6 +341,7 @@ const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }
 const SCHOOL_QUICK_PRESET_OPTIONS: Array<{ id: SchoolQuickPreset; label: string; hint: string }> = [
   { id: "all", label: "All", hint: "Show every school in the current scope." },
   { id: "pending", label: "Pending", hint: "Schools with submissions waiting for monitor review." },
+  { id: "missing", label: "Missing", hint: "Schools missing a compliance record or indicator submission." },
   { id: "returned", label: "Returned", hint: "Schools with returned submissions that need correction." },
   { id: "no_submission", label: "No Submission", hint: "Schools with no compliance/indicator submission yet." },
   { id: "high_risk", label: "High Risk", hint: "Schools with missing or returned requirements." },
@@ -384,7 +385,7 @@ const ALL_SCHOOL_SCOPE = "__all_schools__";
 const MONITOR_FILTER_STORAGE_KEY = "cspams.monitor.filters.v1";
 const MONITOR_NAV_STORAGE_KEY = "cspams.monitor.nav.v1";
 const SEARCH_DEBOUNCE_MS = 320;
-const ADVANCED_ANALYTICS_HIDE_MS = 520;
+const ADVANCED_ANALYTICS_HIDE_MS = 240;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
@@ -637,7 +638,7 @@ function isValidQueueLane(value: string | null | undefined): value is QueueLane 
 }
 
 function isValidSchoolQuickPreset(value: string | null | undefined): value is SchoolQuickPreset {
-  return value === "all" || value === "pending" || value === "returned" || value === "no_submission" || value === "high_risk";
+  return value === "all" || value === "pending" || value === "missing" || value === "returned" || value === "no_submission" || value === "high_risk";
 }
 
 function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {
@@ -853,7 +854,7 @@ function toTime(...candidates: Array<string | null | undefined>): number {
 }
 
 function isPassedToMonitor(status: string | null): boolean {
-  return status === "submitted" || status === "validated";
+  return status === "submitted" || status === "validated" || status === "returned";
 }
 
 function isAwaitingReview(status: string | null): boolean {
@@ -932,6 +933,7 @@ function queueLaneLabel(lane: QueueLane): string {
 function matchesSchoolQuickPreset(row: SchoolRequirementSummary, preset: SchoolQuickPreset): boolean {
   if (preset === "all") return true;
   if (preset === "pending") return row.awaitingReviewCount > 0 || row.indicatorStatus === "submitted";
+  if (preset === "missing") return row.missingCount > 0;
   if (preset === "returned") return row.indicatorStatus === "returned";
   if (preset === "no_submission") return !row.hasComplianceRecord && !row.hasAnySubmitted;
   return isUrgentRequirement(row);
@@ -3102,7 +3104,10 @@ export function MonitorDashboard() {
     return counts;
   }, [scopedRequirementRows]);
   const needsActionCount = useMemo(
-    () => scopedRequirementRows.filter((row) => row.missingCount > 0 || row.awaitingReviewCount > 0).length,
+    () =>
+      scopedRequirementRows.filter(
+        (row) => row.missingCount > 0 || row.awaitingReviewCount > 0 || row.indicatorStatus === "returned",
+      ).length,
     [scopedRequirementRows],
   );
   const actionQueueRows = useMemo(
@@ -3152,6 +3157,7 @@ export function MonitorDashboard() {
     const counts: Record<SchoolQuickPreset, number> = {
       all: filteredRequirementRows.length,
       pending: 0,
+      missing: 0,
       returned: 0,
       no_submission: 0,
       high_risk: 0,
@@ -3159,6 +3165,7 @@ export function MonitorDashboard() {
 
     for (const row of filteredRequirementRows) {
       if (matchesSchoolQuickPreset(row, "pending")) counts.pending += 1;
+      if (matchesSchoolQuickPreset(row, "missing")) counts.missing += 1;
       if (matchesSchoolQuickPreset(row, "returned")) counts.returned += 1;
       if (matchesSchoolQuickPreset(row, "no_submission")) counts.no_submission += 1;
       if (matchesSchoolQuickPreset(row, "high_risk")) counts.high_risk += 1;
@@ -3174,12 +3181,14 @@ export function MonitorDashboard() {
     return {
       totalSchools: schoolPresetCounts.all,
       pending: schoolPresetCounts.pending,
+      missing: schoolPresetCounts.missing,
       returned: schoolPresetCounts.returned,
       atRisk: schoolPresetCounts.high_risk,
     };
   }, [
     schoolPresetCounts.all,
     schoolPresetCounts.high_risk,
+    schoolPresetCounts.missing,
     schoolPresetCounts.pending,
     schoolPresetCounts.returned,
   ]);
@@ -5297,11 +5306,11 @@ export function MonitorDashboard() {
       )}
 
       <div
-        className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-6 lg:transition-[grid-template-columns] lg:duration-[700ms] lg:ease-in-out ${
+        className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-6 lg:transition-[grid-template-columns] lg:duration-[240ms] lg:ease-in-out ${
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-        <aside className="dashboard-side-rail w-full rounded-sm p-3 transition-[padding] duration-[700ms] ease-in-out lg:w-auto lg:self-stretch lg:min-h-full">
+        <aside className="dashboard-side-rail w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:w-auto lg:self-stretch lg:min-h-full">
           <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
@@ -5360,7 +5369,7 @@ export function MonitorDashboard() {
                   </button>
                 </div>
                 <p
-                  className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 transition-[max-height,opacity,margin] duration-[700ms] ease-in-out ${
+                  className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
                     showNavigatorHeaderText ? "mt-1 max-h-5 opacity-100" : "mt-0 max-h-0 opacity-0"
                   }`}
                 >
@@ -5370,7 +5379,7 @@ export function MonitorDashboard() {
             </div>
 
             <div
-              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[700ms] ease-in-out ${
+              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
                 shouldRenderNavigatorItems ? "mt-4 max-h-[34rem] opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
               }`}
             >
@@ -5425,7 +5434,7 @@ export function MonitorDashboard() {
             </div>
 
             <div
-              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[700ms] ease-in-out ${
+              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
                 shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
               }`}
             >
@@ -5620,6 +5629,18 @@ export function MonitorDashboard() {
                   </button>
                   <button
                     type="button"
+                    title="Schools missing a compliance record or indicator submission."
+                    onClick={() => setSchoolQuickPreset("missing")}
+                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      schoolQuickPreset === "missing"
+                        ? "border-indigo-300 bg-indigo-100 text-indigo-800"
+                        : "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                    }`}
+                  >
+                    Missing: {stickySummaryStats.missing}
+                  </button>
+                  <button
+                    type="button"
                     title="Packages returned to school heads for correction."
                     onClick={() => setSchoolQuickPreset("returned")}
                     className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
@@ -5632,7 +5653,7 @@ export function MonitorDashboard() {
                   </button>
                   <button
                     type="button"
-                    title="Schools flagged as high risk (missing or returned)."
+                    title="Schools with missing or returned requirements."
                     onClick={() => setSchoolQuickPreset("high_risk")}
                     className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
                       schoolQuickPreset === "high_risk"
@@ -5640,7 +5661,7 @@ export function MonitorDashboard() {
                         : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                     }`}
                   >
-                    Risk: {stickySummaryStats.atRisk}
+                    High Risk: {stickySummaryStats.atRisk}
                   </button>
                   <button
                     type="button"
@@ -5821,7 +5842,7 @@ export function MonitorDashboard() {
 
           {renderAdvancedAnalytics && (
             <section
-              className={`surface-panel dashboard-shell overflow-hidden transition-[max-height,opacity,transform,margin] duration-[520ms] ease-in-out ${
+              className={`surface-panel dashboard-shell overflow-hidden transition-[max-height,opacity,transform,margin] duration-[240ms] ease-in-out ${
                 isHidingAdvancedAnalytics
                   ? "mt-0 max-h-0 -translate-y-1 opacity-0 pointer-events-none"
                   : "mt-5 max-h-[2600px] translate-y-0 opacity-100 animate-fade-slide"
@@ -7200,7 +7221,7 @@ export function MonitorDashboard() {
             ? !showNavigatorManual && schoolDrawerKey
               ? "surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
               : "hidden"
-            : `fixed right-0 z-[75] w-[min(48rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
+            : `fixed right-0 z-[75] w-[min(48rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-[160ms] ${
                 !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
               }`
         }
