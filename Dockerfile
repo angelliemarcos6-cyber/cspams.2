@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sqlite3 \
     libpq-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install intl zip dom mbstring gd pdo_sqlite pdo_pgsql \
+    && docker-php-ext-install -j1 intl zip mbstring gd pdo_sqlite pdo_pgsql \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
