@@ -92,6 +92,7 @@ export interface StudentListParams {
   page?: number;
   perPage?: number;
   search?: string | null;
+  teacherName?: string | null;
   status?: StudentEnrollmentStatus | "all" | string | null;
   schoolCode?: string | null;
   schoolCodes?: string[] | null;
@@ -150,6 +151,7 @@ interface NormalizedStudentListParams {
   page: number;
   perPage: number;
   search: string;
+  teacherName: string;
   status: string;
   schoolCode: string;
   schoolCodes: string[];
@@ -246,6 +248,7 @@ function sanitizeParams(params?: StudentListParams): NormalizedStudentListParams
   const page = toPositiveInt(params?.page, 1);
   const perPage = Math.min(toPositiveInt(params?.perPage, DEFAULT_PER_PAGE), MAX_PER_PAGE);
   const search = (params?.search ?? "").trim();
+  const teacherName = (params?.teacherName ?? "").trim();
   const status = sanitizeStatus(params?.status);
   const schoolCode = sanitizeSchoolCode(params?.schoolCode);
   const schoolCodes = sanitizeSchoolCodes(params?.schoolCodes);
@@ -255,6 +258,7 @@ function sanitizeParams(params?: StudentListParams): NormalizedStudentListParams
     page,
     perPage,
     search,
+    teacherName,
     status,
     schoolCode,
     schoolCodes,
@@ -269,6 +273,10 @@ function buildListPath(params: NormalizedStudentListParams): string {
 
   if (params.search) {
     query.set("search", params.search);
+  }
+
+  if (params.teacherName) {
+    query.set("teacherName", params.teacherName);
   }
 
   if (params.status) {

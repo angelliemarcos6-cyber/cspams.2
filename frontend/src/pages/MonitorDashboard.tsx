@@ -8,6 +8,7 @@ import {
   BellRing,
   BookOpenText,
   Building2,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -25,6 +26,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  SlidersHorizontal,
   Trash2,
   TrendingUp,
   Users,
@@ -151,6 +153,7 @@ interface StudentLookupOption {
   id: string;
   lrn: string;
   fullName: string;
+  teacherName: string;
   schoolKey: string;
   schoolCode: string;
   schoolName: string;
@@ -776,6 +779,7 @@ function toStudentLookupOption(student: StudentRecord): StudentLookupOption {
     id: student.id,
     lrn: student.lrn,
     fullName: student.fullName,
+    teacherName: student.teacher?.trim() ?? "",
     schoolKey: resolveStudentSchoolKey(student),
     schoolCode: normalizeSchoolCodeLabel(student.school?.schoolCode ?? null),
     schoolName: normalizeSchoolNameLabel(student.school?.name ?? null),
@@ -1261,6 +1265,7 @@ export function MonitorDashboard() {
   const [recordsPage, setRecordsPage] = useState(1);
   const [queueLane, setQueueLane] = useState<QueueLane>("all");
   const [schoolQuickPreset, setSchoolQuickPreset] = useState<SchoolQuickPreset>("all");
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [lockedSchoolContextKey, setLockedSchoolContextKey] = useState<string | null>(null);
   const [lastReviewCompletion, setLastReviewCompletion] = useState<{
     schoolKey: string;
@@ -1319,6 +1324,7 @@ export function MonitorDashboard() {
     new Map(),
   );
   const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
+  const didAutoExpandMoreFiltersRef = useRef(false);
 
   useEffect(() => {
     schoolDrawerSubmissionCacheRef.current.clear();
@@ -1589,6 +1595,53 @@ export function MonitorDashboard() {
 
     setFiltersHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!filtersHydrated || didAutoExpandMoreFiltersRef.current) return;
+
+    didAutoExpandMoreFiltersRef.current = true;
+
+    const shouldExpand =
+      (activeTopNavigator !== "reviews" && queueLane !== "all") ||
+      selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ||
+      Boolean(selectedStudentLookup) ||
+      Boolean(pendingStudentLookupId) ||
+      Boolean(selectedTeacherLookup) ||
+      Boolean(pendingTeacherLookupId);
+
+    if (shouldExpand) {
+      setShowMoreFilters(true);
+    }
+  }, [
+    activeTopNavigator,
+    filtersHydrated,
+    pendingStudentLookupId,
+    pendingTeacherLookupId,
+    queueLane,
+    selectedSchoolScopeKey,
+    selectedStudentLookup,
+    selectedTeacherLookup,
+  ]);
+
+  useEffect(() => {
+    if (showMoreFilters) return;
+
+    if (
+      openScopeDropdownId === "schools_filters" ||
+      openScopeDropdownId === "students_filters" ||
+      openScopeDropdownId === "teachers_filters"
+    ) {
+      setOpenScopeDropdownId(null);
+    }
+  }, [openScopeDropdownId, showMoreFilters]);
+
+  useEffect(() => {
+    if (showAdvancedFilters) return;
+
+    if (openScopeDropdownId && openScopeDropdownId.endsWith("_filters")) {
+      setOpenScopeDropdownId(null);
+    }
+  }, [openScopeDropdownId, showAdvancedFilters]);
 
   useEffect(() => {
     if (!filtersHydrated || typeof window === "undefined") return;
@@ -2093,11 +2146,17 @@ export function MonitorDashboard() {
 
     const hydrateStudentLookup = async () => {
       try {
+        const normalizedTeacherName = selectedTeacherLookup?.name.trim() ?? "";
+        const normalizedTeacherSchoolCode = (selectedTeacherLookup?.schoolCode ?? "").trim().toUpperCase();
+        const teacherSchoolCodes =
+          normalizedTeacherSchoolCode && normalizedTeacherSchoolCode !== "N/A" ? [normalizedTeacherSchoolCode] : null;
+
         const result = await listStudents({
           page: 1,
           perPage: 200,
           search: debouncedStudentLookupQuery.trim() || null,
-          schoolCodes: scopedSchoolCodes,
+          teacherName: normalizedTeacherName.length > 0 ? normalizedTeacherName : null,
+          schoolCodes: teacherSchoolCodes ?? scopedSchoolCodes,
           academicYear: "all",
         });
         if (!active) return;
@@ -2122,7 +2181,14 @@ export function MonitorDashboard() {
     return () => {
       active = false;
     };
-  }, [debouncedStudentLookupQuery, listStudents, scopedSchoolCodes, studentLookupSyncTick]);
+  }, [
+    debouncedStudentLookupQuery,
+    listStudents,
+    scopedSchoolCodes,
+    selectedTeacherLookup?.name,
+    selectedTeacherLookup?.schoolCode,
+    studentLookupSyncTick,
+  ]);
 
   const studentLookupOptions = useMemo<StudentLookupOption[]>(() => {
     const merged = new Map<string, StudentLookupOption>();
@@ -2142,18 +2208,45 @@ export function MonitorDashboard() {
     return [...merged.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [dbStudentLookupOptions, localStudentLookupOptions, selectedStudentLookup]);
 
+  const teacherScopedStudentLookupOptions = useMemo(() => {
+    if (!selectedTeacherLookup) {
+      return studentLookupOptions;
+    }
+
+    const normalizedTeacher = selectedTeacherLookup.name.trim().toLowerCase();
+    const normalizedTeacherSchoolKey = selectedTeacherLookup.schoolKey;
+    const normalizedTeacherSchoolCode = selectedTeacherLookup.schoolCode.trim().toUpperCase();
+
+    return studentLookupOptions.filter((option) => {
+      if (option.teacherName.trim().toLowerCase() !== normalizedTeacher) {
+        return false;
+      }
+
+      if (normalizedTeacherSchoolKey !== "unknown") {
+        return option.schoolKey === normalizedTeacherSchoolKey;
+      }
+
+      if (normalizedTeacherSchoolCode && normalizedTeacherSchoolCode !== "N/A") {
+        return option.schoolCode.trim().toUpperCase() === normalizedTeacherSchoolCode;
+      }
+
+      return true;
+    });
+  }, [selectedTeacherLookup, studentLookupOptions]);
+
   const filteredStudentLookupOptions = useMemo(() => {
     const query = studentLookupQuery.trim().toLowerCase();
-    if (!query) return studentLookupOptions;
+    if (!query) return teacherScopedStudentLookupOptions;
 
-    return studentLookupOptions.filter(
+    return teacherScopedStudentLookupOptions.filter(
       (option) =>
         option.fullName.toLowerCase().includes(query) ||
         option.lrn.toLowerCase().includes(query) ||
+        option.teacherName.toLowerCase().includes(query) ||
         option.schoolCode.toLowerCase().includes(query) ||
         option.schoolName.toLowerCase().includes(query),
     );
-  }, [studentLookupOptions, studentLookupQuery]);
+  }, [studentLookupQuery, teacherScopedStudentLookupOptions]);
 
   const localTeacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
     const optionsById = new Map<string, TeacherLookupOption>();
@@ -2331,6 +2424,29 @@ export function MonitorDashboard() {
 
     return keys;
   }, [scopedStudentPool, selectedTeacherLookup]);
+
+  useEffect(() => {
+    if (!selectedTeacherLookup || !selectedStudentLookup) return;
+
+    const normalizedTeacher = selectedTeacherLookup.name.trim().toLowerCase();
+    const normalizedStudentTeacher = selectedStudentLookup.teacherName.trim().toLowerCase();
+
+    const matchesTeacher = normalizedTeacher.length > 0 && normalizedStudentTeacher === normalizedTeacher;
+    const matchesSchool =
+      selectedTeacherLookup.schoolKey === "unknown" || selectedStudentLookup.schoolKey === selectedTeacherLookup.schoolKey;
+
+    if (!matchesTeacher || !matchesSchool) {
+      setSelectedStudentLookup(null);
+      setPendingStudentLookupId(null);
+    }
+  }, [
+    selectedStudentLookup?.id,
+    selectedStudentLookup?.teacherName,
+    selectedStudentLookup?.schoolKey,
+    selectedTeacherLookup?.id,
+    selectedTeacherLookup?.name,
+    selectedTeacherLookup?.schoolKey,
+  ]);
 
   const selectedStudentLabel = selectedStudentLookup
     ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn} (${selectedStudentLookup.schoolCode})`
@@ -4476,7 +4592,7 @@ export function MonitorDashboard() {
                     type="text"
                     value={studentLookupQuery}
                     onChange={(event) => setStudentLookupQuery(event.target.value)}
-                    placeholder="Search students"
+                    placeholder={selectedTeacherLookup ? "Search teacher's students" : "Search students"}
                     className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                   />
                   {studentLookupQuery.trim().length > 0 && (
@@ -4491,7 +4607,7 @@ export function MonitorDashboard() {
                   )}
                 </div>
                 <span className="shrink-0 text-[10px] font-semibold text-slate-500" title="Matches / total students">
-                  {filteredStudentLookupOptions.length}/{studentLookupOptions.length}
+                  {filteredStudentLookupOptions.length}/{teacherScopedStudentLookupOptions.length}
                 </span>
               </div>
             </div>
@@ -4501,8 +4617,6 @@ export function MonitorDashboard() {
                 onClick={() => {
                   setSelectedStudentLookup(null);
                   setPendingStudentLookupId(null);
-                  setSelectedTeacherLookup(null);
-                  setPendingTeacherLookupId(null);
                   setStudentLookupQuery("");
                   setOpenScopeDropdownId(null);
                 }}
@@ -4519,8 +4633,6 @@ export function MonitorDashboard() {
                   onClick={() => {
                     setSelectedStudentLookup(option);
                     setPendingStudentLookupId(null);
-                    setSelectedTeacherLookup(null);
-                    setPendingTeacherLookupId(null);
                     if (option.schoolKey !== "unknown") {
                       setSelectedSchoolScopeKey(option.schoolKey);
                     }
@@ -4745,17 +4857,21 @@ export function MonitorDashboard() {
 
   const quickFiltersPanelContent = (
     <>
-      <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-2">
-        <div className="grid gap-2 md:grid-cols-6">
+      <div className="mt-2 rounded-sm border border-slate-200 bg-white p-2 shadow-sm">
+        <div
+          className={`grid gap-2 sm:grid-cols-2 ${
+            activeTopNavigator === "reviews" || showMoreFilters ? "lg:grid-cols-5" : "lg:grid-cols-4"
+          }`}
+        >
           <label
             title="School status"
-            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
+            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
           >
             <Filter className="h-3.5 w-3.5 text-slate-400" />
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
-              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
+              className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
             >
               <option value="all">All ({schoolStatusCounts.all})</option>
               <option value="active">Active ({schoolStatusCounts.active})</option>
@@ -4766,13 +4882,13 @@ export function MonitorDashboard() {
 
           <label
             title="Workflow status"
-            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
+            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
           >
-            <Filter className="h-3.5 w-3.5 text-slate-400" />
+            <ClipboardList className="h-3.5 w-3.5 text-slate-400" />
             <select
               value={requirementFilter}
               onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
-              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
+              className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
             >
               {visibleRequirementFilterOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -4782,78 +4898,107 @@ export function MonitorDashboard() {
             </select>
           </label>
 
-          <label
-            title="Queue lane"
-            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
-          >
-            <ListChecks className="h-3.5 w-3.5 text-slate-400" />
-            <select
-              value={queueLane}
-              onChange={(event) => setQueueLane(event.target.value as QueueLane)}
-              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
+          {(activeTopNavigator === "reviews" || showMoreFilters) && (
+            <label
+              title="Queue lane"
+              className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
             >
-              <option value="all">All ({queueLaneCounts.all})</option>
-              <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
-              <option value="returned">Returned ({queueLaneCounts.returned})</option>
-              <option value="for_review">Review ({queueLaneCounts.for_review})</option>
-              <option value="waiting_data">Waiting ({queueLaneCounts.waiting_data})</option>
-            </select>
-          </label>
+              <ListChecks className="h-3.5 w-3.5 text-slate-400" />
+              <select
+                value={queueLane}
+                onChange={(event) => setQueueLane(event.target.value as QueueLane)}
+                className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
+              >
+                <option value="all">All ({queueLaneCounts.all})</option>
+                <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
+                <option value="returned">Returned ({queueLaneCounts.returned})</option>
+                <option value="for_review">Review ({queueLaneCounts.for_review})</option>
+                <option value="waiting_data">Waiting ({queueLaneCounts.waiting_data})</option>
+              </select>
+            </label>
+          )}
 
-          <label
-            title="Preset"
-            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
+          <div
+            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
+            title="Date range"
           >
-            <AlertTriangle className="h-3.5 w-3.5 text-slate-400" />
-            <select
-              value={schoolQuickPreset}
-              onChange={(event) => setSchoolQuickPreset(event.target.value as SchoolQuickPreset)}
-              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            >
-              {SCHOOL_QUICK_PRESET_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label} ({schoolPresetCounts[option.id]})
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block" title="Date from">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">From</span>
+            <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
             <input
               type="date"
               value={filterDateFrom}
               onChange={(event) => setFilterDateFrom(event.target.value)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="min-w-0 flex-1 border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
             />
-          </label>
-          <label className="block" title="Date to">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">To</span>
+            <span className="text-slate-300">–</span>
             <input
               type="date"
               value={filterDateTo}
               onChange={(event) => setFilterDateTo(event.target.value)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="min-w-0 flex-1 border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
             />
-          </label>
+            {(filterDateFrom.trim() || filterDateTo.trim()) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterDateFrom("");
+                  setFilterDateTo("");
+                }}
+                className="ml-auto rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Clear date range"
+                title="Clear date range"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowMoreFilters((current) => !current)}
+            className="inline-flex w-full items-center justify-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
+            aria-expanded={showMoreFilters}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+            Advanced
+            {(() => {
+              const hiddenActiveCount =
+                (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? 1 : 0) +
+                (selectedStudentLookup || pendingStudentLookupId ? 1 : 0) +
+                (selectedTeacherLookup || pendingTeacherLookupId ? 1 : 0) +
+                (activeTopNavigator !== "reviews" && queueLane !== "all" ? 1 : 0);
+
+              if (!hiddenActiveCount) return null;
+
+              return (
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-primary-50 px-1 text-[10px] font-bold text-primary-700">
+                  {hiddenActiveCount}
+                </span>
+              );
+            })()}
+            <ChevronDown className={`h-3.5 w-3.5 transition ${showMoreFilters ? "rotate-180" : ""}`} />
+          </button>
         </div>
 
-          <div className="mt-2 grid gap-2 md:grid-cols-3">
-          <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">School</span>
-            {renderSchoolScopeSelector("schools_filters", "relative")}
+        {showMoreFilters && (
+          <div className="mt-2 border-t border-slate-200 pt-2">
+            <div className="grid gap-2 md:grid-cols-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                {renderSchoolScopeSelector("schools_filters", "relative flex-1")}
+              </div>
+              <div className="flex items-center gap-2">
+                <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
+                {renderStudentLookupSelector("students_filters", "relative flex-1")}
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="h-3.5 w-3.5 text-slate-400" />
+                {renderTeacherLookupSelector("teachers_filters", "relative flex-1")}
+              </div>
+            </div>
           </div>
-          <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Student</span>
-            {renderStudentLookupSelector("students_filters", "relative")}
-          </div>
-          <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Teacher</span>
-            {renderTeacherLookupSelector("teachers_filters", "relative")}
-          </div>
-        </div>
+        )}
 
-        {activeTopNavigator === "overview" && (
+        {showMoreFilters && activeTopNavigator === "overview" && (
           <div className="mt-2 flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2">
             <p className="text-[11px] font-semibold text-slate-700">Analytics</p>
             <button
@@ -5182,10 +5327,20 @@ export function MonitorDashboard() {
                     id="monitor-submission-filters-toggle"
                     type="button"
                     onClick={() => setShowAdvancedFilters((current) => !current)}
-                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    aria-expanded={showAdvancedFilters}
+                    className={`inline-flex items-center gap-1 rounded-sm border px-3 py-2 text-xs font-semibold transition ${
+                      activeFilterChips.length > 0
+                        ? "border-primary-200 bg-primary-50 text-primary-800 hover:bg-primary-100"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
                   >
                     <Filter className="h-3.5 w-3.5" />
                     {showAdvancedFilters ? "Hide Filters" : "Filters"}
+                    {activeFilterChips.length > 0 && (
+                      <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-white px-1 text-[10px] font-bold text-primary-700">
+                        {activeFilterChips.length}
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -5317,7 +5472,7 @@ export function MonitorDashboard() {
                   id="monitor-submission-filters"
                   className={`p-3 ${sectionFocusClass("monitor-submission-filters")}`}
                 >
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Filters</h2>
+                  <h2 className="sr-only">Filters</h2>
                   {quickFiltersPanelContent}
                 </div>
               )}

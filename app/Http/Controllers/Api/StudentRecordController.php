@@ -122,6 +122,11 @@ class StudentRecordController extends Controller
             });
         }
 
+        $teacherName = trim((string) $request->query('teacherName', ''));
+        if ($teacherName !== '') {
+            $query->whereRaw('LOWER(TRIM(teacher_name)) = ?', [strtolower($teacherName)]);
+        }
+
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(function (Builder $builder) use ($search, $isMonitor): void {
