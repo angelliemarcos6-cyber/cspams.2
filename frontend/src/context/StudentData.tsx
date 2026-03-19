@@ -608,7 +608,9 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         }
 
         if (response.status === 304) {
-          setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          if (!silent) {
+            setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          }
           if (scopeFromHeaders) {
             setSyncScope(scopeFromHeaders);
           }

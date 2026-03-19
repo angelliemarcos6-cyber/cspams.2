@@ -163,10 +163,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [syncScope, setSyncScope] = useState<SyncScope>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const syncInFlightRef = useRef(false);
+  const syncQueuedRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
+  const realtimeSyncTimerRef = useRef<number | null>(null);
+
+  const clearRealtimeSyncTimer = () => {
+    if (typeof window === "undefined") {
+      realtimeSyncTimerRef.current = null;
+      return;
+    }
+
+    if (realtimeSyncTimerRef.current !== null) {
+      window.clearTimeout(realtimeSyncTimerRef.current);
+      realtimeSyncTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (previousTokenRef.current === token) {
@@ -176,8 +190,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     previousTokenRef.current = token;
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
+    syncQueuedRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    clearRealtimeSyncTimer();
     setRecords([]);
     setRecordCount(0);
     setTargetsMet(null);
@@ -205,7 +221,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const syncRecords = useCallback(
     async (silent = false) => {
-      if (syncInFlightRef.current) return;
+      if (syncInFlightRef.current) {
+        syncQueuedRef.current = true;
+        return;
+      }
 
       if (!token) {
         setRecords([]);
@@ -224,6 +243,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       syncInFlightRef.current = true;
+      syncQueuedRef.current = false;
       const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
@@ -261,7 +281,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setRecordCount((current) =>
             normalizeRecordCount(response.headers.get("X-Sync-Record-Count"), current),
           );
-          setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          if (!silent) {
+            setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          }
           if (scopeFromHeaders) {
             setSyncScope(scopeFromHeaders);
           }
@@ -298,6 +320,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         if (!silent && requestGeneration === syncGenerationRef.current) {
           setIsLoading(false);
+        }
+
+        if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          syncQueuedRef.current = false;
+          void syncRecords(true);
         }
       }
     },
@@ -809,17 +836,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return;
 
-    return subscribeSharedSyncPolling((trigger, payload) => {
+    const scheduleSync = (delayMs: number) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+
+      clearRealtimeSyncTimer();
+      realtimeSyncTimerRef.current = window.setTimeout(() => {
+        realtimeSyncTimerRef.current = null;
+        void syncRecords(true);
+      }, delayMs);
+    };
+
+    const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
       if (trigger === "realtime") {
         const entity = payload?.entity ?? "";
         if (["dashboard", "students", "forms", "indicators"].includes(entity)) {
-          void syncRecords(true);
+          scheduleSync(220);
         }
         return;
       }
 
-      void syncRecords(true);
+      scheduleSync(0);
     });
+
+    return () => {
+      unsubscribe();
+      clearRealtimeSyncTimer();
+    };
   }, [token, syncRecords]);
 
   const value = useMemo<DataContextType>(

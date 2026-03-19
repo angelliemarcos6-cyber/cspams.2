@@ -244,10 +244,24 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     sanitizeParams({ page: 1, perPage: SNAPSHOT_PER_PAGE }),
   );
   const syncInFlightRef = useRef(false);
+  const syncQueuedRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
+  const realtimeSyncTimerRef = useRef<number | null>(null);
+
+  const clearRealtimeSyncTimer = () => {
+    if (typeof window === "undefined") {
+      realtimeSyncTimerRef.current = null;
+      return;
+    }
+
+    if (realtimeSyncTimerRef.current !== null) {
+      window.clearTimeout(realtimeSyncTimerRef.current);
+      realtimeSyncTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (previousTokenRef.current === token) {
@@ -257,8 +271,10 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     previousTokenRef.current = token;
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
+    syncQueuedRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    clearRealtimeSyncTimer();
     setTeachers([]);
     setIsLoading(false);
     setIsSaving(false);
@@ -298,6 +314,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const syncTeachers = useCallback(
     async (silent = false) => {
       if (syncInFlightRef.current) {
+        syncQueuedRef.current = true;
         return;
       }
 
@@ -316,6 +333,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       }
 
       syncInFlightRef.current = true;
+      syncQueuedRef.current = false;
       const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
@@ -349,7 +367,9 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         if (response.status === 304) {
-          setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          if (!silent) {
+            setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
+          }
           if (scopeFromHeaders) {
             setSyncScope(scopeFromHeaders);
           }
@@ -385,6 +405,11 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
         if (!silent && requestGeneration === syncGenerationRef.current) {
           setIsLoading(false);
+        }
+
+        if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          syncQueuedRef.current = false;
+          void syncTeachers(true);
         }
       }
     },
@@ -523,17 +548,34 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return;
 
-    return subscribeSharedSyncPolling((trigger, payload) => {
+    const scheduleSync = (delayMs: number) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+
+      clearRealtimeSyncTimer();
+      realtimeSyncTimerRef.current = window.setTimeout(() => {
+        realtimeSyncTimerRef.current = null;
+        void syncTeachers(true);
+      }, delayMs);
+    };
+
+    const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
       if (trigger === "realtime") {
         const entity = payload?.entity ?? "";
         if (entity === "teachers" || entity === "dashboard" || entity === "students") {
-          void syncTeachers(true);
+          scheduleSync(220);
         }
         return;
       }
 
-      void syncTeachers(true);
+      scheduleSync(0);
     });
+
+    return () => {
+      unsubscribe();
+      clearRealtimeSyncTimer();
+    };
   }, [token, syncTeachers]);
 
   const value = useMemo<TeacherDataContextType>(

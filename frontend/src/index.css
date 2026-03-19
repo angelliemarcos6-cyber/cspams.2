@@ -166,6 +166,10 @@ th {
   pointer-events: none;
 }
 
+.dashboard-shell-visible {
+  overflow: visible;
+}
+
 .dashboard-nav-shell {
   position: sticky;
   top: var(--shell-sticky-top, 10rem);

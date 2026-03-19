@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class School extends Model
@@ -92,5 +93,13 @@ class School extends Model
     public function indicatorSubmissions(): HasMany
     {
         return $this->hasMany(IndicatorSubmission::class);
+    }
+
+    public function latestIndicatorSubmission(): HasOne
+    {
+        return $this->hasOne(IndicatorSubmission::class)->ofMany([
+            'updated_at' => 'max',
+            'id' => 'max',
+        ]);
     }
 }

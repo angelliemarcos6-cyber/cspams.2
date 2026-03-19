@@ -31,6 +31,14 @@ export interface SchoolRecord {
   lastUpdated: string;
   deletedAt?: string | null;
   schoolHeadAccount?: SchoolHeadAccountSummary | null;
+  indicatorLatest?: {
+    id: string;
+    status: WorkflowStatus | string | null;
+    submittedAt: string | null;
+    reviewedAt: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  } | null;
 }
 
 export interface SchoolHeadAccountPayload {

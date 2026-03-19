@@ -9,6 +9,7 @@ use App\Http\Requests\Api\UpsertSchoolRecordRequest;
 use App\Http\Resources\SchoolRecordResource;
 use App\Models\AuditLog;
 use App\Models\FormSubmissionHistory;
+use App\Models\IndicatorSubmission;
 use App\Models\School;
 use App\Models\Section;
 use App\Models\Student;
@@ -78,6 +79,17 @@ class SchoolRecordController extends Controller
 
         $query = (clone $baseQuery)
             ->with('submittedBy:id,name')
+            ->with(['latestIndicatorSubmission' => function ($query): void {
+                $query->select([
+                    'id',
+                    'indicator_submissions.school_id',
+                    'status',
+                    'submitted_at',
+                    'reviewed_at',
+                    'created_at',
+                    'updated_at',
+                ]);
+            }])
             ->with(['schoolHeadAccounts' => function ($query): void {
                 $query->select([
                     'id',
@@ -805,6 +817,17 @@ class SchoolRecordController extends Controller
         $response = response()->json([
             'data' => (new SchoolRecordResource($school->load([
                 'submittedBy:id,name',
+                'latestIndicatorSubmission' => function ($query): void {
+                    $query->select([
+                        'id',
+                        'indicator_submissions.school_id',
+                        'status',
+                        'submitted_at',
+                        'reviewed_at',
+                        'created_at',
+                        'updated_at',
+                    ]);
+                },
                 'schoolHeadAccounts' => function ($query): void {
                     $query->select([
                         'id',
@@ -1159,6 +1182,7 @@ class SchoolRecordController extends Controller
      *     recordCount: int,
      *     sectionCount: int,
      *     studentCount: int,
+     *     indicatorSubmissionCount: int,
      *     latestAt: ?Carbon
      * }
      */
@@ -1175,9 +1199,13 @@ class SchoolRecordController extends Controller
 
         $sectionCount = 0;
         $studentCount = 0;
+        $indicatorSubmissionCount = 0;
         $latestSectionUpdatedAt = null;
         $latestStudentUpdatedAt = null;
         $latestStudentStatusAt = null;
+        $latestIndicatorUpdatedAt = null;
+        $latestIndicatorSubmittedAt = null;
+        $latestIndicatorReviewedAt = null;
 
         if ($schoolIds->isNotEmpty()) {
             $sectionProbe = Section::query()
@@ -1199,6 +1227,19 @@ class SchoolRecordController extends Controller
             $studentCount = (int) ($studentProbe?->aggregate_count ?? 0);
             $latestStudentUpdatedAt = $studentProbe?->latest_updated_at;
             $latestStudentStatusAt = $studentProbe?->latest_status_changed_at;
+
+            $indicatorProbe = IndicatorSubmission::query()
+                ->whereIn('school_id', $schoolIds)
+                ->selectRaw('COUNT(*) as aggregate_count')
+                ->selectRaw('MAX(updated_at) as latest_updated_at')
+                ->selectRaw('MAX(submitted_at) as latest_submitted_at')
+                ->selectRaw('MAX(reviewed_at) as latest_reviewed_at')
+                ->first();
+
+            $indicatorSubmissionCount = (int) ($indicatorProbe?->aggregate_count ?? 0);
+            $latestIndicatorUpdatedAt = $indicatorProbe?->latest_updated_at;
+            $latestIndicatorSubmittedAt = $indicatorProbe?->latest_submitted_at;
+            $latestIndicatorReviewedAt = $indicatorProbe?->latest_reviewed_at;
         }
 
         $latestAt = $this->resolveLatestTimestamp(
@@ -1207,12 +1248,16 @@ class SchoolRecordController extends Controller
             $latestSectionUpdatedAt,
             $latestStudentUpdatedAt,
             $latestStudentStatusAt,
+            $latestIndicatorUpdatedAt,
+            $latestIndicatorSubmittedAt,
+            $latestIndicatorReviewedAt,
         );
 
         return [
             'recordCount' => $recordCount,
             'sectionCount' => $sectionCount,
             'studentCount' => $studentCount,
+            'indicatorSubmissionCount' => $indicatorSubmissionCount,
             'latestAt' => $latestAt,
         ];
     }
@@ -1222,6 +1267,7 @@ class SchoolRecordController extends Controller
      *     recordCount: int,
      *     sectionCount: int,
      *     studentCount: int,
+     *     indicatorSubmissionCount: int,
      *     latestAt: ?Carbon
      * } $syncFingerprint
      */
@@ -1233,6 +1279,7 @@ class SchoolRecordController extends Controller
             (string) $syncFingerprint['recordCount'],
             (string) $syncFingerprint['sectionCount'],
             (string) $syncFingerprint['studentCount'],
+            (string) $syncFingerprint['indicatorSubmissionCount'],
             $syncFingerprint['latestAt']?->format('U.u') ?? '0',
         ]));
     }

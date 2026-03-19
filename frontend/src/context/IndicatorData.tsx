@@ -60,6 +60,13 @@ const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>
 const AUTO_SYNC_INTERVAL_MS = 15_000;
 const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
 
+function buildSubmissionFingerprint(submissions: IndicatorSubmission[]): string {
+  return submissions
+    .map((entry) => `${entry.id}:${entry.status ?? ""}:${entry.updatedAt ?? entry.submittedAt ?? entry.createdAt ?? ""}`)
+    .sort()
+    .join("|");
+}
+
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const { token, logout } = useAuth();
 
@@ -72,9 +79,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const syncInFlightRef = useRef(false);
+  const syncQueuedRef = useRef(false);
   const previousTokenRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const referenceDataSyncedAtRef = useRef(0);
+  const submissionsFingerprintRef = useRef<string>("");
 
   useEffect(() => {
     if (previousTokenRef.current === token) {
@@ -84,7 +93,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     previousTokenRef.current = token;
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
+    syncQueuedRef.current = false;
     referenceDataSyncedAtRef.current = 0;
+    submissionsFingerprintRef.current = "";
     setSubmissions([]);
     setMetrics([]);
     setAcademicYears([]);
@@ -108,7 +119,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
   const syncSubmissions = useCallback(
     async (silent = false) => {
-      if (syncInFlightRef.current) return;
+      if (syncInFlightRef.current) {
+        syncQueuedRef.current = true;
+        return;
+      }
 
       if (!token) {
         setSubmissions([]);
@@ -123,6 +137,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       }
 
       syncInFlightRef.current = true;
+      syncQueuedRef.current = false;
       const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
@@ -150,13 +165,22 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        setSubmissions(Array.isArray(submissionPayload.data) ? submissionPayload.data : []);
+        const nextSubmissions = Array.isArray(submissionPayload.data) ? submissionPayload.data : [];
+        const nextFingerprint = buildSubmissionFingerprint(nextSubmissions);
+        const submissionsChanged = nextFingerprint !== submissionsFingerprintRef.current;
+
+        if (!silent || submissionsChanged) {
+          setSubmissions(nextSubmissions);
+          submissionsFingerprintRef.current = nextFingerprint;
+        }
         if (shouldRefreshReferenceData) {
           setMetrics(Array.isArray(metricPayload?.data) ? metricPayload?.data : []);
           setAcademicYears(Array.isArray(yearPayload?.data) ? yearPayload?.data : []);
           referenceDataSyncedAtRef.current = Date.now();
         }
-        setLastSyncedAt(new Date().toISOString());
+        if (!silent || submissionsChanged || shouldRefreshReferenceData) {
+          setLastSyncedAt(new Date().toISOString());
+        }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
           return;
@@ -168,6 +192,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           if (!silent) {
             setIsLoading(false);
           }
+        }
+
+        if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          syncQueuedRef.current = false;
+          void syncSubmissions(true);
         }
       }
     },

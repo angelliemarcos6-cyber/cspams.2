@@ -69,7 +69,13 @@ type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
 type SchoolQuickPreset = "all" | "pending" | "returned" | "no_submission" | "high_risk";
 type SchoolDrawerTab = "snapshot" | "submissions" | "history";
 type MonitorTopNavigatorId = "overview" | "schools" | "reviews";
-type ScopeDropdownSlot = "schools" | "students" | "teachers";
+type ScopeDropdownId =
+  | "schools_filters"
+  | "schools_radar"
+  | "students_filters"
+  | "students_radar"
+  | "teachers_filters"
+  | "teachers_radar";
 type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date" | "context";
 type ToastTone = "success" | "info" | "warning";
 
@@ -136,6 +142,9 @@ interface SchoolScopeOption {
   key: string;
   code: string;
   name: string;
+  headName: string;
+  headEmail: string;
+  searchText: string;
 }
 
 interface StudentLookupOption {
@@ -1176,23 +1185,39 @@ export function MonitorDashboard() {
     issueSchoolHeadSetupLink,
     bulkImportRecords,
   } = useData();
-  const { submissions: indicatorSubmissions } = useIndicatorData();
+  const {
+    submissions: indicatorSubmissions,
+    isLoading: isIndicatorDataLoading,
+    lastSyncedAt: indicatorLastSyncedAt,
+    refreshSubmissions,
+  } = useIndicatorData();
   const {
     students,
     isLoading: isStudentDataLoading,
+    lastSyncedAt: studentLastSyncedAt,
+    refreshStudents,
     listStudents,
   } = useStudentData();
-  const { listTeachers } = useTeacherData();
+  const {
+    isLoading: isTeacherDataLoading,
+    lastSyncedAt: teacherLastSyncedAt,
+    refreshTeachers,
+    listTeachers,
+  } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
+  const effectiveSearch = useMemo(
+    () => (search.trim().length === 0 ? "" : debouncedSearch),
+    [debouncedSearch, search],
+  );
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [requirementFilter, setRequirementFilter] = useState<RequirementFilter>("all");
   const [selectedSchoolScopeKey, setSelectedSchoolScopeKey] = useState<string>(ALL_SCHOOL_SCOPE);
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
-  const [schoolScopeDropdownSlot, setSchoolScopeDropdownSlot] = useState<ScopeDropdownSlot | null>(null);
+  const [openScopeDropdownId, setOpenScopeDropdownId] = useState<ScopeDropdownId | null>(null);
   const [studentLookupQuery, setStudentLookupQuery] = useState("");
   const [teacherLookupQuery, setTeacherLookupQuery] = useState("");
   const debouncedStudentLookupQuery = useDebouncedValue(studentLookupQuery, SEARCH_DEBOUNCE_MS);
@@ -1315,6 +1340,45 @@ export function MonitorDashboard() {
       window.removeEventListener("resize", syncViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (!openScopeDropdownId || typeof window === "undefined") return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      const root = document.querySelector(`[data-scope-dropdown-id="${openScopeDropdownId}"]`);
+      if (!root) {
+        setOpenScopeDropdownId(null);
+        return;
+      }
+      if (root.contains(event.target as Node)) return;
+      setOpenScopeDropdownId(null);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenScopeDropdownId(null);
+      }
+    };
+
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [openScopeDropdownId]);
+
+  useEffect(() => {
+    if (!openScopeDropdownId || typeof window === "undefined") return;
+
+    window.setTimeout(() => {
+      const root = document.querySelector(`[data-scope-dropdown-id="${openScopeDropdownId}"]`);
+      const input = root?.querySelector("input");
+      if (input instanceof HTMLInputElement) {
+        input.focus();
+      }
+    }, 0);
+  }, [openScopeDropdownId]);
 
   useEffect(() => {
     if (!isSchoolActionsMenuOpen || typeof window === "undefined") return;
@@ -1530,7 +1594,7 @@ export function MonitorDashboard() {
     if (!filtersHydrated || typeof window === "undefined") return;
 
     const payload: PersistedMonitorFilters = {
-      search,
+      search: effectiveSearch,
       statusFilter,
       requirementFilter,
       queueLane,
@@ -1557,7 +1621,7 @@ export function MonitorDashboard() {
       }
     };
 
-    setOrDelete("q", search.trim() ? search.trim() : null);
+    setOrDelete("q", effectiveSearch.trim() ? effectiveSearch.trim() : null);
     setOrDelete("status", statusFilter !== "all" ? statusFilter : null);
     setOrDelete("workflow", requirementFilter !== "all" ? requirementFilter : null);
     setOrDelete("lane", queueLane !== "all" ? queueLane : null);
@@ -1580,7 +1644,7 @@ export function MonitorDashboard() {
     queueLane,
     requirementFilter,
     schoolQuickPreset,
-    search,
+    effectiveSearch,
     selectedSchoolScopeKey,
     selectedStudentLookup?.id,
     selectedTeacherLookup?.id,
@@ -1598,6 +1662,18 @@ export function MonitorDashboard() {
   const dismissToast = (id: number) => {
     setToasts((current) => current.filter((item) => item.id !== id));
   };
+
+  const handleRefreshDashboard = useCallback(async () => {
+    const results = await Promise.allSettled([
+      refreshRecords(),
+      refreshSubmissions(),
+      refreshStudents(),
+      refreshTeachers(),
+    ]);
+    if (results.some((result) => result.status === "rejected")) {
+      pushToast("Some dashboard data failed to refresh. Please try again.", "warning");
+    }
+  }, [pushToast, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
 
   const revealSetupLink = async (setupLink: string, schoolName: string) => {
     const trimmedLink = setupLink.trim();
@@ -1929,10 +2005,16 @@ export function MonitorDashboard() {
 
       const schoolCode = (record.schoolId ?? record.schoolCode ?? "").trim();
       const schoolName = record.schoolName?.trim() || "Unknown School";
+      const headName = record.schoolHeadAccount?.name?.trim() ?? "";
+      const headEmail = record.schoolHeadAccount?.email?.trim() ?? "";
+      const searchText = `${schoolCode} ${schoolName} ${headName} ${headEmail}`.trim().toLowerCase();
       optionsByKey.set(key, {
         key,
         code: schoolCode || "N/A",
         name: schoolName,
+        headName,
+        headEmail,
+        searchText,
       });
     }
 
@@ -1957,11 +2039,10 @@ export function MonitorDashboard() {
     const query = schoolScopeQuery.trim().toLowerCase();
     if (!query) return schoolScopeOptions;
 
-    return schoolScopeOptions.filter(
-      (option) =>
-        option.code.toLowerCase().includes(query) ||
-        option.name.toLowerCase().includes(query),
-    );
+    const tokens = query.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return schoolScopeOptions;
+
+    return schoolScopeOptions.filter((option) => tokens.every((token) => option.searchText.includes(token)));
   }, [schoolScopeOptions, schoolScopeQuery]);
 
   const scopedSchoolKeys = useMemo(() => {
@@ -2253,10 +2334,10 @@ export function MonitorDashboard() {
 
   const selectedStudentLabel = selectedStudentLookup
     ? `${selectedStudentLookup.fullName} - ${selectedStudentLookup.lrn} (${selectedStudentLookup.schoolCode})`
-    : "Find student (name, LRN, school)";
+    : "Student…";
   const selectedTeacherLabel = selectedTeacherLookup
     ? `${selectedTeacherLookup.name} (${selectedTeacherLookup.schoolCode})`
-    : "Find teacher (name, school)";
+    : "Teacher…";
   const studentRecordsLookupTerm = selectedStudentLookup
     ? selectedStudentLookup.lrn
     : selectedTeacherLookup?.name ?? "";
@@ -2349,10 +2430,6 @@ export function MonitorDashboard() {
   const regionAggregates = useMemo(() => buildRegionAggregates(scopedRecords), [scopedRecords]);
   const statusDistribution = useMemo(() => buildStatusDistribution(scopedRecords), [scopedRecords]);
   const submissionTrend = useMemo(() => buildSubmissionTrend(scopedRecords), [scopedRecords]);
-  const latestIndicatorBySchool = useMemo(
-    () => latestBySchool<IndicatorSubmission>(indicatorSubmissions),
-    [indicatorSubmissions],
-  );
 
   const schoolRequirementRows = useMemo<SchoolRequirementSummary[]>(() => {
     const rows = new Map<string, SchoolRequirementSummary>();
@@ -2421,14 +2498,12 @@ export function MonitorDashboard() {
       row.hasComplianceRecord = true;
       row.schoolStatus = record.status;
       setLastActivity(row, record.lastUpdated);
-    }
 
-    for (const submission of latestIndicatorBySchool.values()) {
-      const row = ensureRow(submission.school?.schoolCode, submission.school?.name, null);
-      if (!row) continue;
-
-      row.indicatorStatus = submission.status ?? null;
-      setLastActivity(row, submission.updatedAt, submission.submittedAt, submission.createdAt);
+      const indicatorLatest = record.indicatorLatest ?? null;
+      if (indicatorLatest) {
+        row.indicatorStatus = indicatorLatest.status ?? null;
+        setLastActivity(row, indicatorLatest.updatedAt, indicatorLatest.submittedAt, indicatorLatest.createdAt);
+      }
     }
 
     return [...rows.values()]
@@ -2449,7 +2524,7 @@ export function MonitorDashboard() {
         };
       })
       .sort((a, b) => a.schoolName.localeCompare(b.schoolName));
-  }, [records, latestIndicatorBySchool]);
+  }, [records]);
 
   const scopedRequirementRows = useMemo(() => {
     if (!scopedSchoolKeys) {
@@ -2500,15 +2575,26 @@ export function MonitorDashboard() {
     return counts;
   }, [scopedRequirementRows]);
 
-  const schoolStatusCounts = useMemo<Record<SchoolStatus | "all", number>>(
-    () => ({
+  const schoolStatusCounts = useMemo<Record<SchoolStatus | "all", number>>(() => {
+    const counts: Record<SchoolStatus | "all", number> = {
       all: scopedRequirementRows.length,
-      active: scopedRequirementRows.filter((row) => row.schoolStatus === "active").length,
-      inactive: scopedRequirementRows.filter((row) => row.schoolStatus === "inactive").length,
-      pending: scopedRequirementRows.filter((row) => row.schoolStatus === "pending").length,
-    }),
-    [scopedRequirementRows],
-  );
+      active: 0,
+      inactive: 0,
+      pending: 0,
+    };
+
+    for (const row of scopedRequirementRows) {
+      if (row.schoolStatus === "active") {
+        counts.active += 1;
+      } else if (row.schoolStatus === "inactive") {
+        counts.inactive += 1;
+      } else if (row.schoolStatus === "pending") {
+        counts.pending += 1;
+      }
+    }
+
+    return counts;
+  }, [scopedRequirementRows]);
 
   const visibleRequirementFilterIds = useMemo<RequirementFilter[]>(() => {
     if (activeTopNavigator === "reviews") {
@@ -2538,21 +2624,16 @@ export function MonitorDashboard() {
     setRequirementFilter("all");
   }, [requirementFilter, visibleRequirementFilterIds]);
 
-  const searchTerms = useMemo(() => normalizeSearchTerms(debouncedSearch), [debouncedSearch]);
+  const searchTerms = useMemo(() => normalizeSearchTerms(effectiveSearch), [effectiveSearch]);
+  const shouldBuildRequirementSearchIndex = searchTerms.length > 0;
+  const requirementSearchTextByKey = useMemo(() => {
+    if (!shouldBuildRequirementSearchIndex) {
+      return null;
+    }
 
-  const filteredRequirementRows = useMemo(() => {
-    const fromTime = parseDateBoundary(filterDateFrom, "start");
-    const toTime = parseDateBoundary(filterDateTo, "end");
-    const selectedStudentSchoolKey =
-      selectedStudentLookup?.schoolKey && selectedStudentLookup.schoolKey !== "unknown"
-        ? selectedStudentLookup.schoolKey
-        : null;
+    const index = new Map<string, string>();
 
-    return scopedRequirementRows.filter((row) => {
-      if (lockedSchoolContextKey) {
-        return row.schoolKey === lockedSchoolContextKey;
-      }
-
+    for (const row of scopedRequirementRows) {
       const record = scopedRecordBySchoolKey.get(row.schoolKey);
       const searchableText = [
         row.schoolName,
@@ -2564,27 +2645,75 @@ export function MonitorDashboard() {
         record?.submittedBy ?? "",
         record?.schoolHeadAccount?.name ?? "",
         record?.schoolHeadAccount?.email ?? "",
-        ]
+      ]
         .join(" ")
         .toLowerCase();
 
-      const matchesSearch = matchesAllSearchTerms(searchableText, searchTerms);
-      const matchesStatus = statusFilter === "all" || row.schoolStatus === statusFilter;
-      const matchesRequirement = matchesRequirementFilter(row, requirementFilter);
-      const matchesStudentLookup = !selectedStudentSchoolKey || row.schoolKey === selectedStudentSchoolKey;
-      const matchesTeacherLookup = !selectedTeacherSchoolKeys || selectedTeacherSchoolKeys.has(row.schoolKey);
-      const matchesDateFrom = fromTime === null || (row.lastActivityTime > 0 && row.lastActivityTime >= fromTime);
-      const matchesDateTo = toTime === null || (row.lastActivityTime > 0 && row.lastActivityTime <= toTime);
+      index.set(row.schoolKey, searchableText);
+    }
 
-      return matchesSearch && matchesStatus && matchesRequirement && matchesStudentLookup && matchesTeacherLookup && matchesDateFrom && matchesDateTo;
-    });
+    return index;
+  }, [scopedRecordBySchoolKey, scopedRequirementRows, shouldBuildRequirementSearchIndex]);
+
+  const filteredRequirementRows = useMemo(() => {
+    const fromTime = parseDateBoundary(filterDateFrom, "start");
+    const toTime = parseDateBoundary(filterDateTo, "end");
+    const selectedStudentSchoolKey =
+      selectedStudentLookup?.schoolKey && selectedStudentLookup.schoolKey !== "unknown"
+        ? selectedStudentLookup.schoolKey
+        : null;
+
+    if (lockedSchoolContextKey) {
+      const lockedRow = scopedRequirementRows.find((row) => row.schoolKey === lockedSchoolContextKey);
+      return lockedRow ? [lockedRow] : [];
+    }
+
+    const hasSearchTerms = searchTerms.length > 0;
+    const results: SchoolRequirementSummary[] = [];
+
+    for (const row of scopedRequirementRows) {
+      if (selectedStudentSchoolKey && row.schoolKey !== selectedStudentSchoolKey) {
+        continue;
+      }
+
+      if (selectedTeacherSchoolKeys && !selectedTeacherSchoolKeys.has(row.schoolKey)) {
+        continue;
+      }
+
+      if (statusFilter !== "all" && row.schoolStatus !== statusFilter) {
+        continue;
+      }
+
+      if (!matchesRequirementFilter(row, requirementFilter)) {
+        continue;
+      }
+
+      if (fromTime !== null && (row.lastActivityTime <= 0 || row.lastActivityTime < fromTime)) {
+        continue;
+      }
+
+      if (toTime !== null && (row.lastActivityTime <= 0 || row.lastActivityTime > toTime)) {
+        continue;
+      }
+
+      if (hasSearchTerms) {
+        const searchableText = requirementSearchTextByKey?.get(row.schoolKey) ?? "";
+        if (!matchesAllSearchTerms(searchableText, searchTerms)) {
+          continue;
+        }
+      }
+
+      results.push(row);
+    }
+
+    return results;
   }, [
     filterDateFrom,
     filterDateTo,
     lockedSchoolContextKey,
     requirementFilter,
     scopedRequirementRows,
-    scopedRecordBySchoolKey,
+    requirementSearchTextByKey,
     searchTerms,
     selectedStudentLookup,
     selectedTeacherSchoolKeys,
@@ -2617,17 +2746,26 @@ export function MonitorDashboard() {
     return new Set(scopeRows.map((row) => row.schoolKey));
   }, [filteredRequirementRows, hasDashboardFilters, lockedSchoolContextKey, schoolQuickPreset, scopedSchoolKeys]);
 
-  const requirementCounts = useMemo(
-    () => ({
+  const requirementCounts = useMemo(() => {
+    const counts = {
       total: scopedRequirementRows.length,
-      submittedAny: scopedRequirementRows.filter((row) => row.hasAnySubmitted).length,
-      complete: scopedRequirementRows.filter((row) => row.isComplete).length,
-      awaitingReview: scopedRequirementRows.filter((row) => row.awaitingReviewCount > 0).length,
-      missing: scopedRequirementRows.filter((row) => row.missingCount > 0).length,
-      returned: scopedRequirementRows.filter((row) => row.indicatorStatus === "returned").length,
-    }),
-    [scopedRequirementRows],
-  );
+      submittedAny: 0,
+      complete: 0,
+      awaitingReview: 0,
+      missing: 0,
+      returned: 0,
+    };
+
+    for (const row of scopedRequirementRows) {
+      if (row.hasAnySubmitted) counts.submittedAny += 1;
+      if (row.isComplete) counts.complete += 1;
+      if (row.awaitingReviewCount > 0) counts.awaitingReview += 1;
+      if (row.missingCount > 0) counts.missing += 1;
+      if (row.indicatorStatus === "returned") counts.returned += 1;
+    }
+
+    return counts;
+  }, [scopedRequirementRows]);
   const needsActionCount = useMemo(
     () => scopedRequirementRows.filter((row) => row.missingCount > 0 || row.awaitingReviewCount > 0).length,
     [scopedRequirementRows],
@@ -2653,43 +2791,78 @@ export function MonitorDashboard() {
         }),
     [filteredRequirementRows],
   );
-  const queueLaneCounts = useMemo(
-    () => ({
+  const queueLaneCounts = useMemo(() => {
+    const counts = {
       all: actionQueueRows.length,
-      urgent: actionQueueRows.filter((row) => matchesQueueLane(row, "urgent")).length,
-      returned: actionQueueRows.filter((row) => matchesQueueLane(row, "returned")).length,
-      for_review: actionQueueRows.filter((row) => matchesQueueLane(row, "for_review")).length,
-      waiting_data: actionQueueRows.filter((row) => matchesQueueLane(row, "waiting_data")).length,
-    }),
-    [actionQueueRows],
-  );
+      urgent: 0,
+      returned: 0,
+      for_review: 0,
+      waiting_data: 0,
+    };
+
+    for (const row of actionQueueRows) {
+      if (matchesQueueLane(row, "urgent")) counts.urgent += 1;
+      if (matchesQueueLane(row, "returned")) counts.returned += 1;
+      if (matchesQueueLane(row, "for_review")) counts.for_review += 1;
+      if (matchesQueueLane(row, "waiting_data")) counts.waiting_data += 1;
+    }
+
+    return counts;
+  }, [actionQueueRows]);
   const laneFilteredQueueRows = useMemo(
     () => actionQueueRows.filter((row) => matchesQueueLane(row, queueLane)),
     [actionQueueRows, queueLane],
   );
-  const schoolPresetCounts = useMemo<Record<SchoolQuickPreset, number>>(
-    () => ({
+  const schoolPresetCounts = useMemo<Record<SchoolQuickPreset, number>>(() => {
+    const counts: Record<SchoolQuickPreset, number> = {
       all: filteredRequirementRows.length,
-      pending: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "pending")).length,
-      returned: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "returned")).length,
-      no_submission: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "no_submission")).length,
-      high_risk: filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, "high_risk")).length,
-    }),
-    [filteredRequirementRows],
-  );
+      pending: 0,
+      returned: 0,
+      no_submission: 0,
+      high_risk: 0,
+    };
+
+    for (const row of filteredRequirementRows) {
+      if (matchesSchoolQuickPreset(row, "pending")) counts.pending += 1;
+      if (matchesSchoolQuickPreset(row, "returned")) counts.returned += 1;
+      if (matchesSchoolQuickPreset(row, "no_submission")) counts.no_submission += 1;
+      if (matchesSchoolQuickPreset(row, "high_risk")) counts.high_risk += 1;
+    }
+
+    return counts;
+  }, [filteredRequirementRows]);
   const filteredSchoolsByPreset = useMemo(
     () => filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, schoolQuickPreset)),
     [filteredRequirementRows, schoolQuickPreset],
   );
-  const stickySummaryStats = useMemo(
-    () => ({
-      totalSchools: filteredSchoolsByPreset.length,
-      pending: filteredSchoolsByPreset.filter((row) => row.awaitingReviewCount > 0 || row.indicatorStatus === "submitted").length,
-      returned: filteredSchoolsByPreset.filter((row) => row.indicatorStatus === "returned").length,
-      atRisk: filteredSchoolsByPreset.filter((row) => isUrgentRequirement(row)).length,
-    }),
-    [filteredSchoolsByPreset],
-  );
+  const stickySummaryStats = useMemo(() => {
+    return {
+      totalSchools: schoolPresetCounts.all,
+      pending: schoolPresetCounts.pending,
+      returned: schoolPresetCounts.returned,
+      atRisk: schoolPresetCounts.high_risk,
+    };
+  }, [
+    schoolPresetCounts.all,
+    schoolPresetCounts.high_risk,
+    schoolPresetCounts.pending,
+    schoolPresetCounts.returned,
+  ]);
+  const dashboardLastSyncedAt = useMemo(() => {
+    const recordTime = lastSyncedAt ? Date.parse(lastSyncedAt) : Number.NaN;
+    const indicatorTime = indicatorLastSyncedAt ? Date.parse(indicatorLastSyncedAt) : Number.NaN;
+    const studentTime = studentLastSyncedAt ? Date.parse(studentLastSyncedAt) : Number.NaN;
+    const teacherTime = teacherLastSyncedAt ? Date.parse(teacherLastSyncedAt) : Number.NaN;
+    const maxTime = Math.max(
+      Number.isFinite(recordTime) ? recordTime : 0,
+      Number.isFinite(indicatorTime) ? indicatorTime : 0,
+      Number.isFinite(studentTime) ? studentTime : 0,
+      Number.isFinite(teacherTime) ? teacherTime : 0,
+    );
+    return maxTime > 0 ? new Date(maxTime).toISOString() : null;
+  }, [indicatorLastSyncedAt, lastSyncedAt, studentLastSyncedAt, teacherLastSyncedAt]);
+  const isDashboardSyncing =
+    isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading;
   const queueWorkspaceSchoolFilterKeys = useMemo(() => {
     if (lockedSchoolContextKey) {
       return new Set([lockedSchoolContextKey]);
@@ -3594,7 +3767,7 @@ export function MonitorDashboard() {
   const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
     const chips: Array<{ id: FilterChipId; label: string }> = [];
 
-    if (search.trim()) chips.push({ id: "search", label: `Search: ${search.trim()}` });
+    if (effectiveSearch.trim()) chips.push({ id: "search", label: `Search: ${effectiveSearch.trim()}` });
     if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
     if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Queue: ${requirementFilterLabel(requirementFilter)}` });
     if (queueLane !== "all") chips.push({ id: "lane", label: `Lane: ${queueLaneLabel(queueLane)}` });
@@ -3621,7 +3794,7 @@ export function MonitorDashboard() {
     queueLane,
     requirementFilter,
     schoolQuickPreset,
-    search,
+    effectiveSearch,
     selectedSchoolScope,
     selectedStudentLookup,
     selectedTeacherLookup?.id,
@@ -3636,7 +3809,7 @@ export function MonitorDashboard() {
     filterDateTo,
     requirementFilter,
     schoolQuickPreset,
-    search,
+    effectiveSearch,
     selectedSchoolScopeKey,
     selectedStudentLookup?.id,
     selectedTeacherLookup?.id,
@@ -3671,7 +3844,7 @@ export function MonitorDashboard() {
     setSchoolScopeQuery("");
     setStudentLookupQuery("");
     setTeacherLookupQuery("");
-    setSchoolScopeDropdownSlot(null);
+    setOpenScopeDropdownId(null);
   };
 
   const resetQueueFilters = () => {
@@ -4156,17 +4329,17 @@ export function MonitorDashboard() {
     }
   };
 
-  const renderSchoolScopeSelector = (rootClassName = "relative mt-3") => {
-    const isOpen = schoolScopeDropdownSlot === "schools";
+  const renderSchoolScopeSelector = (dropdownId: ScopeDropdownId, rootClassName = "relative mt-3") => {
+    const isOpen = openScopeDropdownId === dropdownId;
     const isLockedByContext = Boolean(lockedSchoolContextKey);
 
     return (
-      <div className={rootClassName}>
+      <div className={rootClassName} data-scope-dropdown-id={dropdownId}>
         <button
           type="button"
           onClick={() => {
             if (isLockedByContext) return;
-            setSchoolScopeDropdownSlot((current) => (current === "schools" ? null : "schools"));
+            setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId));
           }}
           disabled={isLockedByContext}
           className={`inline-flex w-full items-center justify-between gap-2 border px-2.5 py-1.5 text-left text-xs font-semibold transition ${
@@ -4178,69 +4351,97 @@ export function MonitorDashboard() {
           <span className="truncate">
             {selectedSchoolScope ? `${selectedSchoolScope.code} - ${selectedSchoolScope.name}` : "All schools"}
           </span>
-          <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+          <span className="inline-flex items-center gap-1">
+            {isLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+            <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
+          </span>
         </button>
         {isLockedByContext && (
-          <p className="mt-1 text-[11px] text-primary-700">
-            School context is locked. Clear school context to change this filter.
+          <p
+            className="mt-1 text-[11px] text-primary-700"
+            title="School context is locked. Clear school context to change this filter."
+          >
+            Context locked.
           </p>
         )}
         {isOpen && (
-          <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
+          <div className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
             <div className="border-b border-slate-100 p-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={schoolScopeQuery}
-                  onChange={(event) => setSchoolScopeQuery(event.target.value)}
-                  placeholder="Type school code or name"
-                  className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={schoolScopeQuery}
+                    onChange={(event) => setSchoolScopeQuery(event.target.value)}
+                    placeholder="Search schools"
+                    className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                  {schoolScopeQuery.trim().length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSchoolScopeQuery("")}
+                      aria-label="Clear school search"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <span className="shrink-0 text-[10px] font-semibold text-slate-500" title="Matches / total schools">
+                  {filteredSchoolScopeOptions.length}/{schoolScopeOptions.length}
+                </span>
               </div>
             </div>
-            <div className="max-h-48 overflow-y-auto p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-                  setSelectedStudentLookup(null);
-                  setPendingStudentLookupId(null);
-                  setSelectedTeacherLookup(null);
-                  setPendingTeacherLookupId(null);
-                  setSchoolScopeQuery("");
-                  setSchoolScopeDropdownSlot(null);
-                }}
-                className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                  !selectedSchoolScope ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                All schools
-              </button>
-              {filteredSchoolScopeOptions.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => {
-                    setSelectedSchoolScopeKey(option.key);
-                    setSelectedStudentLookup(null);
-                    setPendingStudentLookupId(null);
-                    setSelectedTeacherLookup(null);
-                    setPendingTeacherLookupId(null);
-                    setSchoolScopeQuery("");
-                    setSchoolScopeDropdownSlot(null);
-                  }}
-                  className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                    selectedSchoolScope?.key === option.key
-                      ? "bg-primary-50 text-primary-800"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="font-semibold">{option.code}</span> - {option.name}
-                </button>
-              ))}
-              {filteredSchoolScopeOptions.length === 0 && (
-                <p className="px-2.5 py-2 text-xs text-slate-500">No matching school.</p>
+            <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
+              {schoolScopeOptions.length === 0 ? (
+                <p className="px-2.5 py-2 text-xs text-slate-500">{isLoading ? "Loading schools..." : "No schools."}</p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+                      setSelectedStudentLookup(null);
+                      setPendingStudentLookupId(null);
+                      setSelectedTeacherLookup(null);
+                      setPendingTeacherLookupId(null);
+                      setSchoolScopeQuery("");
+                      setOpenScopeDropdownId(null);
+                    }}
+                    className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                      !selectedSchoolScope ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    All schools
+                  </button>
+                  {filteredSchoolScopeOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      title={`${option.code} - ${option.name}${option.headName ? ` • ${option.headName}` : ""}`}
+                      onClick={() => {
+                        setSelectedSchoolScopeKey(option.key);
+                        setSelectedStudentLookup(null);
+                        setPendingStudentLookupId(null);
+                        setSelectedTeacherLookup(null);
+                        setPendingTeacherLookupId(null);
+                        setSchoolScopeQuery("");
+                        setOpenScopeDropdownId(null);
+                      }}
+                      className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
+                        selectedSchoolScope?.key === option.key
+                          ? "bg-primary-50 text-primary-800"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="font-semibold">{option.code}</span> - {option.name}
+                    </button>
+                  ))}
+                  {filteredSchoolScopeOptions.length === 0 && (
+                    <p className="px-2.5 py-2 text-xs text-slate-500">No matching school.</p>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -4249,14 +4450,14 @@ export function MonitorDashboard() {
     );
   };
 
-  const renderStudentLookupSelector = (rootClassName = "relative mt-3") => {
-    const isOpen = schoolScopeDropdownSlot === "students";
+  const renderStudentLookupSelector = (dropdownId: ScopeDropdownId, rootClassName = "relative mt-3") => {
+    const isOpen = openScopeDropdownId === dropdownId;
 
     return (
-      <div className={rootClassName}>
+      <div className={rootClassName} data-scope-dropdown-id={dropdownId}>
         <button
           type="button"
-          onClick={() => setSchoolScopeDropdownSlot((current) => (current === "students" ? null : "students"))}
+          onClick={() => setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId))}
           className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
         >
           <span className="truncate">{selectedStudentLabel}</span>
@@ -4266,20 +4467,35 @@ export function MonitorDashboard() {
           </span>
         </button>
         {isOpen && (
-          <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
+          <div className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
             <div className="border-b border-slate-100 p-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={studentLookupQuery}
-                  onChange={(event) => setStudentLookupQuery(event.target.value)}
-                  placeholder="Type student name, LRN, or school"
-                  className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={studentLookupQuery}
+                    onChange={(event) => setStudentLookupQuery(event.target.value)}
+                    placeholder="Search students"
+                    className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                  {studentLookupQuery.trim().length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setStudentLookupQuery("")}
+                      aria-label="Clear student search"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <span className="shrink-0 text-[10px] font-semibold text-slate-500" title="Matches / total students">
+                  {filteredStudentLookupOptions.length}/{studentLookupOptions.length}
+                </span>
               </div>
             </div>
-            <div className="max-h-48 overflow-y-auto p-1">
+            <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
               <button
                 type="button"
                 onClick={() => {
@@ -4288,13 +4504,13 @@ export function MonitorDashboard() {
                   setSelectedTeacherLookup(null);
                   setPendingTeacherLookupId(null);
                   setStudentLookupQuery("");
-                  setSchoolScopeDropdownSlot(null);
+                  setOpenScopeDropdownId(null);
                 }}
                 className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
                   !selectedStudentLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
                 }`}
               >
-                Show all students
+                All students
               </button>
               {filteredStudentLookupOptions.map((option) => (
                 <button
@@ -4309,7 +4525,7 @@ export function MonitorDashboard() {
                       setSelectedSchoolScopeKey(option.schoolKey);
                     }
                     setStudentLookupQuery(option.fullName);
-                    setSchoolScopeDropdownSlot(null);
+                    setOpenScopeDropdownId(null);
                     openStudentRecordsFromCard();
                   }}
                   className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
@@ -4324,7 +4540,7 @@ export function MonitorDashboard() {
                 </button>
               ))}
               {filteredStudentLookupOptions.length === 0 && (
-                <p className="px-2.5 py-2 text-xs text-slate-500">No student found.</p>
+                <p className="px-2.5 py-2 text-xs text-slate-500">No results.</p>
               )}
             </div>
           </div>
@@ -4333,14 +4549,14 @@ export function MonitorDashboard() {
     );
   };
 
-  const renderTeacherLookupSelector = (rootClassName = "relative mt-3") => {
-    const isOpen = schoolScopeDropdownSlot === "teachers";
+  const renderTeacherLookupSelector = (dropdownId: ScopeDropdownId, rootClassName = "relative mt-3") => {
+    const isOpen = openScopeDropdownId === dropdownId;
 
     return (
-      <div className={rootClassName}>
+      <div className={rootClassName} data-scope-dropdown-id={dropdownId}>
         <button
           type="button"
-          onClick={() => setSchoolScopeDropdownSlot((current) => (current === "teachers" ? null : "teachers"))}
+          onClick={() => setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId))}
           className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
         >
           <span className="truncate">{selectedTeacherLabel}</span>
@@ -4350,20 +4566,35 @@ export function MonitorDashboard() {
           </span>
         </button>
         {isOpen && (
-          <div className="absolute left-0 right-0 top-full z-30 mt-1 border border-slate-200 bg-white shadow-xl">
+          <div className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
             <div className="border-b border-slate-100 p-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={teacherLookupQuery}
-                  onChange={(event) => setTeacherLookupQuery(event.target.value)}
-                  placeholder="Type teacher name or school"
-                  className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={teacherLookupQuery}
+                    onChange={(event) => setTeacherLookupQuery(event.target.value)}
+                    placeholder="Search teachers"
+                    className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                  {teacherLookupQuery.trim().length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setTeacherLookupQuery("")}
+                      aria-label="Clear teacher search"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <span className="shrink-0 text-[10px] font-semibold text-slate-500" title="Matches / total teachers">
+                  {filteredTeacherLookupOptions.length}/{teacherLookupOptions.length}
+                </span>
               </div>
             </div>
-            <div className="max-h-48 overflow-y-auto p-1">
+            <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
               <button
                 type="button"
                 onClick={() => {
@@ -4372,13 +4603,13 @@ export function MonitorDashboard() {
                   setSelectedStudentLookup(null);
                   setPendingStudentLookupId(null);
                   setTeacherLookupQuery("");
-                  setSchoolScopeDropdownSlot(null);
+                  setOpenScopeDropdownId(null);
                 }}
                 className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
                   !selectedTeacherLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
                 }`}
               >
-                Show all teachers
+                All teachers
               </button>
               {filteredTeacherLookupOptions.map((option) => (
                 <button
@@ -4393,7 +4624,7 @@ export function MonitorDashboard() {
                       setSelectedSchoolScopeKey(option.schoolKey);
                     }
                     setTeacherLookupQuery(option.name);
-                    setSchoolScopeDropdownSlot(null);
+                    setOpenScopeDropdownId(null);
                     openStudentRecordsFromCard();
                   }}
                   className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
@@ -4407,7 +4638,7 @@ export function MonitorDashboard() {
                 </button>
               ))}
               {filteredTeacherLookupOptions.length === 0 && (
-                <p className="px-2.5 py-2 text-xs text-slate-500">No teacher found.</p>
+                <p className="px-2.5 py-2 text-xs text-slate-500">No results.</p>
               )}
             </div>
           </div>
@@ -4514,33 +4745,34 @@ export function MonitorDashboard() {
 
   const quickFiltersPanelContent = (
     <>
-      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(13rem,15rem)_minmax(0,1fr)]">
-        <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
-            className="border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+      <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-2">
+        <div className="grid gap-2 md:grid-cols-6">
+          <label
+            title="School status"
+            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
           >
-            <option value="all">All school statuses ({schoolStatusCounts.all})</option>
-            <option value="active">Active ({schoolStatusCounts.active})</option>
-            <option value="inactive">Inactive ({schoolStatusCounts.inactive})</option>
-            <option value="pending">Pending ({schoolStatusCounts.pending})</option>
-          </select>
-        </label>
-        <div className="rounded-sm border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-700">
-          Global search is pinned above. Use <span className="font-semibold">school code, school name, or school head</span>.
-        </div>
-      </div>
+            <Filter className="h-3.5 w-3.5 text-slate-400" />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
+              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
+            >
+              <option value="all">All ({schoolStatusCounts.all})</option>
+              <option value="active">Active ({schoolStatusCounts.active})</option>
+              <option value="inactive">Inactive ({schoolStatusCounts.inactive})</option>
+              <option value="pending">Pending ({schoolStatusCounts.pending})</option>
+            </select>
+          </label>
 
-      <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
-        <div className="grid gap-3 md:grid-cols-5">
-          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-            <Filter className="h-4 w-4 text-slate-400" />
+          <label
+            title="Workflow status"
+            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
+          >
+            <Filter className="h-3.5 w-3.5 text-slate-400" />
             <select
               value={requirementFilter}
               onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
-              className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
             >
               {visibleRequirementFilterOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -4549,26 +4781,34 @@ export function MonitorDashboard() {
               ))}
             </select>
           </label>
-          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-            <ListChecks className="h-4 w-4 text-slate-400" />
+
+          <label
+            title="Queue lane"
+            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
+          >
+            <ListChecks className="h-3.5 w-3.5 text-slate-400" />
             <select
               value={queueLane}
               onChange={(event) => setQueueLane(event.target.value as QueueLane)}
-              className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
             >
-              <option value="all">All lanes ({queueLaneCounts.all})</option>
+              <option value="all">All ({queueLaneCounts.all})</option>
               <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
               <option value="returned">Returned ({queueLaneCounts.returned})</option>
-              <option value="for_review">For Review ({queueLaneCounts.for_review})</option>
-              <option value="waiting_data">Waiting Data ({queueLaneCounts.waiting_data})</option>
+              <option value="for_review">Review ({queueLaneCounts.for_review})</option>
+              <option value="waiting_data">Waiting ({queueLaneCounts.waiting_data})</option>
             </select>
           </label>
-          <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600">
-            <AlertTriangle className="h-4 w-4 text-slate-400" />
+
+          <label
+            title="Preset"
+            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600"
+          >
+            <AlertTriangle className="h-3.5 w-3.5 text-slate-400" />
             <select
               value={schoolQuickPreset}
               onChange={(event) => setSchoolQuickPreset(event.target.value as SchoolQuickPreset)}
-              className="w-full border-none bg-transparent text-sm font-medium text-slate-700 outline-none"
+              className="w-full border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
             >
               {SCHOOL_QUICK_PRESET_OPTIONS.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -4577,49 +4817,50 @@ export function MonitorDashboard() {
               ))}
             </select>
           </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date From</span>
+
+          <label className="block" title="Date from">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">From</span>
             <input
               type="date"
               value={filterDateFrom}
               onChange={(event) => setFilterDateFrom(event.target.value)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="w-full rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
           </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">Date To</span>
+          <label className="block" title="Date to">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">To</span>
             <input
               type="date"
               value={filterDateTo}
               onChange={(event) => setFilterDateTo(event.target.value)}
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="w-full rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
           </label>
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <article className="border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-xs font-semibold text-slate-700">Which school</p>
-            {renderSchoolScopeSelector()}
-          </article>
-          <article className="border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-xs font-semibold text-slate-700">Find a student</p>
-            {renderStudentLookupSelector()}
-          </article>
-          <article className="border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-xs font-semibold text-slate-700">Find a teacher</p>
-            {renderTeacherLookupSelector()}
-          </article>
+          <div className="mt-2 grid gap-2 md:grid-cols-3">
+          <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">School</span>
+            {renderSchoolScopeSelector("schools_filters", "relative")}
+          </div>
+          <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Student</span>
+            {renderStudentLookupSelector("students_filters", "relative")}
+          </div>
+          <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Teacher</span>
+            {renderTeacherLookupSelector("teachers_filters", "relative")}
+          </div>
         </div>
 
         {activeTopNavigator === "overview" && (
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-3 py-2.5">
-            <p className="text-xs font-semibold text-slate-700">Advanced analytics</p>
+          <div className="mt-2 flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2">
+            <p className="text-[11px] font-semibold text-slate-700">Analytics</p>
             <button
               id="monitor-analytics-toggle"
               type="button"
               onClick={() => setShowAdvancedAnalytics((current) => !current)}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               {showAdvancedAnalytics ? "Hide" : "Show"}
             </button>
@@ -4628,24 +4869,24 @@ export function MonitorDashboard() {
       </div>
 
       {activeFilterChips.length > 0 && (
-        <div className="mt-3">
+        <div className="mt-2">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Active Filters</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Active</p>
             <button
               type="button"
               onClick={clearAllFilters}
-              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
+              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
             >
-              Clear all
+              Clear
             </button>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {activeFilterChips.map((chip) => (
               <button
                 key={chip.id}
                 type="button"
                 onClick={() => clearFilterChip(chip.id)}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
               >
                 {chip.label}
                 <X className="h-3.5 w-3.5" />
@@ -4654,16 +4895,6 @@ export function MonitorDashboard() {
           </div>
         </div>
       )}
-
-      <p className="mt-3 text-xs text-slate-600">
-        Showing <span className="font-semibold text-slate-900">{filteredSchoolsByPreset.length}</span> of{" "}
-        <span className="font-semibold text-slate-900">{scopedRequirementRows.length}</span> schools in scope.
-        {" "}
-        Queue rows: <span className="font-semibold text-slate-900">{laneFilteredQueueRows.length}</span>{" "}
-        <span className="text-slate-500">(lane)</span> /{" "}
-        <span className="font-semibold text-slate-900">{actionQueueRows.length}</span>{" "}
-        <span className="text-slate-500">(all)</span>.
-      </p>
     </>
   );
 
@@ -4675,18 +4906,19 @@ export function MonitorDashboard() {
         <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm border border-white/20 bg-white/10 p-1.5 sm:gap-2">
           <button
             type="button"
-            onClick={() => void refreshRecords()}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90"
-            aria-label="Refresh records"
-            title="Refresh"
+            onClick={() => void handleRefreshDashboard()}
+            disabled={isDashboardSyncing}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-70"
+            aria-label="Refresh dashboard data"
+            title={isDashboardSyncing ? "Refreshing..." : "Refresh"}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={`h-3.5 w-3.5 ${isDashboardSyncing ? "animate-spin" : ""}`} />
           </button>
           <span className="hidden max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 sm:inline-flex lg:max-w-[21rem]">
             {syncStatus === "up_to_date" ? "Up to date" : "Updated"}
             {" | "}
-            {lastSyncedAt
-              ? new Date(lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            {dashboardLastSyncedAt
+              ? new Date(dashboardLastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
               : "Not synced"}
             {syncScope ? ` | ${syncScope}` : ""}
           </span>
@@ -4961,8 +5193,9 @@ export function MonitorDashboard() {
           )}
 
           {!showNavigatorManual && (
-            <section className="dashboard-shell dashboard-nav-shell z-40 mb-5 rounded-sm border border-slate-200 bg-white/95 p-2 backdrop-blur">
-              <div className="flex flex-col gap-2">
+            <section className="dashboard-shell dashboard-shell-visible mb-5 rounded-sm">
+              <div className="dashboard-nav-shell border-b border-slate-200 bg-white/95 p-2 backdrop-blur">
+                <div className="flex flex-col gap-2">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                   <label className="relative w-full lg:max-w-lg">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -4986,36 +5219,68 @@ export function MonitorDashboard() {
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <span
+                  <button
+                    type="button"
                     title="Schools in the current scope."
-                    className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700"
+                    onClick={() => setSchoolQuickPreset("all")}
+                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      schoolQuickPreset === "all"
+                        ? "border-slate-300 bg-slate-100 text-slate-900"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                    }`}
                   >
-                    Total Schools: {stickySummaryStats.totalSchools}
-                  </span>
-                  <span
+                    Schools: {stickySummaryStats.totalSchools}
+                  </button>
+                  <button
+                    type="button"
                     title="Submitted packages waiting for monitor review."
-                    className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-semibold text-primary-700"
+                    onClick={() => setSchoolQuickPreset("pending")}
+                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      schoolQuickPreset === "pending"
+                        ? "border-primary-300 bg-primary-100 text-primary-800"
+                        : "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
+                    }`}
                   >
                     Pending: {stickySummaryStats.pending}
-                  </span>
-                  <span
+                  </button>
+                  <button
+                    type="button"
                     title="Packages returned to school heads for correction."
-                    className="inline-flex items-center rounded-sm border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700"
+                    onClick={() => setSchoolQuickPreset("returned")}
+                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      schoolQuickPreset === "returned"
+                        ? "border-amber-300 bg-amber-100 text-amber-800"
+                        : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                    }`}
                   >
                     Returned: {stickySummaryStats.returned}
-                  </span>
-                  <span
+                  </button>
+                  <button
+                    type="button"
                     title="Schools flagged as high risk (missing or returned)."
-                    className="inline-flex items-center rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700"
+                    onClick={() => setSchoolQuickPreset("high_risk")}
+                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      schoolQuickPreset === "high_risk"
+                        ? "border-rose-300 bg-rose-100 text-rose-800"
+                        : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                    }`}
                   >
-                    At Risk: {stickySummaryStats.atRisk}
-                  </span>
-                  <span
-                    title="Most recent dashboard synchronization time."
-                    className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600"
+                    Risk: {stickySummaryStats.atRisk}
+                  </button>
+                  <button
+                    type="button"
+                    title="Refresh dashboard data."
+                    onClick={() => void handleRefreshDashboard()}
+                    disabled={isDashboardSyncing}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    Last Sync: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "N/A"}
-                  </span>
+                    <RefreshCw className={`h-3.5 w-3.5 ${isDashboardSyncing ? "animate-spin" : ""}`} />
+                    {isDashboardSyncing
+                      ? "Syncing..."
+                      : dashboardLastSyncedAt
+                        ? `Sync: ${new Date(dashboardLastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                        : "Sync: N/A"}
+                  </button>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-2">
@@ -5043,18 +5308,91 @@ export function MonitorDashboard() {
                       </button>
                     );
                   })}
+                  </div>
                 </div>
               </div>
-            </section>
-          )}
 
-          {!showNavigatorManual && showSubmissionFilters && !isMobileViewport && (
-            <section
-              id="monitor-submission-filters"
-              className={`surface-panel dashboard-shell mb-5 rounded-sm p-3 ${sectionFocusClass("monitor-submission-filters")}`}
-            >
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Filters</h2>
-              {quickFiltersPanelContent}
+              {showSubmissionFilters && !isMobileViewport && (
+                <div
+                  id="monitor-submission-filters"
+                  className={`p-3 ${sectionFocusClass("monitor-submission-filters")}`}
+                >
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Filters</h2>
+                  {quickFiltersPanelContent}
+                </div>
+              )}
+
+              {activeTopNavigator === "schools" && (
+                <div
+                  id="monitor-school-radar"
+                  className={`bg-white p-3 ${
+                    showSubmissionFilters && !isMobileViewport ? "border-t border-slate-200" : ""
+                  } ${sectionFocusClass("monitor-school-radar")}`}
+                >
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                            Total Schools
+                          </p>
+                          <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
+                            {totalSchoolsInScope.toLocaleString()}
+                          </p>
+                        </div>
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                          <Building2 className="h-5 w-5" />
+                        </span>
+                      </div>
+                      {renderSchoolScopeSelector("schools_radar", "relative mt-2")}
+                    </article>
+
+                    <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                            Total Students
+                          </p>
+                          <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
+                            {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.students.toLocaleString()}
+                          </p>
+                        </div>
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                          <GraduationCap className="h-5 w-5" />
+                        </span>
+                      </div>
+                      {renderStudentLookupSelector("students_radar", "relative mt-2")}
+                    </article>
+
+                    <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                            Total Teachers
+                          </p>
+                          <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
+                            {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.teachers.toLocaleString()}
+                          </p>
+                        </div>
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                          <Users className="h-5 w-5" />
+                        </span>
+                      </div>
+                      {renderTeacherLookupSelector("teachers_radar", "relative mt-2")}
+                    </article>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                    <span>
+                      {monitorRadarTotals.error
+                        ? monitorRadarTotals.error
+                        : monitorRadarTotals.syncedAt
+                          ? `Synced ${new Date(monitorRadarTotals.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                          : "Waiting for sync"}
+                    </span>
+                    <span>Totals are read live from students and teachers records.</span>
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
@@ -5471,64 +5809,7 @@ export function MonitorDashboard() {
 
       {!showNavigatorManual && activeTopNavigator === "schools" && (
         <>
-        <section id="monitor-school-radar" className={`dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3 ${sectionFocusClass("monitor-school-radar")}`}>
-          <div className="grid gap-3 lg:grid-cols-3">
-            <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Schools</p>
-                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">{totalSchoolsInScope.toLocaleString()}</p>
-                </div>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
-                  <Building2 className="h-5 w-5" />
-                </span>
-              </div>
-              {renderSchoolScopeSelector("relative mt-2")}
-            </article>
-
-            <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Students</p>
-                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
-                    {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.students.toLocaleString()}
-                  </p>
-                </div>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
-                  <GraduationCap className="h-5 w-5" />
-                </span>
-              </div>
-              {renderStudentLookupSelector("relative mt-2")}
-            </article>
-
-            <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Teachers</p>
-                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
-                    {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.teachers.toLocaleString()}
-                  </p>
-                </div>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
-                  <Users className="h-5 w-5" />
-                </span>
-              </div>
-              {renderTeacherLookupSelector("relative mt-2")}
-            </article>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-            <span>
-              {monitorRadarTotals.error
-                ? monitorRadarTotals.error
-                : monitorRadarTotals.syncedAt
-                  ? `Synced ${new Date(monitorRadarTotals.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                  : "Waiting for sync"}
-            </span>
-            <span>Totals are read live from students and teachers records.</span>
-          </div>
-        </section>
-
-        <section id="monitor-school-records" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}>
+          <section id="monitor-school-records" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}>
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>

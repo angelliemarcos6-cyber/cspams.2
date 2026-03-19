@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\School;
 use App\Models\User;
+use App\Support\Domain\FormSubmissionStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Schema;
@@ -37,6 +38,36 @@ class SchoolRecordResource extends JsonResource
             'lastUpdated' => ($this->submitted_at ?? $this->updated_at)?->toISOString(),
             'deletedAt' => $this->deleted_at?->toISOString(),
             'schoolHeadAccount' => $this->serializeSchoolHeadAccount(),
+            'indicatorLatest' => $this->serializeIndicatorLatest(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function serializeIndicatorLatest(): ?array
+    {
+        if (! $this->relationLoaded('latestIndicatorSubmission')) {
+            return null;
+        }
+
+        $submission = $this->latestIndicatorSubmission;
+        if (! $submission) {
+            return null;
+        }
+
+        $status = $submission->status;
+        $statusValue = $status instanceof FormSubmissionStatus
+            ? $status->value
+            : (is_string($status) && $status !== '' ? $status : null);
+
+        return [
+            'id' => (string) $submission->id,
+            'status' => $statusValue,
+            'submittedAt' => $submission->submitted_at?->toISOString(),
+            'reviewedAt' => $submission->reviewed_at?->toISOString(),
+            'createdAt' => $submission->created_at?->toISOString(),
+            'updatedAt' => $submission->updated_at?->toISOString(),
         ];
     }
 
