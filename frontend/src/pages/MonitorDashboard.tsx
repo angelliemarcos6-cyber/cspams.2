@@ -540,8 +540,9 @@ function sortSchoolYears(years: Iterable<string>): string[] {
 
 function statusTone(status: SchoolStatus) {
   if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "pending") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-  return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+  if (status === "pending") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (status === "inactive") return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
+  return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
 }
 
 function isInteractiveTableTarget(target: EventTarget | null): boolean {
@@ -1650,6 +1651,21 @@ export function MonitorDashboard() {
     if (openScopeDropdownId && openScopeDropdownId.endsWith("_filters")) {
       setOpenScopeDropdownId(null);
     }
+  }, [openScopeDropdownId, showAdvancedFilters]);
+
+  useEffect(() => {
+    if (!showAdvancedFilters || typeof window === "undefined") return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (openScopeDropdownId) return;
+      setShowAdvancedFilters(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [openScopeDropdownId, showAdvancedFilters]);
 
   useEffect(() => {
@@ -3065,7 +3081,7 @@ export function MonitorDashboard() {
   const handleQuickJump = (item: QuickJumpItem) => {
     const resolvedTargetId = resolveQuickJumpTargetId(item.targetId);
 
-    if (resolvedTargetId === "monitor-submission-filters" && isMobileViewport && !showAdvancedFilters) {
+    if (resolvedTargetId === "monitor-submission-filters" && !showAdvancedFilters) {
       setShowAdvancedFilters(true);
       window.setTimeout(() => {
         focusAndScrollTo(resolvedTargetId);
@@ -4461,7 +4477,7 @@ export function MonitorDashboard() {
                 </span>
               </div>
             </div>
-            <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
+            <div className="relative max-h-72 overflow-y-auto overscroll-contain p-1 pr-1 [scrollbar-gutter:stable]">
               {schoolScopeOptions.length === 0 ? (
                 <p className="px-2.5 py-2 text-xs text-slate-500">{isLoading ? "Loading schools..." : "No schools."}</p>
               ) : (
@@ -4487,7 +4503,7 @@ export function MonitorDashboard() {
                     <button
                       key={option.key}
                       type="button"
-                      title={`${option.code} - ${option.name}${option.headName ? ` • ${option.headName}` : ""}`}
+                      title={`${option.code} - ${option.name}${option.headName ? ` \u2022 ${option.headName}` : ""}`}
                       onClick={() => {
                         setSelectedSchoolScopeKey(option.key);
                         setSelectedStudentLookup(null);
@@ -4503,13 +4519,26 @@ export function MonitorDashboard() {
                           : "text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      <span className="font-semibold">{option.code}</span> - {option.name}
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate">
+                          <span className="font-semibold">{option.code}</span> - {option.name}
+                        </span>
+                        {(option.headName || option.headEmail) && (
+                          <span className="mt-0.5 truncate text-[11px] font-medium text-slate-500">
+                            {option.headName || option.headEmail}
+                            {option.headName && option.headEmail ? ` \u2022 ${option.headEmail}` : ""}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))}
                   {filteredSchoolScopeOptions.length === 0 && (
                     <p className="px-2.5 py-2 text-xs text-slate-500">No matching school.</p>
                   )}
                 </>
+              )}
+              {schoolScopeOptions.length > 12 && (
+                <div className="pointer-events-none sticky bottom-0 h-5 bg-gradient-to-t from-white to-white/0" />
               )}
             </div>
           </div>
@@ -4563,7 +4592,7 @@ export function MonitorDashboard() {
                 </span>
               </div>
             </div>
-            <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
+            <div className="relative max-h-72 overflow-y-auto overscroll-contain p-1 pr-1 [scrollbar-gutter:stable]">
               <button
                 type="button"
                 onClick={() => {
@@ -4605,6 +4634,9 @@ export function MonitorDashboard() {
               ))}
               {filteredStudentLookupOptions.length === 0 && (
                 <p className="px-2.5 py-2 text-xs text-slate-500">No results.</p>
+              )}
+              {teacherScopedStudentLookupOptions.length > 12 && (
+                <div className="pointer-events-none sticky bottom-0 h-5 bg-gradient-to-t from-white to-white/0" />
               )}
             </div>
           </div>
@@ -4658,7 +4690,7 @@ export function MonitorDashboard() {
                 </span>
               </div>
             </div>
-            <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
+            <div className="relative max-h-72 overflow-y-auto overscroll-contain p-1 pr-1 [scrollbar-gutter:stable]">
               <button
                 type="button"
                 onClick={() => {
@@ -4703,6 +4735,9 @@ export function MonitorDashboard() {
               ))}
               {filteredTeacherLookupOptions.length === 0 && (
                 <p className="px-2.5 py-2 text-xs text-slate-500">No results.</p>
+              )}
+              {teacherLookupOptions.length > 12 && (
+                <div className="pointer-events-none sticky bottom-0 h-5 bg-gradient-to-t from-white to-white/0" />
               )}
             </div>
           </div>
@@ -4810,7 +4845,7 @@ export function MonitorDashboard() {
 
   const quickFiltersPanelContent = (
     <>
-      <div className="mt-2 rounded-sm border border-slate-200 bg-white p-2 shadow-sm">
+      <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
         <div
           className={`grid gap-2 sm:grid-cols-2 ${
             activeTopNavigator === "reviews" || showMoreFilters ? "lg:grid-cols-5" : "lg:grid-cols-4"
@@ -5287,8 +5322,8 @@ export function MonitorDashboard() {
                         : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                     }`}
                   >
-                    <Filter className="h-3.5 w-3.5" />
-                    {showAdvancedFilters ? "Hide Filters" : "Filters"}
+                  <Filter className="h-3.5 w-3.5" />
+                    {showAdvancedFilters ? "Close Filters" : "Filters"}
                     {activeFilterChips.length > 0 && (
                       <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-white px-1 text-[10px] font-bold text-primary-700">
                         {activeFilterChips.length}
@@ -5420,22 +5455,10 @@ export function MonitorDashboard() {
                 </div>
               </div>
 
-              {showSubmissionFilters && !isMobileViewport && (
-                <div
-                  id="monitor-submission-filters"
-                  className={`p-3 ${sectionFocusClass("monitor-submission-filters")}`}
-                >
-                  <h2 className="sr-only">Filters</h2>
-                  {quickFiltersPanelContent}
-                </div>
-              )}
-
               {activeTopNavigator === "schools" && (
                 <div
                   id="monitor-school-radar"
-                  className={`bg-white p-3 ${
-                    showSubmissionFilters && !isMobileViewport ? "border-t border-slate-200" : ""
-                  } ${sectionFocusClass("monitor-school-radar")}`}
+                  className={`bg-white p-3 ${sectionFocusClass("monitor-school-radar")}`}
                 >
                   <div className="grid gap-3 lg:grid-cols-3">
                     <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -5504,24 +5527,36 @@ export function MonitorDashboard() {
             </section>
           )}
 
-          {!showNavigatorManual && showSubmissionFilters && isMobileViewport && (
+          {!showNavigatorManual && showSubmissionFilters && (
             <>
               <button
                 type="button"
                 onClick={() => setShowAdvancedFilters(false)}
                 className="fixed inset-0 z-[72] bg-slate-900/40"
-                aria-label="Close quick filters"
+                aria-label="Close filters"
               />
-              <section id="monitor-submission-filters" className="fixed inset-x-0 bottom-0 z-[73] max-h-[84vh] overflow-y-auto rounded-t-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide">
-                <div className="flex items-center justify-between">
+              <section
+                id="monitor-submission-filters"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Filters"
+                className={`fixed z-[73] border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
+                  isMobileViewport
+                    ? "inset-x-0 bottom-0 max-h-[84vh] overflow-y-auto rounded-t-sm"
+                    : "left-1/2 top-24 w-[min(56rem,calc(100vw-2rem))] -translate-x-1/2 rounded-sm"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
                   <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Filters</h2>
                   <button
                     type="button"
                     onClick={() => setShowAdvancedFilters(false)}
                     className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    aria-label="Close filters"
+                    title="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
                 {quickFiltersPanelContent}
               </section>
@@ -6543,7 +6578,7 @@ export function MonitorDashboard() {
                     if (summary.awaitingReviewCount > 0) {
                       const pressed = requirementFilter === "waiting";
                       return {
-                        label: `Review: ${summary.awaitingReviewCount}`,
+                        label: `Review ${summary.awaitingReviewCount}`,
                         title: "Click to filter queue: For review",
                         pressed,
                         onClick: () => setRequirementFilter((current) => (current === "waiting" ? "all" : "waiting")),
@@ -6554,7 +6589,7 @@ export function MonitorDashboard() {
                     if (summary.missingCount > 0) {
                       const pressed = requirementFilter === "missing";
                       return {
-                        label: `Missing: ${summary.missingCount}`,
+                        label: `Missing ${summary.missingCount}`,
                         title: "Click to filter queue: Missing",
                         pressed,
                         onClick: () => setRequirementFilter((current) => (current === "missing" ? "all" : "missing")),
@@ -6572,54 +6607,63 @@ export function MonitorDashboard() {
                   })();
 
                   return (
-                    <article key={schoolKey} className={`rounded-sm border border-slate-200 p-3 ${rowTone}`}>
-                      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:gap-4">
+                    <article key={schoolKey} className={`relative overflow-hidden rounded-sm border border-slate-200 p-3 ${rowTone}`}>
+                      {(summary.indicatorStatus === "returned" || summary.missingCount > 0) && (
+                        <span
+                          aria-hidden
+                          className={`absolute inset-y-0 left-0 w-1 ${
+                            summary.indicatorStatus === "returned" ? "bg-amber-300" : "bg-rose-300"
+                          }`}
+                        />
+                      )}
+                      <div className="relative z-10 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-900">{summary.schoolName}</p>
                           <p className="truncate text-[11px] text-slate-500">
                             {summary.schoolCode} | {summary.region}
                           </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 lg:min-w-0 lg:flex-1 lg:justify-center">
-                          <button
-                            type="button"
-                            title={statusPillPressed ? "Click to clear status filter" : "Click to filter by this school status"}
-                            aria-pressed={statusPillPressed}
-                            onClick={() => setStatusFilter((current) => (current === rowStatus ? "all" : rowStatus))}
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition hover:opacity-95 ${
-                              statusPillPressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
-                            } ${statusTone(rowStatus)}`}
-                          >
-                            {statusLabel(rowStatus)}
-                          </button>
-                          {queuePill.onClick ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
-                              title={`${queuePill.title} (Shift+click to open in Reviews)`}
-                              aria-pressed={queuePill.pressed}
-                              onClick={(event) => {
-                                if (event.shiftKey) {
-                                  handleReviewSchool(summary);
-                                  return;
-                                }
-                                queuePill.onClick?.();
-                              }}
-                              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition hover:opacity-95 ${
-                                queuePill.pressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
-                              } ${queuePill.className}`}
+                              title={statusPillPressed ? "Click to clear status filter" : "Click to filter by this school status"}
+                              aria-pressed={statusPillPressed}
+                              onClick={() => setStatusFilter((current) => (current === rowStatus ? "all" : rowStatus))}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-95 ${
+                                statusPillPressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
+                              } ${statusTone(rowStatus)}`}
                             >
-                              {queuePill.label}
+                              {statusLabel(rowStatus)}
                             </button>
-                          ) : (
-                            <span
-                              title={queuePill.title}
-                              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${queuePill.className}`}
-                            >
-                              {queuePill.label}
-                            </span>
-                          )}
+                            {queuePill.label !== "OK" &&
+                              (queuePill.onClick ? (
+                                <button
+                                  type="button"
+                                  title={`${queuePill.title} (Shift+click to open in Reviews)`}
+                                  aria-pressed={queuePill.pressed}
+                                  onClick={(event) => {
+                                    if (event.shiftKey) {
+                                      handleReviewSchool(summary);
+                                      return;
+                                    }
+                                    queuePill.onClick?.();
+                                  }}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-95 ${
+                                    queuePill.pressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
+                                  } ${queuePill.className}`}
+                                >
+                                  {queuePill.label}
+                                </button>
+                              ) : (
+                                <span
+                                  title={queuePill.title}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${queuePill.className}`}
+                                >
+                                  {queuePill.label}
+                                </span>
+                              ))}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 lg:shrink-0 lg:self-start">
+                        <div className="flex items-center gap-2 sm:shrink-0 sm:self-start">
                           <span
                             title="Last activity time"
                             className="inline-flex whitespace-nowrap rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 tabular-nums"
