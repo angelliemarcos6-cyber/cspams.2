@@ -157,8 +157,9 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
 export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiRawResponse<T>> {
   const { method = "GET", token, body, signal, extraHeaders } = options;
   const mutating = isMutatingMethod(method);
+  const useCookieSession = token === COOKIE_SESSION_TOKEN;
 
-  if (mutating) {
+  if (mutating && useCookieSession) {
     await ensureCsrfCookie();
   }
 
@@ -170,7 +171,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   if (token && token !== COOKIE_SESSION_TOKEN) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  if (mutating) {
+  if (mutating && useCookieSession) {
     const xsrfToken = readXsrfToken();
     if (xsrfToken) {
       headers.set("X-XSRF-TOKEN", xsrfToken);
@@ -185,7 +186,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   const fetchRequest = () =>
     fetch(`${API_BASE_URL}${path}`, {
       method,
-      credentials: "include",
+      credentials: useCookieSession ? "include" : "omit",
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
