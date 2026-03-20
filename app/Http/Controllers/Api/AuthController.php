@@ -88,29 +88,25 @@ class AuthController extends Controller
             return $inactiveResponse;
         }
 
-        /*
-         * Temporarily disabled: allow login even when must_reset_password is flagged.
-         * This keeps existing passwords usable until users explicitly request a password change.
-         */
-        // if ($user->must_reset_password && $this->enforceRequiredPasswordResetOnLogin()) {
-        //     AuthAuditLogger::record(
-        //         $request,
-        //         'auth.login.failed',
-        //         'failure',
-        //         $user,
-        //         $role,
-        //         $login,
-        //         ['reason' => 'password_reset_required'],
-        //     );
-        //
-        //     return response()->json(
-        //         [
-        //             'message' => 'Password reset is required before dashboard access.',
-        //             'requiresPasswordReset' => true,
-        //         ],
-        //         Response::HTTP_FORBIDDEN,
-        //     );
-        // }
+        if ($user->must_reset_password && $this->enforceRequiredPasswordResetOnLogin()) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.login.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'password_reset_required'],
+            );
+
+            return response()->json(
+                [
+                    'message' => 'Password reset is required before dashboard access.',
+                    'requiresPasswordReset' => true,
+                ],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
 
         if ($role === UserRoleResolver::MONITOR && $this->monitorMfaEnabled()) {
             try {

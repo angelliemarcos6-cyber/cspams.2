@@ -35,10 +35,13 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
 
 ## Authentication and Session Flow
 
-- `monitor` can sign in using email or name.
+- `monitor` signs in using email.
 - `school_head` signs in using a **6-digit school code**.
-- If a school head account is marked `must_reset_password`, sign-in is blocked until password reset is completed via:
-  - `POST /api/auth/reset-required-password`
+- Monitor forgot-password / reset-by-email:
+  - `POST /api/auth/forgot-password`
+  - `POST /api/auth/reset-password`
+- If an account is marked `must_reset_password` and `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true`, sign-in is blocked until password reset is completed via:
+  - `POST /api/auth/reset-required-password` (current password + new password)
 - SPA login supports the reset-required flow in-page (current password + new password + confirmation).
 - Sign-out behavior:
   - local session is cleared immediately for fast UI exit
@@ -185,7 +188,7 @@ After seeding:
   - Login: assigned 6-digit `school_code` (example: `900001`, `900002`, `900003`)
   - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
 
-For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and must complete `/api/auth/reset-required-password` before dashboard access. Their temporary password is `CSPAMS_SEED_TEMP_PASSWORD` (default: `Csp@123456`).
+For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and (when `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true`) must complete `/api/auth/reset-required-password` before dashboard access. Their temporary password is `CSPAMS_SEED_TEMP_PASSWORD` (default: `Csp@123456`).
 
 ## Troubleshooting Sign-in on a Fresh Clone (Linux/Windows)
 
@@ -227,6 +230,7 @@ This project sends emails for:
 
 - Monitor login MFA codes
 - Monitor account-action confirmation codes (suspend/lock/archive)
+- Monitor password reset links (forgot-password)
 - School Head setup links
 
 If `.env` uses `MAIL_MAILER=log`, **no real emails are sent**. Messages are written to `storage/logs/laravel.log`, and the frontend will show a `logged` delivery hint.
@@ -237,7 +241,7 @@ To send real emails, configure one of the supported mailers:
   - `MAIL_MAILER=smtp`
   - `MAIL_HOST=...`
   - `MAIL_PORT=587` (STARTTLS) or `MAIL_PORT=465` (implicit TLS)
-  - `MAIL_SCHEME=` (leave empty) for port `587`, or set `MAIL_SCHEME=smtps` for port `465`
+  - `MAIL_SCHEME=tls` (or `MAIL_ENCRYPTION=tls`) for port `587`, or set `MAIL_SCHEME=smtps` for port `465`
   - `MAIL_USERNAME=...`
   - `MAIL_PASSWORD=...`
   - `MAIL_FROM_ADDRESS=...`
