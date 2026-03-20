@@ -186,8 +186,8 @@ export function MfaResetRequest() {
                     </p>
                   )}
                   <p className="mt-2 text-xs text-emerald-700">
-                    After approval, you'll receive an approval token by email. Then complete the reset to get new backup
-                    codes.
+                    After approval, you'll receive an approval token (via email or secure sharing). Use it to complete
+                    the reset and generate new backup codes.
                   </p>
                 </div>
               )}
@@ -221,4 +221,3 @@ export function MfaResetRequest() {
     </div>
   );
 }
-

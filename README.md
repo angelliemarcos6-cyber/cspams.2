@@ -44,7 +44,7 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - `POST /api/auth/mfa/reset/request` (submit request)
   - `POST /api/auth/mfa/reset/complete` (complete with approval token + generates new backup codes)
   - `GET /api/auth/mfa/reset/requests` (list pending requests for approval)
-  - `POST /api/auth/mfa/reset/requests/{ticket}/approve` (approve + emails approval token)
+  - `POST /api/auth/mfa/reset/requests/{ticket}/approve` (approve; returns approval token for secure sharing and attempts email delivery)
   - `POST /api/auth/mfa/backup-codes/regenerate` (authenticated; generates a new set)
 - If an account is marked `must_reset_password` and `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true`, sign-in is blocked until password reset is completed via:
   - `POST /api/auth/reset-required-password` (current password + new password)

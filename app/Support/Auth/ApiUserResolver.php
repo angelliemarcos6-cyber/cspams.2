@@ -5,6 +5,8 @@ namespace App\Support\Auth;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class ApiUserResolver
@@ -25,7 +27,7 @@ class ApiUserResolver
             }
 
             if (! $tokenable->canAuthenticate()) {
-                $accessToken->delete();
+                self::revokeUserSessionsAndTokens($tokenable);
 
                 return null;
             }
@@ -39,7 +41,13 @@ class ApiUserResolver
             return null;
         }
 
-        return $user->canAuthenticate() ? $user : null;
+        if (! $user->canAuthenticate()) {
+            self::revokeUserSessionsAndTokens($user);
+
+            return null;
+        }
+
+        return $user;
     }
 
     private static function isExpired(PersonalAccessToken $accessToken): bool
@@ -61,5 +69,26 @@ class ApiUserResolver
         }
 
         return $accessToken->created_at->lte($now->subMinutes($expirationMinutes));
+    }
+
+    private static function revokeUserSessionsAndTokens(User $user): void
+    {
+        try {
+            $user->tokens()->delete();
+        } catch (\Throwable) {
+            // Ignore token revocation failures.
+        }
+
+        if (! Schema::hasTable('sessions')) {
+            return;
+        }
+
+        try {
+            DB::table('sessions')
+                ->where('user_id', $user->id)
+                ->delete();
+        } catch (\Throwable) {
+            // Ignore session cleanup failures.
+        }
     }
 }
