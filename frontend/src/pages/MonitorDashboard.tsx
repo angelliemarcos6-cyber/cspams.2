@@ -1318,6 +1318,12 @@ export function MonitorDashboard() {
   const [deleteError, setDeleteError] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
   const [showSchoolHeadAccountsPanel, setShowSchoolHeadAccountsPanel] = useState(false);
+  const [schoolHeadAccountsQuery, setSchoolHeadAccountsQuery] = useState("");
+  const [schoolHeadAccountsStatusFilter, setSchoolHeadAccountsStatusFilter] = useState<
+    "all" | "needs_setup" | "active" | "suspended" | "locked" | "archived"
+  >("all");
+  const [schoolHeadAccountsOnlyFlagged, setSchoolHeadAccountsOnlyFlagged] = useState(false);
+  const [schoolHeadAccountsOnlyDeleteFlagged, setSchoolHeadAccountsOnlyDeleteFlagged] = useState(false);
   const [editingSchoolHeadAccountSchoolId, setEditingSchoolHeadAccountSchoolId] = useState<string | null>(null);
   const [schoolHeadAccountDraft, setSchoolHeadAccountDraft] = useState<SchoolHeadAccountPayload>({
     name: "",
@@ -3589,6 +3595,82 @@ export function MonitorDashboard() {
     const start = (safeRecordsPage - 1) * RECORD_PAGE_SIZE;
     return compactSchoolRows.slice(start, start + RECORD_PAGE_SIZE);
   }, [compactSchoolRows, safeRecordsPage]);
+
+  const filteredSchoolHeadAccountRows = useMemo(() => {
+    const query = schoolHeadAccountsQuery.trim().toLowerCase();
+    const statusFilter = schoolHeadAccountsStatusFilter;
+
+    const rows = compactSchoolRows.filter(({ summary, record }) => {
+      const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
+      const account = resolvedRecord?.schoolHeadAccount ?? null;
+      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+      const needsSetup = account
+        ? normalizedAccountStatus === "pending_setup" || !account.emailVerifiedAt
+        : true;
+
+      if (statusFilter !== "all") {
+        if (statusFilter === "needs_setup") {
+          if (!needsSetup) return false;
+        } else if (normalizedAccountStatus !== statusFilter) {
+          return false;
+        }
+      }
+
+      if (schoolHeadAccountsOnlyFlagged && !(account?.flagged ?? false)) {
+        return false;
+      }
+
+      if (schoolHeadAccountsOnlyDeleteFlagged && !(account?.deleteRecordFlagged ?? false)) {
+        return false;
+      }
+
+      if (query.length === 0) {
+        return true;
+      }
+
+      const haystack = [
+        summary.schoolCode,
+        summary.schoolName,
+        account?.name ?? "",
+        account?.email ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+
+    const priorityFor = ({ summary, record }: (typeof compactSchoolRows)[number]) => {
+      const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
+      const account = resolvedRecord?.schoolHeadAccount ?? null;
+      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+
+      if (account?.deleteRecordFlagged) return 0;
+      if (!account) return 1;
+      if (normalizedAccountStatus === "pending_setup" || !account.emailVerifiedAt) return 2;
+      if (account.flagged) return 3;
+      if (normalizedAccountStatus === "active") return 4;
+      if (normalizedAccountStatus === "suspended") return 5;
+      if (normalizedAccountStatus === "locked") return 6;
+      if (normalizedAccountStatus === "archived") return 7;
+      return 99;
+    };
+
+    rows.sort((a, b) => {
+      const priorityDiff = priorityFor(a) - priorityFor(b);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.summary.schoolName.localeCompare(b.summary.schoolName);
+    });
+
+    return rows;
+  }, [
+    compactSchoolRows,
+    recordBySchoolKey,
+    schoolHeadAccountsOnlyDeleteFlagged,
+    schoolHeadAccountsOnlyFlagged,
+    schoolHeadAccountsQuery,
+    schoolHeadAccountsStatusFilter,
+  ]);
 
   const schoolIndicatorSubmissions = useMemo(() => {
     if (!schoolDrawerKey) return [] as IndicatorSubmission[];
@@ -6428,37 +6510,116 @@ export function MonitorDashboard() {
                 </div>
               )}
 
+              <div className="border-b border-slate-200 bg-white px-4 py-3">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={schoolHeadAccountsQuery}
+                        onChange={(event) => setSchoolHeadAccountsQuery(event.target.value)}
+                        placeholder="Search school, code, name, or email..."
+                        className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700">
+                        <Filter className="h-3.5 w-3.5 text-slate-500" />
+                        <span>Status</span>
+                        <select
+                          value={schoolHeadAccountsStatusFilter}
+                          onChange={(event) =>
+                            setSchoolHeadAccountsStatusFilter(
+                              event.target.value as "all" | "needs_setup" | "active" | "suspended" | "locked" | "archived",
+                            )
+                          }
+                          className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                        >
+                          <option value="all">All</option>
+                          <option value="needs_setup">Needs setup</option>
+                          <option value="active">Active</option>
+                          <option value="suspended">Suspended</option>
+                          <option value="locked">Locked</option>
+                          <option value="archived">Archived</option>
+                        </select>
+                      </div>
+                      <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={schoolHeadAccountsOnlyFlagged}
+                          onChange={(event) => setSchoolHeadAccountsOnlyFlagged(event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
+                        />
+                        <span>Flagged</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={schoolHeadAccountsOnlyDeleteFlagged}
+                          onChange={(event) => setSchoolHeadAccountsOnlyDeleteFlagged(event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
+                        />
+                        <span>Delete flagged</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSchoolHeadAccountsQuery("");
+                          setSchoolHeadAccountsStatusFilter("all");
+                          setSchoolHeadAccountsOnlyFlagged(false);
+                          setSchoolHeadAccountsOnlyDeleteFlagged(false);
+                        }}
+                        className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-500">
+                    Showing{" "}
+                    <span className="text-slate-700">{filteredSchoolHeadAccountRows.length}</span> of{" "}
+                    <span className="text-slate-700">{compactSchoolRows.length}</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
-                <table className="min-w-full">
+                <table className="min-w-full table-fixed">
                   <thead>
                     <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      <th className="w-24 px-3 py-1.5 text-left">Code</th>
+                      <th className="w-20 px-3 py-1.5 text-left">Code</th>
                       <th className="px-3 py-1.5 text-left">School</th>
-                      <th className="px-3 py-1.5 text-left">Account</th>
-                      <th className="px-3 py-1.5 text-left">Email</th>
+                      <th className="w-[22rem] px-3 py-1.5 text-left">Contact</th>
                       <th className="w-36 px-3 py-1.5 text-left">Status</th>
-                      <th className="w-28 px-3 py-1.5 text-left">Last Login</th>
-                      <th className="w-48 px-3 py-1.5 text-left">Setup</th>
-                      <th className="w-24 px-3 py-1.5 text-right">Actions</th>
+                      <th className="w-44 px-3 py-1.5 text-left">Activity</th>
+                      <th className="w-28 px-3 py-1.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {compactSchoolRows.map(({ summary, record }) => {
+                    {filteredSchoolHeadAccountRows.length === 0 ? (
+                      <tr>
+                        <td className="px-3 py-6 text-center text-sm text-slate-500" colSpan={6}>
+                          No School Head accounts match the current filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSchoolHeadAccountRows.map(({ summary, record }) => {
                       const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
                       if (!resolvedRecord) {
                         return (
                           <tr key={`account-missing-${summary.schoolKey}`}>
-                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700">
+                            <td className="px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
                               <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200">
                                 {summary.schoolCode}
                               </span>
                             </td>
-                            <td className="px-3 py-1.5 text-xs text-slate-900">
-                              <span className="block max-w-[18rem] truncate font-semibold text-slate-900" title={summary.schoolName}>
+                            <td className="px-3 py-1.5 align-top text-xs text-slate-900">
+                              <span className="block w-full truncate font-semibold text-slate-900" title={summary.schoolName}>
                                 {summary.schoolName}
                               </span>
                             </td>
-                            <td className="px-3 py-1.5 text-xs text-slate-500" colSpan={6}>
+                            <td className="px-3 py-1.5 align-top text-xs text-slate-500" colSpan={4}>
                               Record missing from sync.
                             </td>
                           </tr>
@@ -6480,13 +6641,18 @@ export function MonitorDashboard() {
                         normalizedAccountStatus === "pending_setup" || !emailVerified
                           ? "text-amber-700"
                           : "text-primary-700";
+                      const setupLinkExpiresAtMs = account?.setupLinkExpiresAt
+                        ? Date.parse(account.setupLinkExpiresAt)
+                        : Number.NaN;
+                      const setupLinkExpired =
+                        Number.isFinite(setupLinkExpiresAtMs) && setupLinkExpiresAtMs < Date.now();
 
                       return (
                         <tr
                           key={`account-${resolvedRecord.id}`}
                           className={`transition ${isEditing ? "bg-primary-50/30" : "hover:bg-slate-50"}`}
                         >
-                          <td className="px-3 py-1.5 text-xs font-semibold text-slate-700">
+                          <td className="px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
                             <button
                               type="button"
                               onClick={() => handleOpenSchoolRecord(resolvedRecord)}
@@ -6496,61 +6662,58 @@ export function MonitorDashboard() {
                               {summary.schoolCode}
                             </button>
                           </td>
-                          <td className="px-3 py-1.5 text-xs text-slate-900">
+                          <td className="px-3 py-1.5 align-top text-xs text-slate-900">
                             <button
                               type="button"
                               onClick={() => handleOpenSchoolRecord(resolvedRecord)}
-                              className="block max-w-[18rem] truncate text-left font-semibold text-slate-900 transition hover:text-primary-700 hover:underline"
+                              className="block w-full truncate text-left font-semibold text-slate-900 transition hover:text-primary-700 hover:underline"
                               title={`Open ${summary.schoolName}`}
                             >
                               {summary.schoolName}
                             </button>
                           </td>
-                          <td className="px-3 py-1.5 text-xs text-slate-700">
+                          <td className="px-3 py-1.5 align-top text-xs text-slate-700">
                             {isEditing ? (
-                              <input
-                                type="text"
-                                value={schoolHeadAccountDraft.name}
-                                onChange={(event) => {
-                                  setSchoolHeadAccountDraft((current) => ({ ...current, name: event.target.value }));
-                                  setSchoolHeadAccountDraftError("");
-                                }}
-                                className="w-full min-w-[13rem] rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                                placeholder="Full name"
-                              />
+                              <div className="grid gap-1">
+                                <input
+                                  type="text"
+                                  value={schoolHeadAccountDraft.name}
+                                  onChange={(event) => {
+                                    setSchoolHeadAccountDraft((current) => ({ ...current, name: event.target.value }));
+                                    setSchoolHeadAccountDraftError("");
+                                  }}
+                                  className="w-full min-w-[16rem] rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                  placeholder="Full name"
+                                />
+                                <input
+                                  type="email"
+                                  value={schoolHeadAccountDraft.email}
+                                  onChange={(event) => {
+                                    setSchoolHeadAccountDraft((current) => ({ ...current, email: event.target.value }));
+                                    setSchoolHeadAccountDraftError("");
+                                  }}
+                                  className="w-full min-w-[16rem] rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                                  placeholder="email@example.com"
+                                />
+                              </div>
                             ) : account ? (
-                              <span className="block max-w-[14rem] truncate font-semibold text-slate-900" title={account.name}>
-                                {account.name}
-                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="block max-w-[20rem] truncate font-semibold text-slate-900" title={account.name}>
+                                  {account.name}
+                                </span>
+                                <a
+                                  href={`mailto:${account.email}`}
+                                  className="block max-w-[20rem] truncate text-[11px] font-medium text-slate-600 hover:text-primary-700 hover:underline"
+                                  title={account.email}
+                                >
+                                  {account.email}
+                                </a>
+                              </div>
                             ) : (
                               <span className="text-slate-400">No account</span>
                             )}
                           </td>
-                          <td className="px-3 py-1.5 text-xs text-slate-700">
-                            {isEditing ? (
-                              <input
-                                type="email"
-                                value={schoolHeadAccountDraft.email}
-                                onChange={(event) => {
-                                  setSchoolHeadAccountDraft((current) => ({ ...current, email: event.target.value }));
-                                  setSchoolHeadAccountDraftError("");
-                                }}
-                                className="w-full min-w-[14rem] rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                                placeholder="email@example.com"
-                              />
-                            ) : account ? (
-                              <a
-                                href={`mailto:${account.email}`}
-                                className="block max-w-[15rem] truncate text-slate-700 hover:text-primary-700 hover:underline"
-                                title={account.email}
-                              >
-                                {account.email}
-                              </a>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-xs text-slate-700">
+                          <td className="px-3 py-1.5 align-top text-xs text-slate-700">
                             {account ? (
                               <div className="flex flex-col gap-0.5">
                                 <span
@@ -6570,28 +6733,28 @@ export function MonitorDashboard() {
                               <span className="text-slate-400">No account</span>
                             )}
                           </td>
-                          <td className="px-3 py-1.5 text-xs text-slate-700">
-                            {account?.lastLoginAt ? (
+                          <td className="px-3 py-1.5 align-top text-xs text-slate-700">
+                            <div className="flex flex-col gap-0.5">
                               <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
-                                {formatDateTime(account.lastLoginAt)}
+                                {account?.lastLoginAt ? formatDateTime(account.lastLoginAt) : account ? "Never" : "—"}
                               </span>
-                            ) : (
-                              <span className="text-slate-400">Never</span>
-                            )}
+                              {account?.setupLinkExpiresAt ? (
+                                <span
+                                  className={`inline-flex max-w-[12rem] truncate whitespace-nowrap rounded-sm border px-2 py-1 text-[11px] font-medium tabular-nums ${
+                                    setupLinkExpired
+                                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                                      : "border-slate-200 bg-white text-slate-600"
+                                  }`}
+                                  title={`${setupLinkExpired ? "Expired" : "Expires"} ${formatDateTime(account.setupLinkExpiresAt)}`}
+                                >
+                                  {setupLinkExpired ? "Expired" : "Expires"} {formatDateTime(account.setupLinkExpiresAt)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </div>
                           </td>
-                          <td className="px-3 py-1.5 text-xs text-slate-700">
-                            {account?.setupLinkExpiresAt ? (
-                              <span
-                                className="inline-flex max-w-[14rem] truncate whitespace-nowrap rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 tabular-nums"
-                                title={`Expires ${formatDateTime(account.setupLinkExpiresAt)}`}
-                              >
-                                Expires {formatDateTime(account.setupLinkExpiresAt)}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-right">
+                          <td className="px-3 py-1.5 align-top text-right">
                             {isEditing ? (
                               <div className="inline-flex items-center gap-2">
                                 <button
@@ -6806,7 +6969,8 @@ export function MonitorDashboard() {
                           </td>
                         </tr>
                       );
-                    })}
+                    })
+                    )}
                   </tbody>
                 </table>
               </div>
