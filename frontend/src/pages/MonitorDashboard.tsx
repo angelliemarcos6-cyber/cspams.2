@@ -1873,21 +1873,43 @@ export function MonitorDashboard() {
     }
   }, [pushToast, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
 
-  const revealSetupLink = async (setupLink: string, schoolName: string) => {
+  const revealSetupLink = async (setupLink: string, schoolName: string, linkLabel: string = "Setup link") => {
     const trimmedLink = setupLink.trim();
     if (!trimmedLink) return;
 
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(trimmedLink);
-        pushToast(`Setup link copied for ${schoolName}.`, "success");
+        pushToast(`${linkLabel} copied for ${schoolName}.`, "success");
         return;
       } catch {
         // Fall back to prompt copy if clipboard access fails.
       }
     }
 
-    window.prompt(`Copy the setup link for ${schoolName}:`, trimmedLink);
+    window.prompt(`Copy the ${linkLabel.toLowerCase()} for ${schoolName}:`, trimmedLink);
+  };
+
+  const announceSchoolHeadPasswordResetLink = async (
+    receipt: { setupLink: string; delivery?: unknown; deliveryMessage?: string },
+    schoolName: string,
+  ) => {
+    const normalizedDelivery = String(receipt.delivery ?? "").toLowerCase();
+    const deliveryFailed = normalizedDelivery === "failed";
+
+    pushToast(
+      deliveryFailed
+        ? `Password reset link generated for ${schoolName}. Delivery failed.`
+        : `Password reset link sent for ${schoolName}.`,
+      deliveryFailed ? "warning" : "success",
+    );
+
+    const deliveryMessage = receipt.deliveryMessage?.trim();
+    if (deliveryMessage) {
+      pushToast(deliveryMessage.replace(/setup link/gi, "password reset link"), deliveryFailed ? "warning" : "info");
+    }
+
+    await revealSetupLink(receipt.setupLink, schoolName, "Password reset link");
   };
 
   const resetRecordForm = () => {
@@ -4588,8 +4610,7 @@ export function MonitorDashboard() {
           pendingAccountAction.schoolId,
           reason.length > 0 ? reason : null,
         );
-        await revealSetupLink(receipt.setupLink, pendingAccountAction.schoolName);
-        pushToast(`Setup link ready for ${pendingAccountAction.schoolName}.`, "success");
+        await announceSchoolHeadPasswordResetLink(receipt, pendingAccountAction.schoolName);
       }
 
       closePendingAccountAction();
@@ -4636,25 +4657,28 @@ export function MonitorDashboard() {
     }
 
     const accountStatus = String(account.accountStatus ?? "").toLowerCase();
+    if (accountStatus === "archived") {
+      pushToast("Archived accounts cannot receive password reset links. Activate the account first.", "warning");
+      return;
+    }
     if (accountStatus !== "pending_setup") {
       openPendingAccountAction({
         kind: "setup_link",
         schoolId: record.id,
         schoolName: record.schoolName,
-        actionLabel: "setup-link",
+        actionLabel: "Reset Password",
         requireReason: true,
       });
       return;
     }
 
-    const actionKey = `${record.id}:setup-link`;
+    const actionKey = `${record.id}:reset-password`;
     setAccountActionKey(actionKey);
     try {
       const receipt = await issueSchoolHeadSetupLink(record.id, null);
-      await revealSetupLink(receipt.setupLink, record.schoolName);
-      pushToast(`Setup link ready for ${record.schoolName}.`, "success");
+      await announceSchoolHeadPasswordResetLink(receipt, record.schoolName);
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to issue setup link.", "warning");
+      pushToast(err instanceof Error ? err.message : "Unable to send password reset link.", "warning");
     } finally {
       setAccountActionKey(null);
     }
@@ -6536,7 +6560,7 @@ export function MonitorDashboard() {
                   <p className="mt-0.5 text-xs text-slate-600">
                     Passwords are never shown/stored. The account becomes{" "}
                     <span className="font-semibold">Active + Verified</span> after setup. Use{" "}
-                    <span className="font-semibold">Reset Link</span> to re-issue a one-time setup link.
+                    <span className="font-semibold">Reset Password</span> to send a one-time password reset link.
                   </p>
                 </div>
                 <button
@@ -6881,12 +6905,20 @@ export function MonitorDashboard() {
                                   <button
                                     type="button"
                                     onClick={() => void handleIssueSchoolHeadSetupLink(resolvedRecord)}
-                                    disabled={isRowSaving || isSaving}
+                                    disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-primary-200 bg-primary-50 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                    title="Reset setup link"
+                                    title={
+                                      normalizedAccountStatus === "archived"
+                                        ? "Reset Password unavailable (archived account)"
+                                        : "Reset Password"
+                                    }
                                   >
                                     <RefreshCw className="h-4 w-4" />
-                                    <span className="sr-only">Reset Link</span>
+                                    <span className="sr-only">
+                                      {normalizedAccountStatus === "archived"
+                                        ? "Reset Password unavailable"
+                                        : "Reset Password"}
+                                    </span>
                                   </button>
                                 )}
                                 {account && (
@@ -8017,8 +8049,8 @@ export function MonitorDashboard() {
                       ? `Reason and confirmation code required for ${pendingAccountAction.schoolName}.`
                       : `Reason required for ${pendingAccountAction.schoolName}.`
                     : pendingAccountAction.requireReason
-                      ? `Reason required to reissue setup link for ${pendingAccountAction.schoolName}.`
-                      : `Optionally add a note for ${pendingAccountAction.schoolName}.`}
+                      ? `Reason required to send a password reset link for ${pendingAccountAction.schoolName}.`
+                      : `Optionally add a note before sending a password reset link for ${pendingAccountAction.schoolName}.`}
                 </p>
               </div>
               <button
