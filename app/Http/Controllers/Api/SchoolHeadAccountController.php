@@ -17,6 +17,7 @@ use App\Support\Auth\MonitorActionVerificationService;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
+use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -88,12 +89,19 @@ class SchoolHeadAccountController extends Controller
             'created_at' => now(),
         ]);
 
+        $delivery = 'sent';
+        $deliveryMessage = 'Confirmation code sent to your monitor email.';
+        if (MailDelivery::isSimulated()) {
+            $delivery = MailDelivery::simulatedStatus();
+            $deliveryMessage = MailDelivery::simulatedMessage('Confirmation code was generated, but will not reach real inboxes.');
+        }
+
         return response()->json([
             'data' => [
                 'challengeId' => $challenge['challengeId'],
                 'expiresAt' => $challenge['expiresAt'],
-                'delivery' => 'sent',
-                'deliveryMessage' => 'Confirmation code sent to your monitor email.',
+                'delivery' => $delivery,
+                'deliveryMessage' => $deliveryMessage,
             ],
         ]);
     }
@@ -147,6 +155,11 @@ class SchoolHeadAccountController extends Controller
                 $setupLinkExpiresAt = $issuedSetup['expiresAt'];
                 $deliveryStatus = 'sent';
                 $deliveryMessage = 'Setup link sent to the School Head email.';
+
+                if (MailDelivery::isSimulated()) {
+                    $deliveryStatus = MailDelivery::simulatedStatus();
+                    $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
+                }
 
                 try {
                     $account->notify(
@@ -243,6 +256,10 @@ class SchoolHeadAccountController extends Controller
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
+        if (MailDelivery::isSimulated()) {
+            $deliveryStatus = MailDelivery::simulatedStatus();
+            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
+        }
         try {
             $account->notify(
                 new SchoolHeadAccountSetupNotification(
@@ -537,6 +554,10 @@ class SchoolHeadAccountController extends Controller
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
+        if (MailDelivery::isSimulated()) {
+            $deliveryStatus = MailDelivery::simulatedStatus();
+            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
+        }
         try {
             $account->notify(
                 new SchoolHeadAccountSetupNotification(

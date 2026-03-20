@@ -221,6 +221,39 @@ Required background services:
 
 Queue tables are included in migrations (`jobs`, `job_batches`, `failed_jobs`) and reminder emails are queued via `SchoolSubmissionReminderNotification`.
 
+## Email Delivery (Verification Codes & Setup Links)
+
+This project sends emails for:
+
+- Monitor login MFA codes
+- Monitor account-action confirmation codes (suspend/lock/archive)
+- School Head setup links
+
+If `.env` uses `MAIL_MAILER=log`, **no real emails are sent**. Messages are written to `storage/logs/laravel.log`, and the frontend will show a `logged` delivery hint.
+
+To send real emails, configure one of the supported mailers:
+
+- SMTP (simple and widely supported)
+  - `MAIL_MAILER=smtp`
+  - `MAIL_HOST=...`
+  - `MAIL_PORT=...`
+  - `MAIL_SCHEME=tls` (or `smtps`, depending on provider)
+  - `MAIL_USERNAME=...`
+  - `MAIL_PASSWORD=...`
+  - `MAIL_FROM_ADDRESS=...`
+- Resend (transactional email API)
+  - `MAIL_MAILER=resend`
+  - `RESEND_KEY=...`
+  - `MAIL_FROM_ADDRESS=...` (must match your verified Resend domain)
+
+After updating mail settings, clear cached config:
+
+- `php artisan optimize:clear`
+
+Local/dev convenience:
+
+- Set a fixed monitor MFA code with `CSPAMS_MONITOR_MFA_TEST_CODE=123456` (only for local testing).
+
 ## Additional Docs
 
 - [CAPSTONE_COMPLETION_GUIDE.md](CAPSTONE_COMPLETION_GUIDE.md)

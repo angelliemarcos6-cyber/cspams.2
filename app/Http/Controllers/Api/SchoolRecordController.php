@@ -20,6 +20,7 @@ use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
+use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -724,6 +725,11 @@ class SchoolRecordController extends Controller
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
+
+        if (MailDelivery::isSimulated()) {
+            $deliveryStatus = MailDelivery::simulatedStatus();
+            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
+        }
         try {
             $account->notify(
                 new SchoolHeadAccountSetupNotification(

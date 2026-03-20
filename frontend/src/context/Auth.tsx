@@ -39,6 +39,8 @@ interface LoginResultMfaRequired {
   status: "mfa_required";
   challengeId: string;
   expiresAt: string;
+  delivery?: string;
+  deliveryMessage?: string;
 }
 
 type LoginResult = LoginResultAuthenticated | LoginResultMfaRequired;
@@ -77,6 +79,9 @@ interface LoginMfaRequiredResponse {
     challengeId: string;
     expiresAt: string;
   };
+  delivery?: string;
+  deliveryMessage?: string;
+  message?: string;
 }
 
 type LoginResponse = AuthenticatedResponse | LoginMfaRequiredResponse;
@@ -506,6 +511,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           status: "mfa_required",
           challengeId: payload.mfa.challengeId,
           expiresAt: payload.mfa.expiresAt,
+          delivery: typeof payload.delivery === "string" ? payload.delivery : undefined,
+          deliveryMessage:
+            typeof payload.deliveryMessage === "string"
+              ? payload.deliveryMessage
+              : typeof payload.message === "string"
+                ? payload.message
+                : undefined,
         };
       }
 

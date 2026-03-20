@@ -11,6 +11,8 @@ interface PendingMfaChallenge {
   challengeId: string;
   expiresAt: string;
   login: string;
+  delivery?: string;
+  deliveryMessage?: string;
 }
 
 function formatMfaExpiry(isoTimestamp: string): string {
@@ -165,6 +167,8 @@ export function Login() {
             challengeId: result.challengeId,
             expiresAt: result.expiresAt,
             login: normalizedLoginId.toLowerCase(),
+            delivery: result.delivery,
+            deliveryMessage: result.deliveryMessage,
           });
           setMfaCode("");
           setError("");
@@ -379,6 +383,12 @@ export function Login() {
                     Enter the code sent to your monitor email, or a backup code (XXXX-XXXX). Expires at{" "}
                     {formatMfaExpiry(pendingMfa.expiresAt)}.
                   </p>
+                  {pendingMfa.delivery &&
+                    pendingMfa.delivery !== "sent" &&
+                    typeof pendingMfa.deliveryMessage === "string" &&
+                    pendingMfa.deliveryMessage.trim().length > 0 && (
+                      <p className="mt-2 text-xs font-semibold text-amber-700">{pendingMfa.deliveryMessage}</p>
+                    )}
                 </div>
               )}
 

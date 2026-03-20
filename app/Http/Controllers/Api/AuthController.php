@@ -20,6 +20,7 @@ use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Audit\AuthAuditLogger;
 use App\Support\Domain\AccountStatus;
+use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -107,7 +108,33 @@ class AuthController extends Controller
         // }
 
         if ($role === UserRoleResolver::MONITOR && $this->monitorMfaEnabled()) {
-            $mfaChallenge = $this->issueMonitorMfaChallenge($user, $login);
+            try {
+                $mfaChallenge = $this->issueMonitorMfaChallenge($user, $login);
+            } catch (\Throwable $exception) {
+                report($exception);
+
+                AuthAuditLogger::record(
+                    $request,
+                    'auth.login.mfa_challenge_failed',
+                    'failure',
+                    $user,
+                    $role,
+                    $login,
+                    ['reason' => 'mfa_delivery_failed'],
+                );
+
+                return response()->json(
+                    ['message' => 'Unable to send verification code. Please try again or contact your administrator.'],
+                    Response::HTTP_SERVICE_UNAVAILABLE,
+                );
+            }
+
+            $deliveryStatus = 'sent';
+            $deliveryMessage = 'A verification code was sent to your email.';
+            if (MailDelivery::isSimulated()) {
+                $deliveryStatus = MailDelivery::simulatedStatus();
+                $deliveryMessage = MailDelivery::simulatedMessage('Verification code was generated, but will not reach real inboxes.');
+            }
 
             AuthAuditLogger::record(
                 $request,
@@ -119,6 +146,7 @@ class AuthController extends Controller
                 [
                     'mfa_challenge_id' => $mfaChallenge['challengeId'],
                     'mfa_expires_at' => $mfaChallenge['expiresAt'],
+                    'delivery_status' => $deliveryStatus,
                 ],
             );
 
@@ -129,7 +157,9 @@ class AuthController extends Controller
                         'challengeId' => $mfaChallenge['challengeId'],
                         'expiresAt' => $mfaChallenge['expiresAt'],
                     ],
-                    'message' => 'A verification code was sent to your email.',
+                    'delivery' => $deliveryStatus,
+                    'deliveryMessage' => $deliveryMessage,
+                    'message' => $deliveryMessage,
                 ],
                 Response::HTTP_ACCEPTED,
             );
@@ -1990,7 +2020,13 @@ class AuthController extends Controller
         ];
 
         $this->storeMonitorMfaChallenge($challengeId, $challenge);
-        $user->notify(new MonitorMfaCodeNotification($code, $expiresAt->toDateTimeString()));
+
+        try {
+            $user->notify(new MonitorMfaCodeNotification($code, $expiresAt->toDateTimeString()));
+        } catch (\Throwable $exception) {
+            Cache::forget($this->monitorMfaCacheKey($challengeId));
+            throw $exception;
+        }
 
         return [
             'challengeId' => $challengeId,
