@@ -6418,14 +6418,14 @@ export function MonitorDashboard() {
                 <table className="min-w-full">
                   <thead>
                     <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      <th className="px-3 py-2 text-left">School Code</th>
-                      <th className="px-3 py-2 text-left">School</th>
-                      <th className="px-3 py-2 text-left">Account Name</th>
-                      <th className="px-3 py-2 text-left">Email</th>
-                      <th className="px-3 py-2 text-left">Status</th>
-                      <th className="px-3 py-2 text-left">Last Login</th>
-                      <th className="px-3 py-2 text-left">Setup Link</th>
-                      <th className="px-3 py-2 text-right">Actions</th>
+                      <th className="w-24 px-3 py-1.5 text-left">Code</th>
+                      <th className="px-3 py-1.5 text-left">School</th>
+                      <th className="px-3 py-1.5 text-left">Account</th>
+                      <th className="px-3 py-1.5 text-left">Email</th>
+                      <th className="w-36 px-3 py-1.5 text-left">Status</th>
+                      <th className="w-28 px-3 py-1.5 text-left">Last Login</th>
+                      <th className="w-48 px-3 py-1.5 text-left">Setup</th>
+                      <th className="w-24 px-3 py-1.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -6434,9 +6434,17 @@ export function MonitorDashboard() {
                       if (!resolvedRecord) {
                         return (
                           <tr key={`account-missing-${summary.schoolKey}`}>
-                            <td className="px-3 py-2 text-xs font-semibold text-slate-700">{summary.schoolCode}</td>
-                            <td className="px-3 py-2 text-xs text-slate-900">{summary.schoolName}</td>
-                            <td className="px-3 py-2 text-xs text-slate-500" colSpan={6}>
+                            <td className="px-3 py-1.5 text-xs font-semibold text-slate-700">
+                              <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200">
+                                {summary.schoolCode}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-xs text-slate-900">
+                              <span className="block max-w-[18rem] truncate font-semibold text-slate-900" title={summary.schoolName}>
+                                {summary.schoolName}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-xs text-slate-500" colSpan={6}>
                               Record missing from sync.
                             </td>
                           </tr>
@@ -6460,10 +6468,31 @@ export function MonitorDashboard() {
                           : "text-primary-700";
 
                       return (
-                        <tr key={`account-${resolvedRecord.id}`} className={isEditing ? "bg-primary-50/30" : ""}>
-                          <td className="px-3 py-2 text-xs font-semibold text-slate-700">{summary.schoolCode}</td>
-                          <td className="px-3 py-2 text-xs text-slate-900">{summary.schoolName}</td>
-                          <td className="px-3 py-2 text-xs text-slate-700">
+                        <tr
+                          key={`account-${resolvedRecord.id}`}
+                          className={`transition ${isEditing ? "bg-primary-50/30" : "hover:bg-slate-50"}`}
+                        >
+                          <td className="px-3 py-1.5 text-xs font-semibold text-slate-700">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSchoolRecord(resolvedRecord)}
+                              className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-200"
+                              title={`Open ${summary.schoolName}`}
+                            >
+                              {summary.schoolCode}
+                            </button>
+                          </td>
+                          <td className="px-3 py-1.5 text-xs text-slate-900">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSchoolRecord(resolvedRecord)}
+                              className="block max-w-[18rem] truncate text-left font-semibold text-slate-900 transition hover:text-primary-700 hover:underline"
+                              title={`Open ${summary.schoolName}`}
+                            >
+                              {summary.schoolName}
+                            </button>
+                          </td>
+                          <td className="px-3 py-1.5 text-xs text-slate-700">
                             {isEditing ? (
                               <input
                                 type="text"
@@ -6476,12 +6505,14 @@ export function MonitorDashboard() {
                                 placeholder="Full name"
                               />
                             ) : account ? (
-                              <span className="font-semibold text-slate-900">{account.name}</span>
+                              <span className="block max-w-[14rem] truncate font-semibold text-slate-900" title={account.name}>
+                                {account.name}
+                              </span>
                             ) : (
                               <span className="text-slate-400">No account</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-xs text-slate-700">
+                          <td className="px-3 py-1.5 text-xs text-slate-700">
                             {isEditing ? (
                               <input
                                 type="email"
@@ -6494,12 +6525,18 @@ export function MonitorDashboard() {
                                 placeholder="email@example.com"
                               />
                             ) : account ? (
-                              <span className="text-slate-700">{account.email}</span>
+                              <a
+                                href={`mailto:${account.email}`}
+                                className="block max-w-[15rem] truncate text-slate-700 hover:text-primary-700 hover:underline"
+                                title={account.email}
+                              >
+                                {account.email}
+                              </a>
                             ) : (
                               <span className="text-slate-400">—</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-xs text-slate-700">
+                          <td className="px-3 py-1.5 text-xs text-slate-700">
                             {account ? (
                               <div className="flex flex-col gap-0.5">
                                 <span
@@ -6519,7 +6556,7 @@ export function MonitorDashboard() {
                               <span className="text-slate-400">No account</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-xs text-slate-700">
+                          <td className="px-3 py-1.5 text-xs text-slate-700">
                             {account?.lastLoginAt ? (
                               <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
                                 {formatDateTime(account.lastLoginAt)}
@@ -6528,16 +6565,19 @@ export function MonitorDashboard() {
                               <span className="text-slate-400">Never</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-xs text-slate-700">
+                          <td className="px-3 py-1.5 text-xs text-slate-700">
                             {account?.setupLinkExpiresAt ? (
-                              <span className="inline-flex whitespace-nowrap rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 tabular-nums">
+                              <span
+                                className="inline-flex max-w-[14rem] truncate whitespace-nowrap rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 tabular-nums"
+                                title={`Expires ${formatDateTime(account.setupLinkExpiresAt)}`}
+                              >
                                 Expires {formatDateTime(account.setupLinkExpiresAt)}
                               </span>
                             ) : (
                               <span className="text-slate-400">—</span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right">
+                          <td className="px-3 py-1.5 text-right">
                             {isEditing ? (
                               <div className="inline-flex items-center gap-2">
                                 <button
@@ -6593,7 +6633,7 @@ export function MonitorDashboard() {
                                 </button>
                               </div>
                             ) : (
-                              <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                              <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -6605,20 +6645,22 @@ export function MonitorDashboard() {
                                     setSchoolHeadAccountDraftError("");
                                   }}
                                   disabled={isRowSaving || isSaving}
-                                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                  title={account ? "Edit account" : "Create account"}
                                 >
-                                  <Edit2 className="h-3.5 w-3.5" />
-                                  {account ? "Edit" : "Create"}
+                                  {account ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                                  <span className="sr-only">{account ? "Edit" : "Create"}</span>
                                 </button>
                                 {account && (
                                   <button
                                     type="button"
                                     onClick={() => void handleIssueSchoolHeadSetupLink(resolvedRecord)}
                                     disabled={isRowSaving || isSaving}
-                                    className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-primary-200 bg-primary-50 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    title="Reset setup link"
                                   >
-                                    <RefreshCw className="h-3.5 w-3.5" />
-                                    Reset Link
+                                    <RefreshCw className="h-4 w-4" />
+                                    <span className="sr-only">Reset Link</span>
                                   </button>
                                 )}
                                 {account && (
@@ -6634,12 +6676,13 @@ export function MonitorDashboard() {
                                         )
                                       }
                                       disabled={isRowSaving || isSaving}
-                                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                      title="More actions"
                                     >
-                                      Actions
                                       <ChevronDown
-                                        className={`h-3.5 w-3.5 transition ${openAccountRowMenuSchoolId === resolvedRecord.id ? "rotate-180" : ""}`}
+                                        className={`h-4 w-4 transition ${openAccountRowMenuSchoolId === resolvedRecord.id ? "rotate-180" : ""}`}
                                       />
+                                      <span className="sr-only">More actions</span>
                                     </button>
                                     {openAccountRowMenuSchoolId === resolvedRecord.id && (
                                       <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
