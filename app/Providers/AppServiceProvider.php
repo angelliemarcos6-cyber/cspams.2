@@ -114,6 +114,59 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('auth-forgot-password', function (Request $request) use ($lockoutResponse): array {
+            $email = strtolower(trim((string) $request->input('email', 'unknown')));
+            $identity = $email . '|' . $request->ip();
+
+            return [
+                Limit::perMinute(4)->by('auth-forgot-password:' . $identity)
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.forgot_password.locked_out',
+                            'identity',
+                        ),
+                    ),
+                Limit::perMinute(12)->by('auth-forgot-password-ip:' . $request->ip())
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.forgot_password.locked_out',
+                            'ip',
+                        ),
+                    ),
+            ];
+        });
+
+        RateLimiter::for('auth-reset-password', function (Request $request) use ($lockoutResponse): array {
+            $email = strtolower(trim((string) $request->input('email', 'unknown')));
+            $tokenPrefix = strtolower(substr(trim((string) $request->input('token', 'unknown')), 0, 24));
+            $identity = $email . '|' . $tokenPrefix . '|' . $request->ip();
+
+            return [
+                Limit::perMinute(5)->by('auth-reset-password:' . $identity)
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.reset_password.locked_out',
+                            'identity',
+                        ),
+                    ),
+                Limit::perMinute(15)->by('auth-reset-password-ip:' . $request->ip())
+                    ->response(
+                        fn (Request $request, array $headers) => $lockoutResponse(
+                            $request,
+                            $headers,
+                            'auth.reset_password.locked_out',
+                            'ip',
+                        ),
+                    ),
+            ];
+        });
+
         RateLimiter::for('auth-account-setup', function (Request $request) use ($lockoutResponse): array {
             $tokenPrefix = strtolower(substr(trim((string) $request->input('token', 'unknown')), 0, 24));
             $identity = $tokenPrefix . '|' . $request->ip();

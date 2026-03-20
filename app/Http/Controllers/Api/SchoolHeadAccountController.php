@@ -6,6 +6,7 @@ use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\IssueSchoolHeadAccountActionVerificationCodeRequest;
 use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
+use App\Http\Requests\Api\RemoveSchoolHeadAccountRequest;
 use App\Http\Requests\Api\UpsertSchoolHeadAccountProfileRequest;
 use App\Http\Requests\Api\UpdateSchoolHeadAccountStatusRequest;
 use App\Models\AuditLog;
@@ -21,6 +22,7 @@ use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -487,6 +489,110 @@ class SchoolHeadAccountController extends Controller
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
                 'message' => 'School Head account updated.',
+            ],
+        ]);
+    }
+
+    public function destroy(
+        RemoveSchoolHeadAccountRequest $request,
+        School $school,
+    ): JsonResponse {
+        $monitor = $this->requireMonitor($request);
+
+        $accounts = $school->schoolHeadAccounts()->with('roles')->get();
+        if ($accounts->isEmpty()) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if ($accounts->contains(static fn (User $account): bool => UserRoleResolver::has($account, UserRoleResolver::MONITOR))) {
+            return response()->json(
+                ['message' => 'One of the linked accounts has monitor access and cannot be deleted here.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $reason = trim($request->string('reason')->toString());
+        $challengeId = trim($request->string('verificationChallengeId')->toString());
+        $code = trim($request->string('verificationCode')->toString());
+
+        $verified = $this->monitorActionVerificationService->verify(
+            $monitor,
+            $school,
+            'deleted',
+            $challengeId,
+            $code,
+        );
+
+        if (! $verified) {
+            return response()->json(
+                ['message' => 'The confirmation code is invalid or expired. Send a new code and try again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $accountEmails = $accounts
+            ->map(static fn (User $account): string => (string) $account->email)
+            ->values()
+            ->all();
+        $accountIds = $accounts
+            ->map(static fn (User $account): string => (string) $account->id)
+            ->values()
+            ->all();
+
+        $deletedCount = 0;
+
+        DB::transaction(function () use ($accounts, &$deletedCount): void {
+            foreach ($accounts as $account) {
+                $account->tokens()->delete();
+
+                if (Schema::hasTable('sessions')) {
+                    DB::table('sessions')
+                        ->where('user_id', $account->id)
+                        ->delete();
+                }
+
+                $account->syncPermissions([]);
+                $account->syncRoles([]);
+                $account->delete();
+                $deletedCount += 1;
+            }
+        });
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.deleted',
+            'auditable_type' => School::class,
+            'auditable_id' => $school->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'deleted_user_ids' => $accountIds,
+                'deleted_emails' => $accountEmails,
+                'reason' => $reason,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_head_account.deleted',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'deletedCount' => $deletedCount,
+        ]));
+
+        return response()->json([
+            'data' => [
+                'message' => $deletedCount === 1 ? 'School Head account removed.' : 'School Head accounts removed.',
+                'deletedCount' => $deletedCount,
             ],
         ]);
     }

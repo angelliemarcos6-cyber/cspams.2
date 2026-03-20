@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { isApiError } from "@/lib/api";
@@ -77,6 +77,12 @@ export function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const roleMeta = ROLE_META[activeRole];
+  const forgotPasswordHref = (() => {
+    if (activeRole !== "monitor") return "/";
+    const trimmed = loginId.trim();
+    if (!trimmed) return "/forgot-password";
+    return `/forgot-password?email=${encodeURIComponent(trimmed)}`;
+  })();
 
   const clearResetState = () => {
     setRequiresPasswordReset(false);
@@ -357,6 +363,13 @@ export function Login() {
                     {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {activeRole === "monitor" && !requiresPasswordReset && !pendingMfa && (
+                  <div className="mt-2 flex justify-end">
+                    <Link to={forgotPasswordHref} className="text-xs font-semibold text-primary-700 hover:text-primary-800">
+                      Forgot password?
+                    </Link>
+                  </div>
+                )}
               </div>
 
               {pendingMfa && (

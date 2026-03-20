@@ -13,6 +13,7 @@ import { apiRequestRaw, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   SchoolHeadAccountActionVerificationCodeResult,
+  SchoolHeadAccountRemovalResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountProvisioningReceipt,
@@ -103,6 +104,10 @@ interface SchoolHeadAccountProfileResponse {
   data: SchoolHeadAccountProfileUpsertResult;
 }
 
+interface SchoolHeadAccountRemovalResponse {
+  data: SchoolHeadAccountRemovalResult;
+}
+
 interface DataContextType {
   records: SchoolRecord[];
   recordCount: number;
@@ -128,7 +133,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived",
+    targetStatus: "suspended" | "locked" | "archived" | "deleted",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (
     schoolId: string,
@@ -138,6 +143,10 @@ interface DataContextType {
     schoolId: string,
     payload: SchoolHeadAccountPayload,
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
+  removeSchoolHeadAccount: (
+    schoolId: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+  ) => Promise<SchoolHeadAccountRemovalResult>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
     options?: { updateExisting?: boolean; restoreArchived?: boolean },
@@ -375,17 +384,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         const nextRecord = response.data?.data;
         if (nextRecord) {
-          setRecords((current) => {
-            const existingIndex = current.findIndex((item) => item.id === nextRecord.id);
-            if (existingIndex < 0) {
-              return [nextRecord, ...current];
-            }
-
-            const updated = [...current];
-            updated[existingIndex] = nextRecord;
-            return updated;
-          });
+          setRecords((current) => [nextRecord, ...current.filter((item) => item.id !== nextRecord.id)]);
         }
+        setRecordCount((current) =>
+          normalizeRecordCount(response.data?.meta?.recordCount ?? response.headers.get("X-Sync-Record-Count"), current),
+        );
 
         const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
         if (scope) {
@@ -407,9 +410,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
         setSyncStatus("updated");
 
-        etagRef.current = "";
-        await syncRecords(true);
-
         return response.data?.meta?.schoolHeadAccount ?? null;
       } catch (err) {
         await handleApiError(err);
@@ -418,7 +418,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncRecords, handleApiError],
+    [token, handleApiError],
   );
 
   const updateRecord = useCallback(
@@ -442,17 +442,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         const nextRecord = response.data?.data;
         if (nextRecord) {
-          setRecords((current) => {
-            const existingIndex = current.findIndex((item) => item.id === nextRecord.id);
-            if (existingIndex < 0) {
-              return [nextRecord, ...current];
-            }
-
-            const updated = [...current];
-            updated[existingIndex] = nextRecord;
-            return updated;
-          });
+          setRecords((current) => [nextRecord, ...current.filter((item) => item.id !== nextRecord.id)]);
         }
+        setRecordCount((current) =>
+          normalizeRecordCount(response.data?.meta?.recordCount ?? response.headers.get("X-Sync-Record-Count"), current),
+        );
 
         const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
         if (scope) {
@@ -473,9 +467,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setTargetsMet(response.data?.meta?.targetsMet ?? null);
         setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
         setSyncStatus("updated");
-
-        etagRef.current = "";
-        await syncRecords(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -483,7 +474,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncRecords, handleApiError],
+    [token, handleApiError],
   );
 
   const deleteRecord = useCallback(
@@ -505,6 +496,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         });
 
         setRecords((current) => current.filter((item) => item.id !== id));
+        setRecordCount((current) =>
+          normalizeRecordCount(response.data?.meta?.recordCount ?? response.headers.get("X-Sync-Record-Count"), current),
+        );
 
         const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
         if (scope) {
@@ -525,9 +519,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setTargetsMet(response.data?.meta?.targetsMet ?? null);
         setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
         setSyncStatus("updated");
-
-        etagRef.current = "";
-        await syncRecords(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -535,7 +526,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncRecords, handleApiError],
+    [token, handleApiError],
   );
 
   const previewDeleteRecord = useCallback(
@@ -604,17 +595,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         const nextRecord = response.data?.data;
         if (nextRecord) {
-          setRecords((current) => {
-            const existingIndex = current.findIndex((item) => item.id === nextRecord.id);
-            if (existingIndex < 0) {
-              return [nextRecord, ...current];
-            }
-
-            const updated = [...current];
-            updated[existingIndex] = nextRecord;
-            return updated;
-          });
+          setRecords((current) => [nextRecord, ...current.filter((item) => item.id !== nextRecord.id)]);
         }
+        setRecordCount((current) =>
+          normalizeRecordCount(response.data?.meta?.recordCount ?? response.headers.get("X-Sync-Record-Count"), current),
+        );
 
         const scope = normalizeScope(response.data?.meta?.scope) ?? normalizeScope(response.headers.get("X-Sync-Scope") || undefined);
         if (scope) {
@@ -635,9 +620,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setTargetsMet(response.data?.meta?.targetsMet ?? null);
         setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
         setSyncStatus("updated");
-
-        etagRef.current = "";
-        await syncRecords(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -645,7 +627,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncRecords, handleApiError],
+    [token, handleApiError],
   );
 
   const sendReminder = useCallback(
@@ -735,7 +717,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
     async (
       schoolId: string,
-      targetStatus: "suspended" | "locked" | "archived",
+      targetStatus: "suspended" | "locked" | "archived" | "deleted",
     ): Promise<SchoolHeadAccountActionVerificationCodeResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
@@ -856,6 +838,73 @@ export function DataProvider({ children }: { children: ReactNode }) {
               ? {
                   ...record,
                   schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError],
+  );
+
+  const removeSchoolHeadAccount = useCallback(
+    async (
+      schoolId: string,
+      payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    ): Promise<SchoolHeadAccountRemovalResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const reason = payload.reason?.trim() ?? "";
+      const verificationChallengeId = payload.verificationChallengeId?.trim() ?? "";
+      const verificationCode = payload.verificationCode?.trim() ?? "";
+
+      if (reason.length < 5) {
+        throw new Error("Reason must be at least 5 characters.");
+      }
+
+      if (!verificationChallengeId || !verificationCode) {
+        throw new Error("Verification challenge and code are required.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountRemovalResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account`,
+          {
+            method: "DELETE",
+            token,
+            body: {
+              reason,
+              verificationChallengeId,
+              verificationCode,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.message) {
+          throw new Error("Account removal response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: null,
                 }
               : record,
           ),
@@ -1001,6 +1050,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       upsertSchoolHeadAccountProfile,
+      removeSchoolHeadAccount,
       bulkImportRecords,
     }),
     [
@@ -1026,6 +1076,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       upsertSchoolHeadAccountProfile,
+      removeSchoolHeadAccount,
       bulkImportRecords,
     ],
   );

@@ -6,15 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ApproveMonitorMfaResetRequest;
 use App\Http\Requests\Api\CompleteMonitorMfaResetRequest;
 use App\Http\Requests\Api\CompleteAccountSetupRequest;
+use App\Http\Requests\Api\ForgotPasswordRequest;
 use App\Http\Requests\Api\LoginRequest;
 use App\Http\Requests\Api\RegenerateMonitorMfaBackupCodesRequest;
 use App\Http\Requests\Api\RequestMonitorMfaResetRequest;
+use App\Http\Requests\Api\ResetPasswordRequest;
 use App\Http\Requests\Api\ResetRequiredPasswordRequest;
 use App\Http\Requests\Api\VerifyMonitorMfaRequest;
 use App\Models\MonitorMfaResetTicket;
 use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
 use App\Notifications\MonitorMfaResetApprovedNotification;
+use App\Notifications\MonitorPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
@@ -22,12 +25,14 @@ use App\Support\Audit\AuthAuditLogger;
 use App\Support\Domain\AccountStatus;
 use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\NewAccessToken;
@@ -319,6 +324,201 @@ class AuthController extends Controller
             'expiresAt' => $tokenPayload['expiresAt'],
             'refreshAfter' => $tokenPayload['refreshAfter'],
             'user' => $this->serializeUser($user->fresh('school'), $role),
+        ]);
+    }
+
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        $role = UserRoleResolver::MONITOR;
+        $email = strtolower(trim($request->string('email')->toString()));
+
+        $payload = [
+            'message' => 'If a matching monitor account exists, a password reset link will be sent to the provided email address.',
+        ];
+
+        if (MailDelivery::isSimulated()) {
+            $payload['delivery'] = MailDelivery::simulatedStatus();
+            $payload['deliveryMessage'] = MailDelivery::simulatedMessage('Password reset link was requested.');
+        }
+
+        $user = User::query()
+            ->where('email_normalized', $email)
+            ->first();
+
+        if (! $user || ! UserRoleResolver::has($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.forgot_password.requested',
+                'success',
+                $user,
+                $role,
+                $email,
+                ['result' => 'ignored'],
+            );
+
+            return response()->json($payload, Response::HTTP_ACCEPTED);
+        }
+
+        if (! $user->canAuthenticate()) {
+            $status = $user->accountStatus();
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.forgot_password.requested',
+                'failure',
+                $user,
+                $role,
+                $email,
+                [
+                    'reason' => 'account_not_active',
+                    'account_status' => $status->value,
+                ],
+            );
+
+            return response()->json($payload, Response::HTTP_ACCEPTED);
+        }
+
+        $expiresAt = CarbonImmutable::now()->addMinutes((int) config('auth.passwords.users.expire', 60));
+
+        try {
+            $status = Password::broker()->sendResetLink(
+                ['email' => (string) $user->email],
+                function (User $user, string $token) use ($expiresAt): void {
+                    $user->notify(new MonitorPasswordResetNotification(
+                        $this->buildPasswordResetUrl((string) $user->email, $token),
+                        $expiresAt,
+                    ));
+                },
+            );
+
+            AuthAuditLogger::record(
+                $request,
+                'auth.forgot_password.requested',
+                $status === Password::RESET_LINK_SENT ? 'success' : 'failure',
+                $user,
+                $role,
+                $email,
+                [
+                    'broker_status' => $status,
+                ],
+            );
+        } catch (\Throwable $exception) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.forgot_password.requested',
+                'failure',
+                $user,
+                $role,
+                $email,
+                [
+                    'reason' => 'email_delivery_failed',
+                    'error' => $exception->getMessage(),
+                ],
+            );
+        }
+
+        return response()->json($payload, Response::HTTP_ACCEPTED);
+    }
+
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        $role = UserRoleResolver::MONITOR;
+        $email = strtolower(trim($request->string('email')->toString()));
+        $token = $request->string('token')->toString();
+        $newPassword = $request->string('password')->toString();
+        $confirmPassword = $request->string('password_confirmation')->toString();
+
+        $user = User::query()
+            ->where('email_normalized', $email)
+            ->first();
+
+        if (! $user || ! UserRoleResolver::has($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.reset_password.failed',
+                'failure',
+                $user,
+                $role,
+                $email,
+                ['reason' => 'invalid_user'],
+            );
+
+            return response()->json(
+                ['message' => 'This password reset link is invalid or expired.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (($inactiveResponse = $this->rejectInactiveAccount(
+            $request,
+            $user,
+            $role,
+            $email,
+            'auth.reset_password.failed',
+        )) instanceof JsonResponse) {
+            return $inactiveResponse;
+        }
+
+        $revocationSummary = ['revokedTokens' => 0, 'revokedWebSessions' => 0];
+
+        $status = Password::broker()->reset(
+            [
+                'email' => (string) $user->email,
+                'token' => $token,
+                'password' => $newPassword,
+                'password_confirmation' => $confirmPassword,
+            ],
+            function (User $user, string $password) use (&$revocationSummary): void {
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                    'must_reset_password' => false,
+                    'password_changed_at' => now(),
+                    'email_verified_at' => $user->email_verified_at ?? now(),
+                ]);
+
+                $user->setRememberToken(Str::random(60));
+                $user->save();
+
+                event(new PasswordReset($user));
+                $revocationSummary = $this->revokeUserSessionsAndTokens($user);
+            },
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.reset_password.failed',
+                'failure',
+                $user,
+                $role,
+                $email,
+                [
+                    'reason' => 'invalid_or_expired_token',
+                    'broker_status' => $status,
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'This password reset link is invalid or expired.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        AuthAuditLogger::record(
+            $request,
+            'auth.reset_password.completed',
+            'success',
+            $user,
+            $role,
+            $email,
+            [
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+            ],
+        );
+
+        return response()->json([
+            'message' => 'Password reset successfully. Please sign in with your new password.',
         ]);
     }
 
@@ -2276,6 +2476,28 @@ class AuthController extends Controller
             ['message' => 'MFA reset request storage is unavailable. Run database migrations first.'],
             Response::HTTP_SERVICE_UNAVAILABLE,
         );
+    }
+
+    private function buildPasswordResetUrl(string $email, string $token): string
+    {
+        $frontend = trim((string) config('app.frontend_url', ''));
+        if ($frontend === '') {
+            $frontend = (string) config('app.url', 'http://127.0.0.1:8000');
+        }
+
+        $frontend = rtrim($frontend, '/');
+
+        $query = http_build_query(
+            [
+                'token' => $token,
+                'email' => $email,
+            ],
+            '',
+            '&',
+            PHP_QUERY_RFC3986,
+        );
+
+        return $frontend . '/#/reset-password?' . $query;
     }
 
     private function resolveRoleForUser(User $user): string

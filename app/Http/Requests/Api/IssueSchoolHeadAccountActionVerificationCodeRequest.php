@@ -26,9 +26,9 @@ class IssueSchoolHeadAccountActionVerificationCodeRequest extends FormRequest
                     AccountStatus::SUSPENDED->value,
                     AccountStatus::LOCKED->value,
                     AccountStatus::ARCHIVED->value,
+                    'deleted',
                 ]),
             ],
         ];
     }
 }
-

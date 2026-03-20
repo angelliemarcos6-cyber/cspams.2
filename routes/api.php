@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:auth-forgot-password');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:auth-reset-password');
     Route::post('/reset-required-password', [AuthController::class, 'resetRequiredPassword'])
         ->middleware('throttle:auth-password-reset');
     Route::post('/setup-account', [AuthController::class, 'completeAccountSetup'])
@@ -62,6 +64,8 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::post('/records/{school}/school-head-account/verification-code', [SchoolHeadAccountController::class, 'issueActionVerificationCode'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])
+        ->middleware('throttle:auth-account-management');
+    Route::delete('/records/{school}/school-head-account', [SchoolHeadAccountController::class, 'destroy'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/restore', [SchoolRecordController::class, 'restore']);
     Route::put('/records/{school}', [SchoolRecordController::class, 'update']);

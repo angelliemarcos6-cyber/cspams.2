@@ -166,6 +166,10 @@ class MonitorActionVerificationService
             return 'Archive account';
         }
 
+        if ($normalized === 'deleted') {
+            return 'Delete account';
+        }
+
         return $targetStatus;
     }
 }

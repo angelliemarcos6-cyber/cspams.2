@@ -9,7 +9,9 @@ import { StudentDataProvider } from "@/context/StudentData";
 import { TeacherDataProvider } from "@/context/TeacherData";
 import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
+import { ForgotPassword } from "@/pages/ForgotPassword";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
+import { ResetPassword } from "@/pages/ResetPassword";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 import { SetupAccount } from "@/pages/SetupAccount";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
@@ -66,6 +68,8 @@ function AppRoutes() {
         path="/"
         element={role ? <Navigate to={role === "school_head" ? "/school-admin" : "/monitor"} replace /> : <Login />}
       />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/setup-account" element={<SetupAccount />} />
       <Route
         path="/school-admin"

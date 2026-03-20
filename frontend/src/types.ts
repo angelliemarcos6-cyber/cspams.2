@@ -101,6 +101,11 @@ export interface SchoolHeadAccountProfileUpsertResult {
   deliveryMessage?: string | null;
 }
 
+export interface SchoolHeadAccountRemovalResult {
+  message: string;
+  deletedCount: number;
+}
+
 export interface SchoolHeadAccountProvisioningReceipt {
   id: string;
   name: string;

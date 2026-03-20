@@ -128,6 +128,21 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
                   </li>
                 </ul>
               </article>
+
+              <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Forgot your monitor password?</h3>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
+                  <li>
+                    On the <span className="font-semibold text-slate-900">Sign In</span> page, choose{" "}
+                    <span className="font-semibold text-slate-900">Division Monitor</span>.
+                  </li>
+                  <li>
+                    Click <span className="font-semibold text-slate-900">Forgot password?</span> to request a reset
+                    link by email.
+                  </li>
+                  <li>Open the email and set a new password, then sign in again.</li>
+                </ul>
+              </article>
             </>
           ) : (
             <>
@@ -146,7 +161,7 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
               <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
                 <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Forgot your password?</h3>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  <li>CSPAMS currently does not have a “Forgot password” email button.</li>
+                  <li>CSPAMS does not have a public forgot-password email button for School Heads.</li>
                   <li>
                     Ask your Division Monitor to use{" "}
                     <span className="font-semibold text-slate-900">Reset Link</span> to send you a new setup link.
@@ -159,7 +174,7 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
                   <li>Check spam/junk/promotions folders.</li>
                   <li>Confirm your email address in CSPAMS is correct.</li>
-                  <li>If emails still don’t arrive, tell your Division Monitor—email delivery may be misconfigured.</li>
+                  <li>If emails still don't arrive, tell your Division Monitor - email delivery may be misconfigured.</li>
                 </ul>
               </article>
             </>
@@ -169,4 +184,3 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
     </>
   );
 }
-

@@ -99,6 +99,12 @@ type PendingAccountAction =
       schoolName: string;
       actionLabel: string;
       requireReason: boolean;
+    }
+  | {
+      kind: "remove";
+      schoolId: string;
+      schoolName: string;
+      actionLabel: string;
     };
 
 interface MonitorTopNavigatorItem {
@@ -1212,6 +1218,7 @@ export function MonitorDashboard() {
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
     upsertSchoolHeadAccountProfile,
+    removeSchoolHeadAccount,
     bulkImportRecords,
   } = useData();
   const {
@@ -4467,18 +4474,18 @@ export function MonitorDashboard() {
   };
 
   const sendPendingAccountVerificationCode = async () => {
-    if (!pendingAccountAction || pendingAccountAction.kind !== "status") {
+    if (!pendingAccountAction) {
       return;
     }
 
-    if (!isDeactivationStatus(pendingAccountAction.update.accountStatus)) {
-      return;
-    }
+    const targetStatus =
+      pendingAccountAction.kind === "remove"
+        ? "deleted"
+        : pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus)
+          ? (String(pendingAccountAction.update.accountStatus).toLowerCase() as "suspended" | "locked" | "archived")
+          : null;
 
-    const targetStatus = String(pendingAccountAction.update.accountStatus).toLowerCase() as
-      | "suspended"
-      | "locked"
-      | "archived";
+    if (!targetStatus) return;
 
     setIsPendingAccountVerificationSending(true);
     setPendingAccountVerificationError("");
@@ -4510,6 +4517,7 @@ export function MonitorDashboard() {
     const reason = pendingAccountReason.trim();
     const requiresReason =
       pendingAccountAction.kind === "status" ||
+      pendingAccountAction.kind === "remove" ||
       (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason);
     if (requiresReason && reason.length < 5) {
       setPendingAccountReasonError("Please provide a reason with at least 5 characters.");
@@ -4553,6 +4561,26 @@ export function MonitorDashboard() {
           reason,
         });
         pushToast(result.message || `School Head account updated for ${pendingAccountAction.schoolName}.`, "success");
+      } else if (pendingAccountAction.kind === "remove") {
+        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
+        const code = pendingAccountVerificationCode.trim();
+
+        if (!challengeId) {
+          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
+          return;
+        }
+
+        if (!/^\d{6}$/.test(code)) {
+          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
+          return;
+        }
+
+        const result = await removeSchoolHeadAccount(pendingAccountAction.schoolId, {
+          reason,
+          verificationChallengeId: challengeId,
+          verificationCode: code,
+        });
+        pushToast(result.message || `School Head account removed for ${pendingAccountAction.schoolName}.`, "success");
       } else {
         const receipt = await issueSchoolHeadSetupLink(
           pendingAccountAction.schoolId,
@@ -4565,7 +4593,10 @@ export function MonitorDashboard() {
       closePendingAccountAction();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to complete account action.";
-      if (pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus)) {
+      if (
+        pendingAccountAction.kind === "remove" ||
+        (pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus))
+      ) {
         setPendingAccountVerificationError(message);
       } else {
         setPendingAccountReasonError(message);
@@ -6933,6 +6964,22 @@ export function MonitorDashboard() {
                                         <button
                                           type="button"
                                           onClick={() =>
+                                            openPendingAccountAction({
+                                              kind: "remove",
+                                              schoolId: resolvedRecord.id,
+                                              schoolName: resolvedRecord.schoolName,
+                                              actionLabel: "Remove account",
+                                            })
+                                          }
+                                          disabled={isRowSaving || isSaving}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                          Remove account
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
                                             handleUpdateSchoolHeadAccount(
                                               resolvedRecord,
                                               { deleteRecordFlagged: !account.deleteRecordFlagged },
@@ -7945,7 +7992,9 @@ export function MonitorDashboard() {
               <div>
                 <h3 className="text-sm font-bold text-slate-900">{pendingAccountAction.actionLabel}</h3>
                 <p className="mt-1 text-xs text-slate-600">
-                  {pendingAccountAction.kind === "status"
+                  {pendingAccountAction.kind === "remove"
+                    ? `Reason and confirmation code required to remove the account for ${pendingAccountAction.schoolName}.`
+                    : pendingAccountAction.kind === "status"
                     ? isDeactivationStatus(pendingAccountAction.update.accountStatus)
                       ? `Reason and confirmation code required for ${pendingAccountAction.schoolName}.`
                       : `Reason required for ${pendingAccountAction.schoolName}.`
@@ -7986,7 +8035,9 @@ export function MonitorDashboard() {
               )}
             </div>
 
-            {pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus) && (
+            {(pendingAccountAction.kind === "remove" ||
+              (pendingAccountAction.kind === "status" &&
+                isDeactivationStatus(pendingAccountAction.update.accountStatus))) && (
               <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -8055,9 +8106,11 @@ export function MonitorDashboard() {
                   isPendingAccountVerificationSending ||
                   (pendingAccountReason.trim().length < 5 &&
                     (pendingAccountAction.kind === "status" ||
+                      pendingAccountAction.kind === "remove" ||
                       (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason))) ||
-                  (pendingAccountAction.kind === "status" &&
-                    isDeactivationStatus(pendingAccountAction.update.accountStatus) &&
+                  ((pendingAccountAction.kind === "remove" ||
+                    (pendingAccountAction.kind === "status" &&
+                      isDeactivationStatus(pendingAccountAction.update.accountStatus))) &&
                     (!pendingAccountVerificationChallenge || !/^\d{6}$/.test(pendingAccountVerificationCode.trim())))
                 }
                 className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
