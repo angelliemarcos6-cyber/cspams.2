@@ -327,9 +327,9 @@ class AuthController extends Controller
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
-        $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
-        if (! in_array($role, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
-            $role = UserRoleResolver::MONITOR;
+        $roleHint = strtolower(trim($request->string('role')->toString()));
+        if (! in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
+            $roleHint = null;
         }
         $email = strtolower(trim($request->string('email')->toString()));
 
@@ -346,13 +346,15 @@ class AuthController extends Controller
             ->where('email_normalized', $email)
             ->first();
 
-        if (! $user || ! UserRoleResolver::has($user, $role)) {
+        $role = $this->resolvePasswordResetRoleForUser($user, $roleHint);
+
+        if (! $user || $role === null) {
             AuthAuditLogger::record(
                 $request,
                 'auth.forgot_password.requested',
                 'success',
                 $user,
-                $role,
+                $roleHint,
                 $email,
                 ['result' => 'ignored'],
             );
@@ -431,9 +433,9 @@ class AuthController extends Controller
 
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
-        $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
-        if (! in_array($role, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
-            $role = UserRoleResolver::MONITOR;
+        $roleHint = strtolower(trim($request->string('role')->toString()));
+        if (! in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
+            $roleHint = null;
         }
         $email = strtolower(trim($request->string('email')->toString()));
         $token = $request->string('token')->toString();
@@ -444,13 +446,15 @@ class AuthController extends Controller
             ->where('email_normalized', $email)
             ->first();
 
-        if (! $user || ! UserRoleResolver::has($user, $role)) {
+        $role = $this->resolvePasswordResetRoleForUser($user, $roleHint);
+
+        if (! $user || $role === null) {
             AuthAuditLogger::record(
                 $request,
                 'auth.reset_password.failed',
                 'failure',
                 $user,
-                $role,
+                $roleHint,
                 $email,
                 ['reason' => 'invalid_user'],
             );
@@ -1053,7 +1057,7 @@ class AuthController extends Controller
 
         $ticket = MonitorMfaResetTicket::query()->create([
             'user_id' => $user->id,
-            'requested_by_user_id' => null,
+            'requested_by_user_id' => $user->id,
             'status' => MonitorMfaResetTicket::STATUS_PENDING,
             'reason' => $reason !== '' ? $reason : null,
             'expires_at' => $expiresAt,
@@ -1195,6 +1199,27 @@ class AuthController extends Controller
             return response()->json(
                 ['message' => 'MFA reset approval is only supported for division monitor accounts.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if ((int) $actor->id === (int) $targetUser->id) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.approve.failed',
+                'failure',
+                $actor,
+                UserRoleResolver::MONITOR,
+                $actor->email,
+                [
+                    'reason' => 'self_approval_disallowed',
+                    'mfa_reset_ticket_id' => $ticketModel->id,
+                    'target_user_id' => $targetUser->id,
+                ],
+            );
+
+            return response()->json(
+                ['message' => 'You cannot approve your own MFA reset request. Ask a different monitor to approve it.'],
+                Response::HTTP_FORBIDDEN,
             );
         }
 
@@ -1967,7 +1992,7 @@ class AuthController extends Controller
             return false;
         }
 
-        return $previousIp !== $currentIp && $previousAgent !== $currentAgent;
+        return $previousIp !== $currentIp || $previousAgent !== $currentAgent;
     }
 
     private function recordSuccessfulLoginTelemetry(User $user, Request $request): void
@@ -2224,9 +2249,11 @@ class AuthController extends Controller
             : null;
 
         /** @var NewAccessToken $issuedToken */
-        $issuedToken = $expiresAt !== null
-            ? $user->createToken($this->dashboardTokenName($role), ['*'], $expiresAt)
-            : $user->createToken($this->dashboardTokenName($role));
+        $issuedToken = $user->createToken(
+            $this->dashboardTokenName($role),
+            ['role:' . $role],
+            $expiresAt,
+        );
 
         $issuedToken->accessToken->forceFill([
             'ip_address' => $this->normalizeIpAddress($request->ip()),
@@ -2619,6 +2646,31 @@ class AuthController extends Controller
         }
 
         return (bool) config('app.debug', false);
+    }
+
+    private function resolvePasswordResetRoleForUser(?User $user, ?string $roleHint = null): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+
+        if (
+            $roleHint !== null
+            && in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)
+            && UserRoleResolver::has($user, $roleHint)
+        ) {
+            return $roleHint;
+        }
+
+        if (UserRoleResolver::has($user, UserRoleResolver::MONITOR)) {
+            return UserRoleResolver::MONITOR;
+        }
+
+        if (UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)) {
+            return UserRoleResolver::SCHOOL_HEAD;
+        }
+
+        return null;
     }
 
     private function resolveRoleForUser(User $user): string

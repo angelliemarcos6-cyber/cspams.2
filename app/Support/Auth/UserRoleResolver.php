@@ -25,6 +25,22 @@ class UserRoleResolver
 
         foreach (self::roleAliases($role) as $alias) {
             if ($user->hasRole($alias)) {
+                if (
+                    in_array($role, [self::MONITOR, self::SCHOOL_HEAD], true)
+                    && method_exists($user, 'currentAccessToken')
+                    && method_exists($user, 'tokenCan')
+                ) {
+                    try {
+                        $token = $user->currentAccessToken();
+                    } catch (\Throwable) {
+                        $token = null;
+                    }
+
+                    if ($token !== null) {
+                        return (bool) $user->tokenCan('role:' . $role);
+                    }
+                }
+
                 return true;
             }
         }

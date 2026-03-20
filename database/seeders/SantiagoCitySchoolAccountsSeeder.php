@@ -44,6 +44,7 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
 
             $schoolHead->name = 'School Head - ' . $entry['name'];
             $schoolHead->school_id = $school->id;
+            $schoolHead->account_type = UserRoleResolver::SCHOOL_HEAD;
             if ($shouldRefreshSetup) {
                 $schoolHead->account_status = $requiresSetupLinkFlow
                     ? AccountStatus::PENDING_SETUP->value

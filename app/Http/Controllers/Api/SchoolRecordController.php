@@ -705,7 +705,12 @@ class SchoolRecordController extends Controller
             ]);
         }
 
-        if (User::query()->where('school_id', $school->id)->exists()) {
+        $duplicateQuery = User::query()->where('school_id', $school->id);
+        if (Schema::hasColumn('users', 'account_type')) {
+            $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
+        }
+
+        if ($duplicateQuery->exists()) {
             throw ValidationException::withMessages([
                 'schoolHeadAccount' => 'A School Head account is already linked to this school. Update it instead of creating a new one.',
             ]);
@@ -719,6 +724,9 @@ class SchoolRecordController extends Controller
         $account->password_changed_at = null;
         $account->account_status = AccountStatus::PENDING_SETUP->value;
         $account->school_id = $school->id;
+        if (Schema::hasColumn('users', 'account_type')) {
+            $account->account_type = UserRoleResolver::SCHOOL_HEAD;
+        }
         $account->save();
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
 

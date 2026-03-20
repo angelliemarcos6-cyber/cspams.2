@@ -134,6 +134,35 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'auth.mfa_reset.completed']);
     }
 
+    public function test_monitor_cannot_self_approve_mfa_reset_request(): void
+    {
+        $this->seed();
+
+        $targetPassword = $this->demoPasswordForLogin('monitor', 'monitor@cspams.local');
+
+        $requestReset = $this->postJson('/api/auth/mfa/reset/request', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $targetPassword,
+            'reason' => 'Lost authenticator device.',
+        ]);
+
+        $requestReset->assertStatus(Response::HTTP_ACCEPTED)
+            ->assertJsonPath('status', MonitorMfaResetTicket::STATUS_PENDING);
+
+        $requestId = (int) $requestReset->json('requestId');
+        $this->assertGreaterThan(0, $requestId);
+
+        $monitorToken = $this->monitorTokenAfterMfa('monitor@cspams.local', $targetPassword);
+        $approve = $this->withToken($monitorToken)->postJson("/api/auth/mfa/reset/requests/{$requestId}/approve");
+
+        $approve->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath(
+                'message',
+                'You cannot approve your own MFA reset request. Ask a different monitor to approve it.',
+            );
+    }
+
     public function test_mfa_reset_request_returns_service_unavailable_when_ticket_storage_is_missing(): void
     {
         $this->seed();

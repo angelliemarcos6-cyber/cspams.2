@@ -113,6 +113,7 @@ class DemoDataSeeder extends Seeder
             $headWasRecentlyCreated = ! $head->exists;
             $head->name = 'School Head ' . ($index + 1);
             $head->school_id = $school->id;
+            $head->account_type = UserRoleResolver::SCHOOL_HEAD;
             $head->account_status = AccountStatus::ACTIVE->value;
 
             if ($headWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
