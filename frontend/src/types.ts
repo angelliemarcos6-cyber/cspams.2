@@ -57,12 +57,16 @@ export interface SchoolHeadAccountSummary {
   flagged: boolean;
   flaggedAt: string | null;
   flagReason: string | null;
+  deleteRecordFlagged: boolean;
+  deleteRecordFlaggedAt: string | null;
+  deleteRecordReason: string | null;
   setupLinkExpiresAt: string | null;
 }
 
 export interface SchoolHeadAccountStatusUpdatePayload {
   accountStatus?: "active" | "suspended" | "locked" | "archived";
   flagged?: boolean;
+  deleteRecordFlagged?: boolean;
   reason: string;
   verificationChallengeId?: string;
   verificationCode?: string;

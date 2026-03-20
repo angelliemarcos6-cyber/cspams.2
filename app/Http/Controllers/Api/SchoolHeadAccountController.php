@@ -319,18 +319,35 @@ class SchoolHeadAccountController extends Controller
 
         $previousStatus = $account->accountStatus();
         $previousFlagged = $account->flagged_at !== null;
+        $deleteRecordFlagRequested = $request->has('deleteRecordFlagged');
+        $deleteRecordFlagAvailable = Schema::hasColumn('users', 'delete_record_flagged_at')
+            && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
+            && Schema::hasColumn('users', 'delete_record_flag_reason');
+
+        if ($deleteRecordFlagRequested && ! $deleteRecordFlagAvailable) {
+            return response()->json(
+                ['message' => 'Delete record flag storage is unavailable. Run database migrations first.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        $previousDeleteRecordFlagged = $deleteRecordFlagAvailable && $account->delete_record_flagged_at !== null;
         $nextStatus = $request->filled('accountStatus')
             ? (string) $request->string('accountStatus')->toString()
             : $previousStatus->value;
         $nextFlagged = $request->has('flagged')
             ? $request->boolean('flagged')
             : $previousFlagged;
+        $nextDeleteRecordFlagged = $deleteRecordFlagRequested
+            ? $request->boolean('deleteRecordFlagged')
+            : $previousDeleteRecordFlagged;
         $reason = trim($request->string('reason')->toString());
 
         $statusChanged = $nextStatus !== $previousStatus->value;
         $flagChanged = $nextFlagged !== $previousFlagged;
+        $deleteRecordFlagChanged = $nextDeleteRecordFlagged !== $previousDeleteRecordFlagged;
 
-        if (! $statusChanged && ! $flagChanged) {
+        if (! $statusChanged && ! $flagChanged && ! $deleteRecordFlagChanged) {
             return response()->json(
                 ['message' => 'No account state changes were requested.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -397,6 +414,18 @@ class SchoolHeadAccountController extends Controller
             }
         }
 
+        if ($deleteRecordFlagChanged) {
+            if ($nextDeleteRecordFlagged) {
+                $account->delete_record_flagged_at = now();
+                $account->delete_record_flagged_by_user_id = $monitor->id;
+                $account->delete_record_flag_reason = $reason;
+            } else {
+                $account->delete_record_flagged_at = null;
+                $account->delete_record_flagged_by_user_id = null;
+                $account->delete_record_flag_reason = null;
+            }
+        }
+
         $account->save();
         $this->loadLatestAccountSetupToken($account);
 
@@ -418,6 +447,8 @@ class SchoolHeadAccountController extends Controller
                 'new_status' => $account->accountStatus()->value,
                 'previous_flagged' => $previousFlagged,
                 'new_flagged' => $nextFlagged,
+                'previous_delete_record_flagged' => $previousDeleteRecordFlagged,
+                'new_delete_record_flagged' => $nextDeleteRecordFlagged,
                 'reason' => $reason,
             ],
             'ip_address' => $request->ip(),
@@ -432,6 +463,7 @@ class SchoolHeadAccountController extends Controller
             'schoolCode' => (string) $school->school_code,
             'accountStatus' => $account->accountStatus()->value,
             'flagged' => $account->flagged_at !== null,
+            'deleteRecordFlagged' => $account->delete_record_flagged_at !== null,
         ]));
 
         return response()->json([
@@ -627,6 +659,9 @@ class SchoolHeadAccountController extends Controller
             'flagged' => $account->flagged_at !== null,
             'flaggedAt' => $account->flagged_at?->toISOString(),
             'flagReason' => $account->flagged_reason,
+            'deleteRecordFlagged' => $account->delete_record_flagged_at !== null,
+            'deleteRecordFlaggedAt' => $account->delete_record_flagged_at?->toISOString(),
+            'deleteRecordReason' => $account->delete_record_flag_reason,
             'setupLinkExpiresAt' => $setupLinkExpiresAt,
         ];
     }

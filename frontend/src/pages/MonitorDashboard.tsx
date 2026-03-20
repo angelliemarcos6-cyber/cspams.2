@@ -6507,6 +6507,7 @@ export function MonitorDashboard() {
                                     account.accountStatus,
                                   )}`}
                                 >
+                                  {account.deleteRecordFlagged ? <Database className="h-3.5 w-3.5 text-rose-700" /> : null}
                                   {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
                                   {accountStatusLabel(account.accountStatus)}
                                 </span>
@@ -6708,6 +6709,21 @@ export function MonitorDashboard() {
                                         >
                                           <Trash2 className="h-3.5 w-3.5 text-slate-600" />
                                           Archive
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleUpdateSchoolHeadAccount(
+                                              resolvedRecord,
+                                              { deleteRecordFlagged: !account.deleteRecordFlagged },
+                                              account.deleteRecordFlagged ? "Remove delete record flag" : "Flag delete record",
+                                            )
+                                          }
+                                          disabled={isRowSaving || isSaving}
+                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                        >
+                                          <Database className="h-3.5 w-3.5 text-rose-700" />
+                                          {account.deleteRecordFlagged ? "Undo Delete Flag" : "Delete Record"}
                                         </button>
                                         <button
                                           type="button"

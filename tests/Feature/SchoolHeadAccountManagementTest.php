@@ -124,6 +124,37 @@ class SchoolHeadAccountManagementTest extends TestCase
             ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
             ->assertJsonPath('data.account.flagged', false);
 
+        $flagDelete = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'deleteRecordFlagged' => true,
+                'reason' => 'Duplicate account record flagged for deletion.',
+            ],
+        );
+
+        $flagDelete->assertOk()
+            ->assertJsonPath('data.account.deleteRecordFlagged', true)
+            ->assertJsonPath('data.account.deleteRecordReason', 'Duplicate account record flagged for deletion.');
+
+        $schoolHead->refresh();
+        $this->assertNotNull($schoolHead->delete_record_flagged_at);
+        $this->assertSame('Duplicate account record flagged for deletion.', $schoolHead->delete_record_flag_reason);
+
+        $unflagDelete = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'deleteRecordFlagged' => false,
+                'reason' => 'Deletion flag cleared after account validation.',
+            ],
+        );
+
+        $unflagDelete->assertOk()
+            ->assertJsonPath('data.account.deleteRecordFlagged', false);
+
+        $schoolHead->refresh();
+        $this->assertNull($schoolHead->delete_record_flagged_at);
+        $this->assertNull($schoolHead->delete_record_flag_reason);
+
         $setupLink = $this->withToken($monitorToken)->postJson(
             "/api/dashboard/records/{$school->id}/school-head-account/setup-link",
             [

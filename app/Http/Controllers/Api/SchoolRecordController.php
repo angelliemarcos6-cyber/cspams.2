@@ -91,7 +91,7 @@ class SchoolRecordController extends Controller
                 ]);
             }])
             ->with(['schoolHeadAccounts' => function ($query): void {
-                $query->select([
+                $columns = [
                     'id',
                     'name',
                     'email',
@@ -102,7 +102,14 @@ class SchoolRecordController extends Controller
                     'school_id',
                     'flagged_at',
                     'flagged_reason',
-                ]);
+                ];
+
+                if (Schema::hasColumn('users', 'delete_record_flagged_at')) {
+                    $columns[] = 'delete_record_flagged_at';
+                    $columns[] = 'delete_record_flag_reason';
+                }
+
+                $query->select($columns);
 
                 if (Schema::hasTable('account_setup_tokens')) {
                     $query->with('latestAccountSetupToken');

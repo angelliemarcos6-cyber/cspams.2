@@ -30,6 +30,7 @@ class UpdateSchoolHeadAccountStatusRequest extends FormRequest
                 ]),
             ],
             'flagged' => ['sometimes', 'boolean'],
+            'deleteRecordFlagged' => ['sometimes', 'boolean'],
             'reason' => ['required', 'string', 'min:5', 'max:500'],
             'verificationChallengeId' => ['sometimes', 'string', 'uuid'],
             'verificationCode' => ['sometimes', 'string', 'regex:/^\\d{6}$/'],

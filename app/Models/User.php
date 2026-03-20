@@ -38,6 +38,9 @@ class User extends Authenticatable
         'flagged_at',
         'flagged_by_user_id',
         'flagged_reason',
+        'delete_record_flagged_at',
+        'delete_record_flagged_by_user_id',
+        'delete_record_flag_reason',
     ];
 
     /**
@@ -63,6 +66,7 @@ class User extends Authenticatable
             'mfa_backup_codes' => 'array',
             'mfa_backup_codes_generated_at' => 'datetime',
             'flagged_at' => 'datetime',
+            'delete_record_flagged_at' => 'datetime',
         ];
     }
 

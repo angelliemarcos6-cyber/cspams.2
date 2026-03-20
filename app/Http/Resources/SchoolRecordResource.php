@@ -113,6 +113,9 @@ class SchoolRecordResource extends JsonResource
             'flagged' => $account->flagged_at !== null,
             'flaggedAt' => $account->flagged_at?->toISOString(),
             'flagReason' => $account->flagged_reason,
+            'deleteRecordFlagged' => $account->delete_record_flagged_at !== null,
+            'deleteRecordFlaggedAt' => $account->delete_record_flagged_at?->toISOString(),
+            'deleteRecordReason' => $account->delete_record_flag_reason,
             'setupLinkExpiresAt' => $setupLinkExpiresAt,
         ];
     }
