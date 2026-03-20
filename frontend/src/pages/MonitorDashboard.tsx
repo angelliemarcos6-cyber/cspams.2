@@ -35,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
+import { MonitorMfaResetApprovalsDialog } from "@/components/MonitorMfaResetApprovalsDialog";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
@@ -1292,6 +1293,7 @@ export function MonitorDashboard() {
   const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
   const [showHelpDialog, setShowHelpDialog] = useState(false);
+  const [showMfaResetApprovalsDialog, setShowMfaResetApprovalsDialog] = useState(false);
   const [renderAdvancedAnalytics, setRenderAdvancedAnalytics] = useState(false);
   const [isHidingAdvancedAnalytics, setIsHidingAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
@@ -5522,6 +5524,11 @@ export function MonitorDashboard() {
       )}
 
       <DashboardHelpDialog open={showHelpDialog} variant="monitor" onClose={() => setShowHelpDialog(false)} />
+      <MonitorMfaResetApprovalsDialog
+        open={showMfaResetApprovalsDialog}
+        token={token}
+        onClose={() => setShowMfaResetApprovalsDialog(false)}
+      />
 
       <div
         className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-6 lg:transition-[grid-template-columns] lg:duration-[240ms] lg:ease-in-out ${
@@ -6503,6 +6510,17 @@ export function MonitorDashboard() {
                     >
                       <Users className="h-3.5 w-3.5 text-primary-600" />
                       {showSchoolLearnerRecords ? "Hide Learners" : "Show Learners"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSchoolActionsMenuOpen(false);
+                        setShowMfaResetApprovalsDialog(true);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5 text-primary-600" />
+                      MFA Reset Requests
                     </button>
                   </div>
                 )}

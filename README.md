@@ -40,8 +40,15 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
 - Monitor forgot-password / reset-by-email:
   - `POST /api/auth/forgot-password`
   - `POST /api/auth/reset-password`
+- Monitor MFA reset recovery (when `CSPAMS_MONITOR_MFA_ENABLED=true`):
+  - `POST /api/auth/mfa/reset/request` (submit request)
+  - `POST /api/auth/mfa/reset/complete` (complete with approval token + generates new backup codes)
+  - `GET /api/auth/mfa/reset/requests` (list pending requests for approval)
+  - `POST /api/auth/mfa/reset/requests/{ticket}/approve` (approve + emails approval token)
+  - `POST /api/auth/mfa/backup-codes/regenerate` (authenticated; generates a new set)
 - If an account is marked `must_reset_password` and `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true`, sign-in is blocked until password reset is completed via:
   - `POST /api/auth/reset-required-password` (current password + new password)
+- Recommended: keep `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true` in production; you may disable it in local/dev for smoother testing.
 - SPA login supports the reset-required flow in-page (current password + new password + confirmation).
 - Sign-out behavior:
   - local session is cleared immediately for fast UI exit
@@ -229,6 +236,7 @@ Queue tables are included in migrations (`jobs`, `job_batches`, `failed_jobs`) a
 This project sends emails for:
 
 - Monitor login MFA codes
+- Monitor MFA reset approval tokens
 - Monitor account-action confirmation codes (suspend/lock/archive)
 - Monitor password reset links (forgot-password)
 - School Head setup links

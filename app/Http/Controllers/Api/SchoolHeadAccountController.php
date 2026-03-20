@@ -543,8 +543,9 @@ class SchoolHeadAccountController extends Controller
             ->all();
 
         $deletedCount = 0;
+        $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
 
-        DB::transaction(function () use ($accounts, &$deletedCount): void {
+        DB::transaction(function () use ($accounts, $setupTokenStorageAvailable, &$deletedCount): void {
             foreach ($accounts as $account) {
                 $account->tokens()->delete();
 
@@ -552,6 +553,10 @@ class SchoolHeadAccountController extends Controller
                     DB::table('sessions')
                         ->where('user_id', $account->id)
                         ->delete();
+                }
+
+                if ($setupTokenStorageAvailable) {
+                    $account->accountSetupTokens()->delete();
                 }
 
                 $account->syncPermissions([]);

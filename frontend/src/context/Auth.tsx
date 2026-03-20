@@ -47,6 +47,38 @@ interface ResetMonitorPasswordResponse {
   message?: string;
 }
 
+interface RequestMonitorMfaResetInput {
+  login: string;
+  password: string;
+  reason?: string;
+}
+
+interface RequestMonitorMfaResetResponse {
+  status: string;
+  requestId: number;
+  expiresAt: string;
+  message?: string;
+}
+
+interface CompleteMonitorMfaResetInput {
+  login: string;
+  password: string;
+  requestId: number;
+  approvalToken: string;
+}
+
+interface CompleteMonitorMfaResetResponse {
+  token?: string;
+  user: SessionUser;
+  backupCodes?: string[];
+  message?: string;
+}
+
+interface CompleteMonitorMfaResetResult {
+  backupCodes: string[];
+  message: string;
+}
+
 interface LoginResultAuthenticated {
   status: "authenticated";
   user: SessionUser;
@@ -74,6 +106,8 @@ interface AuthContextType {
   verifyMfa: (input: VerifyMonitorMfaInput) => Promise<void>;
   requestMonitorPasswordReset: (email: string) => Promise<RequestMonitorPasswordResetResponse>;
   resetMonitorPassword: (input: ResetMonitorPasswordInput) => Promise<ResetMonitorPasswordResponse>;
+  requestMonitorMfaReset: (input: RequestMonitorMfaResetInput) => Promise<RequestMonitorMfaResetResponse>;
+  completeMonitorMfaReset: (input: CompleteMonitorMfaResetInput) => Promise<CompleteMonitorMfaResetResult>;
   completeAccountSetup: (input: CompleteAccountSetupInput) => Promise<void>;
   resetRequiredPassword: (input: LoginInput & { newPassword: string; confirmPassword: string }) => Promise<void>;
   logout: () => Promise<void>;
@@ -658,6 +692,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const requestMonitorMfaReset = useCallback(async ({ login, password, reason }: RequestMonitorMfaResetInput) => {
+    const normalizedLogin = login.trim().toLowerCase();
+    if (!normalizedLogin) {
+      throw new Error("Monitor email is required.");
+    }
+
+    setIsAuthenticating(true);
+    try {
+      return await apiRequest<RequestMonitorMfaResetResponse>("/api/auth/mfa/reset/request", {
+        method: "POST",
+        body: {
+          role: "monitor",
+          login: normalizedLogin,
+          password,
+          reason: reason?.trim() || undefined,
+        },
+      });
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, []);
+
+  const completeMonitorMfaReset = useCallback(async ({ login, password, requestId, approvalToken }: CompleteMonitorMfaResetInput) => {
+    const normalizedLogin = login.trim().toLowerCase();
+    const normalizedToken = approvalToken.trim().toUpperCase();
+    if (!normalizedLogin) {
+      throw new Error("Monitor email is required.");
+    }
+
+    if (!Number.isFinite(requestId) || requestId <= 0) {
+      throw new Error("Request ID is invalid. Submit a new MFA reset request.");
+    }
+
+    setIsAuthenticating(true);
+    try {
+      const payload = await apiRequest<CompleteMonitorMfaResetResponse>("/api/auth/mfa/reset/complete", {
+        method: "POST",
+        body: {
+          role: "monitor",
+          login: normalizedLogin,
+          password,
+          request_id: requestId,
+          approval_token: normalizedToken,
+        },
+      });
+
+      const nextSession = createStoredSession(payload.user, payload.token);
+
+      setSession(nextSession);
+      writeStoredSession(nextSession);
+      writePendingRemoteLogout(null);
+      clearLogoutRetryTimer();
+
+      return {
+        backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
+        message: payload.message?.trim() || "MFA reset completed. Store your backup codes securely.",
+      };
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, [clearLogoutRetryTimer]);
+
   const completeAccountSetup = useCallback(
     async ({ token, password, confirmPassword }: CompleteAccountSetupInput) => {
       setIsAuthenticating(true);
@@ -766,6 +862,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyMfa,
       requestMonitorPasswordReset,
       resetMonitorPassword,
+      requestMonitorMfaReset,
+      completeMonitorMfaReset,
       completeAccountSetup,
       resetRequiredPassword,
       logout,
@@ -782,6 +880,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyMfa,
       requestMonitorPasswordReset,
       resetMonitorPassword,
+      requestMonitorMfaReset,
+      completeMonitorMfaReset,
       completeAccountSetup,
       resetRequiredPassword,
       logout,

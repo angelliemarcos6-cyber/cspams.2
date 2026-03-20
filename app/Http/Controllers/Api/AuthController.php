@@ -411,6 +411,11 @@ class AuthController extends Controller
                     'error' => $exception->getMessage(),
                 ],
             );
+
+            if ((bool) config('app.debug', false)) {
+                $payload['delivery'] = 'failed';
+                $payload['deliveryMessage'] = 'Password reset email delivery failed. Check server logs and mail configuration.';
+            }
         }
 
         return response()->json($payload, Response::HTTP_ACCEPTED);
@@ -1160,9 +1165,23 @@ class AuthController extends Controller
             'approval_token_expires_at' => $approvalExpiresAt,
         ])->save();
 
-        $targetUser->notify(
-            new MonitorMfaResetApprovedNotification($approvalToken, $approvalExpiresAt->toDateTimeString()),
-        );
+        $deliveryStatus = 'sent';
+        $deliveryMessage = 'Approval token sent to the requester email.';
+
+        if (MailDelivery::isSimulated()) {
+            $deliveryStatus = MailDelivery::simulatedStatus();
+            $deliveryMessage = MailDelivery::simulatedMessage('Approval token was generated, but will not reach real inboxes.');
+        }
+
+        try {
+            $targetUser->notify(
+                new MonitorMfaResetApprovedNotification($approvalToken, $approvalExpiresAt->toDateTimeString()),
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+            $deliveryStatus = 'failed';
+            $deliveryMessage = 'Email delivery failed. Share the approval token through a secure channel.';
+        }
 
         AuthAuditLogger::record(
             $request,
@@ -1176,6 +1195,8 @@ class AuthController extends Controller
                 'target_user_id' => $targetUser->id,
                 'approval_token_expires_at' => $approvalExpiresAt->toISOString(),
                 'approval_notes' => $approvalNotes !== '' ? $approvalNotes : null,
+                'delivery_status' => $deliveryStatus,
+                'delivery_message' => $deliveryMessage,
             ],
         );
 
@@ -1184,6 +1205,8 @@ class AuthController extends Controller
             'requestId' => $ticketModel->id,
             'approvalToken' => $approvalToken,
             'approvalTokenExpiresAt' => $approvalExpiresAt->toISOString(),
+            'delivery' => $deliveryStatus,
+            'deliveryMessage' => $deliveryMessage,
             'message' => 'MFA reset approved. Share the approval token through a secure channel.',
         ]);
     }

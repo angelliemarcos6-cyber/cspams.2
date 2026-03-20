@@ -10,6 +10,8 @@ import { TeacherDataProvider } from "@/context/TeacherData";
 import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
 import { ForgotPassword } from "@/pages/ForgotPassword";
+import { MfaResetComplete } from "@/pages/MfaResetComplete";
+import { MfaResetRequest } from "@/pages/MfaResetRequest";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
@@ -70,6 +72,8 @@ function AppRoutes() {
       />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/mfa-reset" element={<MfaResetRequest />} />
+      <Route path="/mfa-reset/complete" element={<MfaResetComplete />} />
       <Route path="/setup-account" element={<SetupAccount />} />
       <Route
         path="/school-admin"

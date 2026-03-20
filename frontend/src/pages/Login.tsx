@@ -396,6 +396,14 @@ export function Login() {
                     Enter the code sent to your monitor email, or a backup code (XXXX-XXXX). Expires at{" "}
                     {formatMfaExpiry(pendingMfa.expiresAt)}.
                   </p>
+                  <div className="mt-2 flex justify-end">
+                    <Link
+                      to={`/mfa-reset?email=${encodeURIComponent(pendingMfa.login)}`}
+                      className="text-xs font-semibold text-primary-700 hover:text-primary-800"
+                    >
+                      Can't access email? Request MFA reset
+                    </Link>
+                  </div>
                   {pendingMfa.delivery &&
                     pendingMfa.delivery !== "sent" &&
                     typeof pendingMfa.deliveryMessage === "string" &&
