@@ -53,7 +53,7 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
 - Sign-out behavior:
   - local session is cleared immediately for fast UI exit
   - token revoke call is sent in the background (`POST /api/auth/logout`)
-  - auth state is synchronized across tabs/windows via browser storage events
+  - auth state is stored in `sessionStorage` (tab-scoped); logout retries are queued per tab when offline
 
 ## Indicator Compliance Workflow (API)
 

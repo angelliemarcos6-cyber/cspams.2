@@ -140,6 +140,14 @@ class SchoolHeadAccountController extends Controller
                 ] : []),
             ])->save();
 
+            $revocationSummary = [
+                'revokedTokens' => 0,
+                'revokedWebSessions' => 0,
+            ];
+            if ($emailChanged) {
+                $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
+            }
+
             $setupLink = null;
             $setupLinkExpiresAt = null;
             $deliveryStatus = null;
@@ -202,6 +210,8 @@ class SchoolHeadAccountController extends Controller
                     'delivery_status' => $deliveryStatus,
                     'delivery_message' => $deliveryMessage,
                     'account_status' => $account->accountStatus()->value,
+                    'revoked_tokens' => $revocationSummary['revokedTokens'],
+                    'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
                 ],
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
@@ -448,6 +458,21 @@ class SchoolHeadAccountController extends Controller
         $account->save();
         $this->loadLatestAccountSetupToken($account);
 
+        $revocationSummary = [
+            'revokedTokens' => 0,
+            'revokedWebSessions' => 0,
+        ];
+        if (
+            $statusChanged
+            && in_array($nextStatus, [
+                AccountStatus::SUSPENDED->value,
+                AccountStatus::LOCKED->value,
+                AccountStatus::ARCHIVED->value,
+            ], true)
+        ) {
+            $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
+        }
+
         AuditLog::query()->create([
             'user_id' => $monitor->id,
             'action' => 'account.status_updated',
@@ -469,6 +494,8 @@ class SchoolHeadAccountController extends Controller
                 'previous_delete_record_flagged' => $previousDeleteRecordFlagged,
                 'new_delete_record_flagged' => $nextDeleteRecordFlagged,
                 'reason' => $reason,
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
@@ -656,6 +683,14 @@ class SchoolHeadAccountController extends Controller
             $account->save();
         }
 
+        $revocationSummary = [
+            'revokedTokens' => 0,
+            'revokedWebSessions' => 0,
+        ];
+        if ($statusChangedToPendingSetup) {
+            $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
+        }
+
         $issuedSetup = $this->schoolHeadAccountSetupService->issue(
             $account,
             $monitor,
@@ -706,6 +741,8 @@ class SchoolHeadAccountController extends Controller
                 'setup_link_expires_at' => $issuedSetup['expiresAt'],
                 'delivery_status' => $deliveryStatus,
                 'delivery_message' => $deliveryMessage,
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
@@ -795,6 +832,26 @@ class SchoolHeadAccountController extends Controller
             'deleteRecordFlaggedAt' => $account->delete_record_flagged_at?->toISOString(),
             'deleteRecordReason' => $account->delete_record_flag_reason,
             'setupLinkExpiresAt' => $setupLinkExpiresAt,
+        ];
+    }
+
+    /**
+     * @return array{revokedTokens: int, revokedWebSessions: int}
+     */
+    private function revokeSchoolHeadSessionsAndTokens(User $account): array
+    {
+        $revokedTokens = $account->tokens()->delete();
+
+        $revokedWebSessions = 0;
+        if (Schema::hasTable('sessions')) {
+            $revokedWebSessions = DB::table('sessions')
+                ->where('user_id', $account->id)
+                ->delete();
+        }
+
+        return [
+            'revokedTokens' => $revokedTokens,
+            'revokedWebSessions' => $revokedWebSessions,
         ];
     }
 

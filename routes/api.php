@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
 use App\Http\Middleware\InstrumentStudentCrudTiming;
+use App\Support\Auth\ApiUserResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +48,10 @@ Route::prefix('auth')->group(function (): void {
 });
 
 Route::middleware('auth:sanctum')->post('/broadcasting/auth', static function (Request $request) {
+    if (! ApiUserResolver::fromRequest($request)) {
+        return response()->json(['message' => 'Unauthenticated.'], 401);
+    }
+
     return Broadcast::auth($request);
 });
 

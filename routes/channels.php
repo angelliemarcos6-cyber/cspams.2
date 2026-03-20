@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel(
     'cspams-updates.monitor',
     static function (User $user): bool {
-        return UserRoleResolver::has($user, UserRoleResolver::MONITOR);
+        return $user->canAuthenticate() && UserRoleResolver::has($user, UserRoleResolver::MONITOR);
     },
     ['guards' => ['sanctum']],
 );
@@ -15,6 +15,10 @@ Broadcast::channel(
 Broadcast::channel(
     'cspams-updates.school.{schoolId}',
     static function (User $user, string $schoolId): bool {
+        if (! $user->canAuthenticate()) {
+            return false;
+        }
+
         if (! UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)) {
             return false;
         }

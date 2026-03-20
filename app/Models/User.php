@@ -72,7 +72,7 @@ class User extends Authenticatable
 
     public function accountStatus(): AccountStatus
     {
-        $rawStatus = $this->account_status;
+        $rawStatus = $this->getRawOriginal('account_status');
 
         if ($rawStatus instanceof AccountStatus) {
             return $rawStatus;
@@ -80,13 +80,19 @@ class User extends Authenticatable
 
         if (is_string($rawStatus)) {
             $normalized = strtolower(trim($rawStatus));
+            if ($normalized === '') {
+                return AccountStatus::ACTIVE;
+            }
+
             $status = AccountStatus::tryFrom($normalized);
             if ($status instanceof AccountStatus) {
                 return $status;
             }
+
+            return AccountStatus::LOCKED;
         }
 
-        return AccountStatus::ACTIVE;
+        return AccountStatus::LOCKED;
     }
 
     public function canAuthenticate(): bool

@@ -13,6 +13,7 @@ use App\Http\Requests\Api\RequestMonitorMfaResetRequest;
 use App\Http\Requests\Api\ResetPasswordRequest;
 use App\Http\Requests\Api\ResetRequiredPasswordRequest;
 use App\Http\Requests\Api\VerifyMonitorMfaRequest;
+use App\Models\AccountSetupToken;
 use App\Models\MonitorMfaResetTicket;
 use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
@@ -827,17 +828,63 @@ class AuthController extends Controller
         }
 
         $previousStatus = $status->value;
-        $this->schoolHeadAccountSetupService->consume($setupToken, $request->ip(), $request->userAgent());
 
-        $user->forceFill([
-            'password' => Hash::make($newPassword),
-            'must_reset_password' => false,
-            'password_changed_at' => now(),
-            'email_verified_at' => now(),
-            'account_status' => AccountStatus::ACTIVE->value,
-        ])->save();
+        $tokenParts = explode('.', $plainToken, 2);
+        $tokenSecret = isset($tokenParts[1]) ? trim((string) $tokenParts[1]) : '';
 
-        $revocationSummary = $this->revokeUserSessionsAndTokens($user);
+        $revocationSummary = DB::transaction(function () use (
+            $setupToken,
+            $tokenSecret,
+            $user,
+            $newPassword,
+            $request,
+        ): ?array {
+            /** @var AccountSetupToken|null $lockedToken */
+            $lockedToken = AccountSetupToken::query()
+                ->whereKey($setupToken->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (
+                ! $lockedToken ||
+                ! is_string($lockedToken->token_hash) ||
+                $lockedToken->token_hash === '' ||
+                $tokenSecret === '' ||
+                ! Hash::check($tokenSecret, $lockedToken->token_hash) ||
+                ! $lockedToken->isUsable()
+            ) {
+                return null;
+            }
+
+            $this->schoolHeadAccountSetupService->consume($lockedToken, $request->ip(), $request->userAgent());
+
+            $user->forceFill([
+                'password' => Hash::make($newPassword),
+                'must_reset_password' => false,
+                'password_changed_at' => now(),
+                'email_verified_at' => now(),
+                'account_status' => AccountStatus::ACTIVE->value,
+            ])->save();
+
+            return $this->revokeUserSessionsAndTokens($user);
+        });
+
+        if (! is_array($revocationSummary)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.account_setup.failed',
+                'failure',
+                $user,
+                $role,
+                $identifier !== '' ? $identifier : null,
+                ['reason' => 'invalid_or_expired_setup_token'],
+            );
+
+            return response()->json(
+                ['message' => 'The setup link is invalid or expired. Request a new link from your Division Monitor.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
 
         if ($request->hasSession()) {
             Auth::guard('web')->login($user);
@@ -1349,6 +1396,27 @@ class AuthController extends Controller
             );
         }
 
+        $suspiciousLoginDetected = $this->isSuspiciousLoginAttempt($request, $user);
+        $revocationSummary = $this->revokeUserSessionsAndTokens($user);
+
+        if ($suspiciousLoginDetected) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.mfa_reset.complete.suspicious_detected',
+                'challenge',
+                $user,
+                $role,
+                $login,
+                [
+                    'reason' => 'new_device_or_location_detected',
+                    'previous_ip' => $this->normalizeIpAddress($user->last_login_ip),
+                    'current_ip' => $this->normalizeIpAddress($request->ip()),
+                    'revoked_tokens' => $revocationSummary['revokedTokens'],
+                    'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+                ],
+            );
+        }
+
         $backupCodes = $this->generateAndStoreMonitorBackupCodes($user);
         $ticket->forceFill([
             'status' => MonitorMfaResetTicket::STATUS_COMPLETED,
@@ -1356,14 +1424,6 @@ class AuthController extends Controller
             'approval_token_hash' => null,
             'approval_token_expires_at' => null,
         ])->save();
-
-        $suspiciousLoginContainment = $this->containSuspiciousLogin(
-            $request,
-            $user,
-            $role,
-            $login,
-            'auth.mfa_reset.complete.suspicious_detected',
-        );
 
         if ($request->hasSession()) {
             Auth::guard('web')->login($user);
@@ -1385,9 +1445,9 @@ class AuthController extends Controller
                 'backup_codes_generated' => count($backupCodes),
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
-                'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
-                'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
-                'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
+                'suspicious_login_detected' => $suspiciousLoginDetected,
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
 
