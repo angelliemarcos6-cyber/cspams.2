@@ -79,6 +79,17 @@ if [ -n "${DB_SSLMODE:-}" ]; then
   export DB_SSLMODE="$(sanitize_kv_value "$DB_SSLMODE" "DB_SSLMODE")"
 fi
 
+# --- Mail environment sanitization (common mis-pastes in Render UI) ---
+# 1) Accept MAIL_ADDRESS as an alias for MAIL_FROM_ADDRESS.
+if [ -z "${MAIL_FROM_ADDRESS:-}" ] && [ -n "${MAIL_ADDRESS:-}" ]; then
+  export MAIL_FROM_ADDRESS="$(sanitize_kv_value "$MAIL_ADDRESS" "MAIL_ADDRESS")"
+fi
+
+# 2) Accept RESEND_API_KEY as an alias for RESEND_KEY (Laravel config prefers RESEND_KEY).
+if [ -z "${RESEND_KEY:-}" ] && [ -n "${RESEND_API_KEY:-}" ]; then
+  export RESEND_KEY="$(sanitize_kv_value "$RESEND_API_KEY" "RESEND_API_KEY")"
+fi
+
 # 3) If DB_URL is missing but DB_DATABASE looks like a URL, treat it as DB_URL.
 if [ -z "${DB_URL:-}" ] && [ -n "${DB_DATABASE:-}" ]; then
   case "$DB_DATABASE" in

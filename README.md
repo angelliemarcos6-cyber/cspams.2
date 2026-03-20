@@ -236,14 +236,14 @@ To send real emails, configure one of the supported mailers:
 - SMTP (simple and widely supported)
   - `MAIL_MAILER=smtp`
   - `MAIL_HOST=...`
-  - `MAIL_PORT=...`
-  - `MAIL_SCHEME=tls` (or `smtps`, depending on provider)
+  - `MAIL_PORT=587` (STARTTLS) or `MAIL_PORT=465` (implicit TLS)
+  - `MAIL_SCHEME=` (leave empty) for port `587`, or set `MAIL_SCHEME=smtps` for port `465`
   - `MAIL_USERNAME=...`
   - `MAIL_PASSWORD=...`
   - `MAIL_FROM_ADDRESS=...`
 - Resend (transactional email API)
   - `MAIL_MAILER=resend`
-  - `RESEND_KEY=...`
+  - `RESEND_KEY=...` (or `RESEND_API_KEY=...`)
   - `MAIL_FROM_ADDRESS=...` (must match your verified Resend domain)
 
 After updating mail settings, clear cached config:
