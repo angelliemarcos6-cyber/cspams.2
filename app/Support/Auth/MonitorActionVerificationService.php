@@ -170,6 +170,14 @@ class MonitorActionVerificationService
             return 'Delete account';
         }
 
+        if ($normalized === 'email_change') {
+            return 'Change School Head email';
+        }
+
+        if ($normalized === 'password_reset') {
+            return 'Issue password reset link';
+        }
+
         return $targetStatus;
     }
 }

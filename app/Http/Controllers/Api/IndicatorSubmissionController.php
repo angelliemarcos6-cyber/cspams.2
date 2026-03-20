@@ -28,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -420,14 +421,20 @@ class IndicatorSubmissionController extends Controller
             notes: $notes,
         );
 
-        $schoolHeads = User::query()
+        $schoolHeadsQuery = User::query()
             ->with('roles')
-            ->where('school_id', $submission->school_id)
-            ->get()
-            ->filter(
-                static fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
-            )
-            ->values();
+            ->where('school_id', $submission->school_id);
+
+        if (Schema::hasColumn('users', 'account_type')) {
+            $schoolHeadsQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
+        } else {
+            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+            $schoolHeadsQuery->whereHas('roles', static function ($builder) use ($aliases): void {
+                $builder->whereIn('name', $aliases);
+            });
+        }
+
+        $schoolHeads = $schoolHeadsQuery->get();
 
         foreach ($schoolHeads as $schoolHead) {
             $schoolHead->notify(new IndicatorReviewOutcomeNotification(

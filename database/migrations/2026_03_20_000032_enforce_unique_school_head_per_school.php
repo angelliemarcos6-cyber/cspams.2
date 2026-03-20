@@ -46,6 +46,8 @@ return new class extends Migration
             }
         }
 
+        $this->assertNoDuplicateSchoolHeads();
+
         Schema::table('users', function (Blueprint $table): void {
             $table->unique(['school_id', 'account_type']);
         });
@@ -61,6 +63,33 @@ return new class extends Migration
             Schema::table('users', function (Blueprint $table): void {
                 $table->dropColumn('account_type');
             });
+        }
+    }
+
+    private function assertNoDuplicateSchoolHeads(): void
+    {
+        if (! Schema::hasTable('users') || ! Schema::hasColumn('users', 'account_type')) {
+            return;
+        }
+
+        $duplicateSchoolIds = DB::table('users')
+            ->select('school_id')
+            ->whereNotNull('school_id')
+            ->where('account_type', 'school_head')
+            ->groupBy('school_id')
+            ->havingRaw('COUNT(*) > 1')
+            ->limit(10)
+            ->pluck('school_id')
+            ->filter(static fn (mixed $value): bool => is_scalar($value) && (string) $value !== '')
+            ->map(static fn (mixed $value): string => (string) $value)
+            ->values();
+
+        if ($duplicateSchoolIds->isNotEmpty()) {
+            throw new RuntimeException(
+                'Cannot enforce unique School Head accounts per school. '
+                . 'Resolve duplicate School Head records first for school_id(s): '
+                . $duplicateSchoolIds->implode(', ')
+            );
         }
     }
 };

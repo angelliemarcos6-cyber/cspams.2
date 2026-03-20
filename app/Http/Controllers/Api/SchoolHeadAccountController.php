@@ -124,24 +124,65 @@ class SchoolHeadAccountController extends Controller
         if ($account) {
             $previousEmail = strtolower(trim((string) $account->email));
             $emailChanged = $previousEmail !== $email;
+            $previousStatus = $account->accountStatus();
+            $reason = trim($request->string('reason')->toString());
+            $reissueAllowed = $emailChanged
+                && ! in_array($previousStatus, [
+                    AccountStatus::SUSPENDED,
+                    AccountStatus::LOCKED,
+                    AccountStatus::ARCHIVED,
+                ], true);
 
-            if ($emailChanged && ! $this->schoolHeadAccountSetupService->storageAvailable()) {
+            if ($emailChanged) {
+                $challengeId = trim($request->string('verificationChallengeId')->toString());
+                $code = trim($request->string('verificationCode')->toString());
+
+                if ($challengeId === '' || $code === '') {
+                    return response()->json(
+                        ['message' => 'Confirmation code is required to change the School Head email.'],
+                        Response::HTTP_UNPROCESSABLE_ENTITY,
+                    );
+                }
+
+                $verified = $this->monitorActionVerificationService->verify(
+                    $monitor,
+                    $school,
+                    IssueSchoolHeadAccountActionVerificationCodeRequest::TARGET_EMAIL_CHANGE,
+                    $challengeId,
+                    $code,
+                );
+
+                if (! $verified) {
+                    return response()->json(
+                        ['message' => 'Confirmation code is invalid or expired. Request a new code and try again.'],
+                        Response::HTTP_UNPROCESSABLE_ENTITY,
+                    );
+                }
+            }
+
+            if ($reissueAllowed && ! $this->schoolHeadAccountSetupService->storageAvailable()) {
                 return response()->json(
                     ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
                     Response::HTTP_SERVICE_UNAVAILABLE,
                 );
             }
 
-            $account->forceFill([
+            $updates = [
                 'name' => $name,
                 'email' => $email,
-                ...($emailChanged ? [
-                    'email_verified_at' => null,
-                    'account_status' => AccountStatus::PENDING_SETUP->value,
-                    'must_reset_password' => true,
-                    'password_changed_at' => null,
-                ] : []),
-            ])->save();
+            ];
+
+            if ($emailChanged) {
+                $updates['email_verified_at'] = null;
+            }
+
+            if ($reissueAllowed) {
+                $updates['account_status'] = AccountStatus::PENDING_SETUP->value;
+                $updates['must_reset_password'] = true;
+                $updates['password_changed_at'] = null;
+            }
+
+            $account->forceFill($updates)->save();
 
             $revocationSummary = [
                 'revokedTokens' => 0,
@@ -157,7 +198,7 @@ class SchoolHeadAccountController extends Controller
             $deliveryMessage = null;
             $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
 
-            if ($emailChanged) {
+            if ($reissueAllowed) {
                 $issuedSetup = $this->schoolHeadAccountSetupService->issue(
                     $account,
                     $monitor,
@@ -211,10 +252,11 @@ class SchoolHeadAccountController extends Controller
                     'previous_email' => $previousEmail,
                     'new_email' => $account->email,
                     'email_changed' => $emailChanged,
-                    'setup_link_issued' => $emailChanged,
+                    'setup_link_issued' => $reissueAllowed,
                     'setup_link_expires_at' => $setupLinkExpiresAt,
                     'delivery_status' => $deliveryStatus,
                     'delivery_message' => $deliveryMessage,
+                    'reason' => $emailChanged ? $reason : null,
                     'account_status' => $account->accountStatus()->value,
                     'revoked_tokens' => $revocationSummary['revokedTokens'],
                     'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
@@ -237,7 +279,9 @@ class SchoolHeadAccountController extends Controller
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
                 'message' => $emailChanged
-                    ? 'School Head account updated. Setup link reissued for email verification.'
+                    ? ($reissueAllowed
+                        ? 'School Head account updated. Setup link reissued for email verification.'
+                        : 'School Head account updated. Setup link was not reissued for inactive accounts.')
                     : 'School Head account updated.',
                 'setupLink' => $setupLink,
                 'expiresAt' => $setupLinkExpiresAt,
@@ -817,6 +861,23 @@ class SchoolHeadAccountController extends Controller
         }
 
         $reason = trim($request->string('reason')->toString());
+        $challengeId = trim($request->string('verificationChallengeId')->toString());
+        $code = trim($request->string('verificationCode')->toString());
+
+        $verified = $this->monitorActionVerificationService->verify(
+            $monitor,
+            $school,
+            IssueSchoolHeadAccountActionVerificationCodeRequest::TARGET_PASSWORD_RESET,
+            $challengeId,
+            $code,
+        );
+
+        if (! $verified) {
+            return response()->json(
+                ['message' => 'The confirmation code is invalid or expired. Send a new code and try again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
 
         $expiresAt = CarbonImmutable::now()->addMinutes((int) config('auth.passwords.users.expire', 60));
         $deliveryStatus = 'sent';
@@ -920,7 +981,6 @@ class SchoolHeadAccountController extends Controller
     private function resolveSchoolHeadAccount(School $school): ?User
     {
         $query = User::query()
-            ->with('roles')
             ->where('school_id', $school->id)
             ->orderByDesc('id');
 
@@ -928,11 +988,42 @@ class SchoolHeadAccountController extends Controller
             $query->with('latestAccountSetupToken');
         }
 
+        if (Schema::hasColumn('users', 'account_type')) {
+            /** @var User|null $account */
+            $account = (clone $query)
+                ->with('roles')
+                ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
+                ->first();
+
+            if ($account) {
+                return $account;
+            }
+
+            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+
+            /** @var User|null $fallback */
+            $fallback = (clone $query)
+                ->with('roles')
+                ->whereHas('roles', static function ($builder) use ($aliases): void {
+                    $builder->whereIn('name', $aliases);
+                })
+                ->first();
+
+            if ($fallback) {
+                $fallback->forceFill(['account_type' => UserRoleResolver::SCHOOL_HEAD])->save();
+            }
+
+            return $fallback;
+        }
+
+        $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+
         return $query
-            ->get()
-            ->first(
-                static fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
-            );
+            ->with('roles')
+            ->whereHas('roles', static function ($builder) use ($aliases): void {
+                $builder->whereIn('name', $aliases);
+            })
+            ->first();
     }
 
     /**

@@ -8,6 +8,9 @@ use Illuminate\Validation\Rule;
 
 class IssueSchoolHeadAccountActionVerificationCodeRequest extends FormRequest
 {
+    public const TARGET_EMAIL_CHANGE = 'email_change';
+    public const TARGET_PASSWORD_RESET = 'password_reset';
+
     public function authorize(): bool
     {
         return true;
@@ -27,6 +30,8 @@ class IssueSchoolHeadAccountActionVerificationCodeRequest extends FormRequest
                     AccountStatus::LOCKED->value,
                     AccountStatus::ARCHIVED->value,
                     'deleted',
+                    self::TARGET_EMAIL_CHANGE,
+                    self::TARGET_PASSWORD_RESET,
                 ]),
             ],
         ];

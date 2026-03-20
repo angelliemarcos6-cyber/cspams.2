@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
 
 class School extends Model
 {
@@ -62,12 +63,17 @@ class School extends Model
 
     public function schoolHeadAccounts(): HasMany
     {
+        $relation = $this->hasMany(User::class);
+
+        if (Schema::hasColumn('users', 'account_type')) {
+            return $relation->where('account_type', UserRoleResolver::SCHOOL_HEAD);
+        }
+
         $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
 
-        return $this->hasMany(User::class)
-            ->whereHas('roles', static function ($builder) use ($aliases): void {
-                $builder->whereIn('name', $aliases);
-            });
+        return $relation->whereHas('roles', static function ($builder) use ($aliases): void {
+            $builder->whereIn('name', $aliases);
+        });
     }
 
     public function submittedBy(): BelongsTo

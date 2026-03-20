@@ -349,14 +349,10 @@ class SchoolRecordController extends Controller
             );
         }
 
-        $schoolHeads = User::query()
+        $schoolHeads = $school
+            ->schoolHeadAccounts()
             ->with('roles')
-            ->where('school_id', $school->id)
-            ->get()
-            ->filter(
-                static fn (User $candidate): bool => UserRoleResolver::has($candidate, UserRoleResolver::SCHOOL_HEAD),
-            )
-            ->values();
+            ->get();
 
         if ($schoolHeads->isEmpty()) {
             return response()->json(
@@ -708,6 +704,11 @@ class SchoolRecordController extends Controller
         $duplicateQuery = User::query()->where('school_id', $school->id);
         if (Schema::hasColumn('users', 'account_type')) {
             $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
+        } else {
+            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+            $duplicateQuery->whereHas('roles', static function ($builder) use ($aliases): void {
+                $builder->whereIn('name', $aliases);
+            });
         }
 
         if ($duplicateQuery->exists()) {
