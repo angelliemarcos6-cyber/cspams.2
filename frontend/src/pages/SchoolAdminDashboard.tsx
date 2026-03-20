@@ -8,6 +8,7 @@ import {
   BookOpenText,
   Building2,
   CheckCircle2,
+  CircleHelp,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -27,6 +28,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
@@ -462,6 +464,7 @@ export function SchoolAdminDashboard() {
     typeof window === "undefined" ? false : window.innerWidth < SCHOOL_MOBILE_BREAKPOINT,
   );
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
+  const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
   const [contextSubmissionType, setContextSubmissionType] = useState<"all" | "school_record" | "indicator_package">("all");
@@ -1192,6 +1195,15 @@ export function SchoolAdminDashboard() {
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
+          <button
+            type="button"
+            onClick={() => setShowHelpDialog(true)}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90"
+            aria-label="Open quick guide"
+            title="Help"
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+          </button>
           <span className="hidden max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 sm:inline-flex lg:max-w-[21rem]">
             {syncStatus === "up_to_date" ? "Up to date" : "Updated"}
             {" | "}
@@ -1208,6 +1220,8 @@ export function SchoolAdminDashboard() {
           {error}
         </section>
       )}
+
+      <DashboardHelpDialog open={showHelpDialog} variant="school_head" onClose={() => setShowHelpDialog(false)} />
 
       <div
         className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[240ms] lg:ease-in-out ${

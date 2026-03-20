@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardList,
+  CircleHelp,
   Database,
   Edit2,
   Eye,
@@ -33,6 +34,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
@@ -1282,6 +1284,7 @@ export function MonitorDashboard() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
+  const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [renderAdvancedAnalytics, setRenderAdvancedAnalytics] = useState(false);
   const [isHidingAdvancedAnalytics, setIsHidingAdvancedAnalytics] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
@@ -5379,6 +5382,15 @@ export function MonitorDashboard() {
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isDashboardSyncing ? "animate-spin" : ""}`} />
           </button>
+          <button
+            type="button"
+            onClick={() => setShowHelpDialog(true)}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90"
+            aria-label="Open quick guide"
+            title="Help"
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+          </button>
           <span className="hidden max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 sm:inline-flex lg:max-w-[21rem]">
             {syncStatus === "up_to_date" ? "Up to date" : "Updated"}
             {" | "}
@@ -5395,6 +5407,8 @@ export function MonitorDashboard() {
           {error}
         </section>
       )}
+
+      <DashboardHelpDialog open={showHelpDialog} variant="monitor" onClose={() => setShowHelpDialog(false)} />
 
       <div
         className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-6 lg:transition-[grid-template-columns] lg:duration-[240ms] lg:ease-in-out ${
