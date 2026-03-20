@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
 use App\Notifications\MonitorMfaResetApprovedNotification;
 use App\Notifications\MonitorPasswordResetNotification;
+use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
@@ -326,11 +327,14 @@ class AuthController extends Controller
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
-        $role = UserRoleResolver::MONITOR;
+        $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
+        if (! in_array($role, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
+            $role = UserRoleResolver::MONITOR;
+        }
         $email = strtolower(trim($request->string('email')->toString()));
 
         $payload = [
-            'message' => 'If a matching monitor account exists, a password reset link will be sent to the provided email address.',
+            'message' => 'If a matching account exists, a password reset link will be sent to the provided email address.',
         ];
 
         if (MailDelivery::isSimulated()) {
@@ -380,11 +384,14 @@ class AuthController extends Controller
         try {
             $status = Password::broker()->sendResetLink(
                 ['email' => (string) $user->email],
-                function (User $user, string $token) use ($expiresAt): void {
-                    $user->notify(new MonitorPasswordResetNotification(
-                        $this->buildPasswordResetUrl((string) $user->email, $token),
-                        $expiresAt,
-                    ));
+                function (User $user, string $token) use ($expiresAt, $role): void {
+                    $resetUrl = $this->buildPasswordResetUrl((string) $user->email, $token, $role);
+
+                    $user->notify(
+                        $role === UserRoleResolver::SCHOOL_HEAD
+                            ? new SchoolHeadPasswordResetNotification($resetUrl, $expiresAt)
+                            : new MonitorPasswordResetNotification($resetUrl, $expiresAt),
+                    );
                 },
             );
 
@@ -424,7 +431,10 @@ class AuthController extends Controller
 
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
-        $role = UserRoleResolver::MONITOR;
+        $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
+        if (! in_array($role, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
+            $role = UserRoleResolver::MONITOR;
+        }
         $email = strtolower(trim($request->string('email')->toString()));
         $token = $request->string('token')->toString();
         $newPassword = $request->string('password')->toString();
@@ -1220,6 +1230,8 @@ class AuthController extends Controller
             $deliveryMessage = MailDelivery::simulatedMessage('Approval token was generated, but will not reach real inboxes.');
         }
 
+        $exposeApprovalToken = $this->shouldExposeOneTimeSecrets();
+
         try {
             $targetUser->notify(
                 new MonitorMfaResetApprovedNotification($approvalToken, $approvalExpiresAt->toDateTimeString()),
@@ -1227,7 +1239,9 @@ class AuthController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = 'Email delivery failed. Share the approval token through a secure channel.';
+            $deliveryMessage = $exposeApprovalToken
+                ? 'Email delivery failed. Share the approval token through a secure channel.'
+                : 'Email delivery failed. Ask the requester to submit a new request or contact an administrator.';
         }
 
         AuthAuditLogger::record(
@@ -1247,14 +1261,22 @@ class AuthController extends Controller
             ],
         );
 
+        $message = $deliveryStatus === 'failed'
+            ? ($exposeApprovalToken
+                ? 'MFA reset approved. Email delivery failed. Share the approval token through a secure channel.'
+                : 'MFA reset approved, but email delivery failed. Ask the requester to submit a new request or contact an administrator.')
+            : ($exposeApprovalToken
+                ? 'MFA reset approved. Share the approval token through a secure channel.'
+                : 'MFA reset approved. Approval token sent to the requester email.');
+
         return response()->json([
             'status' => MonitorMfaResetTicket::STATUS_APPROVED,
             'requestId' => $ticketModel->id,
-            'approvalToken' => $approvalToken,
+            'approvalToken' => $exposeApprovalToken ? $approvalToken : null,
             'approvalTokenExpiresAt' => $approvalExpiresAt->toISOString(),
             'delivery' => $deliveryStatus,
             'deliveryMessage' => $deliveryMessage,
-            'message' => 'MFA reset approved. Share the approval token through a secure channel.',
+            'message' => $message,
         ]);
     }
 
@@ -2557,7 +2579,7 @@ class AuthController extends Controller
         );
     }
 
-    private function buildPasswordResetUrl(string $email, string $token): string
+    private function buildPasswordResetUrl(string $email, string $token, ?string $role = null): string
     {
         $frontend = trim((string) config('app.frontend_url', ''));
         if ($frontend === '') {
@@ -2566,17 +2588,37 @@ class AuthController extends Controller
 
         $frontend = rtrim($frontend, '/');
 
+        $queryParams = [
+            'token' => $token,
+            'email' => $email,
+        ];
+
+        $role = UserRoleResolver::normalizeLoginRole((string) $role);
+        if (in_array($role, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
+            $queryParams['role'] = $role;
+        }
+
         $query = http_build_query(
-            [
-                'token' => $token,
-                'email' => $email,
-            ],
+            $queryParams,
             '',
             '&',
             PHP_QUERY_RFC3986,
         );
 
         return $frontend . '/#/reset-password?' . $query;
+    }
+
+    private function shouldExposeOneTimeSecrets(): bool
+    {
+        if (app()->environment(['local', 'testing'])) {
+            return true;
+        }
+
+        if (MailDelivery::isSimulated()) {
+            return true;
+        }
+
+        return (bool) config('app.debug', false);
     }
 
     private function resolveRoleForUser(User $user): string

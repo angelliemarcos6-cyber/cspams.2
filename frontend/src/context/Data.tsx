@@ -19,6 +19,7 @@ import type {
   SchoolHeadAccountProvisioningReceipt,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
+  SchoolHeadPasswordResetLinkResult,
   SchoolHeadSetupLinkResult,
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
@@ -100,6 +101,10 @@ interface SchoolHeadSetupLinkResponse {
   data: SchoolHeadSetupLinkResult;
 }
 
+interface SchoolHeadPasswordResetLinkResponse {
+  data: SchoolHeadPasswordResetLinkResult;
+}
+
 interface SchoolHeadAccountProfileResponse {
   data: SchoolHeadAccountProfileUpsertResult;
 }
@@ -139,6 +144,10 @@ interface DataContextType {
     schoolId: string,
     reason?: string | null,
   ) => Promise<SchoolHeadSetupLinkResult>;
+  issueSchoolHeadPasswordResetLink: (
+    schoolId: string,
+    reason: string,
+  ) => Promise<SchoolHeadPasswordResetLinkResult>;
   upsertSchoolHeadAccountProfile: (
     schoolId: string,
     payload: SchoolHeadAccountPayload,
@@ -771,8 +780,63 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
 
         const result = response.data?.data;
-        if (!result?.account || !result.setupLink) {
+        if (!result?.account) {
           throw new Error("Setup link response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError],
+  );
+
+  const issueSchoolHeadPasswordResetLink = useCallback(
+    async (schoolId: string, reason: string): Promise<SchoolHeadPasswordResetLinkResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const trimmedReason = reason.trim();
+      if (trimmedReason.length < 5) {
+        throw new Error("Reason must be at least 5 characters.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadPasswordResetLinkResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/password-reset-link`,
+          {
+            method: "POST",
+            token,
+            body: {
+              reason: trimmedReason,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account) {
+          throw new Error("Password reset link response is empty.");
         }
 
         setRecords((current) =>
@@ -1049,6 +1113,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateSchoolHeadAccountStatus,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
+      issueSchoolHeadPasswordResetLink,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
       bulkImportRecords,
@@ -1075,6 +1140,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateSchoolHeadAccountStatus,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
+      issueSchoolHeadPasswordResetLink,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
       bulkImportRecords,

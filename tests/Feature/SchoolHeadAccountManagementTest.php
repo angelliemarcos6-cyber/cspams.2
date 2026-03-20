@@ -62,7 +62,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
     }
 
-    public function test_monitor_can_update_school_head_status_and_reissue_setup_link(): void
+    public function test_monitor_can_update_school_head_status_and_issue_password_reset_link(): void
     {
         $this->seed();
         config()->set('auth_mfa.monitor.test_code', '123456');
@@ -155,20 +155,21 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertNull($schoolHead->delete_record_flagged_at);
         $this->assertNull($schoolHead->delete_record_flag_reason);
 
-        $setupLink = $this->withToken($monitorToken)->postJson(
-            "/api/dashboard/records/{$school->id}/school-head-account/setup-link",
+        $resetLink = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/password-reset-link",
             [
-                'reason' => 'Re-onboarding requested by the school head.',
+                'reason' => 'Password reset requested by the school head.',
             ],
         );
 
-        $setupLink->assertStatus(Response::HTTP_OK)
-            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value);
+        $resetLink->assertStatus(Response::HTTP_OK)
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.mustResetPassword', true);
 
-        $this->assertNotSame('', (string) $setupLink->json('data.setupLink'));
+        $this->assertNotSame('', (string) $resetLink->json('data.resetLink'));
 
         $schoolHead->refresh();
-        $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
         $this->assertTrue((bool) $schoolHead->must_reset_password);
     }
 

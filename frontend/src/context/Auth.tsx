@@ -37,6 +37,7 @@ interface RequestMonitorPasswordResetResponse {
 }
 
 interface ResetMonitorPasswordInput {
+  role?: Exclude<UserRole, null>;
   email: string;
   token: string;
   password: string;
@@ -104,7 +105,10 @@ interface AuthContextType {
   isLoggingOut: boolean;
   login: (input: LoginInput) => Promise<LoginResult>;
   verifyMfa: (input: VerifyMonitorMfaInput) => Promise<void>;
-  requestMonitorPasswordReset: (email: string) => Promise<RequestMonitorPasswordResetResponse>;
+  requestMonitorPasswordReset: (
+    email: string,
+    role?: Exclude<UserRole, null>,
+  ) => Promise<RequestMonitorPasswordResetResponse>;
   resetMonitorPassword: (input: ResetMonitorPasswordInput) => Promise<ResetMonitorPasswordResponse>;
   requestMonitorMfaReset: (input: RequestMonitorMfaResetInput) => Promise<RequestMonitorMfaResetResponse>;
   completeMonitorMfaReset: (input: CompleteMonitorMfaResetInput) => Promise<CompleteMonitorMfaResetResult>;
@@ -650,7 +654,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [clearLogoutRetryTimer],
   );
 
-  const requestMonitorPasswordReset = useCallback(async (email: string) => {
+  const requestMonitorPasswordReset = useCallback(async (email: string, role: Exclude<UserRole, null> = "monitor") => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
       throw new Error("Email address is required.");
@@ -661,6 +665,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return await apiRequest<RequestMonitorPasswordResetResponse>("/api/auth/forgot-password", {
         method: "POST",
         body: {
+          role,
           email: normalizedEmail,
         },
       });
@@ -669,7 +674,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const resetMonitorPassword = useCallback(async ({ email, token, password, confirmPassword }: ResetMonitorPasswordInput) => {
+  const resetMonitorPassword = useCallback(
+    async ({ role, email, token, password, confirmPassword }: ResetMonitorPasswordInput) => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedToken = token.trim();
     if (!normalizedEmail || !normalizedToken) {
@@ -681,6 +687,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return await apiRequest<ResetMonitorPasswordResponse>("/api/auth/reset-password", {
         method: "POST",
         body: {
+          role: role ?? undefined,
           email: normalizedEmail,
           token: normalizedToken,
           password,
@@ -690,7 +697,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+    },
+    [],
+  );
 
   const requestMonitorMfaReset = useCallback(async ({ login, password, reason }: RequestMonitorMfaResetInput) => {
     const normalizedLogin = login.trim().toLowerCase();

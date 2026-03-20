@@ -102,6 +102,13 @@ type PendingAccountAction =
       requireReason: boolean;
     }
   | {
+      kind: "reset_password";
+      schoolId: string;
+      schoolName: string;
+      actionLabel: string;
+      requireReason: boolean;
+    }
+  | {
       kind: "remove";
       schoolId: string;
       schoolName: string;
@@ -1218,6 +1225,7 @@ export function MonitorDashboard() {
     updateSchoolHeadAccountStatus,
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
+    issueSchoolHeadPasswordResetLink,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
     bulkImportRecords,
@@ -1891,7 +1899,7 @@ export function MonitorDashboard() {
   };
 
   const announceSchoolHeadPasswordResetLink = async (
-    receipt: { setupLink: string; delivery?: unknown; deliveryMessage?: string },
+    receipt: { setupLink?: string | null; resetLink?: string | null; delivery?: unknown; deliveryMessage?: string },
     schoolName: string,
   ) => {
     const normalizedDelivery = String(receipt.delivery ?? "").toLowerCase();
@@ -1909,7 +1917,10 @@ export function MonitorDashboard() {
       pushToast(deliveryMessage.replace(/setup link/gi, "password reset link"), deliveryFailed ? "warning" : "info");
     }
 
-    await revealSetupLink(receipt.setupLink, schoolName, "Password reset link");
+    const oneTimeLink = receipt.resetLink ?? receipt.setupLink ?? null;
+    if (oneTimeLink) {
+      await revealSetupLink(oneTimeLink, schoolName, "Password reset link");
+    }
   };
 
   const resetRecordForm = () => {
@@ -4542,7 +4553,8 @@ export function MonitorDashboard() {
     const requiresReason =
       pendingAccountAction.kind === "status" ||
       pendingAccountAction.kind === "remove" ||
-      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason);
+      ((pendingAccountAction.kind === "setup_link" || pendingAccountAction.kind === "reset_password") &&
+        pendingAccountAction.requireReason);
     if (requiresReason && reason.length < 5) {
       setPendingAccountReasonError("Please provide a reason with at least 5 characters.");
       return;
@@ -4605,11 +4617,14 @@ export function MonitorDashboard() {
           verificationCode: code,
         });
         pushToast(result.message || `School Head account removed for ${pendingAccountAction.schoolName}.`, "success");
-      } else {
+      } else if (pendingAccountAction.kind === "setup_link") {
         const receipt = await issueSchoolHeadSetupLink(
           pendingAccountAction.schoolId,
           reason.length > 0 ? reason : null,
         );
+        await announceSchoolHeadPasswordResetLink(receipt, pendingAccountAction.schoolName);
+      } else {
+        const receipt = await issueSchoolHeadPasswordResetLink(pendingAccountAction.schoolId, reason);
         await announceSchoolHeadPasswordResetLink(receipt, pendingAccountAction.schoolName);
       }
 
@@ -4661,14 +4676,18 @@ export function MonitorDashboard() {
       pushToast("Archived accounts cannot receive password reset links. Activate the account first.", "warning");
       return;
     }
-    if (accountStatus !== "pending_setup") {
+    if (accountStatus === "active") {
       openPendingAccountAction({
-        kind: "setup_link",
+        kind: "reset_password",
         schoolId: record.id,
         schoolName: record.schoolName,
         actionLabel: "Reset Password",
         requireReason: true,
       });
+      return;
+    }
+    if (accountStatus !== "pending_setup") {
+      pushToast("Only pending setup or active accounts can receive password reset links.", "warning");
       return;
     }
 
@@ -8157,7 +8176,8 @@ export function MonitorDashboard() {
                   (pendingAccountReason.trim().length < 5 &&
                     (pendingAccountAction.kind === "status" ||
                       pendingAccountAction.kind === "remove" ||
-                      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason))) ||
+                      ((pendingAccountAction.kind === "setup_link" || pendingAccountAction.kind === "reset_password") &&
+                        pendingAccountAction.requireReason))) ||
                   ((pendingAccountAction.kind === "remove" ||
                     (pendingAccountAction.kind === "status" &&
                       isDeactivationStatus(pendingAccountAction.update.accountStatus))) &&

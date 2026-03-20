@@ -70,6 +70,8 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])
         ->middleware('throttle:auth-account-management');
+    Route::post('/records/{school}/school-head-account/password-reset-link', [SchoolHeadAccountController::class, 'issuePasswordResetLink'])
+        ->middleware('throttle:auth-account-management');
     Route::delete('/records/{school}/school-head-account', [SchoolHeadAccountController::class, 'destroy'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/restore', [SchoolRecordController::class, 'restore']);

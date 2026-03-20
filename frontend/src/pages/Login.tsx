@@ -78,10 +78,13 @@ export function Login() {
 
   const roleMeta = ROLE_META[activeRole];
   const forgotPasswordHref = (() => {
-    if (activeRole !== "monitor") return "/";
+    if (activeRole === "school_head") {
+      return "/forgot-password?role=school_head";
+    }
+
     const trimmed = loginId.trim();
-    if (!trimmed) return "/forgot-password";
-    return `/forgot-password?email=${encodeURIComponent(trimmed)}`;
+    if (!trimmed) return "/forgot-password?role=monitor";
+    return `/forgot-password?role=monitor&email=${encodeURIComponent(trimmed)}`;
   })();
 
   const clearResetState = () => {
@@ -363,7 +366,7 @@ export function Login() {
                     {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                {activeRole === "monitor" && !pendingMfa && (
+                {!pendingMfa && (
                   <div className="mt-2 flex justify-end">
                     <Link to={forgotPasswordHref} className="text-xs font-semibold text-primary-700 hover:text-primary-800">
                       {requiresPasswordReset ? "Can't access current passcode? Email reset" : "Forgot password?"}

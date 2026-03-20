@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\IssueSchoolHeadAccountActionVerificationCodeRequest;
+use App\Http\Requests\Api\IssueSchoolHeadPasswordResetLinkRequest;
 use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
 use App\Http\Requests\Api\RemoveSchoolHeadAccountRequest;
 use App\Http\Requests\Api\UpsertSchoolHeadAccountProfileRequest;
@@ -13,6 +14,7 @@ use App\Models\AuditLog;
 use App\Models\School;
 use App\Models\User;
 use App\Notifications\SchoolHeadAccountSetupNotification;
+use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\MonitorActionVerificationService;
 use App\Support\Auth\SchoolHeadAccountSetupService;
@@ -25,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -152,6 +155,7 @@ class SchoolHeadAccountController extends Controller
             $setupLinkExpiresAt = null;
             $deliveryStatus = null;
             $deliveryMessage = null;
+            $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
 
             if ($emailChanged) {
                 $issuedSetup = $this->schoolHeadAccountSetupService->issue(
@@ -161,7 +165,7 @@ class SchoolHeadAccountController extends Controller
                     $request->userAgent(),
                 );
 
-                $setupLink = $issuedSetup['setupUrl'];
+                $setupLink = $exposeSetupLink ? $issuedSetup['setupUrl'] : null;
                 $setupLinkExpiresAt = $issuedSetup['expiresAt'];
                 $deliveryStatus = 'sent';
                 $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -182,7 +186,9 @@ class SchoolHeadAccountController extends Controller
                 } catch (\Throwable $exception) {
                     report($exception);
                     $deliveryStatus = 'failed';
-                    $deliveryMessage = 'Setup link email delivery failed. Share the setup link manually.';
+                    $deliveryMessage = $exposeSetupLink
+                        ? 'Setup link email delivery failed. Share the setup link manually.'
+                        : 'Setup link email delivery failed. Please try again or contact an administrator.';
                 }
             }
 
@@ -227,24 +233,31 @@ class SchoolHeadAccountController extends Controller
                 'setupLinkExpiresAt' => $setupLinkExpiresAt,
             ]));
 
-            return response()->json([
-                'data' => [
-                    'account' => $this->serializeSchoolHeadAccount($account),
-                    'message' => $emailChanged
-                        ? 'School Head account updated. Setup link reissued for email verification.'
-                        : 'School Head account updated.',
-                    'setupLink' => $setupLink,
-                    'expiresAt' => $setupLinkExpiresAt,
-                    'delivery' => $deliveryStatus,
-                    'deliveryMessage' => $deliveryMessage,
-                ],
-            ]);
+        return response()->json([
+            'data' => [
+                'account' => $this->serializeSchoolHeadAccount($account),
+                'message' => $emailChanged
+                    ? 'School Head account updated. Setup link reissued for email verification.'
+                    : 'School Head account updated.',
+                'setupLink' => $setupLink,
+                'expiresAt' => $setupLinkExpiresAt,
+                'delivery' => $deliveryStatus,
+                'deliveryMessage' => $deliveryMessage,
+            ],
+        ]);
         }
 
         if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
             return response()->json(
                 ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
                 Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        if (User::query()->where('school_id', $school->id)->exists()) {
+            return response()->json(
+                ['message' => 'A user account is already linked to this school. Update the existing School Head account instead of creating a new one.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
 
@@ -265,6 +278,8 @@ class SchoolHeadAccountController extends Controller
             $request->ip(),
             $request->userAgent(),
         );
+        $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
+        $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -283,7 +298,9 @@ class SchoolHeadAccountController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = 'Setup link email delivery failed. Share the setup link manually.';
+            $deliveryMessage = $exposeSetupLink
+                ? 'Setup link email delivery failed. Share the setup link manually.'
+                : 'Setup link email delivery failed. Please try again or contact an administrator.';
         }
 
         $this->loadLatestAccountSetupToken($account);
@@ -324,7 +341,7 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'setupLink' => $issuedSetup['setupUrl'],
+                'setupLink' => $exposeSetupLink ? $issuedSetup['setupUrl'] : null,
                 'expiresAt' => $issuedSetup['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
@@ -569,18 +586,13 @@ class SchoolHeadAccountController extends Controller
             ->values()
             ->all();
 
-        $deletedCount = 0;
+        $removedCount = 0;
         $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
+        $revocationSummaries = [];
 
-        DB::transaction(function () use ($accounts, $setupTokenStorageAvailable, &$deletedCount): void {
+        DB::transaction(function () use ($accounts, $setupTokenStorageAvailable, &$removedCount, &$revocationSummaries): void {
             foreach ($accounts as $account) {
-                $account->tokens()->delete();
-
-                if (Schema::hasTable('sessions')) {
-                    DB::table('sessions')
-                        ->where('user_id', $account->id)
-                        ->delete();
-                }
+                $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
 
                 if ($setupTokenStorageAvailable) {
                     $account->accountSetupTokens()->delete();
@@ -588,14 +600,28 @@ class SchoolHeadAccountController extends Controller
 
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
-                $account->delete();
-                $deletedCount += 1;
+
+                $account->forceFill([
+                    'account_status' => AccountStatus::ARCHIVED->value,
+                    'must_reset_password' => true,
+                    'password_changed_at' => null,
+                    'email_verified_at' => null,
+                    'school_id' => null,
+                ])->save();
+
+                $revocationSummaries[] = [
+                    'user_id' => (int) $account->id,
+                    'revoked_tokens' => $revocationSummary['revokedTokens'],
+                    'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+                ];
+
+                $removedCount += 1;
             }
         });
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
-            'action' => 'account.deleted',
+            'action' => 'account.removed',
             'auditable_type' => School::class,
             'auditable_id' => $school->id,
             'metadata' => [
@@ -604,9 +630,10 @@ class SchoolHeadAccountController extends Controller
                 'actor_role' => UserRoleResolver::MONITOR,
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
-                'deleted_user_ids' => $accountIds,
-                'deleted_emails' => $accountEmails,
+                'removed_user_ids' => $accountIds,
+                'removed_emails' => $accountEmails,
                 'reason' => $reason,
+                'revocations' => $revocationSummaries,
             ],
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
@@ -615,16 +642,16 @@ class SchoolHeadAccountController extends Controller
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'dashboard',
-            'eventType' => 'school_head_account.deleted',
+            'eventType' => 'school_head_account.removed',
             'schoolId' => (string) $school->id,
             'schoolCode' => (string) $school->school_code,
-            'deletedCount' => $deletedCount,
+            'removedCount' => $removedCount,
         ]));
 
         return response()->json([
             'data' => [
-                'message' => $deletedCount === 1 ? 'School Head account removed.' : 'School Head accounts removed.',
-                'deletedCount' => $deletedCount,
+                'message' => $removedCount === 1 ? 'School Head account removed.' : 'School Head accounts removed.',
+                'deletedCount' => $removedCount,
             ],
         ]);
     }
@@ -659,37 +686,21 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
-        $statusChangedToPendingSetup = false;
-        if ($account->email_verified_at !== null) {
-            $account->email_verified_at = null;
-        }
         if ($previousStatus !== AccountStatus::PENDING_SETUP) {
-            if ($reason === '') {
-                return response()->json(
-                    ['message' => 'Provide a reason before reissuing a setup link for an active account.'],
-                    Response::HTTP_UNPROCESSABLE_ENTITY,
-                );
-            }
-
-            $account->forceFill([
-                'account_status' => AccountStatus::PENDING_SETUP->value,
-                'must_reset_password' => true,
-                'password_changed_at' => null,
-                'email_verified_at' => null,
-            ])->save();
-
-            $statusChangedToPendingSetup = true;
-        } else {
-            $account->save();
+            return response()->json(
+                ['message' => 'Setup links can only be issued for accounts that still need initial setup. Use password reset for active accounts.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
         }
 
-        $revocationSummary = [
-            'revokedTokens' => 0,
-            'revokedWebSessions' => 0,
-        ];
-        if ($statusChangedToPendingSetup) {
-            $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
-        }
+        $account->forceFill([
+            'account_status' => AccountStatus::PENDING_SETUP->value,
+            'must_reset_password' => true,
+            'password_changed_at' => null,
+            'email_verified_at' => null,
+        ])->save();
+
+        $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
 
         $issuedSetup = $this->schoolHeadAccountSetupService->issue(
             $account,
@@ -715,7 +726,9 @@ class SchoolHeadAccountController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = 'Setup link email delivery failed. Share the setup link manually.';
+            $deliveryMessage = $exposeSetupLink
+                ? 'Setup link email delivery failed. Share the setup link manually.'
+                : 'Setup link email delivery failed. Please try again or contact an administrator.';
         }
 
         $this->loadLatestAccountSetupToken($account);
@@ -736,7 +749,6 @@ class SchoolHeadAccountController extends Controller
                 'school_code' => (string) $school->school_code,
                 'previous_status' => $previousStatus->value,
                 'new_status' => $account->accountStatus()->value,
-                'status_changed_to_pending_setup' => $statusChangedToPendingSetup,
                 'reason' => $reason !== '' ? $reason : 'setup_link_reissued',
                 'setup_link_expires_at' => $issuedSetup['expiresAt'],
                 'delivery_status' => $deliveryStatus,
@@ -761,10 +773,120 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'setupLink' => $issuedSetup['setupUrl'],
+                'setupLink' => $exposeSetupLink ? $issuedSetup['setupUrl'] : null,
                 'expiresAt' => $issuedSetup['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
+            ],
+        ]);
+    }
+
+    public function issuePasswordResetLink(
+        IssueSchoolHeadPasswordResetLinkRequest $request,
+        School $school,
+    ): JsonResponse {
+        $monitor = $this->requireMonitor($request);
+
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $status = $account->accountStatus();
+        if ($status !== AccountStatus::ACTIVE) {
+            return response()->json(
+                ['message' => 'Only active School Head accounts can receive password reset links.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $reason = trim($request->string('reason')->toString());
+
+        $expiresAt = CarbonImmutable::now()->addMinutes((int) config('auth.passwords.users.expire', 60));
+        $deliveryStatus = 'sent';
+        $deliveryMessage = 'Password reset link sent to the School Head email.';
+
+        if (MailDelivery::isSimulated()) {
+            $deliveryStatus = MailDelivery::simulatedStatus();
+            $deliveryMessage = MailDelivery::simulatedMessage('Password reset link was generated, but will not reach real inboxes.');
+        }
+
+        $token = Password::broker()->createToken($account);
+        $resetUrl = $this->buildPasswordResetUrl((string) $account->email, $token);
+
+        try {
+            $account->notify(new SchoolHeadPasswordResetNotification($resetUrl, $expiresAt));
+        } catch (\Throwable $exception) {
+            report($exception);
+            $deliveryStatus = 'failed';
+            $deliveryMessage = 'Password reset email delivery failed. Ask the School Head to retry forgot-password or contact an administrator.';
+        }
+
+        $exposeResetLink = $this->shouldExposeOneTimeSecrets();
+        $enforced = false;
+        $revocationSummary = [
+            'revokedTokens' => 0,
+            'revokedWebSessions' => 0,
+        ];
+
+        if ($deliveryStatus !== 'failed' || $exposeResetLink) {
+            $account->forceFill([
+                'must_reset_password' => true,
+            ])->save();
+
+            $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
+            $enforced = true;
+        }
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.password_reset_link_issued',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => $deliveryStatus === 'failed' ? 'failure' : 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'reason' => $reason,
+                'delivery_status' => $deliveryStatus,
+                'delivery_message' => $deliveryMessage,
+                'expires_at' => $expiresAt->toISOString(),
+                'enforced' => $enforced,
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_head_account.password_reset_link_issued',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'delivery' => $deliveryStatus,
+        ]));
+
+        return response()->json([
+            'data' => [
+                'account' => $this->serializeSchoolHeadAccount($account),
+                'expiresAt' => $expiresAt->toISOString(),
+                'delivery' => $deliveryStatus,
+                'deliveryMessage' => $deliveryMessage,
+                'resetLink' => $exposeResetLink ? $resetUrl : null,
+                'enforced' => $enforced,
+                'message' => $deliveryStatus === 'failed'
+                    ? 'Password reset email delivery failed.'
+                    : 'Password reset link issued.',
             ],
         ]);
     }
@@ -865,5 +987,41 @@ class SchoolHeadAccountController extends Controller
         if ($this->accountSetupTokensAvailable()) {
             $account->loadMissing('latestAccountSetupToken');
         }
+    }
+
+    private function shouldExposeOneTimeSecrets(): bool
+    {
+        if (app()->environment(['local', 'testing'])) {
+            return true;
+        }
+
+        if (MailDelivery::isSimulated()) {
+            return true;
+        }
+
+        return (bool) config('app.debug', false);
+    }
+
+    private function buildPasswordResetUrl(string $email, string $token): string
+    {
+        $frontend = trim((string) config('app.frontend_url', ''));
+        if ($frontend === '') {
+            $frontend = (string) config('app.url', 'http://127.0.0.1:8000');
+        }
+
+        $frontend = rtrim($frontend, '/');
+
+        $query = http_build_query(
+            [
+                'token' => $token,
+                'email' => $email,
+                'role' => UserRoleResolver::SCHOOL_HEAD,
+            ],
+            '',
+            '&',
+            PHP_QUERY_RFC3986,
+        );
+
+        return $frontend . '/#/reset-password?' . $query;
     }
 }

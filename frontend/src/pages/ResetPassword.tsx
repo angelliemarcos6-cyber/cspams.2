@@ -12,6 +12,7 @@ export function ResetPassword() {
   const location = useLocation();
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const { resetMonitorPassword, isAuthenticating } = useAuth();
+  const role = useMemo(() => (query.get("role") ?? "").trim().toLowerCase() === "school_head" ? "school_head" : "monitor", [query]);
 
   const [email, setEmail] = useState(query.get("email") ?? "");
   const [token, setToken] = useState(query.get("token") ?? "");
@@ -50,6 +51,7 @@ export function ResetPassword() {
 
     try {
       const payload = await resetMonitorPassword({
+        role,
         email: normalizedEmail,
         token: normalizedToken,
         password,
@@ -202,4 +204,3 @@ export function ResetPassword() {
     </div>
   );
 }
-

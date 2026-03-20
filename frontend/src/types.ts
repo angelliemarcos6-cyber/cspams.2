@@ -79,10 +79,20 @@ export interface SchoolHeadAccountStatusUpdateResult {
 
 export interface SchoolHeadSetupLinkResult {
   account: SchoolHeadAccountSummary;
-  setupLink: string;
+  setupLink: string | null;
   expiresAt: string;
   delivery: "sent" | "failed" | string;
   deliveryMessage: string;
+}
+
+export interface SchoolHeadPasswordResetLinkResult {
+  account: SchoolHeadAccountSummary;
+  resetLink: string | null;
+  expiresAt: string;
+  delivery: "sent" | "failed" | string;
+  deliveryMessage: string;
+  enforced: boolean;
+  message: string;
 }
 
 export interface SchoolHeadAccountActionVerificationCodeResult {
@@ -112,7 +122,7 @@ export interface SchoolHeadAccountProvisioningReceipt {
   email: string;
   mustResetPassword: boolean;
   accountStatus: AccountStatus | string;
-  setupLink: string;
+  setupLink: string | null;
   setupLinkExpiresAt: string;
   setupLinkDelivery: "sent" | "failed" | string;
   setupLinkDeliveryMessage: string;

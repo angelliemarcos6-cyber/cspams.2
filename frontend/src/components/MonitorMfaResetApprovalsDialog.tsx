@@ -24,7 +24,7 @@ interface MonitorMfaResetRequestsResponse {
 interface ApproveMonitorMfaResetResponse {
   status: string;
   requestId: number;
-  approvalToken: string;
+  approvalToken: string | null;
   approvalTokenExpiresAt: string;
   delivery?: string;
   deliveryMessage?: string;
@@ -34,7 +34,7 @@ interface ApproveMonitorMfaResetResponse {
 interface RecentApproval {
   requestId: number;
   requesterEmail: string;
-  approvalToken: string;
+  approvalToken: string | null;
   expiresAt: string;
   deliveryMessage: string | null;
   approvedAt: number;
@@ -102,11 +102,12 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
       );
 
       const requesterEmail = ticket.requester.email ?? "Unknown requester";
+      const approvalToken = typeof payload.approvalToken === "string" ? payload.approvalToken : null;
       setRecentApprovals((current) => [
         {
           requestId: Number(payload.requestId ?? ticket.id),
           requesterEmail,
-          approvalToken: payload.approvalToken,
+          approvalToken,
           expiresAt: payload.approvalTokenExpiresAt,
           deliveryMessage: typeof payload.deliveryMessage === "string" ? payload.deliveryMessage : null,
           approvedAt: Date.now(),
@@ -131,7 +132,7 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
     }
   };
 
-  const copyToken = async (approvalToken: string) => {
+  const copyToken = async (approvalToken: string | null) => {
     if (typeof navigator === "undefined" || !approvalToken) return;
     try {
       await navigator.clipboard.writeText(approvalToken);
@@ -223,7 +224,7 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
                 const isFresh = now - item.approvedAt < 60_000;
                 return (
                   <div
-                    key={`${item.requestId}-${item.approvalToken}`}
+                    key={`${item.requestId}-${item.approvalToken ?? "email"}`}
                     className="rounded-sm border border-slate-200 bg-white px-3 py-2"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
@@ -240,17 +241,23 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-xs text-slate-800">
-                          {item.approvalToken}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void copyToken(item.approvalToken)}
-                          className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                        >
-                          <ClipboardList className="h-3.5 w-3.5 text-primary-700" />
-                          {copiedToken === item.approvalToken ? "Copied" : "Copy"}
-                        </button>
+                        {item.approvalToken ? (
+                          <>
+                            <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-xs text-slate-800">
+                              {item.approvalToken}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void copyToken(item.approvalToken)}
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                            >
+                              <ClipboardList className="h-3.5 w-3.5 text-primary-700" />
+                              {copiedToken === item.approvalToken ? "Copied" : "Copy"}
+                            </button>
+                          </>
+                        ) : (
+                          <p className="text-xs font-semibold text-slate-600">Approval token sent via email.</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -329,4 +336,3 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
     </>
   );
 }
-

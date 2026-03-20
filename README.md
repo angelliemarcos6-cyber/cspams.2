@@ -37,14 +37,18 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
 
 - `monitor` signs in using email.
 - `school_head` signs in using a **6-digit school code**.
-- Monitor forgot-password / reset-by-email:
-  - `POST /api/auth/forgot-password`
-  - `POST /api/auth/reset-password`
+- Password reset by email (monitor + school head):
+  - `POST /api/auth/forgot-password` (optional: `role=monitor|school_head`)
+  - `POST /api/auth/reset-password` (optional: `role=monitor|school_head`)
+- Monitor dashboard School Head account recovery:
+  - `POST /api/dashboard/records/{school}/school-head-account/setup-link` (pending setup only)
+  - `POST /api/dashboard/records/{school}/school-head-account/password-reset-link` (active only; requires a reason)
+  - One-time links are returned only in local/testing/debug/simulated mail; production relies on email delivery metadata.
 - Monitor MFA reset recovery (when `CSPAMS_MONITOR_MFA_ENABLED=true`):
   - `POST /api/auth/mfa/reset/request` (submit request)
   - `POST /api/auth/mfa/reset/complete` (complete with approval token + generates new backup codes)
   - `GET /api/auth/mfa/reset/requests` (list pending requests for approval)
-  - `POST /api/auth/mfa/reset/requests/{ticket}/approve` (approve; returns approval token for secure sharing and attempts email delivery)
+  - `POST /api/auth/mfa/reset/requests/{ticket}/approve` (approve; attempts email delivery; approval token is returned only in local/testing/debug/simulated mail)
   - `POST /api/auth/mfa/backup-codes/regenerate` (authenticated; generates a new set)
 - If an account is marked `must_reset_password` and `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true`, sign-in is blocked until password reset is completed via:
   - `POST /api/auth/reset-required-password` (current password + new password)
@@ -195,7 +199,10 @@ After seeding:
   - Login: assigned 6-digit `school_code` (example: `900001`, `900002`, `900003`)
   - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
 
-For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`, users are marked with `must_reset_password = true` and (when `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true`) must complete `/api/auth/reset-required-password` before dashboard access. Their temporary password is `CSPAMS_SEED_TEMP_PASSWORD` (default: `Csp@123456`).
+For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`:
+
+- When `CSPAMS_REQUIRE_SETUP_LINK_FOR_SEEDED_SCHOOL_HEADS=true` (default), School Head users are created with `account_status = pending_setup` and must complete the setup-link onboarding flow before sign-in.
+- When `CSPAMS_REQUIRE_SETUP_LINK_FOR_SEEDED_SCHOOL_HEADS=false`, School Head users are created as `active` with the temporary password `CSPAMS_SEED_TEMP_PASSWORD` (default: `Csp@123456`).
 
 ## Troubleshooting Sign-in on a Fresh Clone (Linux/Windows)
 
