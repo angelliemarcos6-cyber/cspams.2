@@ -525,41 +525,18 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertNotSame('', (string) $loginNew->json('token'));
     }
 
-    public function test_resolving_school_head_account_falls_back_to_roles_when_account_type_is_missing(): void
+    public function test_account_type_column_rejects_null_values(): void
     {
         $this->seed();
 
         if (! Schema::hasColumn('users', 'account_type')) {
-            $this->markTestSkipped('School Head account_type column is not available.');
+            $this->markTestSkipped('Users account_type column is not available.');
         }
-
-        $monitorLogin = $this->postJson('/api/auth/login', [
-            'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
-        ]);
-        $monitorLogin->assertOk();
-        $monitorToken = (string) $monitorLogin->json('token');
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
-        /** @var School $school */
-        $school = School::query()->findOrFail($schoolHead->school_id);
 
+        $this->expectException(\Illuminate\Database\QueryException::class);
         $schoolHead->forceFill(['account_type' => null])->save();
-        $schoolHead->refresh();
-        $this->assertNull($schoolHead->account_type);
-
-        $verificationCodeIssue = $this->withToken($monitorToken)->postJson(
-            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
-            [
-                'targetStatus' => AccountStatus::SUSPENDED->value,
-            ],
-        );
-
-        $verificationCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
-
-        $schoolHead->refresh();
-        $this->assertNull($schoolHead->account_type);
     }
 }

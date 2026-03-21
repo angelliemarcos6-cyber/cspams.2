@@ -993,27 +993,10 @@ class SchoolHeadAccountController extends Controller
         }
 
         if (Schema::hasColumn('users', 'account_type')) {
-            /** @var User|null $account */
-            $account = (clone $query)
+            return $query
                 ->with('roles')
                 ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
                 ->first();
-
-            if ($account) {
-                return $account;
-            }
-
-            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
-
-            /** @var User|null $fallback */
-            $fallback = (clone $query)
-                ->with('roles')
-                ->whereHas('roles', static function ($builder) use ($aliases): void {
-                    $builder->whereIn('name', $aliases);
-                })
-                ->first();
-
-            return $fallback;
         }
 
         $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);

@@ -787,7 +787,16 @@ class AuthController extends Controller
         }
 
         $user = $setupToken->user()->with('school')->first();
-        if (! $user || ! UserRoleResolver::has($user, $role)) {
+        $supportsAccountSetup = false;
+        if ($user) {
+            if (Schema::hasColumn('users', 'account_type')) {
+                $supportsAccountSetup = $user->account_type === $role;
+            } else {
+                $supportsAccountSetup = UserRoleResolver::has($user, $role);
+            }
+        }
+
+        if (! $user || ! $supportsAccountSetup) {
             AuthAuditLogger::record(
                 $request,
                 'auth.account_setup.failed',
@@ -1885,14 +1894,9 @@ class AuthController extends Controller
                 ->orderByDesc('id');
 
             if (Schema::hasColumn('users', 'account_type')) {
-                /** @var User|null $accountTypeMatch */
-                $accountTypeMatch = (clone $baseQuery)
+                return $baseQuery
                     ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
                     ->first();
-
-                if ($accountTypeMatch) {
-                    return $accountTypeMatch;
-                }
             }
 
             $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -2670,6 +2674,16 @@ class AuthController extends Controller
             return null;
         }
 
+        if (Schema::hasColumn('users', 'account_type')) {
+            $accountType = is_string($user->account_type)
+                ? trim($user->account_type)
+                : null;
+
+            if (in_array($accountType, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
+                return $accountType;
+            }
+        }
+
         if (
             $roleHint !== null
             && in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)
@@ -2705,6 +2719,16 @@ class AuthController extends Controller
                 if ($ability === 'role:' . UserRoleResolver::SCHOOL_HEAD) {
                     return UserRoleResolver::SCHOOL_HEAD;
                 }
+            }
+        }
+
+        if (Schema::hasColumn('users', 'account_type')) {
+            $accountType = is_string($user->account_type)
+                ? trim($user->account_type)
+                : null;
+
+            if (in_array($accountType, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
+                return $accountType;
             }
         }
 
