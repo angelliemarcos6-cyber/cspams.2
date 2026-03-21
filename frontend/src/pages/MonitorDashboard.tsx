@@ -109,6 +109,14 @@ type PendingAccountAction =
       requireReason: boolean;
     }
   | {
+      kind: "email_change";
+      schoolId: string;
+      schoolName: string;
+      actionLabel: string;
+      payload: SchoolHeadAccountPayload;
+      previousEmail: string;
+    }
+  | {
       kind: "remove";
       schoolId: string;
       schoolName: string;
@@ -4518,6 +4526,10 @@ export function MonitorDashboard() {
         ? "deleted"
         : pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus)
           ? (String(pendingAccountAction.update.accountStatus).toLowerCase() as "suspended" | "locked" | "archived")
+          : pendingAccountAction.kind === "reset_password"
+            ? "password_reset"
+            : pendingAccountAction.kind === "email_change"
+              ? "email_change"
           : null;
 
     if (!targetStatus) return;
@@ -4553,8 +4565,9 @@ export function MonitorDashboard() {
     const requiresReason =
       pendingAccountAction.kind === "status" ||
       pendingAccountAction.kind === "remove" ||
-      ((pendingAccountAction.kind === "setup_link" || pendingAccountAction.kind === "reset_password") &&
-        pendingAccountAction.requireReason);
+      pendingAccountAction.kind === "reset_password" ||
+      pendingAccountAction.kind === "email_change" ||
+      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason);
     if (requiresReason && reason.length < 5) {
       setPendingAccountReasonError("Please provide a reason with at least 5 characters.");
       return;
@@ -4623,9 +4636,55 @@ export function MonitorDashboard() {
           reason.length > 0 ? reason : null,
         );
         await announceSchoolHeadPasswordResetLink(receipt, pendingAccountAction.schoolName);
-      } else {
-        const receipt = await issueSchoolHeadPasswordResetLink(pendingAccountAction.schoolId, reason);
+      } else if (pendingAccountAction.kind === "reset_password") {
+        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
+        const code = pendingAccountVerificationCode.trim();
+
+        if (!challengeId) {
+          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
+          return;
+        }
+
+        if (!/^\d{6}$/.test(code)) {
+          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
+          return;
+        }
+
+        const receipt = await issueSchoolHeadPasswordResetLink(pendingAccountAction.schoolId, {
+          reason,
+          verificationChallengeId: challengeId,
+          verificationCode: code,
+        });
         await announceSchoolHeadPasswordResetLink(receipt, pendingAccountAction.schoolName);
+      } else {
+        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
+        const code = pendingAccountVerificationCode.trim();
+
+        if (!challengeId) {
+          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
+          return;
+        }
+
+        if (!/^\d{6}$/.test(code)) {
+          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
+          return;
+        }
+
+        const result = await upsertSchoolHeadAccountProfile(pendingAccountAction.schoolId, {
+          ...pendingAccountAction.payload,
+          reason,
+          verificationChallengeId: challengeId,
+          verificationCode: code,
+        });
+
+        if (result.setupLink) {
+          await revealSetupLink(result.setupLink, pendingAccountAction.schoolName);
+        }
+
+        pushToast(result.message || `School Head account saved for ${pendingAccountAction.schoolName}.`, "success");
+        setEditingSchoolHeadAccountSchoolId(null);
+        closePendingAccountAction();
+        return;
       }
 
       closePendingAccountAction();
@@ -4633,6 +4692,8 @@ export function MonitorDashboard() {
       const message = err instanceof Error ? err.message : "Unable to complete account action.";
       if (
         pendingAccountAction.kind === "remove" ||
+        pendingAccountAction.kind === "reset_password" ||
+        pendingAccountAction.kind === "email_change" ||
         (pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus))
       ) {
         setPendingAccountVerificationError(message);
@@ -6859,13 +6920,31 @@ export function MonitorDashboard() {
                                       return;
                                     }
 
+                                    const previousEmail = (account?.email ?? "").trim().toLowerCase();
+                                    const nextEmail = email.toLowerCase();
+                                    if (account && previousEmail && previousEmail !== nextEmail) {
+                                      setSchoolHeadAccountDraftError("");
+                                      openPendingAccountAction({
+                                        kind: "email_change",
+                                        schoolId: resolvedRecord.id,
+                                        schoolName: resolvedRecord.schoolName,
+                                        actionLabel: "Confirm Email Change",
+                                        payload: {
+                                          name,
+                                          email: nextEmail,
+                                        },
+                                        previousEmail,
+                                      });
+                                      return;
+                                    }
+
                                     const actionKey = `${resolvedRecord.id}:profile`;
                                     setAccountActionKey(actionKey);
                                     setSchoolHeadAccountDraftError("");
                                     try {
                                       const result = await upsertSchoolHeadAccountProfile(resolvedRecord.id, {
                                         name,
-                                        email,
+                                        email: nextEmail,
                                       });
 
                                       if (result.setupLink) {
@@ -8067,9 +8146,13 @@ export function MonitorDashboard() {
                     ? isDeactivationStatus(pendingAccountAction.update.accountStatus)
                       ? `Reason and confirmation code required for ${pendingAccountAction.schoolName}.`
                       : `Reason required for ${pendingAccountAction.schoolName}.`
-                    : pendingAccountAction.requireReason
-                      ? `Reason required to send a password reset link for ${pendingAccountAction.schoolName}.`
-                      : `Optionally add a note before sending a password reset link for ${pendingAccountAction.schoolName}.`}
+                    : pendingAccountAction.kind === "reset_password"
+                      ? `Reason and confirmation code required to send a password reset link for ${pendingAccountAction.schoolName}.`
+                      : pendingAccountAction.kind === "email_change"
+                        ? `Reason and confirmation code required to change the School Head email for ${pendingAccountAction.schoolName}.`
+                        : pendingAccountAction.requireReason
+                          ? `Reason required to send a setup link for ${pendingAccountAction.schoolName}.`
+                          : `Optionally add a note before sending a setup link for ${pendingAccountAction.schoolName}.`}
                 </p>
               </div>
               <button
@@ -8105,6 +8188,8 @@ export function MonitorDashboard() {
             </div>
 
             {(pendingAccountAction.kind === "remove" ||
+              pendingAccountAction.kind === "reset_password" ||
+              pendingAccountAction.kind === "email_change" ||
               (pendingAccountAction.kind === "status" &&
                 isDeactivationStatus(pendingAccountAction.update.accountStatus))) && (
               <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-3">
@@ -8176,9 +8261,12 @@ export function MonitorDashboard() {
                   (pendingAccountReason.trim().length < 5 &&
                     (pendingAccountAction.kind === "status" ||
                       pendingAccountAction.kind === "remove" ||
-                      ((pendingAccountAction.kind === "setup_link" || pendingAccountAction.kind === "reset_password") &&
-                        pendingAccountAction.requireReason))) ||
+                      pendingAccountAction.kind === "reset_password" ||
+                      pendingAccountAction.kind === "email_change" ||
+                      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason))) ||
                   ((pendingAccountAction.kind === "remove" ||
+                    pendingAccountAction.kind === "reset_password" ||
+                    pendingAccountAction.kind === "email_change" ||
                     (pendingAccountAction.kind === "status" &&
                       isDeactivationStatus(pendingAccountAction.update.accountStatus))) &&
                     (!pendingAccountVerificationChallenge || !/^\d{6}$/.test(pendingAccountVerificationCode.trim())))

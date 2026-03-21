@@ -138,7 +138,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted",
+    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (
     schoolId: string,
@@ -146,7 +146,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
-    reason: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
   ) => Promise<SchoolHeadPasswordResetLinkResult>;
   upsertSchoolHeadAccountProfile: (
     schoolId: string,
@@ -726,7 +726,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
     async (
       schoolId: string,
-      targetStatus: "suspended" | "locked" | "archived" | "deleted",
+      targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
     ): Promise<SchoolHeadAccountActionVerificationCodeResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
@@ -809,14 +809,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const issueSchoolHeadPasswordResetLink = useCallback(
-    async (schoolId: string, reason: string): Promise<SchoolHeadPasswordResetLinkResult> => {
+    async (
+      schoolId: string,
+      payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    ): Promise<SchoolHeadPasswordResetLinkResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      const trimmedReason = reason.trim();
+      const trimmedReason = payload.reason.trim();
+      const verificationChallengeId = payload.verificationChallengeId.trim();
+      const verificationCode = payload.verificationCode.trim();
+
       if (trimmedReason.length < 5) {
         throw new Error("Reason must be at least 5 characters.");
+      }
+
+      if (!verificationChallengeId) {
+        throw new Error("Verification challenge is required.");
+      }
+
+      if (!/^\d{6}$/.test(verificationCode)) {
+        throw new Error("Verification code must be a 6-digit number.");
       }
 
       setIsSaving(true);
@@ -830,6 +844,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             token,
             body: {
               reason: trimmedReason,
+              verificationChallengeId,
+              verificationCode,
             },
           },
         );
@@ -871,6 +887,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       const name = payload.name?.trim() ?? "";
       const email = payload.email?.trim() ?? "";
+      const reason = payload.reason?.trim() || undefined;
+      const verificationChallengeId = payload.verificationChallengeId?.trim() || undefined;
+      const verificationCode = payload.verificationCode?.trim() || undefined;
       if (!name || !email) {
         throw new Error("Account name and email are required.");
       }
@@ -887,6 +906,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
             body: {
               name,
               email,
+              reason,
+              verificationChallengeId,
+              verificationCode,
             },
           },
         );

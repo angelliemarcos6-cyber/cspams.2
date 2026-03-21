@@ -44,6 +44,9 @@ export interface SchoolRecord {
 export interface SchoolHeadAccountPayload {
   name: string;
   email: string;
+  reason?: string;
+  verificationChallengeId?: string;
+  verificationCode?: string;
 }
 
 export interface SchoolHeadAccountSummary {
