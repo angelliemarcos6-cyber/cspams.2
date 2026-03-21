@@ -174,12 +174,12 @@ class SchoolHeadAccountController extends Controller
 
             if ($emailChanged) {
                 $updates['email_verified_at'] = null;
+                $updates['must_reset_password'] = true;
+                $updates['password_changed_at'] = null;
             }
 
             if ($reissueAllowed) {
                 $updates['account_status'] = AccountStatus::PENDING_SETUP->value;
-                $updates['must_reset_password'] = true;
-                $updates['password_changed_at'] = null;
             }
 
             $account->forceFill($updates)->save();
@@ -460,8 +460,12 @@ class SchoolHeadAccountController extends Controller
             $nextStatus === AccountStatus::ACTIVE->value &&
             ($account->must_reset_password || $account->password_changed_at === null)
         ) {
+            $message = $previousStatus === AccountStatus::PENDING_SETUP
+                ? 'This account has not completed setup yet. Reissue the setup link instead.'
+                : 'Password reset is required before activation. Issue a password reset link first.';
+
             return response()->json(
-                ['message' => 'This account has not completed setup yet. Reissue the setup link instead.'],
+                ['message' => $message],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -853,9 +857,9 @@ class SchoolHeadAccountController extends Controller
         }
 
         $status = $account->accountStatus();
-        if ($status !== AccountStatus::ACTIVE) {
+        if ($status === AccountStatus::PENDING_SETUP) {
             return response()->json(
-                ['message' => 'Only active School Head accounts can receive password reset links.'],
+                ['message' => 'School Head accounts pending setup should use setup links instead of password reset links.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1008,10 +1012,6 @@ class SchoolHeadAccountController extends Controller
                     $builder->whereIn('name', $aliases);
                 })
                 ->first();
-
-            if ($fallback) {
-                $fallback->forceFill(['account_type' => UserRoleResolver::SCHOOL_HEAD])->save();
-            }
 
             return $fallback;
         }

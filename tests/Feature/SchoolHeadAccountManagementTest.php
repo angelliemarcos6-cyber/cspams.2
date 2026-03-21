@@ -346,7 +346,186 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(AccountStatus::LOCKED->value, $schoolHead->accountStatus()->value);
     }
 
-    public function test_resolving_school_head_account_backfills_account_type_when_missing(): void
+    public function test_locked_school_head_email_change_forces_password_reset_and_blocks_old_credentials_after_reactivation(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->with('school')
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $this->assertNotSame('', $schoolCode);
+        $oldPassword = $this->demoPasswordForLogin('school_head', $schoolCode);
+
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $lockCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::LOCKED->value,
+            ],
+        );
+
+        $lockCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $lockChallengeId = (string) $lockCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $lockChallengeId);
+
+        $lockAccount = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::LOCKED->value,
+                'reason' => 'Account locked for email ownership transfer.',
+                'verificationChallengeId' => $lockChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $lockAccount->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value);
+
+        $emailCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'email_change',
+            ],
+        );
+
+        $emailCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $emailChallengeId = (string) $emailCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $emailChallengeId);
+
+        $emailChange = $this->withToken($monitorToken)->putJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/profile",
+            [
+                'name' => $schoolHead->name,
+                'email' => 'transferred.schoolhead@cspams.local',
+                'reason' => 'Transfer account ownership to a new School Head.',
+                'verificationChallengeId' => $emailChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $emailChange->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value)
+            ->assertJsonPath('data.account.mustResetPassword', true)
+            ->assertJsonPath('data.setupLink', null);
+
+        $schoolHead->refresh();
+        $this->assertSame('transferred.schoolhead@cspams.local', $schoolHead->email);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->password_changed_at);
+
+        $reactivateAttempt = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::ACTIVE->value,
+                'reason' => 'Reactivated after email transfer; password reset required.',
+            ],
+        );
+
+        $reactivateAttempt->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Password reset is required before activation. Issue a password reset link first.');
+
+        $resetCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'password_reset',
+            ],
+        );
+
+        $resetCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $resetChallengeId = (string) $resetCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $resetChallengeId);
+
+        $resetLink = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/password-reset-link",
+            [
+                'reason' => 'Transfer requires password reset.',
+                'verificationChallengeId' => $resetChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $resetLink->assertOk();
+        $resetUrl = (string) $resetLink->json('data.resetLink');
+        $this->assertNotSame('', $resetUrl);
+
+        $urlParts = parse_url($resetUrl);
+        $this->assertIsArray($urlParts);
+
+        $query = [];
+        $fragment = (string) ($urlParts['fragment'] ?? '');
+        $fragmentQuery = '';
+        if (str_contains($fragment, '?')) {
+            [, $fragmentQuery] = explode('?', $fragment, 2);
+        }
+        parse_str($fragmentQuery, $query);
+
+        $token = (string) ($query['token'] ?? '');
+        $email = (string) ($query['email'] ?? '');
+        $role = (string) ($query['role'] ?? '');
+
+        $this->assertNotSame('', $token);
+        $this->assertSame('transferred.schoolhead@cspams.local', $email);
+        $this->assertSame('school_head', $role);
+
+        $newPassword = 'NewPassword123!';
+
+        $resetPassword = $this->postJson('/api/auth/reset-password', [
+            'role' => $role,
+            'email' => $email,
+            'token' => $token,
+            'password' => $newPassword,
+            'password_confirmation' => $newPassword,
+        ]);
+
+        $resetPassword->assertOk()
+            ->assertJsonPath('message', 'Password reset successfully. Please sign in with your new password.');
+
+        $activate = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::ACTIVE->value,
+                'reason' => 'Activated after password reset completion.',
+            ],
+        );
+
+        $activate->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value);
+
+        $loginOld = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $oldPassword,
+        ]);
+
+        $loginOld->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid school code or password.');
+
+        $loginNew = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $newPassword,
+        ]);
+
+        $loginNew->assertOk();
+        $this->assertNotSame('', (string) $loginNew->json('token'));
+    }
+
+    public function test_resolving_school_head_account_falls_back_to_roles_when_account_type_is_missing(): void
     {
         $this->seed();
 
@@ -378,9 +557,9 @@ class SchoolHeadAccountManagementTest extends TestCase
             ],
         );
 
-        $verificationCodeIssue->assertOk();
+        $verificationCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
 
         $schoolHead->refresh();
-        $this->assertSame('school_head', $schoolHead->account_type);
+        $this->assertNull($schoolHead->account_type);
     }
 }

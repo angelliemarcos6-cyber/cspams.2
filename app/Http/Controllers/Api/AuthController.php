@@ -465,14 +465,16 @@ class AuthController extends Controller
             );
         }
 
-        if (($inactiveResponse = $this->rejectInactiveAccount(
-            $request,
-            $user,
-            $role,
-            $email,
-            'auth.reset_password.failed',
-        )) instanceof JsonResponse) {
-            return $inactiveResponse;
+        if (! $user->canAuthenticate() && ! $user->must_reset_password) {
+            if (($inactiveResponse = $this->rejectInactiveAccount(
+                $request,
+                $user,
+                $role,
+                $email,
+                'auth.reset_password.failed',
+            )) instanceof JsonResponse) {
+                return $inactiveResponse;
+            }
         }
 
         $revocationSummary = ['revokedTokens' => 0, 'revokedWebSessions' => 0];
@@ -1860,9 +1862,8 @@ class AuthController extends Controller
             }
 
             $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
-            $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
 
-            return User::query()
+            $baseQuery = User::query()
                 ->select([
                     'id',
                     'name',
@@ -1881,10 +1882,25 @@ class AuthController extends Controller
                 ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
                     $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
                 })
+                ->orderByDesc('id');
+
+            if (Schema::hasColumn('users', 'account_type')) {
+                /** @var User|null $accountTypeMatch */
+                $accountTypeMatch = (clone $baseQuery)
+                    ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
+                    ->first();
+
+                if ($accountTypeMatch) {
+                    return $accountTypeMatch;
+                }
+            }
+
+            $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+
+            return $baseQuery
                 ->whereHas('roles', function ($builder) use ($roleAliases): void {
                     $builder->whereIn('name', $roleAliases);
                 })
-                ->orderByDesc('id')
                 ->first();
         }
 
