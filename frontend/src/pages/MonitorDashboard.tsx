@@ -1906,28 +1906,29 @@ export function MonitorDashboard() {
     window.prompt(`Copy the ${linkLabel.toLowerCase()} for ${schoolName}:`, trimmedLink);
   };
 
-  const announceSchoolHeadPasswordResetLink = async (
+  const announceSchoolHeadAccountLink = async (
     receipt: { setupLink?: string | null; resetLink?: string | null; delivery?: unknown; deliveryMessage?: string },
     schoolName: string,
+    linkLabel: "Setup link" | "Password reset link",
   ) => {
     const normalizedDelivery = String(receipt.delivery ?? "").toLowerCase();
     const deliveryFailed = normalizedDelivery === "failed";
 
     pushToast(
       deliveryFailed
-        ? `Password reset link generated for ${schoolName}. Delivery failed.`
-        : `Password reset link sent for ${schoolName}.`,
+        ? `${linkLabel} generated for ${schoolName}. Delivery failed.`
+        : `${linkLabel} sent for ${schoolName}.`,
       deliveryFailed ? "warning" : "success",
     );
 
     const deliveryMessage = receipt.deliveryMessage?.trim();
     if (deliveryMessage) {
-      pushToast(deliveryMessage.replace(/setup link/gi, "password reset link"), deliveryFailed ? "warning" : "info");
+      pushToast(deliveryMessage, deliveryFailed ? "warning" : "info");
     }
 
-    const oneTimeLink = receipt.resetLink ?? receipt.setupLink ?? null;
+    const oneTimeLink = linkLabel === "Password reset link" ? receipt.resetLink ?? null : receipt.setupLink ?? null;
     if (oneTimeLink) {
-      await revealSetupLink(oneTimeLink, schoolName, "Password reset link");
+      await revealSetupLink(oneTimeLink, schoolName, linkLabel);
     }
   };
 
@@ -4635,7 +4636,7 @@ export function MonitorDashboard() {
           pendingAccountAction.schoolId,
           reason.length > 0 ? reason : null,
         );
-        await announceSchoolHeadPasswordResetLink(receipt, pendingAccountAction.schoolName);
+        await announceSchoolHeadAccountLink(receipt, pendingAccountAction.schoolName, "Setup link");
       } else if (pendingAccountAction.kind === "reset_password") {
         const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
         const code = pendingAccountVerificationCode.trim();
@@ -4655,7 +4656,7 @@ export function MonitorDashboard() {
           verificationChallengeId: challengeId,
           verificationCode: code,
         });
-        await announceSchoolHeadPasswordResetLink(receipt, pendingAccountAction.schoolName);
+        await announceSchoolHeadAccountLink(receipt, pendingAccountAction.schoolName, "Password reset link");
       } else {
         const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
         const code = pendingAccountVerificationCode.trim();
@@ -4733,32 +4734,24 @@ export function MonitorDashboard() {
     }
 
     const accountStatus = String(account.accountStatus ?? "").toLowerCase();
-    if (accountStatus === "archived") {
-      pushToast("Archived accounts cannot receive password reset links. Activate the account first.", "warning");
-      return;
-    }
-    if (accountStatus === "active") {
+    if (accountStatus !== "pending_setup") {
       openPendingAccountAction({
         kind: "reset_password",
         schoolId: record.id,
         schoolName: record.schoolName,
-        actionLabel: "Reset Password",
+        actionLabel: "Send Password Reset Link",
         requireReason: true,
       });
       return;
     }
-    if (accountStatus !== "pending_setup") {
-      pushToast("Only pending setup or active accounts can receive password reset links.", "warning");
-      return;
-    }
 
-    const actionKey = `${record.id}:reset-password`;
+    const actionKey = `${record.id}:setup-link`;
     setAccountActionKey(actionKey);
     try {
       const receipt = await issueSchoolHeadSetupLink(record.id, null);
-      await announceSchoolHeadPasswordResetLink(receipt, record.schoolName);
+      await announceSchoolHeadAccountLink(receipt, record.schoolName, "Setup link");
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to send password reset link.", "warning");
+      pushToast(err instanceof Error ? err.message : "Unable to send setup link.", "warning");
     } finally {
       setAccountActionKey(null);
     }
@@ -7003,19 +6996,19 @@ export function MonitorDashboard() {
                                   <button
                                     type="button"
                                     onClick={() => void handleIssueSchoolHeadSetupLink(resolvedRecord)}
-                                    disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
+                                    disabled={isRowSaving || isSaving}
                                     className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-primary-200 bg-primary-50 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
                                     title={
-                                      normalizedAccountStatus === "archived"
-                                        ? "Reset Password unavailable (archived account)"
-                                        : "Reset Password"
+                                      normalizedAccountStatus === "pending_setup"
+                                        ? "Send Setup Link"
+                                        : "Send Password Reset Link"
                                     }
                                   >
                                     <RefreshCw className="h-4 w-4" />
                                     <span className="sr-only">
-                                      {normalizedAccountStatus === "archived"
-                                        ? "Reset Password unavailable"
-                                        : "Reset Password"}
+                                      {normalizedAccountStatus === "pending_setup"
+                                        ? "Send Setup Link"
+                                        : "Send Password Reset Link"}
                                     </span>
                                   </button>
                                 )}
