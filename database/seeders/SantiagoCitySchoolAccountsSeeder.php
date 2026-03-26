@@ -112,9 +112,19 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
 
     private function seedTempPassword(): string
     {
-        $password = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD', 'Csp@123456'));
+        $configured = trim((string) env('CSPAMS_SEED_TEMP_PASSWORD'));
+        if ($configured !== '') {
+            return $configured;
+        }
 
-        return $password !== '' ? $password : 'Csp@123456';
+        $appKey = (string) config('app.key');
+        if ($appKey === '') {
+            return 'Seed@' . Str::upper(Str::random(10)) . '!';
+        }
+
+        $fingerprint = strtoupper(substr(hash_hmac('sha256', 'seed-temp-password', $appKey), 0, 10));
+
+        return 'Seed@' . $fingerprint . '!';
     }
 
     /**

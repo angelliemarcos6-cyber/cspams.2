@@ -7,8 +7,8 @@ use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
+use App\Http\Middleware\EnsureActiveAccount;
 use App\Http\Middleware\InstrumentStudentCrudTiming;
-use App\Support\Auth\ApiUserResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -28,7 +28,7 @@ Route::prefix('auth')->group(function (): void {
     Route::post('/mfa/reset/complete', [AuthController::class, 'completeMonitorMfaReset'])
         ->middleware('throttle:auth-mfa-reset-complete');
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/refresh', [AuthController::class, 'refreshToken'])
@@ -47,15 +47,11 @@ Route::prefix('auth')->group(function (): void {
     });
 });
 
-Route::middleware('auth:sanctum')->post('/broadcasting/auth', static function (Request $request) {
-    if (! ApiUserResolver::fromRequest($request)) {
-        return response()->json(['message' => 'Unauthenticated.'], 401);
-    }
-
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->post('/broadcasting/auth', static function (Request $request) {
     return Broadcast::auth($request);
 });
 
-Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void {
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboard')->group(function (): void {
     Route::get('/records', [SchoolRecordController::class, 'index']);
     Route::post('/records', [SchoolRecordController::class, 'store']);
     Route::post('/records/bulk-import', [SchoolRecordController::class, 'bulkImport']);
@@ -96,7 +92,7 @@ Route::middleware('auth:sanctum')->prefix('dashboard')->group(function (): void 
     Route::delete('/teachers/{teacher}', [TeacherRecordController::class, 'destroy']);
 });
 
-Route::middleware('auth:sanctum')->prefix('indicators')->group(function (): void {
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicators')->group(function (): void {
     Route::get('/academic-years', [IndicatorSubmissionController::class, 'academicYears']);
     Route::get('/metrics', [IndicatorSubmissionController::class, 'metrics']);
     Route::get('/submissions', [IndicatorSubmissionController::class, 'index']);
@@ -109,7 +105,7 @@ Route::middleware('auth:sanctum')->prefix('indicators')->group(function (): void
     Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
 });
 
-Route::middleware('auth:sanctum')->prefix('notifications')->group(function (): void {
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('notifications')->group(function (): void {
     Route::get('/', [NotificationController::class, 'index']);
     Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);

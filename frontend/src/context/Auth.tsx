@@ -4,11 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest, isApiError } from "@/lib/api";
+import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -120,11 +119,6 @@ interface AuthContextType {
   revokeOtherSessions: () => Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }>;
 }
 
-interface StoredSession {
-  user: SessionUser;
-  token: string;
-}
-
 interface AuthenticatedResponse {
   token?: string;
   user: SessionUser;
@@ -181,73 +175,6 @@ function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequi
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const SESSION_KEY = "cspams.auth.session.v2";
-const LEGACY_SESSION_KEY = "cspams.auth.session";
-const REMOTE_LOGOUT_QUEUE_KEY = "cspams.auth.pending_remote_logout.v2";
-const LEGACY_REMOTE_LOGOUT_QUEUE_KEY = "cspams.auth.pending_remote_logout";
-const LOGOUT_REQUEST_TIMEOUT_MS = 4000;
-const LOGOUT_RETRY_BASE_MS = 2000;
-const LOGOUT_RETRY_MAX_MS = 60000;
-
-interface PendingRemoteLogout {
-  token: string;
-  queuedAt: number;
-  attempts: number;
-  lastAttemptAt: number;
-}
-
-function readSessionStorageItem(key: string): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    return window.sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeSessionStorageItem(key: string, value: string | null) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    if (value === null) {
-      window.sessionStorage.removeItem(key);
-      return;
-    }
-
-    window.sessionStorage.setItem(key, value);
-  } catch {
-    // Ignore storage failures in restricted browser contexts.
-  }
-}
-
-function readLocalStorageItem(key: string): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function removeLocalStorageItem(key: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // Ignore storage failures in restricted browser contexts.
-  }
-}
 
 function normalizeRole(role: string): Exclude<UserRole, null> {
   return role === "monitor" ? "monitor" : "school_head";
@@ -260,302 +187,53 @@ function normalizeUser(user: SessionUser): SessionUser {
   };
 }
 
-function parseStoredSession(raw: string | null): StoredSession | null {
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as { user?: SessionUser; token?: unknown };
-    if (!parsed || typeof parsed.user !== "object" || !parsed.user) {
-      return null;
-    }
-
-    const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
-    if (!token) {
-      return null;
-    }
-
-    return {
-      user: normalizeUser(parsed.user),
-      token,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parsePendingRemoteLogout(raw: string | null): PendingRemoteLogout | null {
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<PendingRemoteLogout>;
-    if (!parsed || typeof parsed !== "object") {
-      return null;
-    }
-
-    const token = typeof parsed.token === "string" ? parsed.token.trim() : "";
-    const queuedAt = Number(parsed.queuedAt);
-    const attempts = Number(parsed.attempts);
-    const lastAttemptAt = Number(parsed.lastAttemptAt);
-    if (
-      !token ||
-      !Number.isFinite(queuedAt) ||
-      !Number.isFinite(attempts) ||
-      !Number.isFinite(lastAttemptAt)
-    ) {
-      return null;
-    }
-
-    return {
-      token,
-      queuedAt,
-      attempts: Math.max(0, Math.floor(attempts)),
-      lastAttemptAt,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function createStoredSession(user: SessionUser, rawToken: unknown): StoredSession {
-  const token = typeof rawToken === "string" ? rawToken.trim() : "";
-  if (!token) {
-    throw new Error("Authentication token was not issued. Please sign in again.");
-  }
-
-  return {
-    user: normalizeUser(user),
-    token,
-  };
-}
-
-function readStoredSession(): StoredSession | null {
-  const sessionScoped = parseStoredSession(readSessionStorageItem(SESSION_KEY));
-  if (sessionScoped) {
-    return sessionScoped;
-  }
-
-  const legacyShared = parseStoredSession(readLocalStorageItem(LEGACY_SESSION_KEY));
-  if (legacyShared) {
-    writeSessionStorageItem(SESSION_KEY, JSON.stringify(legacyShared));
-    removeLocalStorageItem(LEGACY_SESSION_KEY);
-    return legacyShared;
-  }
-
-  return null;
-}
-
-function writeStoredSession(session: StoredSession | null) {
-  if (!session) {
-    writeSessionStorageItem(SESSION_KEY, null);
-    removeLocalStorageItem(LEGACY_SESSION_KEY);
-    return;
-  }
-
-  writeSessionStorageItem(SESSION_KEY, JSON.stringify(session));
-  removeLocalStorageItem(LEGACY_SESSION_KEY);
-}
-
-function readPendingRemoteLogout(): PendingRemoteLogout | null {
-  const sessionScoped = parsePendingRemoteLogout(readSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY));
-  if (sessionScoped) {
-    return sessionScoped;
-  }
-
-  const legacyShared = parsePendingRemoteLogout(readLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY));
-  if (legacyShared) {
-    writeSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY, JSON.stringify(legacyShared));
-    removeLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY);
-    return legacyShared;
-  }
-
-  return null;
-}
-
-function writePendingRemoteLogout(entry: PendingRemoteLogout | null) {
-  if (!entry) {
-    writeSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY, null);
-    removeLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY);
-    return;
-  }
-
-  writeSessionStorageItem(REMOTE_LOGOUT_QUEUE_KEY, JSON.stringify(entry));
-  removeLocalStorageItem(LEGACY_REMOTE_LOGOUT_QUEUE_KEY);
-}
-
-function nextLogoutRetryDelayMs(attempts: number): number {
-  const safeAttempts = Math.max(0, Math.floor(attempts));
-  const multiplier = 2 ** Math.min(safeAttempts, 6);
-  return Math.min(LOGOUT_RETRY_BASE_MS * multiplier, LOGOUT_RETRY_MAX_MS);
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<StoredSession | null>(() => readStoredSession());
-  // Restore instantly from session storage to avoid blocking the UI on `/api/auth/me`
-  // (especially on free-tier hosts that can cold start).
-  const [isLoading] = useState<boolean>(false);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const logoutRetryTimerRef = useRef<number | null>(null);
-  const logoutInFlightRef = useRef(false);
-
-  const clearSession = useCallback(() => {
-    setSession(null);
-    writeStoredSession(null);
-  }, []);
-
-  const clearLogoutRetryTimer = useCallback(() => {
-    if (logoutRetryTimerRef.current !== null) {
-      window.clearTimeout(logoutRetryTimerRef.current);
-      logoutRetryTimerRef.current = null;
-    }
-  }, []);
-
-  const attemptRemoteLogout = useCallback(async (): Promise<boolean> => {
-    const pending = readPendingRemoteLogout();
-    if (!pending) {
-      return true;
-    }
-
-    if (logoutInFlightRef.current) {
-      return false;
-    }
-
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      writePendingRemoteLogout({
-        token: pending.token,
-        queuedAt: pending.queuedAt,
-        attempts: pending.attempts + 1,
-        lastAttemptAt: Date.now(),
-      });
-      return false;
-    }
-
-    logoutInFlightRef.current = true;
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), LOGOUT_REQUEST_TIMEOUT_MS);
-
-    try {
-      await apiRequest("/api/auth/logout", {
-        method: "POST",
-        signal: controller.signal,
-        token: pending.token,
-      });
-
-      writePendingRemoteLogout(null);
-      return true;
-    } catch (error) {
-      // If the server already considers this client logged out,
-      // clear the queue so stale retries cannot revoke a new session later.
-      if (isApiError(error) && (error.status === 401 || error.status === 419)) {
-        writePendingRemoteLogout(null);
-        return true;
-      }
-
-      writePendingRemoteLogout({
-        token: pending.token,
-        queuedAt: pending.queuedAt,
-        attempts: pending.attempts + 1,
-        lastAttemptAt: Date.now(),
-      });
-      return false;
-    } finally {
-      window.clearTimeout(timeout);
-      logoutInFlightRef.current = false;
-    }
-  }, []);
-
-  const flushPendingRemoteLogout = useCallback(async (): Promise<boolean> => {
-    clearLogoutRetryTimer();
-
-    const pending = readPendingRemoteLogout();
-    if (!pending) {
-      return true;
-    }
-
-    const success = await attemptRemoteLogout();
-    if (success) {
-      return true;
-    }
-
-    const nextPending = readPendingRemoteLogout();
-    if (!nextPending) {
-      return true;
-    }
-
-    const delay = nextLogoutRetryDelayMs(nextPending.attempts);
-    logoutRetryTimerRef.current = window.setTimeout(() => {
-      void flushPendingRemoteLogout();
-    }, delay);
-
-    return false;
-  }, [attemptRemoteLogout, clearLogoutRetryTimer]);
 
   useEffect(() => {
-    const initialSession = readStoredSession();
-    if (!initialSession) {
-      return;
-    }
-
     const controller = new AbortController();
     let active = true;
 
-    const restoreSession = async () => {
+    const restore = async () => {
       try {
         const payload = await apiRequest<MeResponse>("/api/auth/me", {
+          token: COOKIE_SESSION_TOKEN,
           signal: controller.signal,
-          token: initialSession.token,
         });
 
         if (!active) return;
-
-        const normalizedSession: StoredSession = {
-          user: normalizeUser(payload.user),
-          token: initialSession.token,
-        };
-
-        setSession(normalizedSession);
-        writeStoredSession(normalizedSession);
-      } catch {
+        setUser(normalizeUser(payload.user));
+      } catch (err) {
         if (!active) return;
-        clearSession();
+        if (isApiError(err) && (err.status === 401 || err.status === 403)) {
+          setUser(null);
+        } else if (!(err instanceof DOMException && err.name === "AbortError")) {
+          setUser(null);
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
       }
     };
 
-    void restoreSession();
+    void restore();
 
     return () => {
       active = false;
       controller.abort();
     };
-  }, [clearSession]);
-
-  useEffect(() => {
-    const handleOnline = () => {
-      void flushPendingRemoteLogout();
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState !== "visible") return;
-      void flushPendingRemoteLogout();
-    };
-
-    void flushPendingRemoteLogout();
-
-    window.addEventListener("online", handleOnline);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      clearLogoutRetryTimer();
-      window.removeEventListener("online", handleOnline);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [clearLogoutRetryTimer, flushPendingRemoteLogout]);
+  }, []);
 
   const login = useCallback(async ({ role, login: loginValue, password }: LoginInput): Promise<LoginResult> => {
     setIsAuthenticating(true);
     try {
       const payload = await apiRequest<LoginResponse>("/api/auth/login", {
         method: "POST",
+        token: COOKIE_SESSION_TOKEN,
         body: {
           role,
           login: loginValue,
@@ -578,47 +256,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const nextSession = createStoredSession(payload.user, payload.token);
+      const normalizedUser = normalizeUser(payload.user);
+      setUser(normalizedUser);
 
-      setSession(nextSession);
-      writeStoredSession(nextSession);
-      writePendingRemoteLogout(null);
-      clearLogoutRetryTimer();
       return {
         status: "authenticated",
-        user: nextSession.user,
+        user: normalizedUser,
       };
     } finally {
       setIsAuthenticating(false);
     }
-  }, [clearLogoutRetryTimer]);
+  }, []);
 
-  const verifyMfa = useCallback(
-    async ({ role, login: loginValue, challengeId, code }: VerifyMonitorMfaInput) => {
-      setIsAuthenticating(true);
-      try {
-        const payload = await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
-          method: "POST",
-          body: {
-            role,
-            login: loginValue,
-            challenge_id: challengeId,
-            code,
-          },
-        });
+  const verifyMfa = useCallback(async ({ role, login: loginValue, challengeId, code }: VerifyMonitorMfaInput) => {
+    setIsAuthenticating(true);
+    try {
+      const payload = await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
+        method: "POST",
+        token: COOKIE_SESSION_TOKEN,
+        body: {
+          role,
+          login: loginValue,
+          challenge_id: challengeId,
+          code,
+        },
+      });
 
-        const nextSession = createStoredSession(payload.user, payload.token);
-
-        setSession(nextSession);
-        writeStoredSession(nextSession);
-        writePendingRemoteLogout(null);
-        clearLogoutRetryTimer();
-      } finally {
-        setIsAuthenticating(false);
-      }
-    },
-    [clearLogoutRetryTimer],
-  );
+      setUser(normalizeUser(payload.user));
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, []);
 
   const resetRequiredPassword = useCallback(
     async ({
@@ -632,6 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<ResetRequiredPasswordResponse>("/api/auth/reset-required-password", {
           method: "POST",
+          token: COOKIE_SESSION_TOKEN,
           body: {
             role,
             login: loginValue,
@@ -641,17 +310,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        const nextSession = createStoredSession(payload.user, payload.token);
-
-        setSession(nextSession);
-        writeStoredSession(nextSession);
-        writePendingRemoteLogout(null);
-        clearLogoutRetryTimer();
+        setUser(normalizeUser(payload.user));
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [clearLogoutRetryTimer],
+    [],
   );
 
   const requestMonitorPasswordReset = useCallback(async (email: string, role: Exclude<UserRole, null> = "monitor") => {
@@ -664,6 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       return await apiRequest<RequestMonitorPasswordResetResponse>("/api/auth/forgot-password", {
         method: "POST",
+        token: COOKIE_SESSION_TOKEN,
         body: {
           role,
           email: normalizedEmail,
@@ -676,27 +341,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetMonitorPassword = useCallback(
     async ({ role, email, token, password, confirmPassword }: ResetMonitorPasswordInput) => {
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedToken = token.trim();
-    if (!normalizedEmail || !normalizedToken) {
-      throw new Error("Reset link is missing required details. Please request a new one.");
-    }
+      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedToken = token.trim();
+      if (!normalizedEmail || !normalizedToken) {
+        throw new Error("Reset link is missing required details. Please request a new one.");
+      }
 
-    setIsAuthenticating(true);
-    try {
-      return await apiRequest<ResetMonitorPasswordResponse>("/api/auth/reset-password", {
-        method: "POST",
-        body: {
-          role: role ?? undefined,
-          email: normalizedEmail,
-          token: normalizedToken,
-          password,
-          password_confirmation: confirmPassword,
-        },
-      });
-    } finally {
-      setIsAuthenticating(false);
-    }
+      setIsAuthenticating(true);
+      try {
+        return await apiRequest<ResetMonitorPasswordResponse>("/api/auth/reset-password", {
+          method: "POST",
+          token: COOKIE_SESSION_TOKEN,
+          body: {
+            role: role ?? undefined,
+            email: normalizedEmail,
+            token: normalizedToken,
+            password,
+            password_confirmation: confirmPassword,
+          },
+        });
+      } finally {
+        setIsAuthenticating(false);
+      }
     },
     [],
   );
@@ -711,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       return await apiRequest<RequestMonitorMfaResetResponse>("/api/auth/mfa/reset/request", {
         method: "POST",
+        token: COOKIE_SESSION_TOKEN,
         body: {
           role: "monitor",
           login: normalizedLogin,
@@ -723,45 +390,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const completeMonitorMfaReset = useCallback(async ({ login, password, requestId, approvalToken }: CompleteMonitorMfaResetInput) => {
-    const normalizedLogin = login.trim().toLowerCase();
-    const normalizedToken = approvalToken.trim().toUpperCase();
-    if (!normalizedLogin) {
-      throw new Error("Monitor email is required.");
-    }
+  const completeMonitorMfaReset = useCallback(
+    async ({ login, password, requestId, approvalToken }: CompleteMonitorMfaResetInput) => {
+      const normalizedLogin = login.trim().toLowerCase();
+      const normalizedToken = approvalToken.trim().toUpperCase();
+      if (!normalizedLogin) {
+        throw new Error("Monitor email is required.");
+      }
 
-    if (!Number.isFinite(requestId) || requestId <= 0) {
-      throw new Error("Request ID is invalid. Submit a new MFA reset request.");
-    }
+      if (!Number.isFinite(requestId) || requestId <= 0) {
+        throw new Error("Request ID is invalid. Submit a new MFA reset request.");
+      }
 
-    setIsAuthenticating(true);
-    try {
-      const payload = await apiRequest<CompleteMonitorMfaResetResponse>("/api/auth/mfa/reset/complete", {
-        method: "POST",
-        body: {
-          role: "monitor",
-          login: normalizedLogin,
-          password,
-          request_id: requestId,
-          approval_token: normalizedToken,
-        },
-      });
+      setIsAuthenticating(true);
+      try {
+        const payload = await apiRequest<CompleteMonitorMfaResetResponse>("/api/auth/mfa/reset/complete", {
+          method: "POST",
+          token: COOKIE_SESSION_TOKEN,
+          body: {
+            role: "monitor",
+            login: normalizedLogin,
+            password,
+            request_id: requestId,
+            approval_token: normalizedToken,
+          },
+        });
 
-      const nextSession = createStoredSession(payload.user, payload.token);
+        setUser(normalizeUser(payload.user));
 
-      setSession(nextSession);
-      writeStoredSession(nextSession);
-      writePendingRemoteLogout(null);
-      clearLogoutRetryTimer();
-
-      return {
-        backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
-        message: payload.message?.trim() || "MFA reset completed. Store your backup codes securely.",
-      };
-    } finally {
-      setIsAuthenticating(false);
-    }
-  }, [clearLogoutRetryTimer]);
+        return {
+          backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
+          message: payload.message?.trim() || "MFA reset completed. Store your backup codes securely.",
+        };
+      } finally {
+        setIsAuthenticating(false);
+      }
+    },
+    [],
+  );
 
   const completeAccountSetup = useCallback(
     async ({ token, password, confirmPassword }: CompleteAccountSetupInput) => {
@@ -769,6 +435,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<CompleteAccountSetupResponse>("/api/auth/setup-account", {
           method: "POST",
+          token: COOKIE_SESSION_TOKEN,
           body: {
             token,
             password,
@@ -776,94 +443,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        const nextSession = createStoredSession(payload.user, payload.token);
-
-        setSession(nextSession);
-        writeStoredSession(nextSession);
-        writePendingRemoteLogout(null);
-        clearLogoutRetryTimer();
+        setUser(normalizeUser(payload.user));
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [clearLogoutRetryTimer],
+    [],
   );
 
   const logout = useCallback(async () => {
-    const token = session?.token.trim() ?? "";
     setIsLoggingOut(true);
-    clearSession();
-    if (!token) {
-      writePendingRemoteLogout(null);
+    try {
+      await apiRequest<void>("/api/auth/logout", {
+        method: "POST",
+        token: COOKIE_SESSION_TOKEN,
+      });
+    } catch (err) {
+      if (!(isApiError(err) && err.status === 401)) {
+        // eslint-disable-next-line no-console
+        console.warn(err instanceof Error ? err.message : "Logout failed.");
+      }
+    } finally {
+      setUser(null);
       setIsLoggingOut(false);
-      return;
     }
-
-    const now = Date.now();
-    const existing = readPendingRemoteLogout();
-    writePendingRemoteLogout({
-      token,
-      queuedAt: existing?.token === token ? existing.queuedAt : now,
-      attempts: existing?.token === token ? existing.attempts : 0,
-      lastAttemptAt: now,
-    });
-
-    // Fire-and-forget remote logout so the UI can transition instantly.
-    void flushPendingRemoteLogout();
-    setIsLoggingOut(false);
-  }, [clearSession, flushPendingRemoteLogout, session?.token]);
+  }, []);
 
   const listActiveSessions = useCallback(async (): Promise<ActiveSessionDevice[]> => {
-    const token = session?.token.trim() ?? "";
-    if (!token) {
+    if (!user) {
       throw new Error("You are signed out. Please sign in again.");
     }
 
-    const payload = await apiRequest<ActiveSessionsResponse>("/api/auth/sessions", { token });
+    const payload = await apiRequest<ActiveSessionsResponse>("/api/auth/sessions", { token: COOKIE_SESSION_TOKEN });
 
     return Array.isArray(payload.data) ? payload.data : [];
-  }, [session?.token]);
+  }, [user]);
 
-  const revokeSessionDevice = useCallback(async (sessionId: string): Promise<void> => {
-    const normalized = sessionId.trim();
-    if (normalized.length === 0) {
-      throw new Error("Session identifier is required.");
-    }
+  const revokeSessionDevice = useCallback(
+    async (sessionId: string): Promise<void> => {
+      const normalized = sessionId.trim();
+      if (normalized.length === 0) {
+        throw new Error("Session identifier is required.");
+      }
 
-    const token = session?.token.trim() ?? "";
-    if (!token) {
-      throw new Error("You are signed out. Please sign in again.");
-    }
+      if (!user) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
 
-    await apiRequest<void>(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
-      method: "DELETE",
-      token,
-    });
-  }, [session?.token]);
+      await apiRequest<void>(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
+        method: "DELETE",
+        token: COOKIE_SESSION_TOKEN,
+      });
+    },
+    [user],
+  );
 
   const revokeOtherSessions = useCallback(async (): Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }> => {
-    const token = session?.token.trim() ?? "";
-    if (!token) {
+    if (!user) {
       throw new Error("You are signed out. Please sign in again.");
     }
 
     const payload = await apiRequest<RevokeOtherSessionsResponse>("/api/auth/sessions/revoke-others", {
       method: "POST",
-      token,
+      token: COOKIE_SESSION_TOKEN,
     });
 
     return {
       revokedTokenCount: Number(payload.data?.revokedTokenCount ?? 0),
       revokedWebSessionCount: Number(payload.data?.revokedWebSessionCount ?? 0),
     };
-  }, [session?.token]);
+  }, [user]);
 
   const value = useMemo<AuthContextType>(
     () => ({
-      role: session?.user.role ?? null,
-      username: session?.user.name ?? "",
-      token: session?.token ?? "",
-      user: session?.user ?? null,
+      role: user?.role ?? null,
+      username: user?.name ?? "",
+      token: user ? COOKIE_SESSION_TOKEN : "",
+      user,
       isLoading,
       isAuthenticating,
       isLoggingOut,
@@ -881,7 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       revokeOtherSessions,
     }),
     [
-      session,
+      user,
       isLoading,
       isAuthenticating,
       isLoggingOut,
@@ -910,3 +566,4 @@ export function useAuth() {
   }
   return context;
 }
+

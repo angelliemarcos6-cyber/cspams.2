@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\MonitorMfaResetTicket;
 use App\Models\User;
+use App\Notifications\MonitorMfaResetApprovedNotification;
 use App\Support\Auth\UserRoleResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -73,6 +75,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
 
     public function test_mfa_reset_flow_requires_admin_approval_and_is_audited(): void
     {
+        Notification::fake();
         $this->seed();
 
         $targetPassword = $this->demoPasswordForLogin('monitor', 'monitor@cspams.local');
@@ -106,9 +109,17 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         ]);
 
         $approve->assertOk()
-            ->assertJsonPath('status', MonitorMfaResetTicket::STATUS_APPROVED);
+            ->assertJsonPath('status', MonitorMfaResetTicket::STATUS_APPROVED)
+            ->assertJsonPath('approvalToken', null);
 
-        $approvalToken = (string) $approve->json('approvalToken');
+        /** @var User $targetUser */
+        $targetUser = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        Notification::assertSentTo($targetUser, MonitorMfaResetApprovedNotification::class);
+
+        $sent = Notification::sent($targetUser, MonitorMfaResetApprovedNotification::class);
+        /** @var MonitorMfaResetApprovedNotification|null $notification */
+        $notification = $sent->last();
+        $approvalToken = (string) ($notification?->approvalToken() ?? '');
         $this->assertNotSame('', $approvalToken);
 
         $complete = $this->postJson('/api/auth/mfa/reset/complete', [

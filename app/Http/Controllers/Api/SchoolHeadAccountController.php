@@ -196,7 +196,6 @@ class SchoolHeadAccountController extends Controller
             $setupLinkExpiresAt = null;
             $deliveryStatus = null;
             $deliveryMessage = null;
-            $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
 
             if ($reissueAllowed) {
                 $issuedSetup = $this->schoolHeadAccountSetupService->issue(
@@ -206,7 +205,6 @@ class SchoolHeadAccountController extends Controller
                     $request->userAgent(),
                 );
 
-                $setupLink = $exposeSetupLink ? $issuedSetup['setupUrl'] : null;
                 $setupLinkExpiresAt = $issuedSetup['expiresAt'];
                 $deliveryStatus = 'sent';
                 $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -227,9 +225,7 @@ class SchoolHeadAccountController extends Controller
                 } catch (\Throwable $exception) {
                     report($exception);
                     $deliveryStatus = 'failed';
-                    $deliveryMessage = $exposeSetupLink
-                        ? 'Setup link email delivery failed. Share the setup link manually.'
-                        : 'Setup link email delivery failed. Please try again or contact an administrator.';
+                    $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
                 }
             }
 
@@ -335,7 +331,6 @@ class SchoolHeadAccountController extends Controller
             $request->ip(),
             $request->userAgent(),
         );
-        $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -354,9 +349,7 @@ class SchoolHeadAccountController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = $exposeSetupLink
-                ? 'Setup link email delivery failed. Share the setup link manually.'
-                : 'Setup link email delivery failed. Please try again or contact an administrator.';
+            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
         }
 
         $this->loadLatestAccountSetupToken($account);
@@ -397,7 +390,7 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'setupLink' => $exposeSetupLink ? $issuedSetup['setupUrl'] : null,
+                'setupLink' => null,
                 'expiresAt' => $issuedSetup['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
@@ -662,6 +655,7 @@ class SchoolHeadAccountController extends Controller
                 $account->syncRoles([]);
 
                 $account->forceFill([
+                    'email' => 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid',
                     'account_status' => AccountStatus::ARCHIVED->value,
                     'must_reset_password' => true,
                     'password_changed_at' => null,
@@ -768,7 +762,6 @@ class SchoolHeadAccountController extends Controller
             $request->ip(),
             $request->userAgent(),
         );
-        $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -787,9 +780,7 @@ class SchoolHeadAccountController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = $exposeSetupLink
-                ? 'Setup link email delivery failed. Share the setup link manually.'
-                : 'Setup link email delivery failed. Please try again or contact an administrator.';
+            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
         }
 
         $this->loadLatestAccountSetupToken($account);
@@ -834,7 +825,7 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'setupLink' => $exposeSetupLink ? $issuedSetup['setupUrl'] : null,
+                'setupLink' => null,
                 'expiresAt' => $issuedSetup['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
@@ -903,14 +894,13 @@ class SchoolHeadAccountController extends Controller
             $deliveryMessage = 'Password reset email delivery failed. Ask the School Head to retry forgot-password or contact an administrator.';
         }
 
-        $exposeResetLink = $this->shouldExposeOneTimeSecrets();
         $enforced = false;
         $revocationSummary = [
             'revokedTokens' => 0,
             'revokedWebSessions' => 0,
         ];
 
-        if ($deliveryStatus !== 'failed' || $exposeResetLink) {
+        if ($deliveryStatus !== 'failed') {
             $account->forceFill([
                 'must_reset_password' => true,
             ])->save();
@@ -960,7 +950,7 @@ class SchoolHeadAccountController extends Controller
                 'expiresAt' => $expiresAt->toISOString(),
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
-                'resetLink' => $exposeResetLink ? $resetUrl : null,
+                'resetLink' => null,
                 'enforced' => $enforced,
                 'message' => $deliveryStatus === 'failed'
                     ? 'Password reset email delivery failed.'
@@ -1074,19 +1064,6 @@ class SchoolHeadAccountController extends Controller
         if ($this->accountSetupTokensAvailable()) {
             $account->loadMissing('latestAccountSetupToken');
         }
-    }
-
-    private function shouldExposeOneTimeSecrets(): bool
-    {
-        if (app()->environment(['local', 'testing'])) {
-            return true;
-        }
-
-        if (MailDelivery::isSimulated()) {
-            return true;
-        }
-
-        return (bool) config('app.debug', false);
     }
 
     private function buildPasswordResetUrl(string $email, string $token): string

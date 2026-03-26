@@ -24,6 +24,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->assertSafeProductionConfiguration();
+
         RateLimiter::for('api', function (Request $request): Limit {
             $key = $request->user()?->id
                 ? 'user:' . $request->user()->id
@@ -410,5 +412,48 @@ class AppServiceProvider extends ServiceProvider
                     ),
             ];
         });
+    }
+
+    private function assertSafeProductionConfiguration(): void
+    {
+        if (! app()->environment(['production', 'staging'])) {
+            return;
+        }
+
+        $issues = [];
+
+        if ((bool) config('app.debug', false)) {
+            $issues[] = 'APP_DEBUG must be false.';
+        }
+
+        $testCode = trim((string) config('auth_mfa.monitor.test_code', ''));
+        if ($testCode !== '') {
+            $issues[] = 'CSPAMS_MONITOR_MFA_TEST_CODE must be empty.';
+        }
+
+        $resetTestApprovalToken = trim((string) config('auth_mfa.monitor.reset_test_approval_token', ''));
+        if ($resetTestApprovalToken !== '') {
+            $issues[] = 'CSPAMS_MONITOR_MFA_RESET_TEST_APPROVAL_TOKEN must be empty.';
+        }
+
+        $mailer = strtolower(trim((string) config('mail.default', 'log')));
+        if (in_array($mailer, ['log', 'array'], true)) {
+            $issues[] = "MAIL_MAILER must not be '{$mailer}'.";
+        }
+
+        $sanctumExpiration = config('sanctum.expiration');
+        $expirationMinutes = is_numeric($sanctumExpiration) ? (int) $sanctumExpiration : null;
+        if ($expirationMinutes === null || $expirationMinutes <= 0) {
+            $issues[] = 'SANCTUM_TOKEN_EXPIRATION must be a positive integer.';
+        }
+
+        $enforceResetRaw = strtolower(trim((string) env('CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET', 'true')));
+        if (in_array($enforceResetRaw, ['0', 'false', 'off', 'no'], true)) {
+            $issues[] = 'CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET must be enabled.';
+        }
+
+        if ($issues !== []) {
+            throw new \RuntimeException('Unsafe production configuration: ' . implode(' ', $issues));
+        }
     }
 }

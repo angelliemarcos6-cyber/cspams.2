@@ -38,6 +38,7 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\NewAccessToken;
+use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -181,25 +182,32 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        // Keep bearer token response for backward-compatible non-SPA clients.
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $tokenPayload = $this->shouldIssueBearerToken($request)
+            ? $this->issueDashboardToken($user, $role, $request, false)
+            : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
             $request,
             'auth.login.success',
             'success',
-            $user,
-            $role,
-            $login,
-            [
-                'token_expires_at' => $tokenPayload['expiresAt'],
-                'token_refresh_after' => $tokenPayload['refreshAfter'],
-                'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
-                'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
-                'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
-            ],
+                $user,
+                $role,
+                $login,
+                [
+                    'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
+                    'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
+                    'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
+                    'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
+                    'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
+                ],
         );
+
+        if ($tokenPayload === null) {
+            return response()->json([
+                'user' => $this->serializeUser($user, $role),
+            ]);
+        }
 
         return response()->json([
             'token' => $tokenPayload['token'],
@@ -298,7 +306,9 @@ class AuthController extends Controller
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $tokenPayload = $this->shouldIssueBearerToken($request)
+            ? $this->issueDashboardToken($user, $role, $request, false)
+            : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -309,12 +319,18 @@ class AuthController extends Controller
             $role,
             $login,
             [
-                'token_expires_at' => $tokenPayload['expiresAt'],
-                'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
+                'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
+
+        if ($tokenPayload === null) {
+            return response()->json([
+                'user' => $this->serializeUser($user->fresh('school'), $role),
+            ]);
+        }
 
         return response()->json([
             'token' => $tokenPayload['token'],
@@ -715,7 +731,9 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $tokenPayload = $this->shouldIssueBearerToken($request)
+            ? $this->issueDashboardToken($user, $role, $request, false)
+            : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -727,14 +745,20 @@ class AuthController extends Controller
             $login,
             [
                 'mfa_challenge_id' => $challengeId,
-                'token_expires_at' => $tokenPayload['expiresAt'],
-                'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
+                'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
                 'mfa_method' => $usedBackupCode ? 'backup_code' : 'email_code',
                 'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
                 'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
                 'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
             ],
         );
+
+        if ($tokenPayload === null) {
+            return response()->json([
+                'user' => $this->serializeUser($user->fresh('school'), $role),
+            ]);
+        }
 
         return response()->json([
             'token' => $tokenPayload['token'],
@@ -916,7 +940,9 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $tokenPayload = $this->shouldIssueBearerToken($request)
+            ? $this->issueDashboardToken($user, $role, $request, false)
+            : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -929,12 +955,19 @@ class AuthController extends Controller
             [
                 'previous_account_status' => $previousStatus,
                 'new_account_status' => AccountStatus::ACTIVE->value,
-                'token_expires_at' => $tokenPayload['expiresAt'],
-                'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
+                'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
+
+        if ($tokenPayload === null) {
+            return response()->json([
+                'user' => $this->serializeUser($user->fresh('school'), $role),
+                'message' => 'Account setup completed successfully.',
+            ]);
+        }
 
         return response()->json([
             'token' => $tokenPayload['token'],
@@ -1266,8 +1299,6 @@ class AuthController extends Controller
             $deliveryMessage = MailDelivery::simulatedMessage('Approval token was generated, but will not reach real inboxes.');
         }
 
-        $exposeApprovalToken = $this->shouldExposeOneTimeSecrets();
-
         try {
             $targetUser->notify(
                 new MonitorMfaResetApprovedNotification($approvalToken, $approvalExpiresAt->toDateTimeString()),
@@ -1275,9 +1306,7 @@ class AuthController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = $exposeApprovalToken
-                ? 'Email delivery failed. Share the approval token through a secure channel.'
-                : 'Email delivery failed. Ask the requester to submit a new request or contact an administrator.';
+            $deliveryMessage = 'Email delivery failed. Ask the requester to submit a new request or contact an administrator.';
         }
 
         AuthAuditLogger::record(
@@ -1298,17 +1327,13 @@ class AuthController extends Controller
         );
 
         $message = $deliveryStatus === 'failed'
-            ? ($exposeApprovalToken
-                ? 'MFA reset approved. Email delivery failed. Share the approval token through a secure channel.'
-                : 'MFA reset approved, but email delivery failed. Ask the requester to submit a new request or contact an administrator.')
-            : ($exposeApprovalToken
-                ? 'MFA reset approved. Share the approval token through a secure channel.'
-                : 'MFA reset approved. Approval token sent to the requester email.');
+            ? 'MFA reset approved, but email delivery failed. Ask the requester to submit a new request or contact an administrator.'
+            : 'MFA reset approved. Approval token sent to the requester email.';
 
         return response()->json([
             'status' => MonitorMfaResetTicket::STATUS_APPROVED,
             'requestId' => $ticketModel->id,
-            'approvalToken' => $exposeApprovalToken ? $approvalToken : null,
+            'approvalToken' => null,
             'approvalTokenExpiresAt' => $approvalExpiresAt->toISOString(),
             'delivery' => $deliveryStatus,
             'deliveryMessage' => $deliveryMessage,
@@ -1488,7 +1513,9 @@ class AuthController extends Controller
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $tokenPayload = $this->shouldIssueBearerToken($request)
+            ? $this->issueDashboardToken($user, $role, $request, false)
+            : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -1501,13 +1528,21 @@ class AuthController extends Controller
             [
                 'mfa_reset_ticket_id' => $ticket->id,
                 'backup_codes_generated' => count($backupCodes),
-                'token_expires_at' => $tokenPayload['expiresAt'],
-                'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
+                'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
                 'suspicious_login_detected' => $suspiciousLoginDetected,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
+
+        if ($tokenPayload === null) {
+            return response()->json([
+                'user' => $this->serializeUser($user->fresh('school'), $role),
+                'backupCodes' => $backupCodes,
+                'message' => 'MFA reset completed. Store your backup codes securely.',
+            ]);
+        }
 
         return response()->json([
             'token' => $tokenPayload['token'],
@@ -1860,6 +1895,11 @@ class AuthController extends Controller
     private function isBearerAuthenticatedRequest(Request $request): bool
     {
         return trim((string) $request->bearerToken()) !== '';
+    }
+
+    private function shouldIssueBearerToken(Request $request): bool
+    {
+        return ! EnsureFrontendRequestsAreStateful::fromFrontend($request);
     }
 
     private function resolveUserForLogin(string $role, string $login): ?User
@@ -2426,7 +2466,7 @@ class AuthController extends Controller
 
     private function enforceRequiredPasswordResetOnLogin(): bool
     {
-        if (app()->environment('testing')) {
+        if (app()->environment(['testing', 'production', 'staging'])) {
             return true;
         }
 
@@ -2653,19 +2693,6 @@ class AuthController extends Controller
         );
 
         return $frontend . '/#/reset-password?' . $query;
-    }
-
-    private function shouldExposeOneTimeSecrets(): bool
-    {
-        if (app()->environment(['local', 'testing'])) {
-            return true;
-        }
-
-        if (MailDelivery::isSimulated()) {
-            return true;
-        }
-
-        return (bool) config('app.debug', false);
     }
 
     private function resolvePasswordResetRoleForUser(?User $user, ?string $roleHint = null): ?string

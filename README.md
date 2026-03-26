@@ -37,27 +37,28 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
 
 - `monitor` signs in using email.
 - `school_head` signs in using a **6-digit school code**.
+- SPA authentication uses Sanctum **stateful cookie** sessions (httpOnly). The frontend never stores bearer tokens in browser storage.
+- Bearer tokens are issued only for non-browser clients (e.g., API tools) and should be configured as short-lived.
 - Password reset by email (monitor + school head):
   - `POST /api/auth/forgot-password` (optional: `role=monitor|school_head`)
   - `POST /api/auth/reset-password` (optional: `role=monitor|school_head`)
 - Monitor dashboard School Head account recovery:
   - `POST /api/dashboard/records/{school}/school-head-account/setup-link` (pending setup only)
   - `POST /api/dashboard/records/{school}/school-head-account/password-reset-link` (active only; requires a reason)
-  - One-time links are returned only in local/testing/debug/simulated mail; production relies on email delivery metadata.
+  - One-time links are delivered via email and are **never returned in JSON responses**. In local/dev with `MAIL_MAILER=log|array`, check logs/test inboxes.
 - Monitor MFA reset recovery (when `CSPAMS_MONITOR_MFA_ENABLED=true`):
   - `POST /api/auth/mfa/reset/request` (submit request)
   - `POST /api/auth/mfa/reset/complete` (complete with approval token + generates new backup codes)
   - `GET /api/auth/mfa/reset/requests` (list pending requests for approval)
-  - `POST /api/auth/mfa/reset/requests/{ticket}/approve` (approve; attempts email delivery; approval token is returned only in local/testing/debug/simulated mail)
+  - `POST /api/auth/mfa/reset/requests/{ticket}/approve` (approve; approval token is emailed to the requester)
   - `POST /api/auth/mfa/backup-codes/regenerate` (authenticated; generates a new set)
 - If an account is marked `must_reset_password` and `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true`, sign-in is blocked until password reset is completed via:
   - `POST /api/auth/reset-required-password` (current password + new password)
-- Recommended: keep `CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET=true` in production; you may disable it in local/dev for smoother testing.
+- Production/staging always enforce required-password-reset; you may disable it in local/dev for smoother testing.
 - SPA login supports the reset-required flow in-page (current password + new password + confirmation).
 - Sign-out behavior:
-  - local session is cleared immediately for fast UI exit
-  - token revoke call is sent in the background (`POST /api/auth/logout`)
-  - auth state is stored in `sessionStorage` (tab-scoped); logout retries are queued per tab when offline
+  - frontend calls `POST /api/auth/logout` to invalidate the session, then clears local user state
+  - no bearer token is stored in `sessionStorage`/`localStorage`
 
 ## Indicator Compliance Workflow (API)
 

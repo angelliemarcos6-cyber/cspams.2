@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\School;
 use App\Models\User;
+use App\Notifications\SchoolHeadAccountSetupNotification;
+use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -19,6 +22,7 @@ class SchoolHeadAccountManagementTest extends TestCase
     public function test_monitor_can_create_school_head_with_pending_setup_and_one_time_link(): void
     {
         $this->seed();
+        Notification::fake();
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
@@ -46,15 +50,20 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::PENDING_SETUP->value);
-
-        $setupLink = (string) $response->json('meta.schoolHeadAccount.setupLink');
-        $this->assertNotSame('', $setupLink);
+            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::PENDING_SETUP->value)
+            ->assertJsonPath('meta.schoolHeadAccount.setupLink', null);
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'setup.head@cspams.local')->firstOrFail();
         $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
         $this->assertTrue((bool) $schoolHead->must_reset_password);
+
+        Notification::assertSentTo($schoolHead, SchoolHeadAccountSetupNotification::class);
+        $sent = Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class);
+        /** @var SchoolHeadAccountSetupNotification|null $notification */
+        $notification = $sent->last();
+        $setupLink = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
+        $this->assertNotSame('', $setupLink);
 
         $this->assertDatabaseHas('account_setup_tokens', [
             'user_id' => $schoolHead->id,
@@ -65,6 +74,7 @@ class SchoolHeadAccountManagementTest extends TestCase
     public function test_monitor_can_update_school_head_status_and_issue_password_reset_link(): void
     {
         $this->seed();
+        Notification::fake();
         config()->set('auth_mfa.monitor.test_code', '123456');
 
         $monitorLogin = $this->postJson('/api/auth/login', [
@@ -177,9 +187,15 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $resetLink->assertStatus(Response::HTTP_OK)
             ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
-            ->assertJsonPath('data.account.mustResetPassword', true);
+            ->assertJsonPath('data.account.mustResetPassword', true)
+            ->assertJsonPath('data.resetLink', null);
 
-        $this->assertNotSame('', (string) $resetLink->json('data.resetLink'));
+        Notification::assertSentTo($schoolHead, SchoolHeadPasswordResetNotification::class);
+        $sent = Notification::sent($schoolHead, SchoolHeadPasswordResetNotification::class);
+        /** @var SchoolHeadPasswordResetNotification|null $notification */
+        $notification = $sent->last();
+        $resetUrl = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
+        $this->assertNotSame('', $resetUrl);
 
         $schoolHead->refresh();
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
@@ -254,6 +270,7 @@ class SchoolHeadAccountManagementTest extends TestCase
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void
     {
         $this->seed();
+        Notification::fake();
         config()->set('auth_mfa.monitor.test_code', '123456');
 
         $monitorLogin = $this->postJson('/api/auth/login', [
@@ -304,9 +321,15 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
 
         $emailChange->assertOk()
-            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value);
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value)
+            ->assertJsonPath('data.setupLink', null);
 
-        $setupLink = (string) $emailChange->json('data.setupLink');
+        Notification::assertSentTo($schoolHead, SchoolHeadAccountSetupNotification::class);
+        $sent = Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class);
+        $this->assertCount(1, $sent);
+        /** @var SchoolHeadAccountSetupNotification|null $notification */
+        $notification = $sent->last();
+        $setupLink = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
         $this->assertNotSame('', $setupLink);
 
         $schoolHead->refresh();
@@ -341,6 +364,8 @@ class SchoolHeadAccountManagementTest extends TestCase
             ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value)
             ->assertJsonPath('data.setupLink', null);
 
+        $this->assertCount(1, Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class));
+
         $schoolHead->refresh();
         $this->assertSame('locked.schoolhead@cspams.local', $schoolHead->email);
         $this->assertSame(AccountStatus::LOCKED->value, $schoolHead->accountStatus()->value);
@@ -349,6 +374,7 @@ class SchoolHeadAccountManagementTest extends TestCase
     public function test_locked_school_head_email_change_forces_password_reset_and_blocks_old_credentials_after_reactivation(): void
     {
         $this->seed();
+        Notification::fake();
         config()->set('auth_mfa.monitor.test_code', '123456');
 
         /** @var User $schoolHead */
@@ -459,8 +485,14 @@ class SchoolHeadAccountManagementTest extends TestCase
             ],
         );
 
-        $resetLink->assertOk();
-        $resetUrl = (string) $resetLink->json('data.resetLink');
+        $resetLink->assertOk()
+            ->assertJsonPath('data.resetLink', null);
+
+        Notification::assertSentTo($schoolHead, SchoolHeadPasswordResetNotification::class);
+        $sent = Notification::sent($schoolHead, SchoolHeadPasswordResetNotification::class);
+        /** @var SchoolHeadPasswordResetNotification|null $notification */
+        $notification = $sent->last();
+        $resetUrl = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
         $this->assertNotSame('', $resetUrl);
 
         $urlParts = parse_url($resetUrl);
@@ -523,6 +555,68 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $loginNew->assertOk();
         $this->assertNotSame('', (string) $loginNew->json('token'));
+    }
+
+    public function test_removed_school_head_account_releases_email_for_recreation(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $issueCode = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'deleted',
+            ],
+        );
+
+        $issueCode->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $challengeId = (string) $issueCode->json('data.challengeId');
+        $this->assertNotSame('', $challengeId);
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'Replacing archived School Head account.',
+                'verificationChallengeId' => $challengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $remove->assertOk()
+            ->assertJsonPath('data.deletedCount', 1);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ARCHIVED->value, $schoolHead->accountStatus()->value);
+        $this->assertNull($schoolHead->school_id);
+        $this->assertNotSame('schoolhead1@cspams.local', $schoolHead->email);
+        $this->assertTrue(str_starts_with($schoolHead->email, 'archived+'));
+        $this->assertTrue(str_ends_with($schoolHead->email, '@example.invalid'));
+
+        $recreate = $this->withToken($monitorToken)->putJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/profile",
+            [
+                'name' => 'Recreated School Head',
+                'email' => 'schoolhead1@cspams.local',
+            ],
+        );
+
+        $recreate->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.account.email', 'schoolhead1@cspams.local')
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value);
     }
 
     public function test_account_type_column_rejects_null_values(): void

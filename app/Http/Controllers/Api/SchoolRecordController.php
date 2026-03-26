@@ -737,7 +737,6 @@ class SchoolRecordController extends Controller
             $request->ip(),
             $request->userAgent(),
         );
-        $exposeSetupLink = $this->shouldExposeOneTimeSecrets();
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -757,9 +756,7 @@ class SchoolRecordController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = $exposeSetupLink
-                ? 'Setup link email delivery failed. Share the setup link manually.'
-                : 'Setup link email delivery failed. Please try again or contact an administrator.';
+            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
         }
 
         AuditLog::query()->create([
@@ -792,24 +789,11 @@ class SchoolRecordController extends Controller
             'email' => $account->email,
             'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLink' => $exposeSetupLink ? $issuedSetup['setupUrl'] : null,
+            'setupLink' => null,
             'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
             'setupLinkDelivery' => $deliveryStatus,
             'setupLinkDeliveryMessage' => $deliveryMessage,
         ];
-    }
-
-    private function shouldExposeOneTimeSecrets(): bool
-    {
-        if (app()->environment(['local', 'testing'])) {
-            return true;
-        }
-
-        if (MailDelivery::isSimulated()) {
-            return true;
-        }
-
-        return (bool) config('app.debug', false);
     }
 
     private function normalizeSchoolCode(string $value): string
