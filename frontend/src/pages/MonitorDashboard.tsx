@@ -95,18 +95,10 @@ type PendingAccountAction =
       update: Omit<SchoolHeadAccountStatusUpdatePayload, "reason">;
     }
   | {
-      kind: "setup_link";
-      schoolId: string;
-      schoolName: string;
-      actionLabel: string;
-      requireReason: boolean;
-    }
-  | {
       kind: "reset_password";
       schoolId: string;
       schoolName: string;
       actionLabel: string;
-      requireReason: boolean;
     }
   | {
       kind: "email_change";
@@ -1891,8 +1883,8 @@ export function MonitorDashboard() {
 
     pushToast(
       deliveryFailed
-        ? `${linkLabel} generated for ${schoolName}. Delivery failed.`
-        : `${linkLabel} sent for ${schoolName}.`,
+        ? `${linkLabel} was prepared for ${schoolName}, but email delivery failed.`
+        : `${linkLabel} email sent for ${schoolName}.`,
       deliveryFailed ? "warning" : "success",
     );
 
@@ -2028,9 +2020,12 @@ export function MonitorDashboard() {
         setRecordFormMessage("School record updated.");
       } else {
         const provisioning = await addRecord(payload);
+        const deliveryFailed = String(provisioning?.setupLinkDelivery ?? "").toLowerCase() === "failed";
         setRecordFormMessage(
           provisioning
-            ? "School record created. Setup link generated for the School Head account."
+            ? deliveryFailed
+              ? "School record created. The setup email could not be delivered to the School Head account."
+              : "School record created. A setup email was sent to the School Head account."
             : "School record created.",
         );
       }
@@ -4519,8 +4514,7 @@ export function MonitorDashboard() {
       pendingAccountAction.kind === "status" ||
       pendingAccountAction.kind === "remove" ||
       pendingAccountAction.kind === "reset_password" ||
-      pendingAccountAction.kind === "email_change" ||
-      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason);
+      pendingAccountAction.kind === "email_change";
     if (requiresReason && reason.length < 5) {
       setPendingAccountReasonError("Please provide a reason with at least 5 characters.");
       return;
@@ -4583,12 +4577,6 @@ export function MonitorDashboard() {
           verificationCode: code,
         });
         pushToast(result.message || `School Head account removed for ${pendingAccountAction.schoolName}.`, "success");
-      } else if (pendingAccountAction.kind === "setup_link") {
-        const receipt = await issueSchoolHeadSetupLink(
-          pendingAccountAction.schoolId,
-          reason.length > 0 ? reason : null,
-        );
-        announceSchoolHeadAccountDelivery(receipt, pendingAccountAction.schoolName, "Setup link");
       } else if (pendingAccountAction.kind === "reset_password") {
         const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
         const code = pendingAccountVerificationCode.trim();
@@ -4688,7 +4676,6 @@ export function MonitorDashboard() {
         schoolId: record.id,
         schoolName: record.schoolName,
         actionLabel: "Send Password Reset Link",
-        requireReason: true,
       });
       return;
     }
@@ -7331,7 +7318,7 @@ export function MonitorDashboard() {
                           {recordFormErrors.schoolHeadAccountEmail && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountEmail}</p>}
                         </div>
                         <p className="md:col-span-2 rounded-sm border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-semibold text-primary-800">
-                          A one-time setup link (24h expiry) will be generated after save. The account becomes active + verified once the School Head completes setup.
+                          A one-time setup email/link (24h expiry) will be sent after save. The account becomes active + verified once the School Head completes setup.
                         </p>
                       </div>
                     )}
@@ -8085,11 +8072,7 @@ export function MonitorDashboard() {
                       : `Reason required for ${pendingAccountAction.schoolName}.`
                     : pendingAccountAction.kind === "reset_password"
                       ? `Reason and confirmation code required to send a password reset link for ${pendingAccountAction.schoolName}.`
-                      : pendingAccountAction.kind === "email_change"
-                        ? `Reason and confirmation code required to change the School Head email for ${pendingAccountAction.schoolName}.`
-                        : pendingAccountAction.requireReason
-                          ? `Reason required to send a setup link for ${pendingAccountAction.schoolName}.`
-                          : `Optionally add a note before sending a setup link for ${pendingAccountAction.schoolName}.`}
+                      : `Reason and confirmation code required to change the School Head email for ${pendingAccountAction.schoolName}.`}
                 </p>
               </div>
               <button
@@ -8199,8 +8182,7 @@ export function MonitorDashboard() {
                     (pendingAccountAction.kind === "status" ||
                       pendingAccountAction.kind === "remove" ||
                       pendingAccountAction.kind === "reset_password" ||
-                      pendingAccountAction.kind === "email_change" ||
-                      (pendingAccountAction.kind === "setup_link" && pendingAccountAction.requireReason))) ||
+                      pendingAccountAction.kind === "email_change")) ||
                   ((pendingAccountAction.kind === "remove" ||
                     pendingAccountAction.kind === "reset_password" ||
                     pendingAccountAction.kind === "email_change" ||

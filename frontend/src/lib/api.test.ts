@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN } from "@/lib/api";
+import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 
 describe("api request helpers", () => {
   afterEach(() => {
@@ -8,6 +8,7 @@ describe("api request helpers", () => {
   });
 
   it("treats 204 No Content as success for void requests", async () => {
+    document.cookie = "XSRF-TOKEN=test-xsrf-token; path=/";
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -19,7 +20,7 @@ describe("api request helpers", () => {
     ).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://127.0.0.1:8000/api/auth/logout");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/logout`);
   });
 
   it("keeps apiRequest strict for endpoints that should return JSON", async () => {
