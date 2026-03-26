@@ -76,6 +76,21 @@ class DashboardFilteringIntegrityTest extends TestCase
         }
     }
 
+    public function test_search_treats_sql_like_wildcards_as_literal_characters(): void
+    {
+        $this->seed();
+
+        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+
+        $studentResponse = $this->withToken($monitorToken)->getJson('/api/dashboard/students?search=' . urlencode('%'));
+        $studentResponse->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $teacherResponse = $this->withToken($monitorToken)->getJson('/api/dashboard/teachers?search=' . urlencode('_'));
+        $teacherResponse->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $response = $this->postJson('/api/auth/login', [

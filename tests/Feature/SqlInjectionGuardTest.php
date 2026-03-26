@@ -33,4 +33,16 @@ class SqlInjectionGuardTest extends TestCase
 
         $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
     }
+
+    public function test_plain_text_with_double_hyphen_suffix_is_not_treated_as_sql_comment(): void
+    {
+        $response = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'normal.user@cspams.local',
+            'password' => 'SafePassword@2026',
+            'probe' => 'Room 201--',
+        ]);
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
 }

@@ -23,7 +23,7 @@ return [
             "/\\b(?:drop|truncate|alter)\\s+table\\b/i",
             "/\\b(?:sleep|benchmark)\\s*\\(\\s*\\d+/i",
             "/\\b(?:information_schema|xp_cmdshell)\\b/i",
-            "/--\\s*$/",
+            "/(?:^|\\s)--\\s*(?:$|\\r?\\n)/",
             "/\\/\\*.*\\*\\//s",
         ],
     ],

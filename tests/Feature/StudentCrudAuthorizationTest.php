@@ -4,7 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\School;
 use App\Models\Student;
+use App\Models\StudentPerformanceRecord;
+use App\Models\StudentStatusLog;
 use App\Models\User;
+use App\Models\AcademicYear;
+use App\Models\PerformanceMetric;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -365,6 +369,92 @@ class StudentCrudAuthorizationTest extends TestCase
         $recreate->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.lrn', $legacyLrn)
             ->assertJsonPath('data.firstName', 'Fresh');
+    }
+
+    public function test_reusing_soft_deleted_lrn_preserves_archived_student_history(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        /** @var AcademicYear $academicYear */
+        $academicYear = AcademicYear::query()->firstOrFail();
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->firstOrFail();
+
+        $legacyLrn = '9988000' . (string) random_int(1000, 9999);
+
+        $legacyCreate = $this->withToken($token)->postJson('/api/dashboard/students', [
+            'lrn' => $legacyLrn,
+            'firstName' => 'Legacy',
+            'middleName' => null,
+            'lastName' => 'History',
+            'sex' => 'male',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - A',
+            'teacher' => 'Teacher One',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+        $legacyCreate->assertStatus(Response::HTTP_CREATED);
+
+        $legacyStudentId = (int) $legacyCreate->json('data.id');
+
+        StudentStatusLog::query()->create([
+            'student_id' => $legacyStudentId,
+            'from_status' => 'enrolled',
+            'to_status' => 'at_risk',
+            'changed_by' => $schoolHead->id,
+            'notes' => 'Historical status entry.',
+            'changed_at' => now(),
+        ]);
+
+        StudentPerformanceRecord::query()->create([
+            'student_id' => $legacyStudentId,
+            'performance_metric_id' => $metric->id,
+            'academic_year_id' => $academicYear->id,
+            'period' => 'Q1',
+            'value' => 92.50,
+            'remarks' => 'Historical performance entry.',
+            'encoded_by' => $schoolHead->id,
+            'submitted_at' => now(),
+        ]);
+
+        $statusLogCountBeforeReuse = StudentStatusLog::query()->where('student_id', $legacyStudentId)->count();
+        $performanceCountBeforeReuse = StudentPerformanceRecord::query()->where('student_id', $legacyStudentId)->count();
+
+        Student::query()->whereKey($legacyStudentId)->delete();
+
+        $recreate = $this->withToken($token)->postJson('/api/dashboard/students', [
+            'lrn' => $legacyLrn,
+            'firstName' => 'Fresh',
+            'middleName' => null,
+            'lastName' => 'History',
+            'sex' => 'female',
+            'birthDate' => '2012-05-10',
+            'status' => 'enrolled',
+            'riskLevel' => 'low',
+            'section' => 'Grade 7 - B',
+            'teacher' => 'Teacher Two',
+            'currentLevel' => 'Grade 7',
+            'trackedFromLevel' => 'Kindergarten',
+        ]);
+
+        $recreate->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.lrn', $legacyLrn)
+            ->assertJsonPath('data.firstName', 'Fresh');
+
+        /** @var Student $archivedLegacy */
+        $archivedLegacy = Student::withTrashed()->findOrFail($legacyStudentId);
+        $this->assertTrue($archivedLegacy->trashed());
+        $this->assertSame($legacyLrn, $archivedLegacy->archived_original_lrn);
+        $this->assertNotSame($legacyLrn, $archivedLegacy->lrn);
+        $this->assertSame($statusLogCountBeforeReuse, StudentStatusLog::query()->where('student_id', $legacyStudentId)->count());
+        $this->assertSame($performanceCountBeforeReuse, StudentPerformanceRecord::query()->where('student_id', $legacyStudentId)->count());
     }
 
     public function test_student_create_and_delete_include_timing_headers(): void

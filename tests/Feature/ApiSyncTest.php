@@ -408,6 +408,36 @@ class ApiSyncTest extends TestCase
         $this->assertNotSame($etag, $newEtag);
     }
 
+    public function test_sync_headers_are_exposed_for_browser_cors_clients(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'monitor@cspams.local',
+            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+        ]);
+
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $response = $this->withToken($token)
+            ->withHeader('Origin', 'http://127.0.0.1:5173')
+            ->getJson('/api/dashboard/students?page=1&per_page=25');
+
+        $response->assertOk()
+            ->assertHeader('Access-Control-Expose-Headers');
+
+        $exposedHeaders = strtolower((string) $response->headers->get('Access-Control-Expose-Headers'));
+        $this->assertStringContainsString('etag', $exposedHeaders);
+        $this->assertStringContainsString('last-modified', $exposedHeaders);
+        $this->assertStringContainsString('x-sync-scope', $exposedHeaders);
+        $this->assertStringContainsString('x-sync-scope-key', $exposedHeaders);
+        $this->assertStringContainsString('x-sync-record-count', $exposedHeaders);
+        $this->assertStringContainsString('x-sync-etag', $exposedHeaders);
+        $this->assertStringContainsString('x-synced-at', $exposedHeaders);
+    }
+
     public function test_monitor_student_history_sync_supports_conditional_etag(): void
     {
         $this->seed();

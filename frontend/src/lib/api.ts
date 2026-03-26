@@ -340,5 +340,12 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const response = await apiRequestRaw<T>(path, options);
+  if (response.status === 304) {
+    throw new ApiError(
+      "Use apiRequestRaw() for conditional requests that may return 304 Not Modified.",
+      304,
+      null,
+    );
+  }
   return response.data as T;
 }

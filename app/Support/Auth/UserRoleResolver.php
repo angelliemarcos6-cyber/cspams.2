@@ -3,6 +3,7 @@
 namespace App\Support\Auth;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class UserRoleResolver
 {
@@ -36,7 +37,7 @@ class UserRoleResolver
                         $token = null;
                     }
 
-                    if ($token !== null) {
+                    if ($token instanceof PersonalAccessToken) {
                         return (bool) $user->tokenCan('role:' . $role);
                     }
                 }

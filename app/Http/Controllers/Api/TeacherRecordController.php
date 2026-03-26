@@ -11,6 +11,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Database\BuildsEscapedLikePatterns;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +21,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class TeacherRecordController extends Controller
 {
+    use BuildsEscapedLikePatterns;
+
     public function index(Request $request): JsonResponse
     {
         $user = ApiUserResolver::fromRequest($request);
@@ -74,15 +77,12 @@ class TeacherRecordController extends Controller
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(function (Builder $builder) use ($search): void {
-                $like = '%' . $search . '%';
-                $builder
-                    ->where('name', 'like', $like)
-                    ->orWhere('sex', 'like', $like)
-                    ->orWhereHas('school', function (Builder $schoolQuery) use ($like): void {
-                        $schoolQuery
-                            ->where('school_code', 'like', $like)
-                            ->orWhere('name', 'like', $like);
-                    });
+                $this->whereLikeContains($builder, 'name', $search);
+                $this->whereLikeContains($builder, 'sex', $search, 'or');
+                $builder->orWhereHas('school', function (Builder $schoolQuery) use ($search): void {
+                    $this->whereLikeContains($schoolQuery, 'school_code', $search);
+                    $this->whereLikeContains($schoolQuery, 'name', $search, 'or');
+                });
             });
         }
 

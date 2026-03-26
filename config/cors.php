@@ -23,7 +23,15 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    'exposed_headers' => [
+        'ETag',
+        'Last-Modified',
+        'X-Sync-Scope',
+        'X-Sync-Scope-Key',
+        'X-Sync-Record-Count',
+        'X-Sync-Etag',
+        'X-Synced-At',
+    ],
 
     'max_age' => 0,
 

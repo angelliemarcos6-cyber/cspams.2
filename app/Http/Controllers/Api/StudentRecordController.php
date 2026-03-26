@@ -14,6 +14,7 @@ use App\Models\StudentStatusLog;
 use App\Models\User;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Database\BuildsEscapedLikePatterns;
 use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
 use App\Support\Indicators\RollingIndicatorYearWindow;
@@ -30,6 +31,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class StudentRecordController extends Controller
 {
+    use BuildsEscapedLikePatterns;
+
     private const ROLLING_YEAR_SYNC_CACHE_KEY = 'cspams.students.rolling_year_window.last_sync';
     private const ROLLING_YEAR_SYNC_TTL_MINUTES = 30;
     private const ROLLING_YEAR_SYNC_LOCK_KEY = 'cspams.students.rolling_year_window.sync_lock';
@@ -130,21 +133,18 @@ class StudentRecordController extends Controller
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(function (Builder $builder) use ($search, $isMonitor): void {
-                $like = '%' . $search . '%';
-                $builder
-                    ->where('lrn', 'like', $like)
-                    ->orWhere('first_name', 'like', $like)
-                    ->orWhere('middle_name', 'like', $like)
-                    ->orWhere('last_name', 'like', $like)
-                    ->orWhere('current_level', 'like', $like)
-                    ->orWhere('section_name', 'like', $like)
-                    ->orWhere('teacher_name', 'like', $like);
+                $this->whereLikeContains($builder, 'lrn', $search);
+                $this->whereLikeContains($builder, 'first_name', $search, 'or');
+                $this->whereLikeContains($builder, 'middle_name', $search, 'or');
+                $this->whereLikeContains($builder, 'last_name', $search, 'or');
+                $this->whereLikeContains($builder, 'current_level', $search, 'or');
+                $this->whereLikeContains($builder, 'section_name', $search, 'or');
+                $this->whereLikeContains($builder, 'teacher_name', $search, 'or');
 
                 if ($isMonitor) {
-                    $builder->orWhereHas('school', function (Builder $schoolQuery) use ($like): void {
-                        $schoolQuery
-                            ->where('school_code', 'like', $like)
-                            ->orWhere('name', 'like', $like);
+                    $builder->orWhereHas('school', function (Builder $schoolQuery) use ($search): void {
+                        $this->whereLikeContains($schoolQuery, 'school_code', $search);
+                        $this->whereLikeContains($schoolQuery, 'name', $search, 'or');
                     });
                 }
             });
@@ -305,11 +305,22 @@ class StudentRecordController extends Controller
         $schoolId = (int) $student->school_id;
 
         try {
-            // Soft-delete first for a faster and more resilient UX on large schools.
-            $deletedCount = (int) Student::query()
-                ->whereKey($studentId)
-                ->where('school_id', $schoolId)
-                ->delete();
+            $deletedCount = DB::transaction(function () use ($studentId, $schoolId): int {
+                $studentToDelete = Student::query()
+                    ->whereKey($studentId)
+                    ->where('school_id', $schoolId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $studentToDelete) {
+                    return 0;
+                }
+
+                $this->prepareStudentForArchive($studentToDelete);
+                $studentToDelete->delete();
+
+                return 1;
+            });
         } catch (QueryException $exception) {
             report($exception);
 
@@ -500,23 +511,22 @@ class StudentRecordController extends Controller
 
         try {
             $deletableIds = DB::transaction(function () use ($requestedIds, $user): Collection {
-                $existingIds = Student::query()
+                $students = Student::query()
                     ->where('school_id', $user->school_id)
                     ->whereIn('id', $requestedIds->all())
                     ->lockForUpdate()
+                    ->get();
+
+                foreach ($students as $student) {
+                    $this->prepareStudentForArchive($student);
+                    $student->delete();
+                }
+
+                return $students
                     ->pluck('id')
                     ->map(static fn (mixed $id): int => (int) $id)
                     ->filter(static fn (int $id): bool => $id > 0)
                     ->values();
-
-                if ($existingIds->isNotEmpty()) {
-                    Student::query()
-                        ->where('school_id', $user->school_id)
-                        ->whereIn('id', $existingIds->all())
-                        ->delete();
-                }
-
-                return $existingIds;
             });
         } catch (QueryException $exception) {
             report($exception);
@@ -576,17 +586,24 @@ class StudentRecordController extends Controller
         return $user;
     }
 
-    private function purgeArchivedStudentByLrn(string $lrn, int $schoolId): int
+    private function releaseArchivedStudentLrn(string $lrn, int $schoolId): int
     {
         if ($lrn === '' || $schoolId <= 0) {
             return 0;
         }
 
-        return (int) Student::withTrashed()
+        $archivedStudents = Student::withTrashed()
             ->where('lrn', $lrn)
             ->where('school_id', $schoolId)
             ->whereNotNull('deleted_at')
-            ->forceDelete();
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($archivedStudents as $archivedStudent) {
+            $this->prepareStudentForArchive($archivedStudent);
+        }
+
+        return $archivedStudents->count();
     }
 
     private function persistStudentWithArchivedLrnRecovery(
@@ -606,9 +623,9 @@ class StudentRecordController extends Controller
                 throw $exception;
             }
 
-            // Fast path: only purge archived duplicates when a real uniqueness conflict happens.
-            $purgedArchivedRows = $this->purgeArchivedStudentByLrn($lrn, $schoolId);
-            if ($purgedArchivedRows > 0) {
+            // Legacy soft-deleted rows can still hold the unique LRN. Release the LRN without deleting history.
+            $releasedArchivedRows = $this->releaseArchivedStudentLrn($lrn, $schoolId);
+            if ($releasedArchivedRows > 0) {
                 try {
                     $this->applyPayload($student, $request, $user);
 
@@ -864,6 +881,32 @@ class StudentRecordController extends Controller
         }
 
         return min($perPage, $max);
+    }
+
+    private function prepareStudentForArchive(Student $student): void
+    {
+        $originalLrn = trim((string) ($student->archived_original_lrn ?? $student->lrn));
+        if ($originalLrn === '') {
+            return;
+        }
+
+        $student->forceFill([
+            'archived_original_lrn' => $originalLrn,
+            'lrn' => $this->archivedStudentLrnPlaceholder($student, $originalLrn),
+        ])->saveQuietly();
+    }
+
+    private function archivedStudentLrnPlaceholder(Student $student, string $originalLrn): string
+    {
+        return 'AR' . strtoupper(substr(
+            sha1(implode('|', [
+                (string) $student->id,
+                $originalLrn,
+                $student->deleted_at?->format('U.u') ?? now()->format('U.u'),
+            ])),
+            0,
+            18,
+        ));
     }
 
     /**
