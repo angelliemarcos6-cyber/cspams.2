@@ -1,6 +1,6 @@
 # Deployment (Cookie-Session SPA Auth)
 
-This project’s SPA uses **Sanctum stateful cookie sessions** (httpOnly). Production correctness depends on a few environment values matching your deployed frontend/backend hosts.
+This project's SPA uses **Sanctum stateful cookie sessions** (httpOnly). Production correctness depends on a few environment values matching your deployed frontend/backend hosts.
 
 ## Checklist
 
@@ -8,7 +8,8 @@ This project’s SPA uses **Sanctum stateful cookie sessions** (httpOnly). Produ
 
 - `APP_URL` = backend base URL (e.g., `https://api.example.com`)
 - `FRONTEND_URL` = frontend base URL (e.g., `https://app.example.com`)
-- `VITE_API_BASE_URL` = backend base URL from the frontend’s perspective (usually same as `APP_URL`)
+- `VITE_API_BASE_URL` = backend base URL from the frontend's perspective (usually same as `APP_URL`)
+  - Required in production builds; the frontend throws on startup if missing.
 
 ### 2) Configure Sanctum stateful domains (hosts, not full URLs)
 
@@ -30,9 +31,9 @@ Recommended production/staging values:
 
 - `SESSION_SECURE_COOKIE=true`
 - `SESSION_HTTP_ONLY=true`
-- `SESSION_LIFETIME=120` (or another short value you’re comfortable with)
+- `SESSION_LIFETIME=120` (or another short value you're comfortable with)
 - `SESSION_SAME_SITE=lax` for same-site subdomains (common case)
-- `SESSION_SAME_SITE=none` only when the frontend and API are on different “sites” and you truly need cross-site cookies (must be paired with `SESSION_SECURE_COOKIE=true`)
+- `SESSION_SAME_SITE=none` only when the frontend and API are on different "sites" and you truly need cross-site cookies (must be paired with `SESSION_SECURE_COOKIE=true`)
 
 Notes:
 
@@ -54,4 +55,3 @@ If using `SESSION_DRIVER=database`, ensure migrations ran and the `sessions` tab
 ## Production/Staging boot guard
 
 `app/Providers/AppServiceProvider.php` enforces a safe baseline in `production`/`staging` and will refuse to boot if critical auth/session values are unsafe or inconsistent (debug mode, MFA test knobs, mailer safety, token TTL, password-reset enforcement, secure cookie settings, and cross-origin Sanctum/CORS wiring).
-

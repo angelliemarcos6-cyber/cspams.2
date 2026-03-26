@@ -10,7 +10,21 @@ function sanitizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
 
-const API_BASE_URL = sanitizeBaseUrl(import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl());
+function resolveApiBaseUrl(): string {
+  const configured = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+
+  if (configured) {
+    return sanitizeBaseUrl(configured);
+  }
+
+  if (import.meta.env.PROD) {
+    throw new Error("Missing VITE_API_BASE_URL. Set it in your deployed frontend environment.");
+  }
+
+  return sanitizeBaseUrl(defaultApiBaseUrl());
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
 
