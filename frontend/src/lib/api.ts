@@ -351,3 +351,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
   return response.data as T;
 }
+
+export async function apiRequestVoid(path: string, options: ApiRequestOptions = {}): Promise<void> {
+  await apiRequestRaw<never>(path, options);
+}

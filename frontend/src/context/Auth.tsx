@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -449,7 +449,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async (options?: { force?: boolean }) => {
     setIsLoggingOut(true);
     try {
-      await apiRequest<void>("/api/auth/logout", {
+      await apiRequestVoid("/api/auth/logout", {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
       });
@@ -492,7 +492,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      await apiRequest<void>(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
+      await apiRequestVoid(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
         method: "DELETE",
         token: COOKIE_SESSION_TOKEN,
       });

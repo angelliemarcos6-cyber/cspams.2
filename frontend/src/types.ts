@@ -82,7 +82,6 @@ export interface SchoolHeadAccountStatusUpdateResult {
 
 export interface SchoolHeadSetupLinkResult {
   account: SchoolHeadAccountSummary;
-  setupLink: string | null;
   expiresAt: string;
   delivery: "sent" | "failed" | string;
   deliveryMessage: string;
@@ -90,7 +89,6 @@ export interface SchoolHeadSetupLinkResult {
 
 export interface SchoolHeadPasswordResetLinkResult {
   account: SchoolHeadAccountSummary;
-  resetLink: string | null;
   expiresAt: string;
   delivery: "sent" | "failed" | string;
   deliveryMessage: string;
@@ -108,7 +106,6 @@ export interface SchoolHeadAccountActionVerificationCodeResult {
 export interface SchoolHeadAccountProfileUpsertResult {
   account: SchoolHeadAccountSummary;
   message?: string | null;
-  setupLink?: string | null;
   expiresAt?: string | null;
   delivery?: "sent" | "failed" | string | null;
   deliveryMessage?: string | null;
@@ -125,7 +122,6 @@ export interface SchoolHeadAccountProvisioningReceipt {
   email: string;
   mustResetPassword: boolean;
   accountStatus: AccountStatus | string;
-  setupLink: string | null;
   setupLinkExpiresAt: string;
   setupLinkDelivery: "sent" | "failed" | string;
   setupLinkDeliveryMessage: string;
@@ -161,10 +157,10 @@ export interface SchoolRecordPayload {
   schoolId?: string;
   schoolName?: string;
   level?: string | null;
-  studentCount: number;
-  teacherCount: number;
+  studentCount?: number;
+  teacherCount?: number;
   region?: string;
-  status: SchoolStatus;
+  status?: SchoolStatus;
   district?: string | null;
   address?: string | null;
   type?: "public" | "private" | null;

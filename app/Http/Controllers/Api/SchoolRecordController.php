@@ -20,6 +20,7 @@ use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
+use App\Support\Domain\SchoolStatus;
 use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Carbon\Carbon;
@@ -586,12 +587,23 @@ class SchoolRecordController extends Controller
 
     private function applyPayload(School $school, UpsertSchoolRecordRequest $request, User $user): void
     {
+        $currentStatus = is_string($school->status) && $school->status !== ''
+            ? $school->status
+            : SchoolStatus::ACTIVE->value;
+
         $school->fill([
-            'status' => $request->string('status')->toString(),
-            'reported_teacher_count' => $request->integer('teacherCount'),
+            'status' => $request->filled('status')
+                ? $request->string('status')->toString()
+                : $currentStatus,
             'submitted_by' => $user->id,
             'submitted_at' => now(),
         ]);
+
+        if ($request->has('teacherCount')) {
+            $school->reported_teacher_count = $request->integer('teacherCount');
+        } elseif (! $school->exists && $school->reported_teacher_count === null) {
+            $school->reported_teacher_count = 0;
+        }
 
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
 

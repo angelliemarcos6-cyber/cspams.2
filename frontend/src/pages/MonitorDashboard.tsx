@@ -160,9 +160,6 @@ interface MonitorRecordFormState {
   district: string;
   region: string;
   address: string;
-  studentCount: string;
-  teacherCount: string;
-  status: SchoolStatus;
   createSchoolHeadAccount: boolean;
   schoolHeadAccountName: string;
   schoolHeadAccountEmail: string;
@@ -176,9 +173,6 @@ type MonitorRecordFormField =
   | "district"
   | "region"
   | "address"
-  | "studentCount"
-  | "teacherCount"
-  | "status"
   | "schoolHeadAccountName"
   | "schoolHeadAccountEmail";
 
@@ -397,9 +391,6 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
   district: "",
   region: "",
   address: "",
-  studentCount: "",
-  teacherCount: "",
-  status: "active",
   createSchoolHeadAccount: true,
   schoolHeadAccountName: "",
   schoolHeadAccountEmail: "",
@@ -1890,25 +1881,8 @@ export function MonitorDashboard() {
     }
   }, [pushToast, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
 
-  const revealSetupLink = async (setupLink: string, schoolName: string, linkLabel: string = "Setup link") => {
-    const trimmedLink = setupLink.trim();
-    if (!trimmedLink) return;
-
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(trimmedLink);
-        pushToast(`${linkLabel} copied for ${schoolName}.`, "success");
-        return;
-      } catch {
-        // Fall back to prompt copy if clipboard access fails.
-      }
-    }
-
-    window.prompt(`Copy the ${linkLabel.toLowerCase()} for ${schoolName}:`, trimmedLink);
-  };
-
-  const announceSchoolHeadAccountLink = async (
-    receipt: { setupLink?: string | null; resetLink?: string | null; delivery?: unknown; deliveryMessage?: string },
+  const announceSchoolHeadAccountDelivery = (
+    receipt: { delivery?: unknown; deliveryMessage?: string },
     schoolName: string,
     linkLabel: "Setup link" | "Password reset link",
   ) => {
@@ -1925,11 +1899,6 @@ export function MonitorDashboard() {
     const deliveryMessage = receipt.deliveryMessage?.trim();
     if (deliveryMessage) {
       pushToast(deliveryMessage, deliveryFailed ? "warning" : "info");
-    }
-
-    const oneTimeLink = linkLabel === "Password reset link" ? receipt.resetLink ?? null : receipt.setupLink ?? null;
-    if (oneTimeLink) {
-      await revealSetupLink(oneTimeLink, schoolName, linkLabel);
     }
   };
 
@@ -1964,9 +1933,6 @@ export function MonitorDashboard() {
       district: record.district ?? "",
       region: record.region ?? "",
       address: record.address ?? record.district ?? "",
-      studentCount: String(record.studentCount ?? 0),
-      teacherCount: String(record.teacherCount ?? 0),
-      status: record.status,
       createSchoolHeadAccount: false,
       schoolHeadAccountName: "",
       schoolHeadAccountEmail: "",
@@ -2039,11 +2005,6 @@ export function MonitorDashboard() {
       return;
     }
 
-    const editingRecord = editingRecordId ? records.find((item) => item.id === editingRecordId) : null;
-    const resolvedStudentCount = editingRecord?.studentCount ?? Number(recordForm.studentCount || 0);
-    const resolvedTeacherCount = editingRecord?.teacherCount ?? Number(recordForm.teacherCount || 0);
-    const resolvedStatus = editingRecord?.status ?? recordForm.status ?? "active";
-
     const payload = {
       schoolId: recordForm.schoolId.trim().toUpperCase(),
       schoolName: recordForm.schoolName.trim(),
@@ -2052,9 +2013,6 @@ export function MonitorDashboard() {
       address: recordForm.address.trim(),
       district: recordForm.district.trim() || undefined,
       region: recordForm.region.trim() || undefined,
-      studentCount: resolvedStudentCount,
-      teacherCount: resolvedTeacherCount,
-      status: resolvedStatus,
       schoolHeadAccount:
         !editingRecordId && recordForm.createSchoolHeadAccount
           ? {
@@ -2075,10 +2033,6 @@ export function MonitorDashboard() {
             ? "School record created. Setup link generated for the School Head account."
             : "School record created.",
         );
-
-        if (provisioning?.setupLink) {
-          await revealSetupLink(provisioning.setupLink, payload.schoolName);
-        }
       }
 
       setTimeout(() => {
@@ -2099,10 +2053,7 @@ export function MonitorDashboard() {
               field === "type" ||
               field === "district" ||
               field === "region" ||
-              field === "address" ||
-              field === "studentCount" ||
-              field === "teacherCount" ||
-              field === "status"
+              field === "address"
             ) {
               mappedErrors[field as MonitorRecordFormField] = message;
             }
@@ -3310,7 +3261,7 @@ export function MonitorDashboard() {
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
   );
-  const shouldShowQuickJump = false;
+  const shouldShowQuickJump = quickJumpItems.length > 0;
 
   const clearFocusAfterDelay = (targetId: string) => {
     if (typeof window === "undefined") return;
@@ -4637,7 +4588,7 @@ export function MonitorDashboard() {
           pendingAccountAction.schoolId,
           reason.length > 0 ? reason : null,
         );
-        await announceSchoolHeadAccountLink(receipt, pendingAccountAction.schoolName, "Setup link");
+        announceSchoolHeadAccountDelivery(receipt, pendingAccountAction.schoolName, "Setup link");
       } else if (pendingAccountAction.kind === "reset_password") {
         const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
         const code = pendingAccountVerificationCode.trim();
@@ -4657,7 +4608,7 @@ export function MonitorDashboard() {
           verificationChallengeId: challengeId,
           verificationCode: code,
         });
-        await announceSchoolHeadAccountLink(receipt, pendingAccountAction.schoolName, "Password reset link");
+        announceSchoolHeadAccountDelivery(receipt, pendingAccountAction.schoolName, "Password reset link");
       } else {
         const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
         const code = pendingAccountVerificationCode.trim();
@@ -4678,10 +4629,6 @@ export function MonitorDashboard() {
           verificationChallengeId: challengeId,
           verificationCode: code,
         });
-
-        if (result.setupLink) {
-          await revealSetupLink(result.setupLink, pendingAccountAction.schoolName);
-        }
 
         pushToast(result.message || `School Head account saved for ${pendingAccountAction.schoolName}.`, "success");
         setEditingSchoolHeadAccountSchoolId(null);
@@ -4750,7 +4697,7 @@ export function MonitorDashboard() {
     setAccountActionKey(actionKey);
     try {
       const receipt = await issueSchoolHeadSetupLink(record.id, null);
-      await announceSchoolHeadAccountLink(receipt, record.schoolName, "Setup link");
+      announceSchoolHeadAccountDelivery(receipt, record.schoolName, "Setup link");
     } catch (err) {
       pushToast(err instanceof Error ? err.message : "Unable to send setup link.", "warning");
     } finally {
@@ -6940,10 +6887,6 @@ export function MonitorDashboard() {
                                         name,
                                         email: nextEmail,
                                       });
-
-                                      if (result.setupLink) {
-                                        await revealSetupLink(result.setupLink, resolvedRecord.schoolName);
-                                      }
 
                                       pushToast(result.message || "School Head account saved.", "success");
                                       setEditingSchoolHeadAccountSchoolId(null);

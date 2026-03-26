@@ -83,6 +83,7 @@ class UpsertSchoolRecordRequest extends FormRequest
         $schoolParam = $this->route('school');
         $schoolId = $schoolParam instanceof School ? $schoolParam->id : null;
         $isMonitorStore = $this->isMethod('post') && $this->isMonitor();
+        $requiresOperationalFields = ! $this->isMonitor();
 
         $schoolIdRule = Rule::unique('schools', 'school_code_normalized')
             ->where(static fn ($query) => $query->whereNull('deleted_at'))
@@ -98,10 +99,10 @@ class UpsertSchoolRecordRequest extends FormRequest
             ],
             'schoolName' => [$isMonitorStore ? 'required' : 'sometimes', 'string', 'max:255'],
             'level' => [$isMonitorStore ? 'required' : 'sometimes', 'string', 'max:100'],
-            'studentCount' => ['required', 'integer', 'min:0'],
-            'teacherCount' => ['required', 'integer', 'min:0'],
+            'studentCount' => [$requiresOperationalFields ? 'required' : 'sometimes', 'integer', 'min:0'],
+            'teacherCount' => [$requiresOperationalFields ? 'required' : 'sometimes', 'integer', 'min:0'],
             'region' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'status' => ['required', 'string', Rule::in(array_column(SchoolStatus::cases(), 'value'))],
+            'status' => [$requiresOperationalFields ? 'required' : 'sometimes', 'string', Rule::in(array_column(SchoolStatus::cases(), 'value'))],
             'district' => ['sometimes', 'nullable', 'string', 'max:255'],
             'address' => [$isMonitorStore ? 'required' : 'sometimes', 'string', 'max:255'],
             'type' => [$isMonitorStore ? 'required' : 'sometimes', 'string', Rule::in(['public', 'private'])],
