@@ -62,7 +62,7 @@ class BulkImportSchoolRecordsRequest extends FormRequest
     {
         return [
             'rows' => ['required', 'array', 'min:1', 'max:500'],
-            'rows.*.schoolId' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/'],
+            'rows.*.schoolId' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/', 'distinct:strict'],
             'rows.*.schoolName' => ['required', 'string', 'max:255'],
             'rows.*.level' => ['required', 'string', 'max:100'],
             'rows.*.type' => ['required', 'string', Rule::in(['public', 'private'])],
@@ -77,5 +77,14 @@ class BulkImportSchoolRecordsRequest extends FormRequest
             'options.restoreArchived' => ['sometimes', 'boolean'],
         ];
     }
-}
 
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'rows.*.schoolId.distinct' => 'Duplicate school code detected in the import batch.',
+        ];
+    }
+}

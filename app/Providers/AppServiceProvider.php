@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->assertSafeProductionConfiguration();
+        $this->assertSafeProductionRuntimeConfiguration();
 
         RateLimiter::for('api', function (Request $request): Limit {
             $key = $request->user()?->id
@@ -414,69 +414,29 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 
-    private function assertSafeProductionConfiguration(): void
+    public function runProductionConfigurationAudit(): void
+    {
+        $this->throwIfUnsafeProductionConfiguration([
+            ...$this->productionRuntimeConfigurationIssues(),
+            ...$this->productionCrossOriginConfigurationIssues(),
+        ]);
+    }
+
+    private function assertSafeProductionRuntimeConfiguration(): void
+    {
+        $this->throwIfUnsafeProductionConfiguration($this->productionRuntimeConfigurationIssues());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function productionRuntimeConfigurationIssues(): array
     {
         if (! app()->environment(['production', 'staging'])) {
-            return;
+            return [];
         }
 
         $issues = [];
-
-        $normalizeOrigin = static function (string $url): ?string {
-            $url = trim($url);
-            if ($url === '') {
-                return null;
-            }
-
-            $parsed = parse_url($url);
-            if (! is_array($parsed)) {
-                return null;
-            }
-
-            $scheme = isset($parsed['scheme']) ? strtolower(trim((string) $parsed['scheme'])) : null;
-            $host = isset($parsed['host']) ? strtolower(trim((string) $parsed['host'])) : null;
-            if (! $scheme || ! $host) {
-                return null;
-            }
-
-            $port = isset($parsed['port']) && is_numeric($parsed['port']) ? (int) $parsed['port'] : null;
-            $defaultPort = match ($scheme) {
-                'https' => 443,
-                'http' => 80,
-                default => null,
-            };
-
-            $origin = $scheme . '://' . $host;
-            if ($port !== null && ($defaultPort === null || $port !== $defaultPort)) {
-                $origin .= ':' . $port;
-            }
-
-            return rtrim($origin, '/');
-        };
-
-        $normalizeHostWithPort = static function (string $url): ?string {
-            $url = trim($url);
-            if ($url === '') {
-                return null;
-            }
-
-            $parsed = parse_url($url);
-            if (! is_array($parsed)) {
-                return null;
-            }
-
-            $host = isset($parsed['host']) ? strtolower(trim((string) $parsed['host'])) : null;
-            if (! $host) {
-                return null;
-            }
-
-            $port = isset($parsed['port']) && is_numeric($parsed['port']) ? (int) $parsed['port'] : null;
-            if ($port === null) {
-                return $host;
-            }
-
-            return $host . ':' . $port;
-        };
 
         if ((bool) config('app.debug', false)) {
             $issues[] = 'APP_DEBUG must be false.';
@@ -533,15 +493,28 @@ class AppServiceProvider extends ServiceProvider
             $issues[] = 'SESSION_SAME_SITE=none requires SESSION_SECURE_COOKIE=true.';
         }
 
+        return $issues;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function productionCrossOriginConfigurationIssues(): array
+    {
+        if (! app()->environment(['production', 'staging'])) {
+            return [];
+        }
+
+        $issues = [];
         $frontendUrl = trim((string) config('app.frontend_url', ''));
         $appUrl = trim((string) config('app.url', ''));
 
-        $frontendOrigin = $normalizeOrigin($frontendUrl);
+        $frontendOrigin = $this->normalizeOrigin($frontendUrl);
         if ($frontendOrigin === null) {
             $issues[] = 'FRONTEND_URL must be a valid URL.';
         }
 
-        $appOrigin = $normalizeOrigin($appUrl);
+        $appOrigin = $this->normalizeOrigin($appUrl);
         if ($appOrigin === null) {
             $issues[] = 'APP_URL must be a valid URL.';
         }
@@ -588,14 +561,82 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
-            $expectedStateful = $normalizeHostWithPort($frontendUrl);
+            $expectedStateful = $this->normalizeHostWithPort($frontendUrl);
             if ($expectedStateful !== null && ! in_array($expectedStateful, $statefulDomains, true)) {
                 $issues[] = "SANCTUM_STATEFUL_DOMAINS must include '{$expectedStateful}'.";
             }
         }
 
-        if ($issues !== []) {
-            throw new \RuntimeException('Unsafe production configuration: ' . implode(' ', $issues));
+        return $issues;
+    }
+
+    /**
+     * @param list<string> $issues
+     */
+    private function throwIfUnsafeProductionConfiguration(array $issues): void
+    {
+        if ($issues === []) {
+            return;
         }
+
+        throw new \RuntimeException('Unsafe production configuration: ' . implode(' ', $issues));
+    }
+
+    private function normalizeOrigin(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        $parsed = parse_url($url);
+        if (! is_array($parsed)) {
+            return null;
+        }
+
+        $scheme = isset($parsed['scheme']) ? strtolower(trim((string) $parsed['scheme'])) : null;
+        $host = isset($parsed['host']) ? strtolower(trim((string) $parsed['host'])) : null;
+        if (! $scheme || ! $host) {
+            return null;
+        }
+
+        $port = isset($parsed['port']) && is_numeric($parsed['port']) ? (int) $parsed['port'] : null;
+        $defaultPort = match ($scheme) {
+            'https' => 443,
+            'http' => 80,
+            default => null,
+        };
+
+        $origin = $scheme . '://' . $host;
+        if ($port !== null && ($defaultPort === null || $port !== $defaultPort)) {
+            $origin .= ':' . $port;
+        }
+
+        return rtrim($origin, '/');
+    }
+
+    private function normalizeHostWithPort(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        $parsed = parse_url($url);
+        if (! is_array($parsed)) {
+            return null;
+        }
+
+        $host = isset($parsed['host']) ? strtolower(trim((string) $parsed['host'])) : null;
+        if (! $host) {
+            return null;
+        }
+
+        $port = isset($parsed['port']) && is_numeric($parsed['port']) ? (int) $parsed['port'] : null;
+        if ($port === null) {
+            return $host;
+        }
+
+        return $host . ':' . $port;
     }
 }

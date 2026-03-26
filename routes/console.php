@@ -1,5 +1,6 @@
 <?php
 
+use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use Illuminate\Foundation\Inspiring;
@@ -85,3 +86,11 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
     $this->info('School Head account_type synchronized.');
     $this->line('Updated users: ' . $updated);
 })->purpose('Backfill users.account_type for School Head accounts based on role assignments.');
+
+Artisan::command('app:check-production-config', function (): int {
+    app(AppServiceProvider::class)->runProductionConfigurationAudit();
+
+    $this->info('Production configuration looks safe.');
+
+    return self::SUCCESS;
+})->purpose('Validate production-safe configuration for the deployed CSPAMS environment.');

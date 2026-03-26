@@ -340,10 +340,12 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const response = await apiRequestRaw<T>(path, options);
-  if (response.status === 304) {
+  if (response.status === 304 || response.data === null) {
     throw new ApiError(
-      "Use apiRequestRaw() for conditional requests that may return 304 Not Modified.",
-      304,
+      response.status === 304
+        ? "Use apiRequestRaw() for conditional requests that may return 304 Not Modified."
+        : "No payload was returned for this request.",
+      response.status,
       null,
     );
   }
