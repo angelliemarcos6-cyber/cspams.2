@@ -68,7 +68,6 @@ interface CompleteMonitorMfaResetInput {
 }
 
 interface CompleteMonitorMfaResetResponse {
-  token?: string;
   user: SessionUser;
   backupCodes?: string[];
   message?: string;
@@ -97,7 +96,6 @@ type LoginResult = LoginResultAuthenticated | LoginResultMfaRequired;
 interface AuthContextType {
   role: UserRole;
   username: string;
-  token: string;
   user: SessionUser | null;
   isLoading: boolean;
   isAuthenticating: boolean;
@@ -120,7 +118,6 @@ interface AuthContextType {
 }
 
 interface AuthenticatedResponse {
-  token?: string;
   user: SessionUser;
 }
 
@@ -142,12 +139,10 @@ interface MeResponse {
 }
 
 interface ResetRequiredPasswordResponse {
-  token?: string;
   user: SessionUser;
 }
 
 interface CompleteAccountSetupResponse {
-  token?: string;
   user: SessionUser;
 }
 
@@ -518,7 +513,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       role: user?.role ?? null,
       username: user?.name ?? "",
-      token: user ? COOKIE_SESSION_TOKEN : "",
       user,
       isLoading,
       isAuthenticating,
@@ -566,4 +560,3 @@ export function useAuth() {
   }
   return context;
 }
-

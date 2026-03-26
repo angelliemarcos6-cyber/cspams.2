@@ -1333,7 +1333,6 @@ class AuthController extends Controller
         return response()->json([
             'status' => MonitorMfaResetTicket::STATUS_APPROVED,
             'requestId' => $ticketModel->id,
-            'approvalToken' => null,
             'approvalTokenExpiresAt' => $approvalExpiresAt->toISOString(),
             'delivery' => $deliveryStatus,
             'deliveryMessage' => $deliveryMessage,

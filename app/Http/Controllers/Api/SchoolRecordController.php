@@ -789,7 +789,6 @@ class SchoolRecordController extends Controller
             'email' => $account->email,
             'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLink' => null,
             'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
             'setupLinkDelivery' => $deliveryStatus,
             'setupLinkDeliveryMessage' => $deliveryMessage,

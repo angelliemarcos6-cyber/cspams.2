@@ -452,6 +452,31 @@ class AppServiceProvider extends ServiceProvider
             $issues[] = 'CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET must be enabled.';
         }
 
+        $sessionSecure = (bool) config('session.secure', false);
+        if ($sessionSecure !== true) {
+            $issues[] = 'SESSION_SECURE_COOKIE must be true.';
+        }
+
+        $sessionHttpOnly = (bool) config('session.http_only', true);
+        if ($sessionHttpOnly !== true) {
+            $issues[] = 'SESSION_HTTP_ONLY must be true.';
+        }
+
+        $sessionLifetime = (int) config('session.lifetime', 0);
+        if ($sessionLifetime <= 0 || $sessionLifetime > 1440) {
+            $issues[] = 'SESSION_LIFETIME must be between 1 and 1440 minutes.';
+        }
+
+        $sameSite = config('session.same_site');
+        $normalizedSameSite = is_string($sameSite) ? strtolower(trim($sameSite)) : null;
+        if (! in_array($normalizedSameSite, ['lax', 'strict', 'none'], true)) {
+            $issues[] = 'SESSION_SAME_SITE must be lax, strict, or none.';
+        }
+
+        if ($normalizedSameSite === 'none' && $sessionSecure !== true) {
+            $issues[] = 'SESSION_SAME_SITE=none requires SESSION_SECURE_COOKIE=true.';
+        }
+
         if ($issues !== []) {
             throw new \RuntimeException('Unsafe production configuration: ' . implode(' ', $issues));
         }

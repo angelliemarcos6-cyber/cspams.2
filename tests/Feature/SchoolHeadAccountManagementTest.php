@@ -50,8 +50,11 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::PENDING_SETUP->value)
-            ->assertJsonPath('meta.schoolHeadAccount.setupLink', null);
+            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::PENDING_SETUP->value);
+
+        /** @var array<string, mixed> $provisioning */
+        $provisioning = (array) $response->json('meta.schoolHeadAccount');
+        $this->assertArrayNotHasKey('setupLink', $provisioning);
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'setup.head@cspams.local')->firstOrFail();
@@ -187,8 +190,11 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $resetLink->assertStatus(Response::HTTP_OK)
             ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
-            ->assertJsonPath('data.account.mustResetPassword', true)
-            ->assertJsonPath('data.resetLink', null);
+            ->assertJsonPath('data.account.mustResetPassword', true);
+
+        /** @var array<string, mixed> $resetPayload */
+        $resetPayload = (array) $resetLink->json('data');
+        $this->assertArrayNotHasKey('resetLink', $resetPayload);
 
         Notification::assertSentTo($schoolHead, SchoolHeadPasswordResetNotification::class);
         $sent = Notification::sent($schoolHead, SchoolHeadPasswordResetNotification::class);
@@ -321,8 +327,11 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
 
         $emailChange->assertOk()
-            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value)
-            ->assertJsonPath('data.setupLink', null);
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value);
+
+        /** @var array<string, mixed> $emailChangePayload */
+        $emailChangePayload = (array) $emailChange->json('data');
+        $this->assertArrayNotHasKey('setupLink', $emailChangePayload);
 
         Notification::assertSentTo($schoolHead, SchoolHeadAccountSetupNotification::class);
         $sent = Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class);
@@ -362,7 +371,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $lockedEmailChange->assertOk()
             ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value)
-            ->assertJsonPath('data.setupLink', null);
+            ->assertJsonMissing(['setupLink' => null]);
 
         $this->assertCount(1, Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class));
 
@@ -447,7 +456,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $emailChange->assertOk()
             ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value)
             ->assertJsonPath('data.account.mustResetPassword', true)
-            ->assertJsonPath('data.setupLink', null);
+            ->assertJsonMissing(['setupLink' => null]);
 
         $schoolHead->refresh();
         $this->assertSame('transferred.schoolhead@cspams.local', $schoolHead->email);
@@ -486,7 +495,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
 
         $resetLink->assertOk()
-            ->assertJsonPath('data.resetLink', null);
+            ->assertJsonMissing(['resetLink' => null]);
 
         Notification::assertSentTo($schoolHead, SchoolHeadPasswordResetNotification::class);
         $sent = Notification::sent($schoolHead, SchoolHeadPasswordResetNotification::class);

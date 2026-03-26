@@ -279,7 +279,6 @@ class SchoolHeadAccountController extends Controller
                         ? 'School Head account updated. Setup link reissued for email verification.'
                         : 'School Head account updated. Setup link was not reissued for inactive accounts.')
                     : 'School Head account updated.',
-                'setupLink' => $setupLink,
                 'expiresAt' => $setupLinkExpiresAt,
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
@@ -390,7 +389,6 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'setupLink' => null,
                 'expiresAt' => $issuedSetup['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
@@ -825,7 +823,6 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'setupLink' => null,
                 'expiresAt' => $issuedSetup['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
@@ -950,7 +947,6 @@ class SchoolHeadAccountController extends Controller
                 'expiresAt' => $expiresAt->toISOString(),
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
-                'resetLink' => null,
                 'enforced' => $enforced,
                 'message' => $deliveryStatus === 'failed'
                     ? 'Password reset email delivery failed.'

@@ -109,8 +109,11 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         ]);
 
         $approve->assertOk()
-            ->assertJsonPath('status', MonitorMfaResetTicket::STATUS_APPROVED)
-            ->assertJsonPath('approvalToken', null);
+            ->assertJsonPath('status', MonitorMfaResetTicket::STATUS_APPROVED);
+
+        /** @var array<string, mixed> $approvePayload */
+        $approvePayload = (array) $approve->json();
+        $this->assertArrayNotHasKey('approvalToken', $approvePayload);
 
         /** @var User $targetUser */
         $targetUser = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
