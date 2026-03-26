@@ -50,9 +50,7 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
             return $configured;
         }
 
-        $default = trim((string) config('queue.default', 'database'));
-
-        return strtolower($default) === 'sync' ? 'database' : $default;
+        return trim((string) config('queue.default', 'database'));
     }
 
     private function resolveQueueName(): string

@@ -7,7 +7,7 @@ use Tests\TestCase;
 
 class MonitorMfaCodeNotificationTest extends TestCase
 {
-    public function test_sync_queue_default_is_upgraded_to_database_for_mfa_mail_delivery(): void
+    public function test_sync_queue_default_is_used_as_is_for_mfa_mail_delivery(): void
     {
         config()->set('queue.default', 'sync');
         config()->set('auth_mfa.monitor.queue_connection', null);
@@ -15,7 +15,28 @@ class MonitorMfaCodeNotificationTest extends TestCase
 
         $notification = new MonitorMfaCodeNotification('123456', now()->addMinutes(10)->toDateTimeString());
 
-        $this->assertSame('database', $notification->connection);
+        $this->assertSame('sync', $notification->connection);
         $this->assertSame('mail', $notification->queue);
+    }
+
+    public function test_explicit_queue_connection_overrides_default(): void
+    {
+        config()->set('queue.default', 'sync');
+        config()->set('auth_mfa.monitor.queue_connection', 'redis');
+        config()->set('auth_mfa.monitor.queue', 'mail');
+
+        $notification = new MonitorMfaCodeNotification('123456', now()->addMinutes(10)->toDateTimeString());
+
+        $this->assertSame('redis', $notification->connection);
+    }
+
+    public function test_database_queue_default_is_passed_through(): void
+    {
+        config()->set('queue.default', 'database');
+        config()->set('auth_mfa.monitor.queue_connection', null);
+
+        $notification = new MonitorMfaCodeNotification('123456', now()->addMinutes(10)->toDateTimeString());
+
+        $this->assertSame('database', $notification->connection);
     }
 }

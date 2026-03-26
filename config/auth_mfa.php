@@ -15,7 +15,9 @@ return [
         'test_code' => env('CSPAMS_MONITOR_MFA_TEST_CODE'),
 
         // Queue connection used for MFA email delivery. Leave empty to use the default
-        // queue, except "sync" is automatically upgraded to "database" to avoid blocking login.
+        // queue connection. In production, the "sync" driver is blocked when MFA is enabled
+        // (enforced by AppServiceProvider). In local/dev, using "sync" sends the code
+        // synchronously, which is fine since non-blocking delivery is not a concern there.
         'queue_connection' => env('CSPAMS_MONITOR_MFA_QUEUE_CONNECTION'),
 
         // Queue name used for MFA email delivery jobs.

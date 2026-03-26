@@ -92,7 +92,7 @@ class User extends Authenticatable
             return AccountStatus::LOCKED;
         }
 
-        return AccountStatus::LOCKED;
+        return AccountStatus::ACTIVE;
     }
 
     public function canAuthenticate(): bool
