@@ -88,7 +88,7 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
 })->purpose('Backfill users.account_type for School Head accounts based on role assignments.');
 
 Artisan::command('app:check-production-config', function (): int {
-    app(AppServiceProvider::class)->runProductionConfigurationAudit();
+    (new AppServiceProvider(app()))->runProductionConfigurationAudit();
 
     $this->info('Production configuration looks safe.');
 
