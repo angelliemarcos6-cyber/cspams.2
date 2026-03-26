@@ -153,7 +153,8 @@ class CspamsLogin extends BaseLogin
             $this->throwFailedLoginException($rolePicked);
         }
 
-        session()->regenerate();
+        session()->regenerateToken();
+        request()->session()->save();
 
         return app(LoginResponse::class);
     }
