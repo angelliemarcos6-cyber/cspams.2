@@ -111,7 +111,7 @@ interface AuthContextType {
   completeMonitorMfaReset: (input: CompleteMonitorMfaResetInput) => Promise<CompleteMonitorMfaResetResult>;
   completeAccountSetup: (input: CompleteAccountSetupInput) => Promise<void>;
   resetRequiredPassword: (input: LoginInput & { newPassword: string; confirmPassword: string }) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (options?: { force?: boolean }) => Promise<void>;
   listActiveSessions: () => Promise<ActiveSessionDevice[]>;
   revokeSessionDevice: (sessionId: string) => Promise<void>;
   revokeOtherSessions: () => Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }>;
@@ -446,20 +446,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (options?: { force?: boolean }) => {
     setIsLoggingOut(true);
     try {
       await apiRequest<void>("/api/auth/logout", {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
       });
-    } catch (err) {
-      if (!(isApiError(err) && err.status === 401)) {
-        // eslint-disable-next-line no-console
-        console.warn(err instanceof Error ? err.message : "Logout failed.");
-      }
-    } finally {
       setUser(null);
+    } catch (err) {
+      if (isApiError(err) && err.status === 401) {
+        setUser(null);
+        return;
+      }
+
+      if (options?.force) {
+        setUser(null);
+        return;
+      }
+
+      throw err;
+    } finally {
       setIsLoggingOut(false);
     }
   }, []);

@@ -27,6 +27,8 @@ function resolveApiBaseUrl(): string {
 const API_BASE_URL = resolveApiBaseUrl();
 export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const CSRF_BOOTSTRAP_TIMEOUT_MS = 10_000;
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
@@ -37,6 +39,7 @@ interface ApiRequestOptions {
   token?: string;
   body?: unknown;
   signal?: AbortSignal;
+  timeoutMs?: number;
   extraHeaders?: Record<string, string>;
 }
 
@@ -138,6 +141,78 @@ function isMutatingMethod(method: string): boolean {
   return normalized === "POST" || normalized === "PUT" || normalized === "PATCH" || normalized === "DELETE";
 }
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === "AbortError";
+  }
+
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    typeof (error as { name?: unknown }).name === "string" &&
+    (error as { name: string }).name === "AbortError"
+  );
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const timeoutId = (typeof timeoutMs === "number" && timeoutMs > 0)
+    ? setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs)
+    : null;
+
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  }
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      if (timedOut) {
+        throw new ApiError(
+          "The request timed out. Check the server and your network connection.",
+          0,
+          null,
+        );
+      }
+
+      throw error;
+    }
+
+    throw new ApiError(
+      error instanceof Error ? error.message : "Unable to reach the server.",
+      0,
+      null,
+    );
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+    if (signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
 export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
   if (typeof window === "undefined") {
     return;
@@ -148,13 +223,17 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
   }
 
   if (!csrfBootstrapPromise) {
-    csrfBootstrapPromise = fetch(`${API_BASE_URL}/sanctum/csrf-cookie`, {
-      method: "GET",
-      credentials: "include",
-      headers: {
-        Accept: "application/json",
+    csrfBootstrapPromise = fetchWithTimeout(
+      `${API_BASE_URL}/sanctum/csrf-cookie`,
+      {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+        },
       },
-    })
+      CSRF_BOOTSTRAP_TIMEOUT_MS,
+    )
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Unable to initialize CSRF protection (status ${response.status}).`);
@@ -169,9 +248,11 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
 }
 
 export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiRawResponse<T>> {
-  const { method = "GET", token, body, signal, extraHeaders } = options;
+  const { method = "GET", token, body, signal, timeoutMs, extraHeaders } = options;
   const mutating = isMutatingMethod(method);
   const useCookieSession = token === COOKIE_SESSION_TOKEN;
+  const requestTimeoutMs =
+    typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : DEFAULT_REQUEST_TIMEOUT_MS;
 
   if (mutating && useCookieSession) {
     await ensureCsrfCookie();
@@ -198,13 +279,12 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   }
 
   const fetchRequest = () =>
-    fetch(`${API_BASE_URL}${path}`, {
+    fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method,
       credentials: useCookieSession ? "include" : "omit",
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    });
+    }, requestTimeoutMs, signal);
 
   let response = await fetchRequest();
 

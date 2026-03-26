@@ -248,7 +248,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const handleApiError = useCallback(
     async (err: unknown) => {
       if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout();
+        await logout({ force: true });
         return;
       }
 

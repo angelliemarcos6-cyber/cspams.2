@@ -18,14 +18,21 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
   const signInHref = "#/";
   const headerRef = useRef<HTMLElement | null>(null);
   const [shellCssVars, setShellCssVars] = useState<{ headerHeight: number; stickyTop: number } | null>(null);
+  const [signOutError, setSignOutError] = useState("");
 
   const roleLabel = role === "school_head" ? "School Head" : "Division Monitor";
   const appTagline = "Centralized Student Performance Analytics and Monitoring System";
 
   const handleSignOut = async () => {
     if (isLoggingOut) return;
-    await logout();
-    navigate("/");
+    setSignOutError("");
+
+    try {
+      await logout();
+      navigate("/");
+    } catch (err) {
+      setSignOutError(err instanceof Error ? err.message : "Logout failed. Try again.");
+    }
   };
 
   useEffect(() => {
@@ -117,6 +124,14 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
               <span className="hidden sm:inline">{isLoggingOut ? "Signing Out..." : "Sign Out"}</span>
               <span className="sm:hidden">{isLoggingOut ? "..." : "Out"}</span>
             </button>
+            {signOutError && (
+              <span
+                className="hidden max-w-[14rem] truncate text-[11px] font-semibold text-red-100 sm:inline"
+                title={signOutError}
+              >
+                {signOutError}
+              </span>
+            )}
           </div>
         </div>
         <div className="h-1 w-full bg-primary-300/60" />

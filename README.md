@@ -237,7 +237,7 @@ Required background services:
 2. Queue worker:
    - `php artisan queue:work --tries=3 --timeout=120`
 
-Queue tables are included in migrations (`jobs`, `job_batches`, `failed_jobs`) and reminder emails are queued via `SchoolSubmissionReminderNotification`.
+Queue tables are included in migrations (`jobs`, `job_batches`, `failed_jobs`). Some email notifications (including monitor MFA codes and submission reminders) are queued, so keep a worker running.
 
 ## Email Delivery (Verification Codes & Setup Links)
 
