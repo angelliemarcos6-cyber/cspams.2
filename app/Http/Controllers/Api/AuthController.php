@@ -481,7 +481,7 @@ class AuthController extends Controller
             );
         }
 
-        if (! $user->canAuthenticate() && ! $user->must_reset_password) {
+        if (! $user->canAuthenticate()) {
             if (($inactiveResponse = $this->rejectInactiveAccount(
                 $request,
                 $user,
@@ -2515,7 +2515,16 @@ class AuthController extends Controller
      */
     private function monitorMfaChallengeExpired(array $challenge): bool
     {
-        return $this->parseMfaExpiry($challenge['expires_at'] ?? null)->lte(CarbonImmutable::now());
+        $expiresAt = $challenge['expires_at'] ?? null;
+        if (! is_string($expiresAt) || trim($expiresAt) === '') {
+            return true;
+        }
+
+        try {
+            return CarbonImmutable::parse($expiresAt)->lte(CarbonImmutable::now());
+        } catch (\Throwable) {
+            return true;
+        }
     }
 
     private function monitorMfaCacheKey(string $challengeId): string
@@ -2602,30 +2611,38 @@ class AuthController extends Controller
 
     private function consumeMonitorBackupCode(User $user, string $normalizedCode): bool
     {
-        $stored = $user->mfa_backup_codes;
-        if (! is_array($stored) || $stored === []) {
+        return DB::transaction(function () use ($user, $normalizedCode): bool {
+            /** @var User|null $fresh */
+            $fresh = User::query()->lockForUpdate()->find($user->id);
+            if ($fresh === null) {
+                return false;
+            }
+
+            $stored = $fresh->mfa_backup_codes;
+            if (! is_array($stored) || $stored === []) {
+                return false;
+            }
+
+            foreach ($stored as $index => $hash) {
+                if (! is_string($hash) || $hash === '') {
+                    continue;
+                }
+
+                if (! Hash::check($normalizedCode, $hash)) {
+                    continue;
+                }
+
+                unset($stored[$index]);
+
+                $fresh->forceFill([
+                    'mfa_backup_codes' => array_values($stored),
+                ])->save();
+
+                return true;
+            }
+
             return false;
-        }
-
-        foreach ($stored as $index => $hash) {
-            if (! is_string($hash) || $hash === '') {
-                continue;
-            }
-
-            if (! Hash::check($normalizedCode, $hash)) {
-                continue;
-            }
-
-            unset($stored[$index]);
-
-            $user->forceFill([
-                'mfa_backup_codes' => array_values($stored),
-            ])->save();
-
-            return true;
-        }
-
-        return false;
+        });
     }
 
     private function monitorBackupCodeCount(User $user): int
