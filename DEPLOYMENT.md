@@ -52,6 +52,56 @@ If using `SESSION_DRIVER=database`, ensure migrations ran and the `sessions` tab
 
 - `php artisan migrate --force`
 
+### 7) Run the queue worker for MFA email
+
+`MonitorMfaCodeNotification` is queued (`ShouldQueue`). Without a running worker the MFA code email is never delivered and monitor sign-in stalls at the MFA step.
+
+**Local / development:**
+
+```bash
+php artisan queue:table   # only needed once, before first migrate
+php artisan migrate
+php artisan queue:work
+```
+
+**Production (long-lived process):**
+
+```bash
+php artisan queue:work --verbose --tries=3 --timeout=90
+```
+
+On Render, Railway, Fly.io, or similar PaaS platforms, run this as a separate worker service so it restarts automatically on failure. Make sure the worker's environment variables match the API server's (same `APP_KEY`, same `QUEUE_CONNECTION`, same DB connection).
+
+## Deploy sequence
+
+Run these in order on every deploy:
+
+```bash
+php artisan migrate --force
+php artisan app:check-production-config   # exits non-zero if config is unsafe
+php artisan optimize
+```
+
+The config-check command exits with a non-zero code and prints the list of failing checks if the environment is misconfigured, making it safe to gate deploys on it.
+
 ## Production/Staging boot guard
 
-`app/Providers/AppServiceProvider.php` enforces a safe baseline in `production`/`staging` and will refuse to boot if critical auth/session values are unsafe or inconsistent (debug mode, MFA test knobs, mailer safety, token TTL, password-reset enforcement, secure cookie settings, and cross-origin Sanctum/CORS wiring).
+`app/Providers/AppServiceProvider.php` enforces a safe baseline on every request in `production`/`staging` and will refuse to boot if critical auth/session values are unsafe or inconsistent (debug mode, MFA test knobs, mailer safety, token TTL, password-reset enforcement, secure cookie settings). The full cross-origin CORS/Sanctum audit is deferred to the deploy-time `app:check-production-config` command above.
+
+## Smoke test
+
+After deploying, verify these flows manually before announcing the release.
+
+**A — School Head login:**
+1. Enter school code → sign in.
+2. Refresh the page — confirm session restores.
+3. Log out → refresh again — confirm session is gone.
+
+**B — Monitor login with MFA:**
+1. Enter monitor email + password → confirm the MFA challenge appears.
+2. Confirm the MFA code email actually arrives (requires the queue worker to be running).
+3. Complete MFA → refresh — confirm session restores.
+
+**C — Failure paths:**
+1. Stop the backend temporarily and attempt login — confirm the frontend shows a timeout/error rather than hanging forever.
+2. Attempt logout with the backend unavailable — confirm the UI does not silently fake a clean logout.
