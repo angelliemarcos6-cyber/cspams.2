@@ -278,6 +278,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     expect(screen.getByText("Setup link email sent for Santiago Elementary.")).toBeTruthy();
     expect(screen.getByText("Message queued.")).toBeTruthy();
-    expect(window.prompt).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /copy link/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /reveal link/i })).toBeNull();
   });
 });
