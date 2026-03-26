@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequestRaw, isApiError } from "@/lib/api";
+import { apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import type { AppNotification, AppNotificationListMeta } from "@/types";
 
 interface NotificationListResponse {
@@ -55,7 +55,8 @@ function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications:
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { token, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const token = user ? COOKIE_SESSION_TOKEN : "";
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -65,7 +66,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const handleApiError = useCallback(
     async (err: unknown) => {
-      if (isApiError(err) && err.status === 401) {
+      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
         await logout();
         return;
       }

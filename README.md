@@ -277,4 +277,5 @@ Local/dev convenience:
 ## Additional Docs
 
 - [CAPSTONE_COMPLETION_GUIDE.md](CAPSTONE_COMPLETION_GUIDE.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
 - [USER_MANUAL.md](USER_MANUAL.md)

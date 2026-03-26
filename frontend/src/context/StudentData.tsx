@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequestRaw, isApiError } from "@/lib/api";
+import { apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   StudentEnrollmentStatus,
@@ -440,7 +440,9 @@ function emitStudentUpdateEvent(schoolId: unknown): void {
 }
 
 export function StudentDataProvider({ children }: { children: ReactNode }) {
-  const { token, logout, role, user } = useAuth();
+  const { logout, role, user } = useAuth();
+  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const sessionKey = user ? `${user.role}:${user.id}` : "";
 
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -461,16 +463,16 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   const syncScopeKeyRef = useRef<string>("");
   const listCacheRef = useRef<Map<string, StudentListCacheEntry>>(new Map());
   const historyCacheRef = useRef<Map<string, { etag: string; result: StudentHistoryResult }>>(new Map());
-  const previousTokenRef = useRef<string>("");
+  const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (previousTokenRef.current === token) {
+    if (previousSessionKeyRef.current === sessionKey) {
       return;
     }
 
-    previousTokenRef.current = token;
+    previousSessionKeyRef.current = sessionKey;
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
@@ -491,11 +493,11 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     setTotalCount(0);
     setDataVersion(0);
     setSnapshotMeta(EMPTY_META);
-  }, [token]);
+  }, [sessionKey]);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
-      if (isApiError(err) && err.status === 401) {
+      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
         await logout();
         return;
       }

@@ -48,7 +48,7 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
-import { apiRequest, isApiError } from "@/lib/api";
+import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import type {
   IndicatorSubmission,
   SchoolBulkImportResult,
@@ -1210,7 +1210,8 @@ function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImportRowP
 }
 
 export function MonitorDashboard() {
-  const { token } = useAuth();
+  const { user } = useAuth();
+  const token = user ? COOKIE_SESSION_TOKEN : "";
   const {
     records,
     recordCount,

@@ -192,7 +192,6 @@ class SchoolHeadAccountController extends Controller
                 $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
             }
 
-            $setupLink = null;
             $setupLinkExpiresAt = null;
             $deliveryStatus = null;
             $deliveryMessage = null;

@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, apiRequestRaw, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import type {
   AcademicYearOption,
   IndicatorMetric,
@@ -65,7 +65,9 @@ function normalizeEtag(value: string | null): string {
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
-  const { token, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const sessionKey = user ? `${user.role}:${user.id}` : "";
 
   const [submissions, setSubmissions] = useState<IndicatorSubmission[]>([]);
   const [metrics, setMetrics] = useState<IndicatorMetric[]>([]);
@@ -78,16 +80,16 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
   const submissionsEtagRef = useRef<string>("");
-  const previousTokenRef = useRef<string>("");
+  const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const referenceDataSyncedAtRef = useRef(0);
 
   useEffect(() => {
-    if (previousTokenRef.current === token) {
+    if (previousSessionKeyRef.current === sessionKey) {
       return;
     }
 
-    previousTokenRef.current = token;
+    previousSessionKeyRef.current = sessionKey;
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
@@ -100,11 +102,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     setIsSaving(false);
     setError("");
     setLastSyncedAt(null);
-  }, [token]);
+  }, [sessionKey]);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
-      if (isApiError(err) && err.status === 401) {
+      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
         await logout();
         return;
       }

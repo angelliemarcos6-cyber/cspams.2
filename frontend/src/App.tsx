@@ -16,6 +16,7 @@ import { MonitorDashboard } from "@/pages/MonitorDashboard";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 import { SetupAccount } from "@/pages/SetupAccount";
+import { COOKIE_SESSION_TOKEN } from "@/lib/api";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
 
 function FullscreenLoader() {
@@ -98,7 +99,8 @@ function AppRoutes() {
 }
 
 function RealtimeBridge() {
-  const { token, role, user } = useAuth();
+  const { role, user } = useAuth();
+  const token = user ? COOKIE_SESSION_TOKEN : "";
   const schoolId = user?.schoolId ?? null;
 
   useEffect(() => {

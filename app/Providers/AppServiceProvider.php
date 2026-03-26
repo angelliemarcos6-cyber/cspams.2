@@ -422,6 +422,62 @@ class AppServiceProvider extends ServiceProvider
 
         $issues = [];
 
+        $normalizeOrigin = static function (string $url): ?string {
+            $url = trim($url);
+            if ($url === '') {
+                return null;
+            }
+
+            $parsed = parse_url($url);
+            if (! is_array($parsed)) {
+                return null;
+            }
+
+            $scheme = isset($parsed['scheme']) ? strtolower(trim((string) $parsed['scheme'])) : null;
+            $host = isset($parsed['host']) ? strtolower(trim((string) $parsed['host'])) : null;
+            if (! $scheme || ! $host) {
+                return null;
+            }
+
+            $port = isset($parsed['port']) && is_numeric($parsed['port']) ? (int) $parsed['port'] : null;
+            $defaultPort = match ($scheme) {
+                'https' => 443,
+                'http' => 80,
+                default => null,
+            };
+
+            $origin = $scheme . '://' . $host;
+            if ($port !== null && ($defaultPort === null || $port !== $defaultPort)) {
+                $origin .= ':' . $port;
+            }
+
+            return rtrim($origin, '/');
+        };
+
+        $normalizeHostWithPort = static function (string $url): ?string {
+            $url = trim($url);
+            if ($url === '') {
+                return null;
+            }
+
+            $parsed = parse_url($url);
+            if (! is_array($parsed)) {
+                return null;
+            }
+
+            $host = isset($parsed['host']) ? strtolower(trim((string) $parsed['host'])) : null;
+            if (! $host) {
+                return null;
+            }
+
+            $port = isset($parsed['port']) && is_numeric($parsed['port']) ? (int) $parsed['port'] : null;
+            if ($port === null) {
+                return $host;
+            }
+
+            return $host . ':' . $port;
+        };
+
         if ((bool) config('app.debug', false)) {
             $issues[] = 'APP_DEBUG must be false.';
         }
@@ -475,6 +531,67 @@ class AppServiceProvider extends ServiceProvider
 
         if ($normalizedSameSite === 'none' && $sessionSecure !== true) {
             $issues[] = 'SESSION_SAME_SITE=none requires SESSION_SECURE_COOKIE=true.';
+        }
+
+        $frontendUrl = trim((string) config('app.frontend_url', ''));
+        $appUrl = trim((string) config('app.url', ''));
+
+        $frontendOrigin = $normalizeOrigin($frontendUrl);
+        if ($frontendOrigin === null) {
+            $issues[] = 'FRONTEND_URL must be a valid URL.';
+        }
+
+        $appOrigin = $normalizeOrigin($appUrl);
+        if ($appOrigin === null) {
+            $issues[] = 'APP_URL must be a valid URL.';
+        }
+
+        if ($frontendOrigin !== null && $appOrigin !== null && $frontendOrigin !== $appOrigin) {
+            $corsAllowedOrigins = config('cors.allowed_origins', []);
+            $allowedOrigins = is_array($corsAllowedOrigins)
+                ? array_values(array_filter(array_map(
+                    static fn (mixed $value): string => rtrim(trim((string) $value), '/'),
+                    $corsAllowedOrigins,
+                )))
+                : [];
+
+            if (! in_array($frontendOrigin, $allowedOrigins, true)) {
+                $issues[] = "CORS_ALLOWED_ORIGINS must include '{$frontendOrigin}'.";
+            }
+
+            if ((bool) config('cors.supports_credentials', false) !== true) {
+                $issues[] = 'CORS supports_credentials must be true.';
+            }
+
+            $statefulConfig = config('sanctum.stateful', []);
+            $statefulDomains = [];
+            if (is_array($statefulConfig)) {
+                foreach ($statefulConfig as $domain) {
+                    $domain = trim((string) $domain);
+                    if ($domain === '') {
+                        continue;
+                    }
+
+                    if (str_contains($domain, '://')) {
+                        $parsedDomain = parse_url($domain);
+                        if (is_array($parsedDomain) && isset($parsedDomain['host'])) {
+                            $host = strtolower(trim((string) $parsedDomain['host']));
+                            $port = isset($parsedDomain['port']) && is_numeric($parsedDomain['port'])
+                                ? (int) $parsedDomain['port']
+                                : null;
+                            $statefulDomains[] = $port === null ? $host : ($host . ':' . $port);
+                            continue;
+                        }
+                    }
+
+                    $statefulDomains[] = strtolower($domain);
+                }
+            }
+
+            $expectedStateful = $normalizeHostWithPort($frontendUrl);
+            if ($expectedStateful !== null && ! in_array($expectedStateful, $statefulDomains, true)) {
+                $issues[] = "SANCTUM_STATEFUL_DOMAINS must include '{$expectedStateful}'.";
+            }
         }
 
         if ($issues !== []) {
