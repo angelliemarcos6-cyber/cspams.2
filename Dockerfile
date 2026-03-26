@@ -24,7 +24,7 @@ WORKDIR /var/www/html
 
 COPY . .
 
-RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-progress
+RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-progress --no-scripts
 
 RUN chmod +x docker/render-start.sh
 

@@ -106,6 +106,9 @@ if [ -z "${APP_KEY:-}" ] || [ "$(trim "$APP_KEY")" = "php artisan key:generate -
   export APP_KEY="$(php artisan key:generate --show --no-ansi 2>/dev/null | tail -n 1)"
 fi
 
+echo "Optimizing application..."
+php artisan optimize
+
 if [ "${CSPAMS_AUTO_MIGRATE:-true}" != "false" ]; then
   echo "Running migrations..."
   php artisan migrate --force
@@ -115,7 +118,11 @@ echo "Starting HTTP server..."
 php artisan serve --host=0.0.0.0 --port="${PORT:-10000}" &
 server_pid=$!
 
-trap 'echo "Stopping HTTP server..."; kill -TERM "$server_pid" 2>/dev/null || true' INT TERM
+echo "Starting queue worker..."
+php artisan queue:work --verbose --tries=3 --timeout=90 &
+queue_pid=$!
+
+trap 'echo "Stopping workers..."; kill -TERM "$server_pid" "$queue_pid" 2>/dev/null || true' INT TERM
 
 if [ "${CSPAMS_AUTO_SEED:-false}" = "true" ]; then
   echo "Seeding database..."
