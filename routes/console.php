@@ -88,7 +88,15 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
 })->purpose('Backfill users.account_type for School Head accounts based on role assignments.');
 
 Artisan::command('app:check-production-config', function (): int {
-    (new AppServiceProvider(app()))->runProductionConfigurationAudit();
+    try {
+        app(AppServiceProvider::class)->runProductionConfigurationAudit();
+    } catch (\RuntimeException $e) {
+        $this->error('Production configuration is UNSAFE:');
+        $this->line('  ' . $e->getMessage());
+        $this->newLine();
+        $this->line('Fix the listed configuration issues and re-run before deploying.');
+        return self::FAILURE;
+    }
 
     $this->info('Production configuration looks safe.');
 
