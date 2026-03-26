@@ -10,6 +10,20 @@ use Symfony\Component\HttpFoundation\Response;
 
 class DetectSqlInjectionPayload
 {
+    private ?bool $guardEnabledCache = null;
+
+    /**
+     * @var list<string>|null
+     */
+    private ?array $excludedKeysCache = null;
+
+    /**
+     * @var list<string>|null
+     */
+    private ?array $patternsCache = null;
+
+    private ?int $maxInputLengthCache = null;
+
     /**
      * @param \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response) $next
      */
@@ -56,7 +70,11 @@ class DetectSqlInjectionPayload
 
     private function guardEnabled(): bool
     {
-        return (bool) config('security_guard.sql_injection_guard.enabled', true);
+        if ($this->guardEnabledCache !== null) {
+            return $this->guardEnabledCache;
+        }
+
+        return $this->guardEnabledCache = (bool) config('security_guard.sql_injection_guard.enabled', true);
     }
 
     /**
@@ -64,12 +82,18 @@ class DetectSqlInjectionPayload
      */
     private function excludedKeys(): array
     {
+        if ($this->excludedKeysCache !== null) {
+            return $this->excludedKeysCache;
+        }
+
         $keys = config('security_guard.sql_injection_guard.excluded_keys', []);
         if (! is_array($keys)) {
             return [];
         }
 
-        return array_values(array_filter(array_map(static fn (mixed $value): string => strtolower(trim((string) $value)), $keys)));
+        return $this->excludedKeysCache = array_values(array_filter(
+            array_map(static fn (mixed $value): string => strtolower(trim((string) $value)), $keys),
+        ));
     }
 
     /**
@@ -77,12 +101,16 @@ class DetectSqlInjectionPayload
      */
     private function patterns(): array
     {
+        if ($this->patternsCache !== null) {
+            return $this->patternsCache;
+        }
+
         $configured = config('security_guard.sql_injection_guard.patterns', []);
         if (! is_array($configured)) {
             return [];
         }
 
-        return array_values(
+        return $this->patternsCache = array_values(
             array_filter(
                 array_map(static fn (mixed $pattern): string => trim((string) $pattern), $configured),
                 static fn (string $pattern): bool => $pattern !== '',
@@ -92,7 +120,11 @@ class DetectSqlInjectionPayload
 
     private function maxInputLength(): int
     {
-        return max(64, (int) config('security_guard.sql_injection_guard.max_input_length', 4000));
+        if ($this->maxInputLengthCache !== null) {
+            return $this->maxInputLengthCache;
+        }
+
+        return $this->maxInputLengthCache = max(64, (int) config('security_guard.sql_injection_guard.max_input_length', 4000));
     }
 
     /**

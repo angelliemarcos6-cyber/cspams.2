@@ -15,6 +15,8 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
         private readonly string $code,
         private readonly string $expiresAt,
     ) {
+        $this->onConnection($this->resolveQueueConnection());
+        $this->onQueue($this->resolveQueueName());
     }
 
     /**
@@ -39,5 +41,24 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
     public function verificationCode(): string
     {
         return $this->code;
+    }
+
+    private function resolveQueueConnection(): string
+    {
+        $configured = trim((string) config('auth_mfa.monitor.queue_connection', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $default = trim((string) config('queue.default', 'database'));
+
+        return strtolower($default) === 'sync' ? 'database' : $default;
+    }
+
+    private function resolveQueueName(): string
+    {
+        $configured = trim((string) config('auth_mfa.monitor.queue', 'mail'));
+
+        return $configured !== '' ? $configured : 'mail';
     }
 }

@@ -14,6 +14,13 @@ return [
         // Optional fixed code for local/dev/testing. Keep empty in production.
         'test_code' => env('CSPAMS_MONITOR_MFA_TEST_CODE'),
 
+        // Queue connection used for MFA email delivery. Leave empty to use the default
+        // queue, except "sync" is automatically upgraded to "database" to avoid blocking login.
+        'queue_connection' => env('CSPAMS_MONITOR_MFA_QUEUE_CONNECTION'),
+
+        // Queue name used for MFA email delivery jobs.
+        'queue' => env('CSPAMS_MONITOR_MFA_QUEUE', 'mail'),
+
         // One-time backup code count to issue on generation/reset.
         'backup_codes_count' => max(4, (int) env('CSPAMS_MONITOR_MFA_BACKUP_CODES_COUNT', 8)),
 

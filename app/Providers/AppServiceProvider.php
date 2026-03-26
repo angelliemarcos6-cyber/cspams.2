@@ -447,6 +447,11 @@ class AppServiceProvider extends ServiceProvider
             $issues[] = 'CSPAMS_MONITOR_MFA_TEST_CODE must be empty.';
         }
 
+        $queueConnection = strtolower(trim((string) config('queue.default', 'database')));
+        if ((bool) config('auth_mfa.monitor.enabled', false) && $queueConnection === 'sync') {
+            $issues[] = 'QUEUE_CONNECTION must not be sync when monitor MFA email is enabled.';
+        }
+
         $resetTestApprovalToken = trim((string) config('auth_mfa.monitor.reset_test_approval_token', ''));
         if ($resetTestApprovalToken !== '') {
             $issues[] = 'CSPAMS_MONITOR_MFA_RESET_TEST_APPROVAL_TOKEN must be empty.';

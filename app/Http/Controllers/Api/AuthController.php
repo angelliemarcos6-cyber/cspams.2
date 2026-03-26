@@ -2042,16 +2042,16 @@ class AuthController extends Controller
 
     private function isSuspiciousLoginAttempt(Request $request, User $user): bool
     {
-        $previousIp = $this->normalizeIpAddress($user->last_login_ip);
-        $previousAgent = $this->normalizeUserAgentString($user->last_login_user_agent);
-        $currentIp = $this->normalizeIpAddress($request->ip());
-        $currentAgent = $this->normalizeUserAgentString($request->userAgent());
+        $previousIp = $this->comparableIpAddress($user->last_login_ip);
+        $previousAgent = $this->userAgentFingerprint($user->last_login_user_agent);
+        $currentIp = $this->comparableIpAddress($request->ip());
+        $currentAgent = $this->userAgentFingerprint($request->userAgent());
 
         if ($previousIp === null || $previousAgent === null || $currentIp === null || $currentAgent === null) {
             return false;
         }
 
-        return $previousIp !== $currentIp || $previousAgent !== $currentAgent;
+        return $previousIp !== $currentIp && $previousAgent !== $currentAgent;
     }
 
     private function recordSuccessfulLoginTelemetry(User $user, Request $request): void
@@ -2211,6 +2211,25 @@ class AuthController extends Controller
         return $normalized !== '' ? $normalized : null;
     }
 
+    private function comparableIpAddress(mixed $value): ?string
+    {
+        $normalized = $this->normalizeIpAddress($value);
+        if ($normalized === null) {
+            return null;
+        }
+
+        return $this->isLoopbackIpAddress($normalized) ? 'loopback' : $normalized;
+    }
+
+    private function isLoopbackIpAddress(string $value): bool
+    {
+        if ($value === '::1') {
+            return true;
+        }
+
+        return str_starts_with($value, '127.');
+    }
+
     private function normalizeUserAgentString(mixed $value): ?string
     {
         $normalized = trim((string) $value);
@@ -2219,6 +2238,52 @@ class AuthController extends Controller
         }
 
         return Str::limit($normalized, 500, '');
+    }
+
+    private function userAgentFingerprint(mixed $value): ?string
+    {
+        $normalized = $this->normalizeUserAgentString($value);
+        if ($normalized === null) {
+            return null;
+        }
+
+        $agent = strtolower($normalized);
+
+        $browser = match (true) {
+            str_contains($agent, 'edg/') => 'edge',
+            str_contains($agent, 'opr/'), str_contains($agent, 'opera') => 'opera',
+            str_contains($agent, 'chrome/') => 'chrome',
+            str_contains($agent, 'firefox/') => 'firefox',
+            str_contains($agent, 'safari/') => 'safari',
+            str_contains($agent, 'trident/'), str_contains($agent, 'msie') => 'ie',
+            default => $this->fallbackUserAgentFamily($agent),
+        };
+
+        $platform = match (true) {
+            str_contains($agent, 'windows') => 'windows',
+            str_contains($agent, 'android') => 'android',
+            str_contains($agent, 'iphone'), str_contains($agent, 'ipad'), str_contains($agent, 'ios') => 'ios',
+            str_contains($agent, 'mac os x'), str_contains($agent, 'macintosh') => 'mac',
+            str_contains($agent, 'linux') => 'linux',
+            default => 'other',
+        };
+
+        $device = match (true) {
+            str_contains($agent, 'ipad'), str_contains($agent, 'tablet') => 'tablet',
+            str_contains($agent, 'mobile'), str_contains($agent, 'iphone'), str_contains($agent, 'android') => 'mobile',
+            default => 'desktop',
+        };
+
+        return implode('|', [$browser, $platform, $device]);
+    }
+
+    private function fallbackUserAgentFamily(string $agent): string
+    {
+        if (preg_match('/([a-z0-9]+)[\\/\\s]/', $agent, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return 'other';
     }
 
     private function rejectInactiveAccount(
