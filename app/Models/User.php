@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,7 +15,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     use HasApiTokens;
     use HasFactory;
@@ -98,6 +101,14 @@ class User extends Authenticatable
     public function canAuthenticate(): bool
     {
         return $this->accountStatus()->allowsLogin();
+    }
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $this->canAuthenticate() && (
+            UserRoleResolver::isDivisionLevel($this) ||
+            UserRoleResolver::has($this, UserRoleResolver::SCHOOL_HEAD)
+        );
     }
 
     public function setEmailAttribute(mixed $value): void
