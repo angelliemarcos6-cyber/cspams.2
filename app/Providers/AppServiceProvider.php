@@ -442,6 +442,7 @@ class AppServiceProvider extends ServiceProvider
         ));
 
         return str_contains($commandLine, 'package:discover')
+            || str_contains($commandLine, 'filament:upgrade')
             || str_contains($commandLine, 'config:cache')
             || str_contains($commandLine, 'config:clear')
             || str_contains($commandLine, 'optimize');
