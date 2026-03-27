@@ -215,13 +215,16 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     const indicatorDataMock = {
       submissions: [],
+      allSubmissions: [],
       metrics: [],
       academicYears: [],
       isLoading: false,
+      isAllSubmissionsLoading: false,
       isSaving: false,
       error: "",
       lastSyncedAt: null,
       refreshSubmissions: vi.fn(),
+      refreshAllSubmissions: vi.fn(),
       listSubmissions: vi.fn(),
       loadAllSubmissions: vi.fn(),
       createSubmission: vi.fn(),

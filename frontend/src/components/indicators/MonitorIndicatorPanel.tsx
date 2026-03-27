@@ -399,12 +399,14 @@ export function MonitorIndicatorPanel({
   const { username } = useAuth();
   const {
     submissions: submissionSnapshot,
+    allSubmissions,
     isLoading,
+    isAllSubmissionsLoading,
     isSaving,
     error,
     lastSyncedAt,
     refreshSubmissions,
-    loadAllSubmissions,
+    refreshAllSubmissions,
     reviewSubmission,
     loadHistory,
   } = useIndicatorData();
@@ -441,8 +443,6 @@ export function MonitorIndicatorPanel({
   const [activeSavedView, setActiveSavedView] = useState<ReviewSavedView | null>(null);
   const [queueDensity, setQueueDensity] = useState<QueueDensity>("comfortable");
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
-  const [submissionHistoryRecords, setSubmissionHistoryRecords] = useState<IndicatorSubmission[]>([]);
-  const [isSubmissionHistoryLoading, setIsSubmissionHistoryLoading] = useState(false);
   const filteredRowsRef = useRef<ReviewQueueRow[]>([]);
 
   useEffect(() => {
@@ -484,44 +484,30 @@ export function MonitorIndicatorPanel({
   }, [batchReviewer, username]);
 
   useEffect(() => {
-    let cancelled = false;
     const controller = new AbortController();
 
-    const loadSubmissionHistory = async () => {
-      setIsSubmissionHistoryLoading(true);
+    if (!lastSyncedAt && submissionSnapshot.length === 0) {
+      return () => {
+        controller.abort();
+      };
+    }
 
-      try {
-        const allRows = await loadAllSubmissions({ signal: controller.signal });
-
-        if (!cancelled && !controller.signal.aborted) {
-          setSubmissionHistoryRecords(allRows);
-        }
-      } catch (err) {
-        if (cancelled || controller.signal.aborted) {
-          return;
-        }
-
-        setSubmissionHistoryRecords((current) => (current.length > 0 ? current : submissionSnapshot));
-      } finally {
-        if (!cancelled && !controller.signal.aborted) {
-          setIsSubmissionHistoryLoading(false);
-        }
+    void refreshAllSubmissions({ signal: controller.signal }).catch((err) => {
+      if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+        return;
       }
-    };
-
-    void loadSubmissionHistory();
+    });
 
     return () => {
-      cancelled = true;
       controller.abort();
     };
-  }, [lastSyncedAt, loadAllSubmissions, submissionSnapshot]);
+  }, [lastSyncedAt, refreshAllSubmissions, submissionSnapshot.length]);
 
   const submissions = useMemo(
-    () => (submissionHistoryRecords.length > 0 || submissionSnapshot.length === 0 ? submissionHistoryRecords : submissionSnapshot),
-    [submissionHistoryRecords, submissionSnapshot],
+    () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
+    [allSubmissions, submissionSnapshot],
   );
-  const isSubmissionDataLoading = isLoading || isSubmissionHistoryLoading;
+  const isSubmissionDataLoading = isLoading || isAllSubmissionsLoading;
   const selectedIdSet = useMemo(() => new Set(selectedSubmissionIds), [selectedSubmissionIds]);
 
   const visibleSubmissions = useMemo(() => {

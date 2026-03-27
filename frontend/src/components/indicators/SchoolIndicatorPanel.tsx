@@ -57,7 +57,6 @@ type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" 
 interface SchoolIndicatorPanelProps {
   statusFilter?: IndicatorWorkflowStatusFilter;
   academicYearFilter?: string;
-  submissionHistory?: IndicatorSubmission[];
 }
 
 interface MissingFieldTarget {
@@ -647,16 +646,17 @@ function buildMissingReason(
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
-  submissionHistory = [],
 }: SchoolIndicatorPanelProps) {
   const { records } = useData();
   const { totalCount: syncedStudentCount } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
   const {
     submissions: submissionSnapshot,
+    allSubmissions,
     metrics,
     academicYears,
     isLoading,
+    isAllSubmissionsLoading,
     isSaving,
     error,
     refreshSubmissions,
@@ -1103,10 +1103,10 @@ export function SchoolIndicatorPanel({
   }, [academicYearId, notes, metricEntries, editingSubmissionId, complianceMetrics.length]);
 
   const submissions = useMemo(
-    () => (submissionHistory.length > 0 ? submissionHistory : submissionSnapshot),
-    [submissionHistory, submissionSnapshot],
+    () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
+    [allSubmissions, submissionSnapshot],
   );
-  const isSubmissionDataLoading = isLoading;
+  const isSubmissionDataLoading = isLoading || isAllSubmissionsLoading;
   const sortedSubmissions = useMemo(
     () =>
       [...submissions].sort((a, b) => {

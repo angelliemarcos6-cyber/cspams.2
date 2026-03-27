@@ -43,7 +43,7 @@ export interface IndicatorListResult {
   meta: IndicatorListMeta;
 }
 
-interface LoadAllSubmissionsOptions {
+export interface LoadAllSubmissionsOptions {
   signal?: AbortSignal;
 }
 
@@ -77,13 +77,16 @@ interface IndicatorHistoryResponse {
 
 export interface IndicatorDataContextType {
   submissions: IndicatorSubmission[];
+  allSubmissions: IndicatorSubmission[];
   metrics: IndicatorMetric[];
   academicYears: AcademicYearOption[];
   isLoading: boolean;
+  isAllSubmissionsLoading: boolean;
   isSaving: boolean;
   error: string;
   lastSyncedAt: string | null;
   refreshSubmissions: () => Promise<void>;
+  refreshAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<void>;
   listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
   loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
@@ -196,9 +199,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
   const [submissions, setSubmissions] = useState<IndicatorSubmission[]>([]);
+  const [allSubmissions, setAllSubmissions] = useState<IndicatorSubmission[]>([]);
   const [metrics, setMetrics] = useState<IndicatorMetric[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYearOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAllSubmissionsLoading, setIsAllSubmissionsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -211,6 +216,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const referenceDataSyncedAtRef = useRef(0);
+  const allSubmissionsLoadingCountRef = useRef(0);
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -226,9 +232,12 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
     setSubmissions([]);
+    setAllSubmissions([]);
     setMetrics([]);
     setAcademicYears([]);
     setIsLoading(false);
+    allSubmissionsLoadingCountRef.current = 0;
+    setIsAllSubmissionsLoading(false);
     setIsSaving(false);
     setError("");
     setLastSyncedAt(null);
@@ -279,21 +288,37 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
-  const readAllSubmissions = useCallback(async (): Promise<IndicatorSubmission[]> => {
-    const allRows: IndicatorSubmission[] = [];
-    let nextPage = 1;
+  const buildAllSubmissionsVersionKey = useCallback(
+    () => `${sessionKey}|${submissionsEtagRef.current || lastSyncedAt || "pending"}`,
+    [lastSyncedAt, sessionKey],
+  );
 
-    while (true) {
-      const result = await listSubmissions({ page: nextPage, perPage: MAX_LIST_PER_PAGE });
-      allRows.push(...result.data);
+  const readAllSubmissions = useCallback(
+    async (signal?: AbortSignal): Promise<IndicatorSubmission[]> => {
+      const allRows: IndicatorSubmission[] = [];
+      let nextPage = 1;
 
-      if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
-        return allRows;
+      while (true) {
+        throwIfAborted(signal);
+
+        const result = await listSubmissions({
+          page: nextPage,
+          perPage: MAX_LIST_PER_PAGE,
+          signal,
+        });
+
+        throwIfAborted(signal);
+        allRows.push(...result.data);
+
+        if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+          return allRows;
+        }
+
+        nextPage += 1;
       }
-
-      nextPage += 1;
-    }
-  }, [listSubmissions]);
+    },
+    [listSubmissions],
+  );
 
   const loadAllSubmissions = useCallback(
     async (options?: LoadAllSubmissionsOptions): Promise<IndicatorSubmission[]> => {
@@ -301,18 +326,29 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      throwIfAborted(options?.signal);
+      const signal = options?.signal;
+      throwIfAborted(signal);
 
-      const versionKey = `${sessionKey}|${submissionsEtagRef.current || lastSyncedAt || "pending"}`;
+      const versionKey = buildAllSubmissionsVersionKey();
       const cached = allSubmissionsCacheRef.current;
       if (cached && cached.versionKey === versionKey) {
         return cached.rows;
       }
 
+      if (signal) {
+        const rows = await readAllSubmissions(signal);
+        throwIfAborted(signal);
+        allSubmissionsCacheRef.current = {
+          versionKey,
+          rows,
+        };
+        return rows;
+      }
+
       const inFlight = allSubmissionsInFlightRef.current;
       if (inFlight && inFlight.versionKey === versionKey) {
         const rows = await inFlight.promise;
-        throwIfAborted(options?.signal);
+        throwIfAborted(signal);
         return rows;
       }
 
@@ -337,10 +373,33 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       };
 
       const rows = await promise;
-      throwIfAborted(options?.signal);
+      throwIfAborted(signal);
       return rows;
     },
-    [lastSyncedAt, readAllSubmissions, sessionKey, token],
+    [buildAllSubmissionsVersionKey, readAllSubmissions, token],
+  );
+
+  const refreshAllSubmissions = useCallback(
+    async (options?: LoadAllSubmissionsOptions): Promise<void> => {
+      const signal = options?.signal;
+      const requestVersionKey = buildAllSubmissionsVersionKey();
+
+      allSubmissionsLoadingCountRef.current += 1;
+      setIsAllSubmissionsLoading(true);
+
+      try {
+        const rows = await loadAllSubmissions({ signal });
+        throwIfAborted(signal);
+
+        if (buildAllSubmissionsVersionKey() === requestVersionKey) {
+          setAllSubmissions(rows);
+        }
+      } finally {
+        allSubmissionsLoadingCountRef.current = Math.max(0, allSubmissionsLoadingCountRef.current - 1);
+        setIsAllSubmissionsLoading(allSubmissionsLoadingCountRef.current > 0);
+      }
+    },
+    [buildAllSubmissionsVersionKey, loadAllSubmissions],
   );
 
   const syncSubmissions = useCallback(
@@ -352,6 +411,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       if (!token) {
         setSubmissions([]);
+        setAllSubmissions([]);
         setMetrics([]);
         setAcademicYears([]);
         referenceDataSyncedAtRef.current = 0;
@@ -359,6 +419,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         allSubmissionsCacheRef.current = null;
         allSubmissionsInFlightRef.current = null;
         setIsLoading(false);
+        allSubmissionsLoadingCountRef.current = 0;
+        setIsAllSubmissionsLoading(false);
         setIsSaving(false);
         setError("");
         setLastSyncedAt(null);
@@ -646,13 +708,16 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo<IndicatorDataContextType>(
     () => ({
       submissions,
+      allSubmissions,
       metrics,
       academicYears,
       isLoading,
+      isAllSubmissionsLoading,
       isSaving,
       error,
       lastSyncedAt,
       refreshSubmissions,
+      refreshAllSubmissions,
       listSubmissions,
       loadAllSubmissions,
       createSubmission,
@@ -663,13 +728,16 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     }),
     [
       submissions,
+      allSubmissions,
       metrics,
       academicYears,
       isLoading,
+      isAllSubmissionsLoading,
       isSaving,
       error,
       lastSyncedAt,
       refreshSubmissions,
+      refreshAllSubmissions,
       listSubmissions,
       loadAllSubmissions,
       createSubmission,

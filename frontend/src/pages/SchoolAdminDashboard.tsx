@@ -373,10 +373,11 @@ export function SchoolAdminDashboard() {
   const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
   const {
     submissions: indicatorSubmissionSnapshot,
+    allSubmissions,
     academicYears,
     lastSyncedAt: indicatorLastSyncedAt,
     refreshSubmissions,
-    loadAllSubmissions,
+    refreshAllSubmissions,
   } = useIndicatorData();
   const { queryStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount, refreshTeachers } = useTeacherData();
@@ -404,39 +405,30 @@ export function SchoolAdminDashboard() {
   const [recordsExportError, setRecordsExportError] = useState("");
   const [isExportingRecords, setIsExportingRecords] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
-  const [indicatorHistory, setIndicatorHistory] = useState<IndicatorSubmission[]>([]);
 
   useEffect(() => {
-    let cancelled = false;
     const controller = new AbortController();
 
-    const loadIndicatorHistory = async () => {
-      try {
-        const allRows = await loadAllSubmissions({ signal: controller.signal });
+    if (!indicatorLastSyncedAt && indicatorSubmissionSnapshot.length === 0) {
+      return () => {
+        controller.abort();
+      };
+    }
 
-        if (!cancelled && !controller.signal.aborted) {
-          setIndicatorHistory(allRows);
-        }
-      } catch (err) {
-        if (cancelled || controller.signal.aborted) {
-          return;
-        }
-
-        setIndicatorHistory((current) => (current.length > 0 ? current : indicatorSubmissionSnapshot));
+    void refreshAllSubmissions({ signal: controller.signal }).catch((err) => {
+      if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+        return;
       }
-    };
-
-    void loadIndicatorHistory();
+    });
 
     return () => {
-      cancelled = true;
       controller.abort();
     };
-  }, [indicatorLastSyncedAt, indicatorSubmissionSnapshot, loadAllSubmissions]);
+  }, [indicatorLastSyncedAt, indicatorSubmissionSnapshot.length, refreshAllSubmissions]);
 
   const indicatorSubmissions = useMemo(
-    () => (indicatorHistory.length > 0 || indicatorSubmissionSnapshot.length === 0 ? indicatorHistory : indicatorSubmissionSnapshot),
-    [indicatorHistory, indicatorSubmissionSnapshot],
+    () => (allSubmissions.length > 0 || indicatorSubmissionSnapshot.length === 0 ? allSubmissions : indicatorSubmissionSnapshot),
+    [allSubmissions, indicatorSubmissionSnapshot],
   );
 
   const assignedRecord = records[0] ?? null;
@@ -1812,7 +1804,6 @@ export function SchoolAdminDashboard() {
                   <SchoolIndicatorPanel
                     statusFilter={contextWorkflowStatus}
                     academicYearFilter={contextAcademicYearId}
-                    submissionHistory={indicatorSubmissions}
                   />
                 </section>
               )}
