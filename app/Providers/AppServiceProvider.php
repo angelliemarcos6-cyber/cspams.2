@@ -24,7 +24,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->assertSafeProductionRuntimeConfiguration();
+        if (! $this->shouldSkipProductionConfigurationAudit()) {
+            $this->assertSafeProductionRuntimeConfiguration();
+        }
 
         RateLimiter::for('api', function (Request $request): Limit {
             $key = $request->user()?->id
@@ -425,6 +427,24 @@ class AppServiceProvider extends ServiceProvider
     private function assertSafeProductionRuntimeConfiguration(): void
     {
         $this->throwIfUnsafeProductionConfiguration($this->productionRuntimeConfigurationIssues());
+    }
+
+    private function shouldSkipProductionConfigurationAudit(): bool
+    {
+        if (! app()->runningInConsole()) {
+            return false;
+        }
+
+        $argv = $_SERVER['argv'] ?? [];
+        $commandLine = implode(' ', array_map(
+            static fn (mixed $value): string => (string) $value,
+            is_array($argv) ? $argv : [],
+        ));
+
+        return str_contains($commandLine, 'package:discover')
+            || str_contains($commandLine, 'config:cache')
+            || str_contains($commandLine, 'config:clear')
+            || str_contains($commandLine, 'optimize');
     }
 
     /**
