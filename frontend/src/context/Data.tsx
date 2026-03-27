@@ -1099,7 +1099,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
       if (trigger === "realtime") {
         const entity = payload?.entity ?? "";
-        if (["dashboard", "students", "forms", "indicators"].includes(entity)) {
+        if (["dashboard", "students", "teachers", "forms", "indicators"].includes(entity)) {
           scheduleSync(220);
         }
         return;

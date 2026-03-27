@@ -17,8 +17,9 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - Metric catalog
   - Learner performance records by period
 - Reports:
-  - Filterable school and performance summary previews
-  - CSV exports (summary and selected records)
+  - Student and teacher history panels
+  - CSV exports for student and teacher records
+  - Indicator workflow and school summary status views
 - Governance and security:
   - Spatie role/permission integration
   - Scoped access by role and school

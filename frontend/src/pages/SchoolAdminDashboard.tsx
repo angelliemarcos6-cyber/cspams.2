@@ -3,8 +3,6 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   BookOpenText,
   Building2,
   CheckCircle2,
@@ -14,13 +12,8 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
-  Edit2,
-  Filter,
   RefreshCw,
-  CalendarDays,
   FilterX,
-  Save,
-  Search,
   LayoutDashboard,
   ListChecks,
   ClipboardList,
@@ -45,9 +38,6 @@ import {
   statusLabel,
 } from "@/utils/analytics";
 
-type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "status" | "lastUpdated";
-type SortDirection = "asc" | "desc";
-
 interface FormState {
   studentCount: string;
   teacherCount: string;
@@ -64,7 +54,7 @@ interface RequirementItem {
 }
 
 interface TopNavigatorItem {
-  id: "first_glance" | "requirements" | "compliance" | "records";
+  id: "requirements" | "compliance" | "records";
   label: string;
 }
 
@@ -93,23 +83,12 @@ const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
 ];
 
 const SCHOOL_NAVIGATOR_ICONS: Record<TopNavigatorItem["id"], NavigatorIcon> = {
-  first_glance: LayoutDashboard,
   requirements: ListChecks,
   compliance: ClipboardList,
   records: Database,
 };
 
 const SCHOOL_NAVIGATOR_MANUAL: ManualStep[] = [
-  {
-    id: "first_glance",
-    title: "My Tasks",
-    objective: "Start with the highest-priority tasks for today.",
-    actions: [
-      "Check overdue, returned, and for-review items first.",
-      "Use quick-jump chips to open the exact section that needs action.",
-    ],
-    doneWhen: "You have a clear order of what to encode or revise next.",
-  },
   {
     id: "compliance",
     title: "Submission Workspace",
@@ -151,11 +130,6 @@ const SCHOOL_MANUAL_STATUS_GUIDE = [
 
 
 const SCHOOL_QUICK_JUMPS: Record<TopNavigatorItem["id"], QuickJumpItem[]> = {
-  first_glance: [
-    { id: "overview_alerts", label: "Today Focus", targetId: "first-glance", icon: AlertTriangle },
-    { id: "school_info", label: "School Info", targetId: "school-overview", icon: Building2 },
-    { id: "kpi_cards", label: "Task KPIs", targetId: "overview-metrics", icon: LayoutDashboard },
-  ],
   compliance: [
     { id: "overview_alerts", label: "Today Focus", targetId: "first-glance", icon: AlertTriangle },
     { id: "school_info", label: "School Info", targetId: "school-overview", icon: Building2 },
@@ -195,48 +169,6 @@ const EMPTY_FORM: FormState = {
 };
 const SCHOOL_NAV_STORAGE_KEY = "cspams.schoolhead.nav.v1";
 const SCHOOL_MOBILE_BREAKPOINT = 768;
-
-function statusTone(status: SchoolStatus) {
-  if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "pending") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-  return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-}
-
-function schoolTypeLabel(value: string | null | undefined): string {
-  if (!value) return "N/A";
-  const normalized = value.toLowerCase();
-  if (normalized === "public") return "Public";
-  if (normalized === "private") return "Private";
-  return value;
-}
-
-function compareRecords(a: SchoolRecord, b: SchoolRecord, column: SortColumn, direction: SortDirection) {
-  const sign = direction === "asc" ? 1 : -1;
-
-  switch (column) {
-    case "schoolName":
-      return sign * a.schoolName.localeCompare(b.schoolName);
-    case "region":
-      return sign * a.region.localeCompare(b.region);
-    case "studentCount":
-      return sign * (a.studentCount - b.studentCount);
-    case "teacherCount":
-      return sign * (a.teacherCount - b.teacherCount);
-    case "status":
-      return sign * a.status.localeCompare(b.status);
-    case "lastUpdated":
-      return sign * (new Date(a.lastUpdated).getTime() - new Date(b.lastUpdated).getTime());
-    default:
-      return 0;
-  }
-}
-
-function SortIndicator({ active, direction }: { active: boolean; direction: SortDirection }) {
-  if (!active) {
-    return <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />;
-  }
-  return direction === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
-}
 
 function navigatorButtonClass(active: boolean, compact: boolean): string {
   return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase leading-none tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
@@ -284,11 +216,10 @@ function buildWorkflowDetail(label: string, submission: IndicatorSubmission | nu
   return `${label} is still draft and not yet submitted.`;
 }
 
-function submissionStatusLabel(status: string | null | undefined): "Draft" | "Needs Revision" | "Submitted" | "Validated" | "Overdue" {
+function submissionStatusLabel(status: string | null | undefined): "Draft" | "Needs Revision" | "Submitted" | "Validated" {
   if (status === "validated") return "Validated";
   if (status === "submitted") return "Submitted";
   if (status === "returned") return "Needs Revision";
-  if (status === "overdue") return "Overdue";
   return "Draft";
 }
 
@@ -300,9 +231,6 @@ function requirementStatusTone(statusLabel: string): string {
   }
   if (normalized === "needs revision") {
     return "border-amber-300 bg-amber-50 text-amber-700";
-  }
-  if (normalized === "overdue") {
-    return "border-rose-300 bg-rose-50 text-rose-700";
   }
 
   return "border-slate-300 bg-slate-50 text-slate-700";
@@ -443,9 +371,9 @@ function buildTeacherExportRows(records: TeacherRecord[]): string[][] {
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
-  const { submissions: indicatorSubmissions, academicYears } = useIndicatorData();
-  const { listStudents, totalCount: syncedStudentCount } = useStudentData();
-  const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
+  const { submissions: indicatorSubmissions, academicYears, refreshSubmissions } = useIndicatorData();
+  const { listStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
+  const { listTeachers, totalCount: syncedTeacherCount, refreshTeachers } = useTeacherData();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -453,10 +381,6 @@ export function SchoolAdminDashboard() {
   const [saveMessage, setSaveMessage] = useState("");
   const [submitError, setSubmitError] = useState("");
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
-  const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [activeTopNavigator, setActiveTopNavigator] = useState<TopNavigatorItem["id"]>("compliance");
   const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= 768));
@@ -467,14 +391,13 @@ export function SchoolAdminDashboard() {
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
-  const [contextSubmissionType, setContextSubmissionType] = useState<"all" | "school_record" | "indicator_package">("all");
-  const [contextWorkflowStatus, setContextWorkflowStatus] = useState<"all" | "draft" | "submitted" | "returned" | "validated" | "overdue">("all");
-  const [showContextMoreFilters, setShowContextMoreFilters] = useState(false);
+  const [contextWorkflowStatus, setContextWorkflowStatus] = useState<"all" | "draft" | "submitted" | "returned" | "validated">("all");
   const [selectedRequirementId, setSelectedRequirementId] = useState<RequirementItem["id"]>("school_record");
   const [activeSubmissionSection, setActiveSubmissionSection] = useState<RequirementItem["id"]>("school_record");
   const [recordsExportMessage, setRecordsExportMessage] = useState("");
   const [recordsExportError, setRecordsExportError] = useState("");
   const [isExportingRecords, setIsExportingRecords] = useState(false);
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
 
   const assignedRecord = records[0] ?? null;
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
@@ -557,13 +480,6 @@ export function SchoolAdminDashboard() {
         .map(([field, message]) => ({ field, message: message ?? "" })),
     [formErrors],
   );
-  const contextDeadline = useMemo(() => {
-    if (!latestIndicators?.updatedAt && !latestIndicators?.createdAt) {
-      return "Not set";
-    }
-    const dateValue = latestIndicators.updatedAt ?? latestIndicators.createdAt;
-    return dateValue ? new Date(dateValue).toLocaleDateString() : "Not set";
-  }, [latestIndicators?.createdAt, latestIndicators?.updatedAt]);
   const latestIndicatorUpdatedAt = latestIndicators?.updatedAt ?? latestIndicators?.createdAt ?? null;
   const currentAcademicYearOption = useMemo(
     () => academicYears.find((year) => year.isCurrent) ?? academicYears[0] ?? null,
@@ -573,23 +489,18 @@ export function SchoolAdminDashboard() {
     if (contextAcademicYearId === "all") return "All school years";
     return academicYears.find((year) => year.id === contextAcademicYearId)?.name ?? "Selected year";
   }, [academicYears, contextAcademicYearId]);
-  const selectedSubmissionTypeLabel = useMemo(() => {
-    if (contextSubmissionType === "all") return "All submission types";
-    return contextSubmissionType === "school_record" ? "School record" : "Indicator package";
-  }, [contextSubmissionType]);
   const selectedWorkflowStatusLabel = useMemo(() => {
     if (contextWorkflowStatus === "all") return "All statuses";
     if (contextWorkflowStatus === "returned") return "Needs Revision";
     return contextWorkflowStatus.charAt(0).toUpperCase() + contextWorkflowStatus.slice(1);
   }, [contextWorkflowStatus]);
   const hasContextOverrides =
-    contextAcademicYearId !== "all" || contextSubmissionType !== "all" || contextWorkflowStatus !== "all";
+    contextAcademicYearId !== "all" || contextWorkflowStatus !== "all";
   const activeContextCount = useMemo(
     () =>
       Number(contextAcademicYearId !== "all") +
-      Number(contextSubmissionType !== "all") +
       Number(contextWorkflowStatus !== "all"),
-    [contextAcademicYearId, contextSubmissionType, contextWorkflowStatus],
+    [contextAcademicYearId, contextWorkflowStatus],
   );
   const quickJumpItems = useMemo(
     () => SCHOOL_QUICK_JUMPS[activeTopNavigator] ?? [],
@@ -600,10 +511,6 @@ export function SchoolAdminDashboard() {
     Record<TopNavigatorItem["id"], { primary?: number; secondary?: number; urgency: "none" | "high" | "medium" }>
   >(
     () => ({
-      first_glance: {
-        primary: missingRequirements.length,
-        urgency: missingRequirements.length > 0 ? "high" : "none",
-      },
       requirements: {
         primary: returnedCount,
         urgency: returnedCount > 0 ? "high" : "none",
@@ -705,12 +612,6 @@ export function SchoolAdminDashboard() {
   }, [exportToken, fetchAllTeachersForExport]);
 
   useEffect(() => {
-    if (contextSubmissionType !== "all" && !showContextMoreFilters) {
-      setShowContextMoreFilters(true);
-    }
-  }, [contextSubmissionType, showContextMoreFilters]);
-
-  useEffect(() => {
     if (requirements.length === 0) return;
     if (requirements.some((item) => item.id === selectedRequirementId)) return;
     setSelectedRequirementId(requirements[0].id);
@@ -738,11 +639,8 @@ export function SchoolAdminDashboard() {
         isNavigatorVisible?: boolean;
         isNavigatorCompact?: boolean;
       };
-      if (persisted.activeTopNavigator) {
-        const mappedNavigator = persisted.activeTopNavigator === "first_glance" ? "compliance" : persisted.activeTopNavigator;
-        if (TOP_NAVIGATOR_ITEMS.some((item) => item.id === mappedNavigator)) {
-          setActiveTopNavigator(mappedNavigator);
-        }
+      if (persisted.activeTopNavigator && TOP_NAVIGATOR_ITEMS.some((item) => item.id === persisted.activeTopNavigator)) {
+        setActiveTopNavigator(persisted.activeTopNavigator);
       }
       if (typeof persisted.isNavigatorVisible === "boolean") {
         setIsNavigatorVisible(persisted.isNavigatorVisible);
@@ -856,41 +754,6 @@ export function SchoolAdminDashboard() {
     setSaveMessage("");
     setFormErrors({});
   }, [activeSubmissionSection]);
-
-  const filteredRecords = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return records
-      .filter((record) => {
-        const matchesSearch =
-          query.length === 0 ||
-          record.schoolName.toLowerCase().includes(query) ||
-          (record.schoolId ?? record.schoolCode ?? "").toLowerCase().includes(query) ||
-          (record.level ?? "").toLowerCase().includes(query) ||
-          (record.address ?? record.district ?? "").toLowerCase().includes(query) ||
-          record.region.toLowerCase().includes(query) ||
-          record.submittedBy.toLowerCase().includes(query);
-        const matchesStatus = statusFilter === "all" || record.status === statusFilter;
-        return matchesSearch && matchesStatus;
-      })
-      .sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
-  }, [records, search, statusFilter, sortColumn, sortDirection]);
-
-  const handleSort = (column: SortColumn) => {
-    if (column === sortColumn) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortColumn(column);
-    setSortDirection("asc");
-  };
-
-  const resetForm = () => {
-    syncComplianceForm(assignedRecord);
-    setFormErrors({});
-    setSaveMessage("");
-    setSubmitError("");
-  };
 
   const handleRequirementNavigate = (item: RequirementItem) => {
     setShowNavigatorManual(false);
@@ -1117,31 +980,40 @@ export function SchoolAdminDashboard() {
     await handleSubmitOrResubmit();
   };
 
+  const handleRefreshAll = useCallback(async () => {
+    if (isRefreshingAll) {
+      return;
+    }
+
+    setIsRefreshingAll(true);
+    try {
+      await Promise.allSettled([
+        refreshRecords(),
+        refreshSubmissions(),
+        refreshStudents(),
+        refreshTeachers(),
+      ]);
+    } finally {
+      setIsRefreshingAll(false);
+    }
+  }, [isRefreshingAll, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
+
   const clearTopContext = () => {
     setContextAcademicYearId("all");
-    setContextSubmissionType("all");
     setContextWorkflowStatus("all");
-    setShowContextMoreFilters(false);
-    setSearch("");
-    setStatusFilter("all");
     setFocusedSectionId(null);
   };
 
-  const clearContextField = (field: "year" | "type" | "status") => {
+  const clearContextField = (field: "year" | "status") => {
     if (field === "year") {
       setContextAcademicYearId("all");
       return;
     }
 
-    if (field === "type") {
-      setContextSubmissionType("all");
-      return;
-    }
-
     setContextWorkflowStatus("all");
   };
 
-  const applyContextPreset = (preset: "current_year" | "needs_revision" | "indicator_focus" | "all_submission") => {
+  const applyContextPreset = (preset: "current_year" | "needs_revision" | "all_submission") => {
     if (preset === "current_year") {
       if (currentAcademicYearOption) {
         setContextAcademicYearId(currentAcademicYearOption.id);
@@ -1154,27 +1026,16 @@ export function SchoolAdminDashboard() {
       return;
     }
 
-    if (preset === "indicator_focus") {
-      setContextSubmissionType("indicator_package");
-      setShowContextMoreFilters(true);
-      return;
-    }
-
     setContextAcademicYearId("all");
-    setContextSubmissionType("all");
     setContextWorkflowStatus("all");
-    setShowContextMoreFilters(false);
   };
 
-  const isContextPresetActive = (preset: "current_year" | "needs_revision" | "indicator_focus" | "all_submission") => {
+  const isContextPresetActive = (preset: "current_year" | "needs_revision" | "all_submission") => {
     if (preset === "current_year") {
       return Boolean(currentAcademicYearOption && contextAcademicYearId === currentAcademicYearOption.id);
     }
     if (preset === "needs_revision") {
       return contextWorkflowStatus === "returned";
-    }
-    if (preset === "indicator_focus") {
-      return contextSubmissionType === "indicator_package";
     }
     return !hasContextOverrides;
   };
@@ -1188,12 +1049,13 @@ export function SchoolAdminDashboard() {
         <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm border border-white/20 bg-white/10 p-1.5 sm:gap-2">
           <button
             type="button"
-            onClick={() => void refreshRecords()}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90"
-            aria-label="Refresh records"
-            title="Refresh"
+            onClick={() => void handleRefreshAll()}
+            disabled={isRefreshingAll}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-70"
+            aria-label="Refresh dashboard data"
+            title="Refresh all data"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingAll ? "animate-spin" : ""}`} />
           </button>
           <button
             type="button"
@@ -1448,23 +1310,20 @@ export function SchoolAdminDashboard() {
         </section>
       )}
 
-      {!showNavigatorManual && activeTopNavigator !== "compliance" && (
+      {!showNavigatorManual && isIndicatorWorkspaceActive && (
       <section className="dashboard-shell sticky top-2 z-20 mb-5 rounded-sm border border-slate-200 bg-white/95">
         <div className="border-b border-slate-200 px-4 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Context</h2>
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Indicator Filters</h2>
+              <p className="mt-0.5 text-xs text-slate-600">These filters apply only to the indicator workspace.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               {activeContextCount > 0 && (
                 <span className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                   {activeContextCount} active
                 </span>
               )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                <CalendarDays className="h-3.5 w-3.5 text-slate-500" />
-                {contextDeadline === "Not set" ? "No due date" : contextDeadline}
-              </span>
               <button
                 type="button"
                 onClick={clearTopContext}
@@ -1504,17 +1363,6 @@ export function SchoolAdminDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => applyContextPreset("indicator_focus")}
-              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                isContextPresetActive("indicator_focus")
-                  ? "border-primary-300 bg-primary-50 text-primary-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              Indicators
-            </button>
-            <button
-              type="button"
               onClick={() => applyContextPreset("all_submission")}
               className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
                 isContextPresetActive("all_submission")
@@ -1528,7 +1376,7 @@ export function SchoolAdminDashboard() {
         </div>
 
         <div className="px-4 py-3">
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="grid gap-2 md:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Year</span>
               <select
@@ -1550,7 +1398,7 @@ export function SchoolAdminDashboard() {
               <select
                 value={contextWorkflowStatus}
                 onChange={(event) =>
-                  setContextWorkflowStatus(event.target.value as "all" | "draft" | "submitted" | "returned" | "validated" | "overdue")
+                  setContextWorkflowStatus(event.target.value as "all" | "draft" | "submitted" | "returned" | "validated")
                 }
                 className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
@@ -1559,43 +1407,8 @@ export function SchoolAdminDashboard() {
                 <option value="submitted">Submitted</option>
                 <option value="returned">Needs Revision</option>
                 <option value="validated">Validated</option>
-                <option value="overdue">Overdue</option>
               </select>
             </label>
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={() => setShowContextMoreFilters((current) => !current)}
-                className="inline-flex h-10 w-full items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 xl:w-auto"
-                aria-expanded={showContextMoreFilters}
-                aria-controls="school-head-context-more-filters"
-              >
-                {showContextMoreFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                {showContextMoreFilters ? "Less" : "More"}
-              </button>
-            </div>
-          </div>
-
-          <div
-            id="school-head-context-more-filters"
-            className={`overflow-hidden transition-[max-height,opacity,margin] duration-[200ms] ease-out ${
-              showContextMoreFilters ? "mt-2 max-h-32 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
-            }`}
-          >
-            <div className="grid gap-2 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Type</span>
-                <select
-                  value={contextSubmissionType}
-                  onChange={(event) => setContextSubmissionType(event.target.value as "all" | "school_record" | "indicator_package")}
-                  className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                >
-                  <option value="all">All types</option>
-                  <option value="school_record">School record</option>
-                  <option value="indicator_package">Indicator package</option>
-                </select>
-              </label>
-            </div>
           </div>
         </div>
 
@@ -1609,16 +1422,6 @@ export function SchoolAdminDashboard() {
                   className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                 >
                   {selectedAcademicYearLabel}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {contextSubmissionType !== "all" && (
-                <button
-                  type="button"
-                  onClick={() => clearContextField("type")}
-                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
-                >
-                  {selectedSubmissionTypeLabel}
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}

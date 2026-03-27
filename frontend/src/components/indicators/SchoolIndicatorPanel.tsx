@@ -52,7 +52,7 @@ interface ComplianceCategory {
   metricCodes: string[];
 }
 
-type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" | "validated" | "overdue";
+type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" | "validated";
 
 interface SchoolIndicatorPanelProps {
   statusFilter?: IndicatorWorkflowStatusFilter;
@@ -253,7 +253,6 @@ function workflowLabel(status: string, fallback: string): string {
   if (status === "submitted") return "Submitted";
   if (status === "validated") return "Validated";
   if (status === "returned") return "Needs Revision";
-  if (status === "overdue") return "Overdue";
   return fallback || status;
 }
 
@@ -1117,7 +1116,7 @@ export function SchoolIndicatorPanel({
         const normalizedStatus = String(submission.status ?? "").toLowerCase();
         const matchesStatus =
           statusFilter === "all" ||
-          (statusFilter === "overdue" ? normalizedStatus === "returned" : normalizedStatus === statusFilter);
+          normalizedStatus === statusFilter;
 
         return matchesYear && matchesStatus;
       }),
