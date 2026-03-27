@@ -229,7 +229,7 @@ function normalizeMeta(meta: TeacherSyncMeta | undefined, params: NormalizedTeac
 }
 
 export function TeacherDataProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, role, logout } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -565,9 +565,24 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
       if (trigger === "realtime") {
         const entity = payload?.entity ?? "";
-        if (entity === "teachers" || entity === "dashboard" || entity === "students") {
-          scheduleSync(220);
+        if (entity !== "teachers" && entity !== "dashboard" && entity !== "students") {
+          return;
         }
+
+        if (
+          role === "school_head"
+          && user?.schoolId !== null
+          && user?.schoolId !== undefined
+          && payload?.schoolId !== null
+          && payload?.schoolId !== undefined
+          && (entity === "teachers" || entity === "students")
+        ) {
+          if (String(payload.schoolId) !== String(user.schoolId)) {
+            return;
+          }
+        }
+
+        scheduleSync(220);
         return;
       }
 
@@ -578,7 +593,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncTeachers]);
+  }, [token, syncTeachers, role, user?.schoolId]);
 
   const value = useMemo<TeacherDataContextType>(
     () => ({

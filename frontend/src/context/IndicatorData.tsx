@@ -20,8 +20,14 @@ import type {
 
 type ReviewDecision = "validated" | "returned";
 
+interface IndicatorSubmissionsMeta {
+  current_page?: number;
+  last_page?: number;
+}
+
 interface IndicatorSubmissionsResponse {
   data: IndicatorSubmission[];
+  meta?: IndicatorSubmissionsMeta;
 }
 
 interface IndicatorMetricsResponse {
@@ -59,9 +65,27 @@ interface IndicatorDataContextType {
 const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>(undefined);
 const AUTO_SYNC_INTERVAL_MS = 15_000;
 const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
+const SUBMISSIONS_PER_PAGE = 100;
 
 function normalizeEtag(value: string | null): string {
   return (value || "").replace(/^W\//, "").replace(/"/g, "");
+}
+
+function buildSubmissionsPath(page: number): string {
+  return `/api/indicators/submissions?per_page=${SUBMISSIONS_PER_PAGE}&page=${page}`;
+}
+
+function readSubmissionRows(payload: IndicatorSubmissionsResponse | null | undefined): IndicatorSubmission[] {
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+function resolveLastPage(meta: IndicatorSubmissionsMeta | undefined): number {
+  const lastPage = Number(meta?.last_page ?? 1);
+  if (!Number.isFinite(lastPage) || lastPage <= 0) {
+    return 1;
+  }
+
+  return Math.trunc(lastPage);
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
@@ -151,11 +175,47 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           academicYears.length === 0 ||
           Date.now() - referenceDataSyncedAtRef.current > REFERENCE_DATA_SYNC_INTERVAL_MS;
 
-        const [submissionsResponse, metricPayload, yearPayload] = await Promise.all([
-          apiRequestRaw<IndicatorSubmissionsResponse>("/api/indicators/submissions?per_page=100", {
-            token,
-            extraHeaders: submissionsEtagRef.current ? { "If-None-Match": submissionsEtagRef.current } : undefined,
-          }),
+        const [submissionsSnapshot, metricPayload, yearPayload] = await Promise.all([
+          (async () => {
+            const firstResponse = await apiRequestRaw<IndicatorSubmissionsResponse>(buildSubmissionsPath(1), {
+              token,
+              extraHeaders: submissionsEtagRef.current ? { "If-None-Match": submissionsEtagRef.current } : undefined,
+            });
+
+            if (firstResponse.status === 304) {
+              return {
+                response: firstResponse,
+                changed: false,
+                rows: null as IndicatorSubmission[] | null,
+              };
+            }
+
+            const firstRows = readSubmissionRows(firstResponse.data);
+            const lastPage = resolveLastPage(firstResponse.data?.meta);
+            if (lastPage <= 1) {
+              return {
+                response: firstResponse,
+                changed: true,
+                rows: firstRows,
+              };
+            }
+
+            // Keep the provider snapshot complete even when history spans multiple pages.
+            const extraResponses = await Promise.all(
+              Array.from({ length: lastPage - 1 }, (_, index) =>
+                apiRequestRaw<IndicatorSubmissionsResponse>(buildSubmissionsPath(index + 2), { token }),
+              ),
+            );
+
+            return {
+              response: firstResponse,
+              changed: true,
+              rows: [
+                ...firstRows,
+                ...extraResponses.flatMap((response) => readSubmissionRows(response.data)),
+              ],
+            };
+          })(),
           shouldRefreshReferenceData
             ? apiRequest<IndicatorMetricsResponse>("/api/indicators/metrics", { token })
             : Promise.resolve<IndicatorMetricsResponse | null>(null),
@@ -169,16 +229,15 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
 
         const nextEtag = normalizeEtag(
-          submissionsResponse.headers.get("X-Sync-Etag") || submissionsResponse.headers.get("ETag"),
+          submissionsSnapshot.response.headers.get("X-Sync-Etag") || submissionsSnapshot.response.headers.get("ETag"),
         );
         if (nextEtag) {
           submissionsEtagRef.current = nextEtag;
         }
 
-        const submissionsChanged = submissionsResponse.status !== 304;
+        const submissionsChanged = submissionsSnapshot.changed;
         if (submissionsChanged) {
-          const nextSubmissions = Array.isArray(submissionsResponse.data?.data) ? submissionsResponse.data.data : [];
-          setSubmissions(nextSubmissions);
+          setSubmissions(submissionsSnapshot.rows ?? []);
         }
         if (shouldRefreshReferenceData) {
           setMetrics(Array.isArray(metricPayload?.data) ? metricPayload?.data : []);
@@ -186,7 +245,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           referenceDataSyncedAtRef.current = Date.now();
         }
         if (!silent || submissionsChanged || shouldRefreshReferenceData) {
-          setLastSyncedAt(submissionsResponse.headers.get("X-Synced-At") || new Date().toISOString());
+          setLastSyncedAt(submissionsSnapshot.response.headers.get("X-Synced-At") || new Date().toISOString());
         }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
