@@ -31,18 +31,6 @@ interface StudentFormState {
   riskLevel: "none" | "low" | "medium" | "high";
 }
 
-interface TeacherSelectOption {
-  value: string;
-  label: string;
-  isLegacy: boolean;
-}
-
-interface TeacherLookupCacheEntry {
-  records: TeacherRecord[];
-  totalCount: number;
-  syncedAt: string | null;
-}
-
 const STATUS_OPTIONS: Array<{ value: StudentEnrollmentStatus; label: string }> = [
   { value: "enrolled", label: "Enrolled" },
   { value: "returning", label: "Returning" },
@@ -74,7 +62,6 @@ const SEARCH_DEBOUNCE_MS = 280;
 const HISTORY_PAGE_SIZE = 12;
 const STUDENT_TABLE_ROW_HEIGHT_PX = 58;
 const STUDENT_TABLE_OVERSCAN_ROWS = 8;
-const TEACHER_LOOKUP_PAGE_SIZE = 200;
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -104,13 +91,6 @@ function statusTone(status: string): string {
     return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   }
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-}
-
-function normalizeSchoolKey(schoolCode: string | null | undefined): string {
-  const code = schoolCode?.trim().toLowerCase();
-  if (code) return `code:${code}`;
-
-  return "unknown";
 }
 
 function extractSchoolCodes(filterKeys: Set<string> | null | undefined): string[] {
@@ -155,15 +135,12 @@ export function StudentRecordsPanel({
     deleteStudents,
   } = useStudentData();
   const { academicYears } = useIndicatorData();
-  const {
-    teacherSnapshot,
-    listTeachers,
-    totalCount: teacherSnapshotTotalCount,
-    lastSyncedAt: teacherSnapshotSyncedAt,
-  } = useTeacherData();
+  const { listTeachers } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const debouncedTeacherSearch = useDebouncedValue(teacherSearch, SEARCH_DEBOUNCE_MS);
   const [statusFilter, setStatusFilter] = useState<StudentEnrollmentStatus | "all">("all");
   const [academicYearFilter, setAcademicYearFilter] = useState<string>(defaultAcademicYearFilter);
   const [showForm, setShowForm] = useState(false);
@@ -180,8 +157,8 @@ export function StudentRecordsPanel({
   const [totalPages, setTotalPages] = useState(1);
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [pageError, setPageError] = useState("");
-  const [teacherLookupRecords, setTeacherLookupRecords] = useState<TeacherRecord[] | null>(null);
-  const [isTeacherLookupLoading, setIsTeacherLookupLoading] = useState(false);
+  const [teacherResults, setTeacherResults] = useState<TeacherRecord[]>([]);
+  const [isTeacherResultsLoading, setIsTeacherResultsLoading] = useState(false);
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
   const studentDataVersionRef = useRef(0);
   const pageRequestIdRef = useRef(0);
@@ -189,7 +166,7 @@ export function StudentRecordsPanel({
   const historyRefreshedVersionRef = useRef(0);
   const pageAbortRef = useRef<AbortController | null>(null);
   const historyAbortRef = useRef<AbortController | null>(null);
-  const teacherLookupCacheRef = useRef<Map<string, TeacherLookupCacheEntry>>(new Map());
+  const teacherSearchAbortRef = useRef<AbortController | null>(null);
   const [historyStudent, setHistoryStudent] = useState<StudentRecord | null>(null);
   const [historyEntries, setHistoryEntries] = useState<StudentStatusHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -284,154 +261,84 @@ export function StudentRecordsPanel({
     [queryStudents, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, statusFilter, academicYearFilter],
   );
 
-  const scopedSnapshotTeachers = useMemo(() => {
-    if (!schoolFilterKeys) {
-      return teacherSnapshot;
-    }
-
-    if (schoolFilterKeys.size === 0) {
-      return [];
-    }
-
-    return teacherSnapshot.filter((teacher) =>
-      schoolFilterKeys.has(
-        normalizeSchoolKey(teacher.school?.schoolCode ?? null),
-      ),
-    );
-  }, [teacherSnapshot, schoolFilterKeys]);
-
   useEffect(() => {
     if (!editable || !showForm) {
-      setTeacherLookupRecords(null);
-      setIsTeacherLookupLoading(false);
+      teacherSearchAbortRef.current?.abort();
+      teacherSearchAbortRef.current = null;
+      setTeacherResults([]);
+      setIsTeacherResultsLoading(false);
       return;
     }
 
     if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
-      setTeacherLookupRecords([]);
-      setIsTeacherLookupLoading(false);
+      teacherSearchAbortRef.current?.abort();
+      teacherSearchAbortRef.current = null;
+      setTeacherResults([]);
+      setIsTeacherResultsLoading(false);
       return;
     }
 
-    const lookupCacheKey = scopedSchoolCodes.length > 0 ? scopedSchoolCodes.join(",") : "__all__";
-    const cachedLookup = teacherLookupCacheRef.current.get(lookupCacheKey) ?? null;
-    if (
-      cachedLookup
-      && cachedLookup.totalCount === teacherSnapshotTotalCount
-      && cachedLookup.syncedAt === teacherSnapshotSyncedAt
-    ) {
-      setTeacherLookupRecords(cachedLookup.records);
-      setIsTeacherLookupLoading(false);
-      return;
-    }
-
-    let cancelled = false;
+    teacherSearchAbortRef.current?.abort();
     const controller = new AbortController();
+    teacherSearchAbortRef.current = controller;
 
-    const loadTeacherLookupRecords = async () => {
-      setTeacherLookupRecords(null);
-      setIsTeacherLookupLoading(true);
+    const loadTeacherResults = async () => {
+      setIsTeacherResultsLoading(true);
 
       try {
-        const allTeachers: TeacherRecord[] = [];
-        let nextPage = 1;
+        const result = await listTeachers({
+          page: 1,
+          perPage: 20,
+          search: debouncedTeacherSearch.trim() || null,
+          schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
+          signal: controller.signal,
+        });
 
-        while (!cancelled) {
-          const result = await listTeachers({
-            page: nextPage,
-            perPage: TEACHER_LOOKUP_PAGE_SIZE,
-            schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
-            signal: controller.signal,
-          });
-
-          allTeachers.push(...result.data);
-
-          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
-            break;
-          }
-
-          nextPage += 1;
-        }
-
-        if (!cancelled && !controller.signal.aborted) {
-          teacherLookupCacheRef.current.set(lookupCacheKey, {
-            records: allTeachers,
-            totalCount: teacherSnapshotTotalCount,
-            syncedAt: teacherSnapshotSyncedAt,
-          });
-          setTeacherLookupRecords(allTeachers);
+        if (!controller.signal.aborted) {
+          setTeacherResults(result.data);
         }
       } catch (err) {
-        if (cancelled || controller.signal.aborted) {
+        if (controller.signal.aborted) {
           return;
         }
 
-        setTeacherLookupRecords(null);
+        setTeacherResults([]);
       } finally {
-        if (!cancelled && !controller.signal.aborted) {
-          setIsTeacherLookupLoading(false);
+        if (teacherSearchAbortRef.current === controller) {
+          teacherSearchAbortRef.current = null;
+        }
+
+        if (!controller.signal.aborted) {
+          setIsTeacherResultsLoading(false);
         }
       }
     };
 
-    void loadTeacherLookupRecords();
+    void loadTeacherResults();
 
     return () => {
-      cancelled = true;
       controller.abort();
+      if (teacherSearchAbortRef.current === controller) {
+        teacherSearchAbortRef.current = null;
+      }
     };
-  }, [editable, showForm, listTeachers, schoolFilterKeys, scopedSchoolCodes, teacherSnapshotSyncedAt, teacherSnapshotTotalCount]);
+  }, [debouncedTeacherSearch, editable, listTeachers, schoolFilterKeys, scopedSchoolCodes, showForm]);
 
-  const scopedTeachers = useMemo(
-    () => (teacherLookupRecords !== null ? teacherLookupRecords : scopedSnapshotTeachers),
-    [teacherLookupRecords, scopedSnapshotTeachers],
-  );
+  const teacherSearchOptions = useMemo(() => {
+    const byName = new Map<string, TeacherRecord>();
 
-  const teacherOptions = useMemo(() => {
-    const byName = new Map<string, { name: string; sex: "male" | "female" | null }>();
-
-    for (const teacher of scopedTeachers) {
+    for (const teacher of teacherResults) {
       const normalizedName = teacher.name.trim();
       if (!normalizedName) continue;
 
       const key = normalizedName.toLowerCase();
       if (!byName.has(key)) {
-        byName.set(key, {
-          name: normalizedName,
-          sex: teacher.sex ?? null,
-        });
+        byName.set(key, teacher);
       }
     }
 
     return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [scopedTeachers]);
-
-  const teacherSelectOptions = useMemo<TeacherSelectOption[]>(() => {
-    const options: TeacherSelectOption[] = teacherOptions.map((teacher) => ({
-      value: teacher.name,
-      label: teacher.sex ? `${teacher.name} (${teacher.sex === "male" ? "M" : "F"})` : teacher.name,
-      isLegacy: false,
-    }));
-
-    const selectedTeacher = form.teacher.trim();
-    if (!selectedTeacher) {
-      return options;
-    }
-
-    const exists = options.some((option) => option.value.toLowerCase() === selectedTeacher.toLowerCase());
-    if (exists) {
-      return options;
-    }
-
-    return [
-      {
-        value: selectedTeacher,
-        label: `${selectedTeacher} (existing assignment)`,
-        isLegacy: true,
-      },
-      ...options,
-    ];
-  }, [teacherOptions, form.teacher]);
+  }, [teacherResults]);
 
   const safePage = Math.max(1, Math.min(page, totalPages));
   const paginatedStudents = pagedStudents;
@@ -573,6 +480,7 @@ export function StudentRecordsPanel({
   useEffect(() => () => {
     pageAbortRef.current?.abort();
     historyAbortRef.current?.abort();
+    teacherSearchAbortRef.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -583,6 +491,11 @@ export function StudentRecordsPanel({
   const resetForm = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setTeacherSearch("");
+    setTeacherResults([]);
+    setIsTeacherResultsLoading(false);
+    teacherSearchAbortRef.current?.abort();
+    teacherSearchAbortRef.current = null;
     setFormError("");
     setFormMessage("");
   };
@@ -608,6 +521,9 @@ export function StudentRecordsPanel({
       status: (student.status as StudentEnrollmentStatus) ?? "enrolled",
       riskLevel: (student.riskLevel as "none" | "low" | "medium" | "high") ?? "low",
     });
+    setTeacherSearch(student.teacher ?? "");
+    setTeacherResults([]);
+    setIsTeacherResultsLoading(false);
     setFormError("");
     setFormMessage("");
     setShowForm(true);
@@ -1160,21 +1076,89 @@ export function StudentRecordsPanel({
             </select>
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" type="date" value={form.birthDate} onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value }))} />
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" placeholder="Section" value={form.section} onChange={(event) => setForm((current) => ({ ...current, section: event.target.value }))} />
-            <select
-              className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm"
-              value={form.teacher}
-              onChange={(event) => setForm((current) => ({ ...current, teacher: event.target.value }))}
-            >
-              <option value="">{isTeacherLookupLoading ? "Loading teachers..." : "Teacher"}</option>
-              {teacherSelectOptions.map((option) => (
-                <option
-                  key={`${option.value.toLowerCase()}-${option.isLegacy ? "legacy" : "record"}`}
-                  value={option.value}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2 xl:col-span-2">
+              <div className="flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  className="w-full border-none bg-transparent text-sm outline-none"
+                  placeholder="Search teacher"
+                  value={teacherSearch}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setTeacherSearch(value);
+                    setForm((current) => {
+                      const selectedTeacher = current.teacher.trim();
+                      if (!selectedTeacher) {
+                        return current;
+                      }
+
+                      if (value.trim().toLowerCase() === selectedTeacher.toLowerCase()) {
+                        return current;
+                      }
+
+                      return {
+                        ...current,
+                        teacher: "",
+                      };
+                    });
+                  }}
+                />
+                {form.teacher.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeacherSearch("");
+                      setForm((current) => ({ ...current, teacher: "" }));
+                    }}
+                    className="rounded-sm border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              <div className="max-h-40 overflow-y-auto rounded-sm border border-slate-200 bg-white">
+                {isTeacherResultsLoading ? (
+                  <p className="px-3 py-2 text-xs text-slate-500">Loading teachers...</p>
+                ) : teacherSearchOptions.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-slate-500">
+                    {teacherSearch.trim()
+                      ? "No teachers found for this search."
+                      : "Start typing to search teachers, or browse the first matches here."}
+                  </p>
+                ) : (
+                  teacherSearchOptions.map((teacher) => {
+                    const normalizedName = teacher.name.trim();
+                    const selected = normalizedName.length > 0 && normalizedName.toLowerCase() === form.teacher.trim().toLowerCase();
+
+                    return (
+                      <button
+                        key={teacher.id}
+                        type="button"
+                        onClick={() => {
+                          setForm((current) => ({ ...current, teacher: normalizedName }));
+                          setTeacherSearch(normalizedName);
+                        }}
+                        className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                          selected ? "bg-primary-50 text-primary-700" : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="font-medium">{normalizedName}</span>
+                        {teacher.sex ? (
+                          <span className="ml-2 text-xs text-slate-500">
+                            {teacher.sex === "male" ? "M" : "F"}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                {form.teacher.trim()
+                  ? `Selected teacher: ${form.teacher.trim()}`
+                  : "Select a teacher from the search results, or leave this blank."}
+              </p>
+            </div>
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" placeholder="Current Level / Grade" value={form.currentLevel} onChange={(event) => setForm((current) => ({ ...current, currentLevel: event.target.value }))} />
             <select className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as StudentEnrollmentStatus }))}>
               {STATUS_OPTIONS.map((option) => (

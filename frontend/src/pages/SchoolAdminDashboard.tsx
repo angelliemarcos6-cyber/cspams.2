@@ -375,9 +375,7 @@ export function SchoolAdminDashboard() {
     submissions: indicatorSubmissionSnapshot,
     allSubmissions,
     academicYears,
-    lastSyncedAt: indicatorLastSyncedAt,
     refreshSubmissions,
-    refreshAllSubmissions,
   } = useIndicatorData();
   const { queryStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount, refreshTeachers } = useTeacherData();
@@ -405,26 +403,6 @@ export function SchoolAdminDashboard() {
   const [recordsExportError, setRecordsExportError] = useState("");
   const [isExportingRecords, setIsExportingRecords] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    if (!indicatorLastSyncedAt && indicatorSubmissionSnapshot.length === 0) {
-      return () => {
-        controller.abort();
-      };
-    }
-
-    void refreshAllSubmissions({ signal: controller.signal }).catch((err) => {
-      if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
-        return;
-      }
-    });
-
-    return () => {
-      controller.abort();
-    };
-  }, [indicatorLastSyncedAt, indicatorSubmissionSnapshot.length, refreshAllSubmissions]);
 
   const indicatorSubmissions = useMemo(
     () => (allSubmissions.length > 0 || indicatorSubmissionSnapshot.length === 0 ? allSubmissions : indicatorSubmissionSnapshot),

@@ -402,6 +402,18 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [buildAllSubmissionsVersionKey, loadAllSubmissions],
   );
 
+  const syncAllSubmissionsIfNeeded = useCallback(async () => {
+    const versionKey = buildAllSubmissionsVersionKey();
+    const cached = allSubmissionsCacheRef.current;
+
+    if (cached && cached.versionKey === versionKey) {
+      setAllSubmissions(cached.rows);
+      return;
+    }
+
+    await refreshAllSubmissions();
+  }, [buildAllSubmissionsVersionKey, refreshAllSubmissions]);
+
   const syncSubmissions = useCallback(
     async (silent = false) => {
       if (syncInFlightRef.current) {
@@ -480,6 +492,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         if (!silent || submissionsChanged || shouldRefreshReferenceData) {
           setLastSyncedAt(submissionsResponse.headers.get("X-Synced-At") || new Date().toISOString());
         }
+        if (submissionsChanged) {
+          await syncAllSubmissionsIfNeeded();
+        }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
           return;
@@ -499,7 +514,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [academicYears.length, handleApiError, metrics.length, token],
+    [academicYears.length, handleApiError, metrics.length, syncAllSubmissionsIfNeeded, token],
   );
 
   const refreshSubmissions = useCallback(async () => {

@@ -406,7 +406,6 @@ export function MonitorIndicatorPanel({
     error,
     lastSyncedAt,
     refreshSubmissions,
-    refreshAllSubmissions,
     reviewSubmission,
     loadHistory,
   } = useIndicatorData();
@@ -482,26 +481,6 @@ export function MonitorIndicatorPanel({
     if (username.trim().length === 0) return;
     setBatchReviewer(username.trim());
   }, [batchReviewer, username]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    if (!lastSyncedAt && submissionSnapshot.length === 0) {
-      return () => {
-        controller.abort();
-      };
-    }
-
-    void refreshAllSubmissions({ signal: controller.signal }).catch((err) => {
-      if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
-        return;
-      }
-    });
-
-    return () => {
-      controller.abort();
-    };
-  }, [lastSyncedAt, refreshAllSubmissions, submissionSnapshot.length]);
 
   const submissions = useMemo(
     () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
