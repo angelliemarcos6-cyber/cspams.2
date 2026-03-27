@@ -61,4 +61,35 @@ describe("AuthProvider logout", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/logout`);
   });
+
+  it("captures restore-time 403 details without leaving a user session", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: "Your account is suspended.",
+          accountStatus: "suspended",
+        }),
+        {
+          status: 403,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.authError).toBe("Your account is suspended.");
+    expect(result.current.authErrorCode).toBe(403);
+    expect(result.current.accountStatus).toBe("suspended");
+  });
 });

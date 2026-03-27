@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/Auth";
@@ -61,7 +61,16 @@ const ROLE_META: Record<
 
 export function Login() {
   const navigate = useNavigate();
-  const { login, verifyMfa, resetRequiredPassword, isAuthenticating } = useAuth();
+  const {
+    login,
+    verifyMfa,
+    resetRequiredPassword,
+    isAuthenticating,
+    authError,
+    authErrorCode,
+    accountStatus,
+    clearAuthError,
+  } = useAuth();
   const appTagline = "Centralized Student Performance Analytics and Monitoring System";
 
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
@@ -97,6 +106,30 @@ export function Login() {
     setPendingMfa(null);
     setMfaCode("");
   };
+
+  useEffect(() => {
+    if (!authError) {
+      return;
+    }
+
+    if (authErrorCode === 403) {
+      const statusMessage =
+        accountStatus === "pending_setup"
+          ? "Account setup is still pending."
+          : accountStatus === "suspended"
+            ? "Your account is suspended."
+            : accountStatus === "locked"
+              ? "Your account is locked."
+              : accountStatus === "archived"
+                ? "Your account is archived."
+                : authError;
+
+      setError(statusMessage);
+      return;
+    }
+
+    setError(authError);
+  }, [accountStatus, authError, authErrorCode]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -141,6 +174,7 @@ export function Login() {
     }
 
     setIsSubmitting(true);
+    clearAuthError();
     setError("");
 
     try {
@@ -267,6 +301,7 @@ export function Login() {
                   type="button"
                   onClick={() => {
                     setActiveRole("school_head");
+                    clearAuthError();
                     setError("");
                     clearResetState();
                     clearMfaState();
@@ -287,6 +322,7 @@ export function Login() {
                   type="button"
                   onClick={() => {
                     setActiveRole("monitor");
+                    clearAuthError();
                     setError("");
                     clearResetState();
                     clearMfaState();
@@ -324,6 +360,7 @@ export function Login() {
                           ? event.target.value.replace(/\D/g, "").slice(0, 6)
                           : event.target.value;
                       setLoginId(nextValue);
+                      clearAuthError();
                       setError("");
                       clearResetState();
                       clearMfaState();
@@ -351,6 +388,7 @@ export function Login() {
                     value={password}
                     onChange={(event) => {
                       setPassword(event.target.value);
+                      clearAuthError();
                       setError("");
                       clearMfaState();
                     }}
@@ -388,6 +426,7 @@ export function Login() {
                     value={mfaCode}
                     onChange={(event) => {
                       setMfaCode(normalizeMfaCodeInput(event.target.value));
+                      clearAuthError();
                       setError("");
                     }}
                     placeholder="Enter 6-digit or backup code"
@@ -429,6 +468,7 @@ export function Login() {
                       value={newPassword}
                       onChange={(event) => {
                         setNewPassword(event.target.value);
+                        clearAuthError();
                         setError("");
                       }}
                       placeholder="Create a new passcode"
@@ -447,6 +487,7 @@ export function Login() {
                       value={confirmPassword}
                       onChange={(event) => {
                         setConfirmPassword(event.target.value);
+                        clearAuthError();
                         setError("");
                       }}
                       placeholder="Confirm your new passcode"

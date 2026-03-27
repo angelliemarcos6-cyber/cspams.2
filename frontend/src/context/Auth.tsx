@@ -97,9 +97,13 @@ interface AuthContextType {
   role: UserRole;
   username: string;
   user: SessionUser | null;
+  authError: string;
+  authErrorCode: number | null;
+  accountStatus: string | null;
   isLoading: boolean;
   isAuthenticating: boolean;
   isLoggingOut: boolean;
+  clearAuthError: () => void;
   login: (input: LoginInput) => Promise<LoginResult>;
   verifyMfa: (input: VerifyMonitorMfaInput) => Promise<void>;
   requestMonitorPasswordReset: (
@@ -160,6 +164,10 @@ interface RevokeOtherSessionsResponse {
   };
 }
 
+interface AuthErrorPayload {
+  accountStatus?: string;
+}
+
 function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequiredResponse {
   return (
     "requiresMfa" in payload &&
@@ -184,9 +192,18 @@ function normalizeUser(user: SessionUser): SessionUser {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [authError, setAuthError] = useState("");
+  const [authErrorCode, setAuthErrorCode] = useState<number | null>(null);
+  const [accountStatus, setAccountStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const clearAuthError = useCallback(() => {
+    setAuthError("");
+    setAuthErrorCode(null);
+    setAccountStatus(null);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -201,12 +218,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!active) return;
         setUser(normalizeUser(payload.user));
+        clearAuthError();
       } catch (err) {
         if (!active) return;
-        if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-          setUser(null);
+        if (isApiError(err)) {
+          if (err.status === 401) {
+            setUser(null);
+            setAuthError("");
+            setAuthErrorCode(401);
+            setAccountStatus(null);
+          } else if (err.status === 403) {
+            setUser(null);
+            setAuthError(err.message || "Your account cannot access the system right now.");
+            setAuthErrorCode(403);
+
+            const payload = err.payload as AuthErrorPayload | null;
+            setAccountStatus(typeof payload?.accountStatus === "string" ? payload.accountStatus : null);
+          } else {
+            setUser(null);
+            setAuthError(err.message || "Unable to restore your session.");
+            setAuthErrorCode(err.status);
+            setAccountStatus(null);
+          }
         } else if (!(err instanceof DOMException && err.name === "AbortError")) {
           setUser(null);
+          setAuthError("Unable to restore your session.");
+          setAuthErrorCode(null);
+          setAccountStatus(null);
         }
       } finally {
         if (active) {
@@ -221,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [clearAuthError]);
 
   const login = useCallback(async ({ role, login: loginValue, password }: LoginInput): Promise<LoginResult> => {
     setIsAuthenticating(true);
@@ -253,6 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const normalizedUser = normalizeUser(payload.user);
       setUser(normalizedUser);
+      clearAuthError();
 
       return {
         status: "authenticated",
@@ -261,7 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const verifyMfa = useCallback(async ({ role, login: loginValue, challengeId, code }: VerifyMonitorMfaInput) => {
     setIsAuthenticating(true);
@@ -278,10 +317,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       setUser(normalizeUser(payload.user));
+      clearAuthError();
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const resetRequiredPassword = useCallback(
     async ({
@@ -306,11 +346,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         setUser(normalizeUser(payload.user));
+        clearAuthError();
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearAuthError],
   );
 
   const requestMonitorPasswordReset = useCallback(async (email: string, role: Exclude<UserRole, null> = "monitor") => {
@@ -332,7 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const resetMonitorPassword = useCallback(
     async ({ role, email, token, password, confirmPassword }: ResetMonitorPasswordInput) => {
@@ -412,6 +453,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         setUser(normalizeUser(payload.user));
+        clearAuthError();
 
         return {
           backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
@@ -421,7 +463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearAuthError],
   );
 
   const completeAccountSetup = useCallback(
@@ -439,11 +481,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         setUser(normalizeUser(payload.user));
+        clearAuthError();
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearAuthError],
   );
 
   const logout = useCallback(async (options?: { force?: boolean }) => {
@@ -454,14 +497,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token: COOKIE_SESSION_TOKEN,
       });
       setUser(null);
+      clearAuthError();
     } catch (err) {
       if (isApiError(err) && err.status === 401) {
         setUser(null);
+        clearAuthError();
         return;
       }
 
       if (options?.force) {
         setUser(null);
+        clearAuthError();
         return;
       }
 
@@ -521,9 +567,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: user?.role ?? null,
       username: user?.name ?? "",
       user,
+      authError,
+      authErrorCode,
+      accountStatus,
       isLoading,
       isAuthenticating,
       isLoggingOut,
+      clearAuthError,
       login,
       verifyMfa,
       requestMonitorPasswordReset,
@@ -539,9 +589,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
+      authError,
+      authErrorCode,
+      accountStatus,
       isLoading,
       isAuthenticating,
       isLoggingOut,
+      clearAuthError,
       login,
       verifyMfa,
       requestMonitorPasswordReset,
