@@ -42,9 +42,9 @@ export function StatCard({ label, value, icon, tone = "primary" }: StatCardProps
       <div className="flex items-start justify-between gap-3 pt-1">
         <div>
           <p className={cn("text-[11px] font-semibold uppercase tracking-[0.12em]", toneMap.label)}>{label}</p>
-          <p className="mt-2 text-3xl font-extrabold leading-none text-slate-900">{value}</p>
+          <p className="mt-2 text-2xl font-extrabold leading-none text-slate-900 sm:text-3xl">{value}</p>
         </div>
-        <span className={cn("grid h-11 w-11 place-items-center border border-slate-100 bg-white", toneMap.icon)}>{icon}</span>
+        <span className={cn("grid h-9 w-9 place-items-center border border-slate-100 bg-white sm:h-11 sm:w-11", toneMap.icon)}>{icon}</span>
       </div>
     </article>
   );

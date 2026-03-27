@@ -259,6 +259,24 @@ th {
   letter-spacing: 0.01em;
 }
 
+.mobile-safe-bottom {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.mobile-bottom-sheet {
+  height: 82dvh;
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+.mobile-chip-row {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mobile-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
 .dashboard-workflow-tile {
   border: 1px solid rgb(186 203 220 / 0.75);
   background: #ffffff;
@@ -307,6 +325,24 @@ th {
     max-height: calc(100dvh - var(--shell-sticky-top, 10rem) - 0.5rem);
     overflow-y: auto;
     scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard-nav-shell {
+    position: static;
+    top: auto;
+  }
+
+  .dashboard-side-rail,
+  .dashboard-side-rail-sticky {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .dashboard-shell {
+    box-shadow: 0 12px 24px -24px rgb(15 23 42 / 0.28);
   }
 }
 

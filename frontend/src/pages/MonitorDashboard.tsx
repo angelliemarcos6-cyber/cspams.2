@@ -5562,12 +5562,55 @@ export function MonitorDashboard() {
         onClose={() => setShowMfaResetApprovalsDialog(false)}
       />
 
+      {!showNavigatorManual && isMobileViewport && (
+        <section className="dashboard-shell mb-4 rounded-sm border border-slate-200 bg-white p-2 lg:hidden">
+          <div className="grid grid-cols-3 gap-2">
+            {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => {
+              const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
+              const isActive = activeTopNavigator === item.id;
+              const meta = navigatorBadges[item.id];
+              const count = typeof meta.primary === "number" && meta.primary > 0 ? meta.primary : null;
+
+              return (
+                <button
+                  key={`monitor-mobile-nav-${item.id}`}
+                  type="button"
+                  onClick={() => handleMonitorTopNavigate(item.id)}
+                  className={`rounded-sm border px-2 py-2 text-left transition ${
+                    isActive
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 truncate text-sm font-semibold">{item.label}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-1">
+                    {count !== null && (
+                      <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-sm border border-primary-200 bg-white px-1 py-0.5 text-[10px] font-bold text-primary-700">
+                        {count > 99 ? "99+" : count}
+                      </span>
+                    )}
+                    {item.id === "reviews" && typeof meta.secondary === "number" && meta.secondary > 0 && (
+                      <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1 py-0.5 text-[10px] font-bold text-amber-700">
+                        R{meta.secondary}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <div
         className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-6 lg:transition-[grid-template-columns] lg:duration-[240ms] lg:ease-in-out ${
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-        <aside className="dashboard-side-rail w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:w-auto lg:self-stretch lg:min-h-full">
+        <aside className="dashboard-side-rail hidden w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:block lg:w-auto lg:self-stretch lg:min-h-full">
           <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
@@ -7661,20 +7704,33 @@ export function MonitorDashboard() {
         style={
           activeTopNavigator === "reviews"
             ? undefined
-            : { top: "var(--shell-sticky-top, 10rem)", height: "calc(100vh - var(--shell-sticky-top, 10rem))" }
+            : isMobileViewport
+              ? undefined
+              : { top: "var(--shell-sticky-top, 10rem)", height: "calc(100vh - var(--shell-sticky-top, 10rem))" }
         }
         className={
           activeTopNavigator === "reviews"
             ? !showNavigatorManual && schoolDrawerKey
               ? "surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
               : "hidden"
-            : `fixed right-0 z-[75] w-[min(48rem,100vw)] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-[160ms] ${
-                !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
-              }`
+            : isMobileViewport
+              ? `mobile-bottom-sheet mobile-safe-bottom fixed inset-x-0 bottom-0 z-[75] flex flex-col rounded-t-2xl border-t border-slate-200 bg-white shadow-2xl transition-transform duration-[160ms] ${
+                  !showNavigatorManual && schoolDrawerKey ? "translate-y-0" : "translate-y-full"
+                }`
+              : `fixed right-0 z-[75] flex w-[min(48rem,100vw)] flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-[160ms] ${
+                  !showNavigatorManual && schoolDrawerKey ? "translate-x-0" : "translate-x-full"
+                }`
         }
       >
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <div
+          className={`flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 ${
+            isMobileViewport && activeTopNavigator !== "reviews" ? "sticky top-0 z-10" : ""
+          }`}
+        >
           <div>
+            {isMobileViewport && activeTopNavigator !== "reviews" && (
+              <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-slate-300 lg:hidden" />
+            )}
             <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">School Detail</p>
             <p className="text-sm font-semibold text-slate-900">{schoolDetail?.schoolName ?? "No school selected"}</p>
           </div>
@@ -7687,7 +7743,13 @@ export function MonitorDashboard() {
           </button>
         </div>
 
-        <div className={activeTopNavigator === "reviews" ? "p-4" : "h-[calc(100%-3.5rem)] overflow-y-auto p-4"}>
+        <div
+          className={
+            activeTopNavigator === "reviews"
+              ? "p-4"
+              : "flex-1 overflow-y-auto p-4 mobile-safe-bottom"
+          }
+        >
           {schoolDetail ? (
             <div className="space-y-3">
               <article className="rounded-sm border border-slate-200 bg-white p-2.5">

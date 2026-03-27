@@ -392,6 +392,7 @@ export function SchoolAdminDashboard() {
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < SCHOOL_MOBILE_BREAKPOINT,
   );
+  const [isMobileIndicatorFiltersExpanded, setIsMobileIndicatorFiltersExpanded] = useState(false);
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
@@ -1051,6 +1052,12 @@ export function SchoolAdminDashboard() {
   };
   const isIndicatorWorkspaceActive = activeTopNavigator === "compliance" && activeSubmissionSection === "indicators";
 
+  useEffect(() => {
+    if (!isMobileViewport || !isIndicatorWorkspaceActive) {
+      setIsMobileIndicatorFiltersExpanded(false);
+    }
+  }, [isIndicatorWorkspaceActive, isMobileViewport]);
+
   return (
     <Shell
       title="School Head Dashboard"
@@ -1095,12 +1102,55 @@ export function SchoolAdminDashboard() {
 
       <DashboardHelpDialog open={showHelpDialog} variant="school_head" onClose={() => setShowHelpDialog(false)} />
 
+      {!showNavigatorManual && isMobileViewport && (
+        <section className="dashboard-shell mb-4 rounded-sm border border-slate-200 bg-white p-2 lg:hidden">
+          <div className="grid grid-cols-3 gap-2">
+            {TOP_NAVIGATOR_ITEMS.map((item) => {
+              const meta = navigatorBadges[item.id];
+              const isActive = activeTopNavigator === item.id;
+              const Icon = SCHOOL_NAVIGATOR_ICONS[item.id];
+              const count = typeof meta.primary === "number" && meta.primary > 0 ? meta.primary : null;
+
+              return (
+                <button
+                  key={`school-mobile-nav-${item.id}`}
+                  type="button"
+                  onClick={() => handleTopNavigate(item)}
+                  className={`rounded-sm border px-2 py-2 text-left transition ${
+                    isActive
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 truncate text-sm font-semibold">{item.label}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-1">
+                    {count !== null && (
+                      <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-sm border border-primary-200 bg-white px-1 py-0.5 text-[10px] font-bold text-primary-700">
+                        {count > 99 ? "99+" : count}
+                      </span>
+                    )}
+                    {item.id === "compliance" && typeof meta.secondary === "number" && meta.secondary > 0 && (
+                      <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1 py-0.5 text-[10px] font-bold text-amber-700">
+                        P{meta.secondary}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <div
         className={`dashboard-left-layout mb-5 min-w-0 lg:grid lg:items-stretch lg:gap-0 lg:transition-[grid-template-columns] lg:duration-[240ms] lg:ease-in-out ${
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-      <aside className="dashboard-side-rail ml-0 w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:ml-3 lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
+      <aside className="dashboard-side-rail ml-0 hidden w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:ml-3 lg:block lg:w-auto lg:self-stretch lg:min-h-full lg:rounded-none">
         <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
@@ -1321,7 +1371,11 @@ export function SchoolAdminDashboard() {
       )}
 
       {!showNavigatorManual && isIndicatorWorkspaceActive && (
-      <section className="dashboard-shell sticky top-2 z-20 mb-5 rounded-sm border border-slate-200 bg-white/95">
+      <section
+        className={`dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white/95 ${
+          isMobileViewport ? "" : "sticky top-2 z-20"
+        }`}
+      >
         <div className="border-b border-slate-200 px-4 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -1333,6 +1387,15 @@ export function SchoolAdminDashboard() {
                 <span className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                   {activeContextCount} active
                 </span>
+              )}
+              {isMobileViewport && (
+                <button
+                  type="button"
+                  onClick={() => setIsMobileIndicatorFiltersExpanded((current) => !current)}
+                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  {isMobileIndicatorFiltersExpanded ? "Hide Filters" : "Show Filters"}
+                </button>
               )}
               <button
                 type="button"
@@ -1347,111 +1410,126 @@ export function SchoolAdminDashboard() {
           </div>
         </div>
 
-        <div className="border-b border-slate-100 px-4 py-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => applyContextPreset("current_year")}
-              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                isContextPresetActive("current_year")
-                  ? "border-primary-300 bg-primary-50 text-primary-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              Current
-            </button>
-            <button
-              type="button"
-              onClick={() => applyContextPreset("needs_revision")}
-              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                isContextPresetActive("needs_revision")
-                  ? "border-primary-300 bg-primary-50 text-primary-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              Revision
-            </button>
-            <button
-              type="button"
-              onClick={() => applyContextPreset("all_submission")}
-              className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                isContextPresetActive("all_submission")
-                  ? "border-primary-300 bg-primary-50 text-primary-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              All
-            </button>
-          </div>
-        </div>
-
-        <div className="px-4 py-3">
-          <div className="grid gap-2 md:grid-cols-2">
-            <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Year</span>
-              <select
-                value={contextAcademicYearId}
-                onChange={(event) => setContextAcademicYearId(event.target.value)}
-                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              >
-                <option value="all">All years</option>
-                {academicYears.map((year) => (
-                  <option key={year.id} value={year.id}>
-                    {year.name}
-                    {year.isCurrent ? " (Current)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Status</span>
-              <select
-                value={contextWorkflowStatus}
-                onChange={(event) =>
-                  setContextWorkflowStatus(event.target.value as "all" | "draft" | "submitted" | "returned" | "validated")
-                }
-                className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              >
-                <option value="all">All statuses</option>
-                <option value="draft">Draft</option>
-                <option value="submitted">Submitted</option>
-                <option value="returned">Needs Revision</option>
-                <option value="validated">Validated</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        {hasContextOverrides && (
-          <div className="border-t border-slate-100 px-4 py-2">
-            <div className="flex flex-wrap items-center gap-2">
-              {contextAcademicYearId !== "all" && (
-                <button
-                  type="button"
-                  onClick={() => clearContextField("year")}
-                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
-                >
-                  {selectedAcademicYearLabel}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {contextWorkflowStatus !== "all" && (
-                <button
-                  type="button"
-                  onClick={() => clearContextField("status")}
-                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
-                >
-                  {selectedWorkflowStatusLabel}
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+        {isMobileViewport && !isMobileIndicatorFiltersExpanded ? (
+          <div className="px-4 py-3">
+            <div className="mobile-chip-row flex gap-2 pb-1">
+              <span className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                {selectedAcademicYearLabel}
+              </span>
+              <span className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                {selectedWorkflowStatusLabel}
+              </span>
             </div>
           </div>
+        ) : (
+          <>
+            <div className="border-b border-slate-100 px-4 py-2.5">
+              <div className="mobile-chip-row flex gap-2 overflow-x-auto pb-1 lg:grid lg:grid-cols-3 lg:overflow-visible">
+                <button
+                  type="button"
+                  onClick={() => applyContextPreset("current_year")}
+                  className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    isContextPresetActive("current_year")
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  Current
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyContextPreset("needs_revision")}
+                  className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    isContextPresetActive("needs_revision")
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  Revision
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyContextPreset("all_submission")}
+                  className={`rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    isContextPresetActive("all_submission")
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  All
+                </button>
+              </div>
+            </div>
+
+            <div className="px-4 py-3">
+              <div className="grid gap-2 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Year</span>
+                  <select
+                    value={contextAcademicYearId}
+                    onChange={(event) => setContextAcademicYearId(event.target.value)}
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  >
+                    <option value="all">All years</option>
+                    {academicYears.map((year) => (
+                      <option key={year.id} value={year.id}>
+                        {year.name}
+                        {year.isCurrent ? " (Current)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Status</span>
+                  <select
+                    value={contextWorkflowStatus}
+                    onChange={(event) =>
+                      setContextWorkflowStatus(event.target.value as "all" | "draft" | "submitted" | "returned" | "validated")
+                    }
+                    className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="draft">Draft</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="returned">Needs Revision</option>
+                    <option value="validated">Validated</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {hasContextOverrides && (
+              <div className="border-t border-slate-100 px-4 py-2">
+                <div className="mobile-chip-row flex gap-2 overflow-x-auto pb-1">
+                  {contextAcademicYearId !== "all" && (
+                    <button
+                      type="button"
+                      onClick={() => clearContextField("year")}
+                      className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                    >
+                      {selectedAcademicYearLabel}
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {contextWorkflowStatus !== "all" && (
+                    <button
+                      type="button"
+                      onClick={() => clearContextField("status")}
+                      className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                    >
+                      {selectedWorkflowStatusLabel}
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
       )}
 
-      {!showNavigatorManual && shouldShowQuickJump && (
+      {!showNavigatorManual && !isMobileViewport && shouldShowQuickJump && (
       <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white/95 px-3 py-2">
         <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:justify-between">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Quick Navigation</p>
@@ -1756,13 +1834,13 @@ export function SchoolAdminDashboard() {
                     </form>
                   </section>
 
-                  <div className="sticky bottom-2 mt-4 rounded-sm border border-slate-200 bg-white px-3 py-2 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="sticky bottom-2 mt-4 rounded-sm border border-slate-200 bg-white px-3 py-2 shadow-sm mobile-safe-bottom">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                       <button
                         type="button"
                         onClick={() => void handleSaveDraft()}
                         disabled={isSaving}
-                        className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                        className="w-full rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
                       >
                         Save Draft
                       </button>
@@ -1770,7 +1848,7 @@ export function SchoolAdminDashboard() {
                         type="button"
                         onClick={() => void handleSubmitOrResubmit()}
                         disabled={isSaving}
-                        className="rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                        className="w-full rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
                       >
                         {returnedCount > 0 ? "Resubmit" : "Submit"}
                       </button>
