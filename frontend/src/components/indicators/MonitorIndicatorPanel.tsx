@@ -404,7 +404,7 @@ export function MonitorIndicatorPanel({
     error,
     lastSyncedAt,
     refreshSubmissions,
-    listSubmissions,
+    loadAllSubmissions,
     reviewSubmission,
     loadHistory,
   } = useIndicatorData();
@@ -491,24 +491,7 @@ export function MonitorIndicatorPanel({
       setIsSubmissionHistoryLoading(true);
 
       try {
-        const allRows: IndicatorSubmission[] = [];
-        let nextPage = 1;
-
-        while (!cancelled) {
-          const result = await listSubmissions({
-            page: nextPage,
-            perPage: 100,
-            signal: controller.signal,
-          });
-
-          allRows.push(...result.data);
-
-          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
-            break;
-          }
-
-          nextPage += 1;
-        }
+        const allRows = await loadAllSubmissions({ signal: controller.signal });
 
         if (!cancelled && !controller.signal.aborted) {
           setSubmissionHistoryRecords(allRows);
@@ -532,7 +515,7 @@ export function MonitorIndicatorPanel({
       cancelled = true;
       controller.abort();
     };
-  }, [lastSyncedAt, listSubmissions, submissionSnapshot]);
+  }, [lastSyncedAt, loadAllSubmissions, submissionSnapshot]);
 
   const submissions = useMemo(
     () => (submissionHistoryRecords.length > 0 || submissionSnapshot.length === 0 ? submissionHistoryRecords : submissionSnapshot),

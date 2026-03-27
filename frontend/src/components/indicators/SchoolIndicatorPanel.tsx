@@ -659,7 +659,7 @@ export function SchoolIndicatorPanel({
     error,
     lastSyncedAt: submissionSnapshotSyncedAt,
     refreshSubmissions,
-    listSubmissions,
+    loadAllSubmissions,
     createSubmission,
     updateSubmission,
     submitSubmission,
@@ -1112,24 +1112,7 @@ export function SchoolIndicatorPanel({
       setIsSubmissionHistoryLoading(true);
 
       try {
-        const allRows: IndicatorSubmission[] = [];
-        let nextPage = 1;
-
-        while (!cancelled) {
-          const result = await listSubmissions({
-            page: nextPage,
-            perPage: 100,
-            signal: controller.signal,
-          });
-
-          allRows.push(...result.data);
-
-          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
-            break;
-          }
-
-          nextPage += 1;
-        }
+        const allRows = await loadAllSubmissions({ signal: controller.signal });
 
         if (!cancelled && !controller.signal.aborted) {
           setSubmissionHistoryRecords(allRows);
@@ -1153,7 +1136,7 @@ export function SchoolIndicatorPanel({
       cancelled = true;
       controller.abort();
     };
-  }, [listSubmissions, submissionSnapshot, submissionSnapshotSyncedAt]);
+  }, [loadAllSubmissions, submissionSnapshot, submissionSnapshotSyncedAt]);
 
   const submissions = useMemo(
     () => (submissionHistoryRecords.length > 0 || submissionSnapshot.length === 0 ? submissionHistoryRecords : submissionSnapshot),

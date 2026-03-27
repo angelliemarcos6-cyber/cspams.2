@@ -991,6 +991,7 @@ export function StudentRecordsPanel({
 
     try {
       await refreshStudents();
+      await loadStudentsPage(page, true);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Unable to refresh student records.");
     }

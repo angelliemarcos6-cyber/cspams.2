@@ -43,6 +43,10 @@ export interface IndicatorListResult {
   meta: IndicatorListMeta;
 }
 
+interface LoadAllSubmissionsOptions {
+  signal?: AbortSignal;
+}
+
 interface IndicatorSubmissionsMeta {
   current_page?: number;
   last_page?: number;
@@ -81,6 +85,7 @@ interface IndicatorDataContextType {
   lastSyncedAt: string | null;
   refreshSubmissions: () => Promise<void>;
   listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
+  loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
@@ -97,6 +102,12 @@ const MAX_LIST_PER_PAGE = 100;
 
 function normalizeEtag(value: string | null): string {
   return (value || "").replace(/^W\//, "").replace(/"/g, "");
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
 }
 
 interface NormalizedIndicatorListParams {
@@ -195,6 +206,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
   const submissionsEtagRef = useRef<string>("");
+  const allSubmissionsCacheRef = useRef<{ versionKey: string; rows: IndicatorSubmission[] } | null>(null);
+  const allSubmissionsInFlightRef = useRef<{ versionKey: string; promise: Promise<IndicatorSubmission[]> } | null>(null);
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const referenceDataSyncedAtRef = useRef(0);
@@ -210,6 +223,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     syncQueuedRef.current = false;
     referenceDataSyncedAtRef.current = 0;
     submissionsEtagRef.current = "";
+    allSubmissionsCacheRef.current = null;
+    allSubmissionsInFlightRef.current = null;
     setSubmissions([]);
     setMetrics([]);
     setAcademicYears([]);
@@ -264,6 +279,70 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
+  const readAllSubmissions = useCallback(async (): Promise<IndicatorSubmission[]> => {
+    const allRows: IndicatorSubmission[] = [];
+    let nextPage = 1;
+
+    while (true) {
+      const result = await listSubmissions({ page: nextPage, perPage: MAX_LIST_PER_PAGE });
+      allRows.push(...result.data);
+
+      if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+        return allRows;
+      }
+
+      nextPage += 1;
+    }
+  }, [listSubmissions]);
+
+  const loadAllSubmissions = useCallback(
+    async (options?: LoadAllSubmissionsOptions): Promise<IndicatorSubmission[]> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      throwIfAborted(options?.signal);
+
+      const versionKey = `${sessionKey}|${submissionsEtagRef.current || lastSyncedAt || "pending"}`;
+      const cached = allSubmissionsCacheRef.current;
+      if (cached && cached.versionKey === versionKey) {
+        return cached.rows;
+      }
+
+      const inFlight = allSubmissionsInFlightRef.current;
+      if (inFlight && inFlight.versionKey === versionKey) {
+        const rows = await inFlight.promise;
+        throwIfAborted(options?.signal);
+        return rows;
+      }
+
+      const promise = readAllSubmissions()
+        .then((rows) => {
+          allSubmissionsCacheRef.current = {
+            versionKey,
+            rows,
+          };
+
+          return rows;
+        })
+        .finally(() => {
+          if (allSubmissionsInFlightRef.current?.versionKey === versionKey) {
+            allSubmissionsInFlightRef.current = null;
+          }
+        });
+
+      allSubmissionsInFlightRef.current = {
+        versionKey,
+        promise,
+      };
+
+      const rows = await promise;
+      throwIfAborted(options?.signal);
+      return rows;
+    },
+    [lastSyncedAt, readAllSubmissions, sessionKey, token],
+  );
+
   const syncSubmissions = useCallback(
     async (silent = false) => {
       if (syncInFlightRef.current) {
@@ -277,6 +356,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setAcademicYears([]);
         referenceDataSyncedAtRef.current = 0;
         submissionsEtagRef.current = "";
+        allSubmissionsCacheRef.current = null;
+        allSubmissionsInFlightRef.current = null;
         setIsLoading(false);
         setIsSaving(false);
         setError("");
@@ -326,6 +407,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
         const submissionsChanged = submissionsResponse.status !== 304;
         if (submissionsChanged) {
+          allSubmissionsCacheRef.current = null;
           setSubmissions(readSubmissionRows(submissionsResponse.data));
         }
         if (shouldRefreshReferenceData) {
@@ -390,6 +472,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        allSubmissionsCacheRef.current = null;
         await syncSubmissions(true);
         return response.data;
       } catch (err) {
@@ -417,6 +500,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           token,
         });
 
+        allSubmissionsCacheRef.current = null;
         await syncSubmissions(true);
         return response.data;
       } catch (err) {
@@ -457,6 +541,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        allSubmissionsCacheRef.current = null;
         await syncSubmissions(true);
         return response.data;
       } catch (err) {
@@ -488,6 +573,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        allSubmissionsCacheRef.current = null;
         await syncSubmissions(true);
         return response.data;
       } catch (err) {
@@ -568,6 +654,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       refreshSubmissions,
       listSubmissions,
+      loadAllSubmissions,
       createSubmission,
       updateSubmission,
       submitSubmission,
@@ -584,6 +671,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       refreshSubmissions,
       listSubmissions,
+      loadAllSubmissions,
       createSubmission,
       updateSubmission,
       submitSubmission,

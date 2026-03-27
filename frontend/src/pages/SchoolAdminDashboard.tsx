@@ -376,7 +376,7 @@ export function SchoolAdminDashboard() {
     academicYears,
     lastSyncedAt: indicatorLastSyncedAt,
     refreshSubmissions,
-    listSubmissions,
+    loadAllSubmissions,
   } = useIndicatorData();
   const { listStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount, refreshTeachers } = useTeacherData();
@@ -412,24 +412,7 @@ export function SchoolAdminDashboard() {
 
     const loadIndicatorHistory = async () => {
       try {
-        const allRows: IndicatorSubmission[] = [];
-        let nextPage = 1;
-
-        while (!cancelled) {
-          const result = await listSubmissions({
-            page: nextPage,
-            perPage: 100,
-            signal: controller.signal,
-          });
-
-          allRows.push(...result.data);
-
-          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
-            break;
-          }
-
-          nextPage += 1;
-        }
+        const allRows = await loadAllSubmissions({ signal: controller.signal });
 
         if (!cancelled && !controller.signal.aborted) {
           setIndicatorHistory(allRows);
@@ -449,7 +432,7 @@ export function SchoolAdminDashboard() {
       cancelled = true;
       controller.abort();
     };
-  }, [indicatorLastSyncedAt, indicatorSubmissionSnapshot, listSubmissions]);
+  }, [indicatorLastSyncedAt, indicatorSubmissionSnapshot, loadAllSubmissions]);
 
   const indicatorSubmissions = useMemo(
     () => (indicatorHistory.length > 0 || indicatorSubmissionSnapshot.length === 0 ? indicatorHistory : indicatorSubmissionSnapshot),

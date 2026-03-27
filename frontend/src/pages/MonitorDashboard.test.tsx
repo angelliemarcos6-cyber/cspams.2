@@ -220,6 +220,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       lastSyncedAt: null,
       refreshSubmissions: vi.fn(),
       listSubmissions: vi.fn(),
+      loadAllSubmissions: vi.fn(),
       createSubmission: vi.fn(),
       updateSubmission: vi.fn(),
       submitSubmission: vi.fn(),
