@@ -7,6 +7,9 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
+import type { IndicatorDataContextType } from "@/context/IndicatorData";
+import type { StudentDataContextType } from "@/context/StudentData";
+import type { TeacherDataContextType } from "@/context/TeacherData";
 
 vi.mock("@/context/Auth", () => ({
   useAuth: vi.fn(),
@@ -210,7 +213,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       bulkImportRecords: vi.fn(),
     });
 
-    vi.mocked(useIndicatorData).mockReturnValue({
+    const indicatorDataMock = {
       submissions: [],
       metrics: [],
       academicYears: [],
@@ -226,9 +229,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
       submitSubmission: vi.fn(),
       reviewSubmission: vi.fn(),
       loadHistory: vi.fn(),
-    });
+    } satisfies IndicatorDataContextType;
+    vi.mocked(useIndicatorData).mockReturnValue(indicatorDataMock);
 
-    vi.mocked(useStudentData).mockReturnValue({
+    const studentDataMock = {
       students: [],
       isLoading: false,
       isSaving: false,
@@ -238,16 +242,16 @@ describe("MonitorDashboard School Head delivery flows", () => {
       totalCount: 0,
       dataVersion: 0,
       refreshStudents: vi.fn(),
-      listStudents: vi.fn(),
       queryStudents: vi.fn(),
       listStudentHistory: vi.fn(),
       addStudent: vi.fn(),
       updateStudent: vi.fn(),
       deleteStudent: vi.fn(),
       deleteStudents: vi.fn(),
-    });
+    } satisfies StudentDataContextType;
+    vi.mocked(useStudentData).mockReturnValue(studentDataMock);
 
-    vi.mocked(useTeacherData).mockReturnValue({
+    const teacherDataMock = {
       teacherSnapshot: [],
       isLoading: false,
       isSaving: false,
@@ -260,7 +264,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
       addTeacher: vi.fn(),
       updateTeacher: vi.fn(),
       deleteTeacher: vi.fn(),
-    });
+    } satisfies TeacherDataContextType;
+    vi.mocked(useTeacherData).mockReturnValue(teacherDataMock);
   });
 
   afterEach(() => {

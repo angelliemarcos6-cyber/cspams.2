@@ -129,7 +129,7 @@ export interface StudentHistoryResult {
   meta: StudentStatusHistoryMeta;
 }
 
-interface StudentDataContextType {
+export interface StudentDataContextType {
   students: StudentRecord[];
   isLoading: boolean;
   isSaving: boolean;
@@ -139,7 +139,6 @@ interface StudentDataContextType {
   totalCount: number;
   dataVersion: number;
   refreshStudents: () => Promise<void>;
-  listStudents: (params?: StudentListParams) => Promise<StudentListResult>;
   queryStudents: (params?: StudentListParams) => Promise<StudentListResult>;
   listStudentHistory: (studentId: string, params?: StudentHistoryParams) => Promise<StudentHistoryResult>;
   addStudent: (payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
@@ -681,28 +680,6 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     await syncStudents(false);
   }, [syncStudents]);
 
-  const listStudents = useCallback(
-    async (params?: StudentListParams): Promise<StudentListResult> => {
-      if (!token) {
-        throw new Error("You are signed out. Please sign in again.");
-      }
-
-      const normalized = sanitizeParams(params);
-
-      try {
-        return await requestStudents(token, normalized, params?.signal);
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          throw err;
-        }
-
-        await handleApiError(err);
-        throw err;
-      }
-    },
-    [token, requestStudents, handleApiError],
-  );
-
   const queryStudents = useCallback(
     async (params?: StudentListParams): Promise<StudentListResult> => {
       if (!token) {
@@ -1068,7 +1045,6 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       totalCount,
       dataVersion,
       refreshStudents,
-      listStudents,
       queryStudents,
       listStudentHistory,
       addStudent,
@@ -1086,7 +1062,6 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       totalCount,
       dataVersion,
       refreshStudents,
-      listStudents,
       queryStudents,
       listStudentHistory,
       addStudent,

@@ -75,7 +75,7 @@ interface IndicatorHistoryResponse {
   data: FormSubmissionHistoryEntry[];
 }
 
-interface IndicatorDataContextType {
+export interface IndicatorDataContextType {
   submissions: IndicatorSubmission[];
   metrics: IndicatorMetric[];
   academicYears: AcademicYearOption[];

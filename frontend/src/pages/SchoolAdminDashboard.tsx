@@ -378,7 +378,7 @@ export function SchoolAdminDashboard() {
     refreshSubmissions,
     loadAllSubmissions,
   } = useIndicatorData();
-  const { listStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
+  const { queryStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount, refreshTeachers } = useTeacherData();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -572,7 +572,7 @@ export function SchoolAdminDashboard() {
     let currentPage = 1;
 
     while (true) {
-      const result = await listStudents({ page: currentPage, perPage: 200, academicYear: "all" });
+      const result = await queryStudents({ page: currentPage, perPage: 200, academicYear: "all" });
       allRows.push(...result.data);
 
       if (!result.meta.hasMorePages || currentPage >= result.meta.lastPage) {
@@ -583,7 +583,7 @@ export function SchoolAdminDashboard() {
     }
 
     return allRows;
-  }, [listStudents]);
+  }, [queryStudents]);
 
   const fetchAllTeachersForExport = useCallback(async (): Promise<TeacherRecord[]> => {
     const allRows: TeacherRecord[] = [];

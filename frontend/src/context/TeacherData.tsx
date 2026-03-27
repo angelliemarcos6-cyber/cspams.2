@@ -74,7 +74,7 @@ export interface TeacherListResult {
   meta: TeacherListMeta;
 }
 
-interface TeacherDataContextType {
+export interface TeacherDataContextType {
   teacherSnapshot: TeacherRecord[];
   isLoading: boolean;
   isSaving: boolean;
