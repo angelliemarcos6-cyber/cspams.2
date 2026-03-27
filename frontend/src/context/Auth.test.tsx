@@ -92,4 +92,70 @@ describe("AuthProvider logout", () => {
     expect(result.current.authErrorCode).toBe(403);
     expect(result.current.accountStatus).toBe("suspended");
   });
+
+  it("rejects login when the backend falls back to bearer-token auth", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Unauthenticated.",
+          }),
+          {
+            status: 401,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            token: "temporary-bearer-token",
+            tokenType: "Bearer",
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.login({
+          role: "monitor",
+          login: "monitor@cspams.local",
+          password: "Password123!",
+        }),
+      ).rejects.toThrow(
+        "Backend returned bearer-token auth during login. Check SANCTUM_STATEFUL_DOMAINS, CORS, and session cookie settings.",
+      );
+    });
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.isAuthenticating).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

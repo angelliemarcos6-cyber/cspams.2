@@ -67,7 +67,7 @@ interface CompleteMonitorMfaResetInput {
   approvalToken: string;
 }
 
-interface CompleteMonitorMfaResetResponse {
+interface CompleteMonitorMfaResetResponse extends BearerTokenAuthPayload {
   user: SessionUser;
   backupCodes?: string[];
   message?: string;
@@ -92,6 +92,13 @@ interface LoginResultMfaRequired {
 }
 
 type LoginResult = LoginResultAuthenticated | LoginResultMfaRequired;
+
+interface BearerTokenAuthPayload {
+  token?: string | null;
+  tokenType?: string | null;
+  expiresAt?: string | null;
+  refreshAfter?: string | null;
+}
 
 interface AuthContextType {
   role: UserRole;
@@ -121,7 +128,7 @@ interface AuthContextType {
   revokeOtherSessions: () => Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }>;
 }
 
-interface AuthenticatedResponse {
+interface AuthenticatedResponse extends BearerTokenAuthPayload {
   user: SessionUser;
 }
 
@@ -142,13 +149,9 @@ interface MeResponse {
   user: SessionUser;
 }
 
-interface ResetRequiredPasswordResponse {
-  user: SessionUser;
-}
+type ResetRequiredPasswordResponse = AuthenticatedResponse;
 
-interface CompleteAccountSetupResponse {
-  user: SessionUser;
-}
+type CompleteAccountSetupResponse = AuthenticatedResponse;
 
 interface ActiveSessionsResponse {
   data: ActiveSessionDevice[];
@@ -188,6 +191,14 @@ function normalizeUser(user: SessionUser): SessionUser {
     ...user,
     role: normalizeRole(user.role),
   };
+}
+
+function assertCookieSessionAuthResponse(payload: BearerTokenAuthPayload, operationLabel: string): void {
+  if (typeof payload.token === "string" && payload.token.trim().length > 0) {
+    throw new Error(
+      `Backend returned bearer-token auth during ${operationLabel}. Check SANCTUM_STATEFUL_DOMAINS, CORS, and session cookie settings.`,
+    );
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -289,6 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      assertCookieSessionAuthResponse(payload, "login");
       const normalizedUser = normalizeUser(payload.user);
       setUser(normalizedUser);
       clearAuthError();
@@ -316,6 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
+      assertCookieSessionAuthResponse(payload, "MFA verification");
       setUser(normalizeUser(payload.user));
       clearAuthError();
     } finally {
@@ -345,6 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        assertCookieSessionAuthResponse(payload, "required password reset");
         setUser(normalizeUser(payload.user));
         clearAuthError();
       } finally {
@@ -452,6 +466,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        assertCookieSessionAuthResponse(payload, "MFA reset completion");
         setUser(normalizeUser(payload.user));
         clearAuthError();
 
@@ -480,6 +495,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        assertCookieSessionAuthResponse(payload, "account setup");
         setUser(normalizeUser(payload.user));
         clearAuthError();
       } finally {
@@ -515,7 +531,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoggingOut(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const listActiveSessions = useCallback(async (): Promise<ActiveSessionDevice[]> => {
     if (!user) {

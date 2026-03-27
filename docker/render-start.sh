@@ -100,10 +100,10 @@ if [ -z "${DB_URL:-}" ] && [ -n "${DB_DATABASE:-}" ]; then
   esac
 fi
 
-# 4) If APP_KEY is missing or mistakenly set to the command string, generate an ephemeral key.
+# 4) APP_KEY must be persistent in production-like environments.
 if [ -z "${APP_KEY:-}" ] || [ "$(trim "$APP_KEY")" = "php artisan key:generate --show" ]; then
-  echo "APP_KEY is missing/invalid; generating an ephemeral key for this instance."
-  export APP_KEY="$(php artisan key:generate --show --no-ansi 2>/dev/null | tail -n 1)"
+  echo "APP_KEY is missing or invalid. Set a persistent APP_KEY in the environment."
+  exit 1
 fi
 
 if [ "${CSPAMS_AUTO_MIGRATE:-true}" != "false" ]; then

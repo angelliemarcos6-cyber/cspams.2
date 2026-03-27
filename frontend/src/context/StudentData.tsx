@@ -440,7 +440,7 @@ function emitStudentUpdateEvent(schoolId: unknown): void {
 }
 
 export function StudentDataProvider({ children }: { children: ReactNode }) {
-  const { logout, role, user } = useAuth();
+  const { role, user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -499,7 +499,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     async (err: unknown) => {
       if (isApiError(err)) {
         if (err.status === 401) {
-          await logout({ force: true });
+          setError("Authentication check failed. Please refresh and sign in again if needed.");
           return;
         }
 
@@ -511,7 +511,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [logout],
+    [],
   );
 
   const requestStudents = useCallback(

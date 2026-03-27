@@ -187,7 +187,7 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, role, logout } = useAuth();
+  const { user, role } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -249,7 +249,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     async (err: unknown) => {
       if (isApiError(err)) {
         if (err.status === 401) {
-          await logout({ force: true });
+          setError("Authentication check failed. Please refresh and sign in again if needed.");
+          setSyncStatus("error");
           return;
         }
 
@@ -263,7 +264,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setError(err instanceof Error ? err.message : "Unexpected server error.");
       setSyncStatus("error");
     },
-    [logout],
+    [],
   );
 
   const syncRecords = useCallback(

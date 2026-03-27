@@ -194,7 +194,7 @@ function normalizeSubmissionListMeta(
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -247,7 +247,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     async (err: unknown) => {
       if (isApiError(err)) {
         if (err.status === 401) {
-          await logout({ force: true });
+          setError("Authentication check failed. Please refresh and sign in again if needed.");
           return;
         }
 
@@ -259,7 +259,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [logout],
+    [],
   );
 
   const listSubmissions = useCallback(
