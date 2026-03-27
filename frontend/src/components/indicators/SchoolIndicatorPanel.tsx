@@ -57,6 +57,7 @@ type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" 
 interface SchoolIndicatorPanelProps {
   statusFilter?: IndicatorWorkflowStatusFilter;
   academicYearFilter?: string;
+  submissionHistory?: IndicatorSubmission[];
 }
 
 interface MissingFieldTarget {
@@ -646,6 +647,7 @@ function buildMissingReason(
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
+  submissionHistory = [],
 }: SchoolIndicatorPanelProps) {
   const { records } = useData();
   const { totalCount: syncedStudentCount } = useStudentData();
@@ -657,9 +659,7 @@ export function SchoolIndicatorPanel({
     isLoading,
     isSaving,
     error,
-    lastSyncedAt: submissionSnapshotSyncedAt,
     refreshSubmissions,
-    loadAllSubmissions,
     createSubmission,
     updateSubmission,
     submitSubmission,
@@ -693,8 +693,6 @@ export function SchoolIndicatorPanel({
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [teacherSexCounts, setTeacherSexCounts] = useState<{ male: number; female: number }>({ male: 0, female: 0 });
-  const [submissionHistoryRecords, setSubmissionHistoryRecords] = useState<IndicatorSubmission[]>([]);
-  const [isSubmissionHistoryLoading, setIsSubmissionHistoryLoading] = useState(false);
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
@@ -1104,45 +1102,11 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [academicYearId, notes, metricEntries, editingSubmissionId, complianceMetrics.length]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
-
-    const loadSubmissionHistory = async () => {
-      setIsSubmissionHistoryLoading(true);
-
-      try {
-        const allRows = await loadAllSubmissions({ signal: controller.signal });
-
-        if (!cancelled && !controller.signal.aborted) {
-          setSubmissionHistoryRecords(allRows);
-        }
-      } catch (err) {
-        if (cancelled || controller.signal.aborted) {
-          return;
-        }
-
-        setSubmissionHistoryRecords((current) => (current.length > 0 ? current : submissionSnapshot));
-      } finally {
-        if (!cancelled && !controller.signal.aborted) {
-          setIsSubmissionHistoryLoading(false);
-        }
-      }
-    };
-
-    void loadSubmissionHistory();
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [loadAllSubmissions, submissionSnapshot, submissionSnapshotSyncedAt]);
-
   const submissions = useMemo(
-    () => (submissionHistoryRecords.length > 0 || submissionSnapshot.length === 0 ? submissionHistoryRecords : submissionSnapshot),
-    [submissionHistoryRecords, submissionSnapshot],
+    () => (submissionHistory.length > 0 ? submissionHistory : submissionSnapshot),
+    [submissionHistory, submissionSnapshot],
   );
-  const isSubmissionDataLoading = isLoading || isSubmissionHistoryLoading;
+  const isSubmissionDataLoading = isLoading;
   const sortedSubmissions = useMemo(
     () =>
       [...submissions].sort((a, b) => {

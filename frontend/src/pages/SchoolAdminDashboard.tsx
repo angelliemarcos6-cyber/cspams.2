@@ -1812,6 +1812,7 @@ export function SchoolAdminDashboard() {
                   <SchoolIndicatorPanel
                     statusFilter={contextWorkflowStatus}
                     academicYearFilter={contextAcademicYearId}
+                    submissionHistory={indicatorSubmissions}
                   />
                 </section>
               )}
