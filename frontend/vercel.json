@@ -2,6 +2,7 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://cspams-2.onrender.com/api/$1" },
     { "source": "/sanctum/(.*)", "destination": "https://cspams-2.onrender.com/sanctum/$1" },
+    { "source": "/broadcasting/(.*)", "destination": "https://cspams-2.onrender.com/broadcasting/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
