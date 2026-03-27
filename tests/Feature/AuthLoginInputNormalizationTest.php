@@ -41,12 +41,13 @@ class AuthLoginInputNormalizationTest extends TestCase
 
         $response = $this->postJson('/api/auth/login', [
             'role' => 'Division Monitor',
-            'login' => '  MONITOR@CSPAMS.LOCAL  ',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => '  CSPAMSMONITOR@GMAIL.COM  ',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $response->assertStatus(Response::HTTP_OK)
             ->assertJsonPath('user.role', 'monitor')
-            ->assertJsonPath('user.email', 'monitor@cspams.local');
+            ->assertJsonPath('user.email', 'cspamsmonitor@gmail.com');
     }
 }
+

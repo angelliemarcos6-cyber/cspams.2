@@ -189,7 +189,7 @@ class AuthSessionSecurityTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         Sanctum::actingAs($monitor);
 
@@ -203,7 +203,7 @@ class AuthSessionSecurityTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         Sanctum::actingAs($monitor);
 
@@ -321,3 +321,4 @@ class AuthSessionSecurityTest extends TestCase
     }
 
 }
+

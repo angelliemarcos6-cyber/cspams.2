@@ -51,12 +51,12 @@ class ApiSyncTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         $nameLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
             'login' => $monitor->name,
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $nameLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
@@ -64,8 +64,8 @@ class ApiSyncTest extends TestCase
 
         $emailLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $emailLogin->assertOk()
@@ -78,8 +78,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk()
@@ -259,8 +259,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk()
@@ -306,8 +306,8 @@ class ApiSyncTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -365,8 +365,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -414,8 +414,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -444,8 +444,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -473,7 +473,7 @@ class ApiSyncTest extends TestCase
             ->assertHeader('X-Sync-Scope', 'division');
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
         $fromStatus = $student->status instanceof StudentStatus ? $student->status->value : (string) $student->status;
         $toStatus = $fromStatus === StudentStatus::AT_RISK->value
             ? StudentStatus::ENROLLED->value
@@ -553,8 +553,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -610,3 +610,4 @@ class ApiSyncTest extends TestCase
         return (string) $user->school?->school_code;
     }
 }
+

@@ -203,7 +203,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $submitted->assertOk()
             ->assertJsonPath('data.status', 'submitted');
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $reviewed = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
             'decision' => 'validated',
@@ -288,7 +288,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->postJson("/api/indicators/submissions/{$submissionId}/submit")
             ->assertOk();
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $missingNotes = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
             'decision' => 'returned',
@@ -514,3 +514,4 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         return (string) $user->school?->school_code;
     }
 }
+

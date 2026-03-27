@@ -60,8 +60,8 @@ class AuthApiSmokeTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertStatus(Response::HTTP_ACCEPTED)
@@ -72,7 +72,7 @@ class AuthApiSmokeTest extends TestCase
 
         $verify = $this->postJson('/api/auth/verify-mfa', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $challengeId,
             'code' => '123456',
         ]);
@@ -95,3 +95,4 @@ class AuthApiSmokeTest extends TestCase
         $afterLogout->assertStatus(Response::HTTP_UNAUTHORIZED);
     }
 }
+

@@ -34,8 +34,8 @@ class AccountIdentifierConstraintTest extends TestCase
     {
         DB::table('users')->insert([
             'name' => 'First Monitor',
-            'email' => 'first.monitor@cspams.local',
-            'email_normalized' => 'first.monitor@cspams.local',
+            'email' => 'first.cspamsmonitor@gmail.com',
+            'email_normalized' => 'first.cspamsmonitor@gmail.com',
             'password' => Hash::make('password'),
             'created_at' => now(),
             'updated_at' => now(),
@@ -45,8 +45,8 @@ class AccountIdentifierConstraintTest extends TestCase
 
         DB::table('users')->insert([
             'name' => 'Second Monitor',
-            'email' => 'FIRST.MONITOR@CSPAMS.LOCAL',
-            'email_normalized' => 'first.monitor@cspams.local',
+            'email' => 'FIRST.CSPAMSMONITOR@GMAIL.COM',
+            'email_normalized' => 'first.cspamsmonitor@gmail.com',
             'password' => Hash::make('password'),
             'created_at' => now(),
             'updated_at' => now(),
@@ -79,3 +79,4 @@ class AccountIdentifierConstraintTest extends TestCase
         ]);
     }
 }
+

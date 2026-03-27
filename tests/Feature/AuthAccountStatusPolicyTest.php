@@ -22,13 +22,13 @@ class AuthAccountStatusPolicyTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
         $monitor->forceFill(['account_status' => $status])->save();
 
         $response = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $response->assertStatus(Response::HTTP_FORBIDDEN);
@@ -89,3 +89,4 @@ class AuthAccountStatusPolicyTest extends TestCase
         ];
     }
 }
+

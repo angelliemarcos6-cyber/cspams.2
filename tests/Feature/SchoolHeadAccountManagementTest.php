@@ -26,8 +26,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -82,8 +82,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -219,8 +219,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -244,8 +244,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -281,8 +281,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -401,8 +401,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -574,8 +574,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -643,3 +643,4 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->forceFill(['account_type' => null])->save();
     }
 }
+

@@ -195,7 +195,7 @@ Notes:
 After seeding:
 
 - Division Monitor login:
-  - Login: `monitor@cspams.local`
+  - Login: seeded monitor email configured in `database/seeders/DemoDataSeeder.php`
   - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
 - School Head login:
   - Login: assigned 6-digit `school_code` (example: `900001`, `900002`, `900003`)

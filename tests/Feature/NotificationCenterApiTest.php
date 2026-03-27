@@ -18,7 +18,7 @@ class NotificationCenterApiTest extends TestCase
     {
         $this->seed();
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         /** @var School $school */
         $school = School::query()->where('school_code', '900001')->firstOrFail();
@@ -66,3 +66,4 @@ class NotificationCenterApiTest extends TestCase
         return (string) $user->school?->school_code;
     }
 }
+

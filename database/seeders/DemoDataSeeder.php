@@ -93,7 +93,7 @@ class DemoDataSeeder extends Seeder
             );
         }
 
-        $monitor = User::query()->firstOrNew(['email' => 'monitor@cspams.local']);
+        $monitor = User::query()->firstOrNew(['email' => 'cspamsmonitor@gmail.com']);
         $monitorWasRecentlyCreated = ! $monitor->exists;
         $monitor->name = 'Division Monitor';
         $monitor->account_status = AccountStatus::ACTIVE->value;

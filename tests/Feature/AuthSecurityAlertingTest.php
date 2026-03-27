@@ -19,7 +19,7 @@ class AuthSecurityAlertingTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
         $login = sprintf('alert-lockout-%d@cspams.local', random_int(1000, 999999));
 
         for ($attempt = 1; $attempt <= 5; $attempt++) {
@@ -96,12 +96,12 @@ class AuthSecurityAlertingTest extends TestCase
         config()->set('auth_mfa.monitor.max_attempts', 2);
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertStatus(Response::HTTP_ACCEPTED)
@@ -112,7 +112,7 @@ class AuthSecurityAlertingTest extends TestCase
 
         $firstInvalid = $this->postJson('/api/auth/verify-mfa', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $challengeId,
             'code' => '000000',
         ]);
@@ -120,7 +120,7 @@ class AuthSecurityAlertingTest extends TestCase
 
         $secondInvalid = $this->postJson('/api/auth/verify-mfa', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $challengeId,
             'code' => '111111',
         ]);
@@ -138,3 +138,4 @@ class AuthSecurityAlertingTest extends TestCase
         $this->assertSame('auth.mfa_verify.locked_out', data_get($notification?->data, 'action'));
     }
 }
+

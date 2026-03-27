@@ -32,8 +32,8 @@ class MonitorMfaRecoveryControlsTest extends TestCase
     {
         $this->seed();
 
-        $password = $this->demoPasswordForLogin('monitor', 'monitor@cspams.local');
-        $token = $this->monitorTokenAfterMfa('monitor@cspams.local', $password);
+        $password = $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com');
+        $token = $this->monitorTokenAfterMfa('cspamsmonitor@gmail.com', $password);
 
         $regen = $this->withToken($token)->postJson('/api/auth/mfa/backup-codes/regenerate', [
             'current_password' => $password,
@@ -50,10 +50,10 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $backupCode = $backupCodes[0] ?? null;
         $this->assertNotNull($backupCode);
 
-        $challengeId = $this->monitorMfaChallengeId('monitor@cspams.local', $password);
+        $challengeId = $this->monitorMfaChallengeId('cspamsmonitor@gmail.com', $password);
         $backupVerify = $this->postJson('/api/auth/verify-mfa', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $challengeId,
             'code' => $backupCode,
         ]);
@@ -61,10 +61,10 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $backupVerify->assertOk()
             ->assertJsonPath('user.role', 'monitor');
 
-        $reuseChallengeId = $this->monitorMfaChallengeId('monitor@cspams.local', $password);
+        $reuseChallengeId = $this->monitorMfaChallengeId('cspamsmonitor@gmail.com', $password);
         $reuseAttempt = $this->postJson('/api/auth/verify-mfa', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $reuseChallengeId,
             'code' => $backupCode,
         ]);
@@ -78,7 +78,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         Notification::fake();
         $this->seed();
 
-        $targetPassword = $this->demoPasswordForLogin('monitor', 'monitor@cspams.local');
+        $targetPassword = $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com');
 
         /** @var User $admin */
         $admin = User::query()->create([
@@ -92,7 +92,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
 
         $requestReset = $this->postJson('/api/auth/mfa/reset/request', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'password' => $targetPassword,
             'reason' => 'Lost authenticator device.',
         ]);
@@ -116,7 +116,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $this->assertArrayNotHasKey('approvalToken', $approvePayload);
 
         /** @var User $targetUser */
-        $targetUser = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $targetUser = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
         Notification::assertSentTo($targetUser, MonitorMfaResetApprovedNotification::class);
 
         $sent = Notification::sent($targetUser, MonitorMfaResetApprovedNotification::class);
@@ -127,7 +127,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
 
         $complete = $this->postJson('/api/auth/mfa/reset/complete', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'password' => $targetPassword,
             'request_id' => $requestId,
             'approval_token' => $approvalToken,
@@ -152,11 +152,11 @@ class MonitorMfaRecoveryControlsTest extends TestCase
     {
         $this->seed();
 
-        $targetPassword = $this->demoPasswordForLogin('monitor', 'monitor@cspams.local');
+        $targetPassword = $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com');
 
         $requestReset = $this->postJson('/api/auth/mfa/reset/request', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'password' => $targetPassword,
             'reason' => 'Lost authenticator device.',
         ]);
@@ -167,7 +167,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $requestId = (int) $requestReset->json('requestId');
         $this->assertGreaterThan(0, $requestId);
 
-        $monitorToken = $this->monitorTokenAfterMfa('monitor@cspams.local', $targetPassword);
+        $monitorToken = $this->monitorTokenAfterMfa('cspamsmonitor@gmail.com', $targetPassword);
         $approve = $this->withToken($monitorToken)->postJson("/api/auth/mfa/reset/requests/{$requestId}/approve");
 
         $approve->assertStatus(Response::HTTP_FORBIDDEN)
@@ -185,8 +185,8 @@ class MonitorMfaRecoveryControlsTest extends TestCase
 
         $requestReset = $this->postJson('/api/auth/mfa/reset/request', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
             'reason' => 'Lost authenticator device.',
         ]);
 
@@ -199,8 +199,8 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $this->seed();
 
         $monitorToken = $this->monitorTokenAfterMfa(
-            'monitor@cspams.local',
-            $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'cspamsmonitor@gmail.com',
+            $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         );
 
         Schema::dropIfExists('monitor_mfa_reset_tickets');
@@ -250,3 +250,4 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         return $challengeId;
     }
 }
+

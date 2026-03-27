@@ -16,7 +16,7 @@ class SchoolRecordBulkImportTest extends TestCase
     {
         $this->seed();
 
-        $token = $this->loginToken('monitor', 'monitor@cspams.local');
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
             'rows' => [
@@ -78,3 +78,4 @@ class SchoolRecordBulkImportTest extends TestCase
         return (string) $response->json('token');
     }
 }
+

@@ -20,8 +20,8 @@ class AuthApiTokenLifecycleTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk()
@@ -62,8 +62,8 @@ class AuthApiTokenLifecycleTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -80,7 +80,7 @@ class AuthApiTokenLifecycleTest extends TestCase
     {
         $this->seed();
 
-        $this->actingAs(\App\Models\User::query()->where('email', 'monitor@cspams.local')->firstOrFail());
+        $this->actingAs(\App\Models\User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail());
 
         $response = $this->postJson('/api/auth/refresh');
 
@@ -89,3 +89,4 @@ class AuthApiTokenLifecycleTest extends TestCase
             ->assertJsonPath('message', 'Token refresh is only available for bearer-token clients.');
     }
 }
+
