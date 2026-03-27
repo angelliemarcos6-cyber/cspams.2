@@ -187,7 +187,7 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, role, logout } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -1099,9 +1099,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
       if (trigger === "realtime") {
         const entity = payload?.entity ?? "";
-        if (["dashboard", "students", "teachers", "forms", "indicators"].includes(entity)) {
-          scheduleSync(220);
+        if (!["dashboard", "students", "teachers", "forms", "indicators"].includes(entity)) {
+          return;
         }
+
+        if (
+          role === "school_head"
+          && user?.schoolId !== null
+          && user?.schoolId !== undefined
+          && payload?.schoolId !== null
+          && payload?.schoolId !== undefined
+          && (entity === "students" || entity === "teachers")
+        ) {
+          if (String(payload.schoolId) !== String(user.schoolId)) {
+            return;
+          }
+        }
+
+        scheduleSync(220);
         return;
       }
 
@@ -1112,7 +1127,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncRecords]);
+  }, [token, syncRecords, role, user?.schoolId]);
 
   const value = useMemo<DataContextType>(
     () => ({
