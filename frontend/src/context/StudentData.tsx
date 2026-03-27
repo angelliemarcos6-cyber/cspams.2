@@ -390,6 +390,7 @@ function buildListCacheKey(params: NormalizedStudentListParams): string {
     params.page,
     params.perPage,
     params.search.toLowerCase(),
+    params.teacherName.toLowerCase(),
     params.status,
     params.schoolCode,
     params.schoolCodes.join(","),

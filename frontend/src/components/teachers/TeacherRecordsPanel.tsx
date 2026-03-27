@@ -43,16 +43,6 @@ function formatDateTime(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
-function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
-  const code = schoolCode?.trim().toLowerCase();
-  if (code) return `code:${code}`;
-
-  const name = schoolName?.trim().toLowerCase();
-  if (name) return `name:${name}`;
-
-  return "unknown";
-}
-
 function extractSchoolCodes(filterKeys: Set<string> | null | undefined): string[] {
   if (!filterKeys || filterKeys.size === 0) {
     return [];
@@ -121,7 +111,7 @@ export function TeacherRecordsPanel({
         setPagedTeachers([]);
         setTotalTeachers(0);
         setTotalPages(1);
-        setPageError("");
+        setPageError("This school scope is missing a supported school code.");
         if (nextPage !== 1) {
           setPage(1);
         }

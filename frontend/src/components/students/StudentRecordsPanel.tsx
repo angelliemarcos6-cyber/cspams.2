@@ -4,7 +4,7 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { isApiError } from "@/lib/api";
-import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload, StudentStatusHistoryEntry } from "@/types";
+import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload, StudentStatusHistoryEntry, TeacherRecord } from "@/types";
 
 interface StudentRecordsPanelProps {
   editable: boolean;
@@ -68,6 +68,7 @@ const SEARCH_DEBOUNCE_MS = 280;
 const HISTORY_PAGE_SIZE = 12;
 const STUDENT_TABLE_ROW_HEIGHT_PX = 58;
 const STUDENT_TABLE_OVERSCAN_ROWS = 8;
+const TEACHER_LOOKUP_PAGE_SIZE = 200;
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -99,12 +100,9 @@ function statusTone(status: string): string {
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
-function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
+function normalizeSchoolKey(schoolCode: string | null | undefined): string {
   const code = schoolCode?.trim().toLowerCase();
   if (code) return `code:${code}`;
-
-  const name = schoolName?.trim().toLowerCase();
-  if (name) return `name:${name}`;
 
   return "unknown";
 }
@@ -142,6 +140,7 @@ export function StudentRecordsPanel({
     error,
     lastSyncedAt,
     dataVersion,
+    refreshStudents,
     listStudents,
     listStudentHistory,
     addStudent,
@@ -150,7 +149,12 @@ export function StudentRecordsPanel({
     deleteStudents,
   } = useStudentData();
   const { academicYears } = useIndicatorData();
-  const { teachers } = useTeacherData();
+  const {
+    teachers,
+    listTeachers,
+    totalCount: teacherSnapshotTotalCount,
+    lastSyncedAt: teacherSnapshotSyncedAt,
+  } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
@@ -170,6 +174,8 @@ export function StudentRecordsPanel({
   const [totalPages, setTotalPages] = useState(1);
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [pageError, setPageError] = useState("");
+  const [teacherLookupRecords, setTeacherLookupRecords] = useState<TeacherRecord[] | null>(null);
+  const [isTeacherLookupLoading, setIsTeacherLookupLoading] = useState(false);
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
   const studentDataVersionRef = useRef(0);
   const pageRequestIdRef = useRef(0);
@@ -209,7 +215,7 @@ export function StudentRecordsPanel({
         setPagedStudents([]);
         setTotalStudents(0);
         setTotalPages(1);
-        setPageError("");
+        setPageError("This school scope is missing a supported school code.");
         if (nextPage !== 1) {
           setPage(1);
         }
@@ -271,7 +277,7 @@ export function StudentRecordsPanel({
     [listStudents, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, statusFilter, academicYearFilter],
   );
 
-  const scopedTeachers = useMemo(() => {
+  const scopedSnapshotTeachers = useMemo(() => {
     if (!schoolFilterKeys) {
       return teachers;
     }
@@ -282,10 +288,80 @@ export function StudentRecordsPanel({
 
     return teachers.filter((teacher) =>
       schoolFilterKeys.has(
-        normalizeSchoolKey(teacher.school?.schoolCode ?? null, teacher.school?.name ?? null),
+        normalizeSchoolKey(teacher.school?.schoolCode ?? null),
       ),
     );
   }, [teachers, schoolFilterKeys]);
+
+  useEffect(() => {
+    if (!editable || !showForm) {
+      setTeacherLookupRecords(null);
+      setIsTeacherLookupLoading(false);
+      return;
+    }
+
+    if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
+      setTeacherLookupRecords([]);
+      setIsTeacherLookupLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadTeacherLookupRecords = async () => {
+      setTeacherLookupRecords(null);
+      setIsTeacherLookupLoading(true);
+
+      try {
+        const allTeachers: TeacherRecord[] = [];
+        let nextPage = 1;
+
+        while (!cancelled) {
+          const result = await listTeachers({
+            page: nextPage,
+            perPage: TEACHER_LOOKUP_PAGE_SIZE,
+            schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
+            signal: controller.signal,
+          });
+
+          allTeachers.push(...result.data);
+
+          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+            break;
+          }
+
+          nextPage += 1;
+        }
+
+        if (!cancelled && !controller.signal.aborted) {
+          setTeacherLookupRecords(allTeachers);
+        }
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+
+        setTeacherLookupRecords(null);
+      } finally {
+        if (!cancelled && !controller.signal.aborted) {
+          setIsTeacherLookupLoading(false);
+        }
+      }
+    };
+
+    void loadTeacherLookupRecords();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [editable, showForm, listTeachers, schoolFilterKeys, scopedSchoolCodes, teacherSnapshotSyncedAt, teacherSnapshotTotalCount]);
+
+  const scopedTeachers = useMemo(
+    () => (teacherLookupRecords !== null ? teacherLookupRecords : scopedSnapshotTeachers),
+    [teacherLookupRecords, scopedSnapshotTeachers],
+  );
 
   const teacherOptions = useMemo(() => {
     const byName = new Map<string, { name: string; sex: "male" | "female" | null }>();
@@ -887,7 +963,13 @@ export function StudentRecordsPanel({
   const handleRefresh = async () => {
     setFormError("");
     setFormMessage("");
-    await loadStudentsPage(page, true);
+    setPageError("");
+
+    try {
+      await refreshStudents();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to refresh student records.");
+    }
   };
 
   return (
@@ -1058,7 +1140,7 @@ export function StudentRecordsPanel({
               value={form.teacher}
               onChange={(event) => setForm((current) => ({ ...current, teacher: event.target.value }))}
             >
-              <option value="">Teacher</option>
+              <option value="">{isTeacherLookupLoading ? "Loading teachers..." : "Teacher"}</option>
               {teacherSelectOptions.map((option) => (
                 <option
                   key={`${option.value.toLowerCase()}-${option.isLegacy ? "legacy" : "record"}`}
