@@ -289,9 +289,16 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
   const handleApiError = useCallback(
     async (err: unknown) => {
-      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout({ force: true });
-        return;
+      if (isApiError(err)) {
+        if (err.status === 401) {
+          await logout({ force: true });
+          return;
+        }
+
+        if (err.status === 403) {
+          setError(err.message || "You do not have permission to access teacher data.");
+          return;
+        }
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");

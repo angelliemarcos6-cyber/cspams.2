@@ -80,7 +80,9 @@ function AppRoutes() {
         path="/school-admin"
         element={
           <ProtectedRoute allowedRole="school_head">
-            <SchoolAdminDashboard />
+            <AuthenticatedAppProviders>
+              <SchoolAdminDashboard />
+            </AuthenticatedAppProviders>
           </ProtectedRoute>
         }
       />
@@ -89,7 +91,9 @@ function AppRoutes() {
         path="/monitor"
         element={
           <ProtectedRoute allowedRole="monitor">
-            <MonitorDashboard />
+            <AuthenticatedAppProviders>
+              <MonitorDashboard />
+            </AuthenticatedAppProviders>
           </ProtectedRoute>
         }
       />
@@ -122,23 +126,31 @@ function RealtimeBridge() {
   return null;
 }
 
-export function App() {
+function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
   return (
-    <AuthProvider>
+    <>
       <RealtimeBridge />
       <NotificationProvider>
         <DataProvider>
           <IndicatorDataProvider>
             <TeacherDataProvider>
               <StudentDataProvider>
-                <HashRouter>
-                  <AppRoutes />
-                </HashRouter>
+                {children}
               </StudentDataProvider>
             </TeacherDataProvider>
           </IndicatorDataProvider>
         </DataProvider>
       </NotificationProvider>
+    </>
+  );
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
     </AuthProvider>
   );
 }
