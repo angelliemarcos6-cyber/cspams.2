@@ -398,12 +398,13 @@ export function MonitorIndicatorPanel({
 }: MonitorIndicatorPanelProps) {
   const { username } = useAuth();
   const {
-    submissions,
+    submissions: submissionSnapshot,
     isLoading,
     isSaving,
     error,
     lastSyncedAt,
     refreshSubmissions,
+    listSubmissions,
     reviewSubmission,
     loadHistory,
   } = useIndicatorData();
@@ -440,6 +441,8 @@ export function MonitorIndicatorPanel({
   const [activeSavedView, setActiveSavedView] = useState<ReviewSavedView | null>(null);
   const [queueDensity, setQueueDensity] = useState<QueueDensity>("comfortable");
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
+  const [submissionHistoryRecords, setSubmissionHistoryRecords] = useState<IndicatorSubmission[]>([]);
+  const [isSubmissionHistoryLoading, setIsSubmissionHistoryLoading] = useState(false);
   const filteredRowsRef = useRef<ReviewQueueRow[]>([]);
 
   useEffect(() => {
@@ -480,6 +483,62 @@ export function MonitorIndicatorPanel({
     setBatchReviewer(username.trim());
   }, [batchReviewer, username]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadSubmissionHistory = async () => {
+      setIsSubmissionHistoryLoading(true);
+
+      try {
+        const allRows: IndicatorSubmission[] = [];
+        let nextPage = 1;
+
+        while (!cancelled) {
+          const result = await listSubmissions({
+            page: nextPage,
+            perPage: 100,
+            signal: controller.signal,
+          });
+
+          allRows.push(...result.data);
+
+          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+            break;
+          }
+
+          nextPage += 1;
+        }
+
+        if (!cancelled && !controller.signal.aborted) {
+          setSubmissionHistoryRecords(allRows);
+        }
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+
+        setSubmissionHistoryRecords((current) => (current.length > 0 ? current : submissionSnapshot));
+      } finally {
+        if (!cancelled && !controller.signal.aborted) {
+          setIsSubmissionHistoryLoading(false);
+        }
+      }
+    };
+
+    void loadSubmissionHistory();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [lastSyncedAt, listSubmissions, submissionSnapshot]);
+
+  const submissions = useMemo(
+    () => (submissionHistoryRecords.length > 0 || submissionSnapshot.length === 0 ? submissionHistoryRecords : submissionSnapshot),
+    [submissionHistoryRecords, submissionSnapshot],
+  );
+  const isSubmissionDataLoading = isLoading || isSubmissionHistoryLoading;
   const selectedIdSet = useMemo(() => new Set(selectedSubmissionIds), [selectedSubmissionIds]);
 
   const visibleSubmissions = useMemo(() => {
@@ -1832,7 +1891,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => void runBulkReviewAction("validated")}
-                      disabled={isBulkActionRunning || isSaving || isLoading || selectedActionableRows.length === 0}
+                      disabled={isBulkActionRunning || isSaving || isSubmissionDataLoading || selectedActionableRows.length === 0}
                       className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1841,7 +1900,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => void runBulkReviewAction("returned")}
-                      disabled={isBulkActionRunning || isSaving || isLoading || selectedActionableRows.length === 0}
+                      disabled={isBulkActionRunning || isSaving || isSubmissionDataLoading || selectedActionableRows.length === 0}
                       className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
@@ -1961,7 +2020,7 @@ export function MonitorIndicatorPanel({
                             <button
                               type="button"
                               onClick={() => openReviewAction(row.submission, "validated")}
-                              disabled={isSaving || isLoading}
+                              disabled={isSaving || isSubmissionDataLoading}
                               className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               <CheckCircle2 className="h-3 w-3" />
@@ -1972,7 +2031,7 @@ export function MonitorIndicatorPanel({
                                 <button
                                   type="button"
                                   onClick={() => openReviewAction(row.submission, "returned")}
-                                  disabled={isSaving || isLoading}
+                                  disabled={isSaving || isSubmissionDataLoading}
                                   className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
                                 >
                                   <RotateCcw className="h-3 w-3" />
@@ -1981,7 +2040,7 @@ export function MonitorIndicatorPanel({
                                 <button
                                   type="button"
                                   onClick={() => openReviewAction(row.submission, "clarification")}
-                                  disabled={isSaving || isLoading}
+                                  disabled={isSaving || isSubmissionDataLoading}
                                   className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
                                 >
                                   <AlertCircle className="h-3 w-3" />
@@ -1990,7 +2049,7 @@ export function MonitorIndicatorPanel({
                                 <button
                                   type="button"
                                   onClick={() => openReviewAction(row.submission, "escalated")}
-                                  disabled={isSaving || isLoading}
+                                  disabled={isSaving || isSubmissionDataLoading}
                                   className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
                                 >
                                   <Send className="h-3 w-3" />
@@ -2330,7 +2389,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => void sendDetailReminder()}
-                      disabled={isDetailReminderSending || isSaving || isLoading}
+                      disabled={isDetailReminderSending || isSaving || isSubmissionDataLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <Mail className="h-3 w-3" />
@@ -2339,7 +2398,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => openReviewAction(detailRow.submission, "returned")}
-                      disabled={detailRow.status !== "submitted" || isSaving || isLoading}
+                      disabled={detailRow.status !== "submitted" || isSaving || isSubmissionDataLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <RotateCcw className="h-3 w-3" />
@@ -2348,7 +2407,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => openReviewAction(detailRow.submission, "validated")}
-                      disabled={detailRow.status !== "submitted" || isSaving || isLoading}
+                      disabled={detailRow.status !== "submitted" || isSaving || isSubmissionDataLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <CheckCircle2 className="h-3 w-3" />
@@ -2462,7 +2521,7 @@ export function MonitorIndicatorPanel({
                 <button
                   type="button"
                   onClick={() => void runReviewAction()}
-                  disabled={isReviewActionRunning || isSaving || isLoading}
+                  disabled={isReviewActionRunning || isSaving || isSubmissionDataLoading}
                   className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isReviewActionRunning ? (

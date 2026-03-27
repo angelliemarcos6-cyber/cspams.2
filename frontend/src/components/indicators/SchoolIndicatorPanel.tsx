@@ -651,13 +651,15 @@ export function SchoolIndicatorPanel({
   const { totalCount: syncedStudentCount } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
   const {
-    submissions,
+    submissions: submissionSnapshot,
     metrics,
     academicYears,
     isLoading,
     isSaving,
     error,
+    lastSyncedAt: submissionSnapshotSyncedAt,
     refreshSubmissions,
+    listSubmissions,
     createSubmission,
     updateSubmission,
     submitSubmission,
@@ -691,6 +693,8 @@ export function SchoolIndicatorPanel({
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [teacherSexCounts, setTeacherSexCounts] = useState<{ male: number; female: number }>({ male: 0, female: 0 });
+  const [submissionHistoryRecords, setSubmissionHistoryRecords] = useState<IndicatorSubmission[]>([]);
+  const [isSubmissionHistoryLoading, setIsSubmissionHistoryLoading] = useState(false);
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
@@ -1100,6 +1104,62 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [academicYearId, notes, metricEntries, editingSubmissionId, complianceMetrics.length]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadSubmissionHistory = async () => {
+      setIsSubmissionHistoryLoading(true);
+
+      try {
+        const allRows: IndicatorSubmission[] = [];
+        let nextPage = 1;
+
+        while (!cancelled) {
+          const result = await listSubmissions({
+            page: nextPage,
+            perPage: 100,
+            signal: controller.signal,
+          });
+
+          allRows.push(...result.data);
+
+          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+            break;
+          }
+
+          nextPage += 1;
+        }
+
+        if (!cancelled && !controller.signal.aborted) {
+          setSubmissionHistoryRecords(allRows);
+        }
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+
+        setSubmissionHistoryRecords((current) => (current.length > 0 ? current : submissionSnapshot));
+      } finally {
+        if (!cancelled && !controller.signal.aborted) {
+          setIsSubmissionHistoryLoading(false);
+        }
+      }
+    };
+
+    void loadSubmissionHistory();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [listSubmissions, submissionSnapshot, submissionSnapshotSyncedAt]);
+
+  const submissions = useMemo(
+    () => (submissionHistoryRecords.length > 0 || submissionSnapshot.length === 0 ? submissionHistoryRecords : submissionSnapshot),
+    [submissionHistoryRecords, submissionSnapshot],
+  );
+  const isSubmissionDataLoading = isLoading || isSubmissionHistoryLoading;
   const sortedSubmissions = useMemo(
     () =>
       [...submissions].sort((a, b) => {
@@ -3077,7 +3137,7 @@ export function SchoolIndicatorPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="submit"
-            disabled={isSaving || isLoading || complianceMetrics.length === 0 || academicYearId === ALL_RECORDS_YEAR_ID}
+            disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || academicYearId === ALL_RECORDS_YEAR_ID}
             title={academicYearId === ALL_RECORDS_YEAR_ID ? "Select a specific academic year to save draft." : undefined}
             className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
           >
@@ -3089,7 +3149,7 @@ export function SchoolIndicatorPanel({
             onClick={() => void handleCreateAndSubmit()}
             disabled={
               isSaving
-              || isLoading
+              || isSubmissionDataLoading
               || complianceMetrics.length === 0
               || academicYearId === ALL_RECORDS_YEAR_ID
               || missingFieldTargets.length > 0

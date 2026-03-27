@@ -688,7 +688,6 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       }
 
       const normalized = sanitizeParams(params);
-      snapshotParamsRef.current = normalized;
 
       try {
         return await requestStudents(token, normalized, params?.signal);

@@ -371,7 +371,13 @@ function buildTeacherExportRows(records: TeacherRecord[]): string[][] {
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, isLoading, isSaving, error, lastSyncedAt, syncScope, syncStatus, addRecord, updateRecord, refreshRecords } = useData();
-  const { submissions: indicatorSubmissions, academicYears, refreshSubmissions } = useIndicatorData();
+  const {
+    submissions: indicatorSubmissionSnapshot,
+    academicYears,
+    lastSyncedAt: indicatorLastSyncedAt,
+    refreshSubmissions,
+    listSubmissions,
+  } = useIndicatorData();
   const { listStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount, refreshTeachers } = useTeacherData();
 
@@ -398,6 +404,57 @@ export function SchoolAdminDashboard() {
   const [recordsExportError, setRecordsExportError] = useState("");
   const [isExportingRecords, setIsExportingRecords] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
+  const [indicatorHistory, setIndicatorHistory] = useState<IndicatorSubmission[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadIndicatorHistory = async () => {
+      try {
+        const allRows: IndicatorSubmission[] = [];
+        let nextPage = 1;
+
+        while (!cancelled) {
+          const result = await listSubmissions({
+            page: nextPage,
+            perPage: 100,
+            signal: controller.signal,
+          });
+
+          allRows.push(...result.data);
+
+          if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+            break;
+          }
+
+          nextPage += 1;
+        }
+
+        if (!cancelled && !controller.signal.aborted) {
+          setIndicatorHistory(allRows);
+        }
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+
+        setIndicatorHistory((current) => (current.length > 0 ? current : indicatorSubmissionSnapshot));
+      }
+    };
+
+    void loadIndicatorHistory();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [indicatorLastSyncedAt, indicatorSubmissionSnapshot, listSubmissions]);
+
+  const indicatorSubmissions = useMemo(
+    () => (indicatorHistory.length > 0 || indicatorSubmissionSnapshot.length === 0 ? indicatorHistory : indicatorSubmissionSnapshot),
+    [indicatorHistory, indicatorSubmissionSnapshot],
+  );
 
   const assignedRecord = records[0] ?? null;
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";

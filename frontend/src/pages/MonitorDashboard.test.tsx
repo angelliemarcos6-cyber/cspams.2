@@ -219,6 +219,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       error: "",
       lastSyncedAt: null,
       refreshSubmissions: vi.fn(),
+      listSubmissions: vi.fn(),
       createSubmission: vi.fn(),
       updateSubmission: vi.fn(),
       submitSubmission: vi.fn(),
@@ -246,7 +247,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
 
     vi.mocked(useTeacherData).mockReturnValue({
-      teachers: [],
+      teacherSnapshot: [],
       isLoading: false,
       isSaving: false,
       error: "",

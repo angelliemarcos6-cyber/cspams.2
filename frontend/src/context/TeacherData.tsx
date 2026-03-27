@@ -75,7 +75,7 @@ export interface TeacherListResult {
 }
 
 interface TeacherDataContextType {
-  teachers: TeacherRecord[];
+  teacherSnapshot: TeacherRecord[];
   isLoading: boolean;
   isSaving: boolean;
   error: string;
@@ -597,7 +597,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<TeacherDataContextType>(
     () => ({
-      teachers,
+      teacherSnapshot: teachers,
       isLoading,
       isSaving,
       error,

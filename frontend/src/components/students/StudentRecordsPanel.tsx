@@ -37,6 +37,12 @@ interface TeacherSelectOption {
   isLegacy: boolean;
 }
 
+interface TeacherLookupCacheEntry {
+  records: TeacherRecord[];
+  totalCount: number;
+  syncedAt: string | null;
+}
+
 const STATUS_OPTIONS: Array<{ value: StudentEnrollmentStatus; label: string }> = [
   { value: "enrolled", label: "Enrolled" },
   { value: "returning", label: "Returning" },
@@ -141,7 +147,7 @@ export function StudentRecordsPanel({
     lastSyncedAt,
     dataVersion,
     refreshStudents,
-    listStudents,
+    queryStudents,
     listStudentHistory,
     addStudent,
     updateStudent,
@@ -150,7 +156,7 @@ export function StudentRecordsPanel({
   } = useStudentData();
   const { academicYears } = useIndicatorData();
   const {
-    teachers,
+    teacherSnapshot,
     listTeachers,
     totalCount: teacherSnapshotTotalCount,
     lastSyncedAt: teacherSnapshotSyncedAt,
@@ -183,6 +189,7 @@ export function StudentRecordsPanel({
   const historyRefreshedVersionRef = useRef(0);
   const pageAbortRef = useRef<AbortController | null>(null);
   const historyAbortRef = useRef<AbortController | null>(null);
+  const teacherLookupCacheRef = useRef<Map<string, TeacherLookupCacheEntry>>(new Map());
   const [historyStudent, setHistoryStudent] = useState<StudentRecord | null>(null);
   const [historyEntries, setHistoryEntries] = useState<StudentStatusHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -235,7 +242,7 @@ export function StudentRecordsPanel({
       setPageError("");
 
       try {
-        const result = await listStudents({
+        const result = await queryStudents({
           page: nextPage,
           perPage: STUDENT_PAGE_SIZE,
           search: debouncedSearch.trim() || null,
@@ -274,24 +281,24 @@ export function StudentRecordsPanel({
         }
       }
     },
-    [listStudents, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, statusFilter, academicYearFilter],
+    [queryStudents, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, statusFilter, academicYearFilter],
   );
 
   const scopedSnapshotTeachers = useMemo(() => {
     if (!schoolFilterKeys) {
-      return teachers;
+      return teacherSnapshot;
     }
 
     if (schoolFilterKeys.size === 0) {
       return [];
     }
 
-    return teachers.filter((teacher) =>
+    return teacherSnapshot.filter((teacher) =>
       schoolFilterKeys.has(
         normalizeSchoolKey(teacher.school?.schoolCode ?? null),
       ),
     );
-  }, [teachers, schoolFilterKeys]);
+  }, [teacherSnapshot, schoolFilterKeys]);
 
   useEffect(() => {
     if (!editable || !showForm) {
@@ -302,6 +309,18 @@ export function StudentRecordsPanel({
 
     if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
       setTeacherLookupRecords([]);
+      setIsTeacherLookupLoading(false);
+      return;
+    }
+
+    const lookupCacheKey = scopedSchoolCodes.length > 0 ? scopedSchoolCodes.join(",") : "__all__";
+    const cachedLookup = teacherLookupCacheRef.current.get(lookupCacheKey) ?? null;
+    if (
+      cachedLookup
+      && cachedLookup.totalCount === teacherSnapshotTotalCount
+      && cachedLookup.syncedAt === teacherSnapshotSyncedAt
+    ) {
+      setTeacherLookupRecords(cachedLookup.records);
       setIsTeacherLookupLoading(false);
       return;
     }
@@ -335,6 +354,11 @@ export function StudentRecordsPanel({
         }
 
         if (!cancelled && !controller.signal.aborted) {
+          teacherLookupCacheRef.current.set(lookupCacheKey, {
+            records: allTeachers,
+            totalCount: teacherSnapshotTotalCount,
+            syncedAt: teacherSnapshotSyncedAt,
+          });
           setTeacherLookupRecords(allTeachers);
         }
       } catch (err) {

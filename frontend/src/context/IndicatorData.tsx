@@ -20,9 +20,34 @@ import type {
 
 type ReviewDecision = "validated" | "returned";
 
+export interface IndicatorListParams {
+  page?: number;
+  perPage?: number;
+  schoolId?: string | number | null;
+  academicYearId?: string | number | null;
+  status?: string | null;
+  reportingPeriod?: string | null;
+  signal?: AbortSignal;
+}
+
+export interface IndicatorListMeta {
+  currentPage: number;
+  lastPage: number;
+  perPage: number;
+  total: number;
+  hasMorePages: boolean;
+}
+
+export interface IndicatorListResult {
+  data: IndicatorSubmission[];
+  meta: IndicatorListMeta;
+}
+
 interface IndicatorSubmissionsMeta {
   current_page?: number;
   last_page?: number;
+  per_page?: number;
+  total?: number;
 }
 
 interface IndicatorSubmissionsResponse {
@@ -55,6 +80,7 @@ interface IndicatorDataContextType {
   error: string;
   lastSyncedAt: string | null;
   refreshSubmissions: () => Promise<void>;
+  listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
@@ -65,27 +91,92 @@ interface IndicatorDataContextType {
 const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>(undefined);
 const AUTO_SYNC_INTERVAL_MS = 15_000;
 const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
-const SUBMISSIONS_PER_PAGE = 100;
+const SUBMISSION_SNAPSHOT_PER_PAGE = 100;
+const DEFAULT_LIST_PER_PAGE = 25;
+const MAX_LIST_PER_PAGE = 100;
 
 function normalizeEtag(value: string | null): string {
   return (value || "").replace(/^W\//, "").replace(/"/g, "");
 }
 
-function buildSubmissionsPath(page: number): string {
-  return `/api/indicators/submissions?per_page=${SUBMISSIONS_PER_PAGE}&page=${page}`;
+interface NormalizedIndicatorListParams {
+  page: number;
+  perPage: number;
+  schoolId: string;
+  academicYearId: string;
+  status: string;
+  reportingPeriod: string;
+}
+
+function toPositiveInt(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallback;
+  }
+
+  return Math.trunc(numeric);
+}
+
+function normalizeFilterValue(value: string | number | null | undefined): string {
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function sanitizeIndicatorListParams(params?: IndicatorListParams): NormalizedIndicatorListParams {
+  return {
+    page: toPositiveInt(params?.page, 1),
+    perPage: Math.min(toPositiveInt(params?.perPage, DEFAULT_LIST_PER_PAGE), MAX_LIST_PER_PAGE),
+    schoolId: normalizeFilterValue(params?.schoolId),
+    academicYearId: normalizeFilterValue(params?.academicYearId),
+    status: normalizeFilterValue(params?.status),
+    reportingPeriod: normalizeFilterValue(params?.reportingPeriod),
+  };
+}
+
+function buildSubmissionsPath(params: NormalizedIndicatorListParams): string {
+  const query = new URLSearchParams();
+  query.set("page", String(params.page));
+  query.set("per_page", String(params.perPage));
+
+  if (params.schoolId) {
+    query.set("school_id", params.schoolId);
+  }
+
+  if (params.academicYearId) {
+    query.set("academic_year_id", params.academicYearId);
+  }
+
+  if (params.status) {
+    query.set("status", params.status);
+  }
+
+  if (params.reportingPeriod) {
+    query.set("reporting_period", params.reportingPeriod);
+  }
+
+  return `/api/indicators/submissions?${query.toString()}`;
 }
 
 function readSubmissionRows(payload: IndicatorSubmissionsResponse | null | undefined): IndicatorSubmission[] {
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
-function resolveLastPage(meta: IndicatorSubmissionsMeta | undefined): number {
-  const lastPage = Number(meta?.last_page ?? 1);
-  if (!Number.isFinite(lastPage) || lastPage <= 0) {
-    return 1;
-  }
+function normalizeSubmissionListMeta(
+  meta: IndicatorSubmissionsMeta | undefined,
+  params: NormalizedIndicatorListParams,
+  dataLength: number,
+): IndicatorListMeta {
+  const perPage = toPositiveInt(meta?.per_page, params.perPage);
+  const total = toPositiveInt(meta?.total, dataLength);
+  const lastPage = Math.max(1, toPositiveInt(meta?.last_page, Math.ceil(Math.max(total, 1) / perPage)));
+  const currentPage = Math.min(Math.max(1, toPositiveInt(meta?.current_page, params.page)), lastPage);
 
-  return Math.trunc(lastPage);
+  return {
+    currentPage,
+    lastPage,
+    perPage,
+    total,
+    hasMorePages: currentPage < lastPage,
+  };
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
@@ -140,6 +231,39 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [logout],
   );
 
+  const listSubmissions = useCallback(
+    async (params?: IndicatorListParams): Promise<IndicatorListResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const normalized = sanitizeIndicatorListParams(params);
+
+      try {
+        const response = await apiRequestRaw<IndicatorSubmissionsResponse>(buildSubmissionsPath(normalized), {
+          token,
+          signal: params?.signal,
+        });
+
+        const data = readSubmissionRows(response.data);
+        const meta = normalizeSubmissionListMeta(response.data?.meta, normalized, data.length);
+
+        return {
+          data,
+          meta,
+        };
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw err;
+        }
+
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, handleApiError],
+  );
+
   const syncSubmissions = useCallback(
     async (silent = false) => {
       if (syncInFlightRef.current) {
@@ -170,52 +294,17 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
+        const snapshotParams = sanitizeIndicatorListParams({ page: 1, perPage: SUBMISSION_SNAPSHOT_PER_PAGE });
         const shouldRefreshReferenceData =
           metrics.length === 0 ||
           academicYears.length === 0 ||
           Date.now() - referenceDataSyncedAtRef.current > REFERENCE_DATA_SYNC_INTERVAL_MS;
 
-        const [submissionsSnapshot, metricPayload, yearPayload] = await Promise.all([
-          (async () => {
-            const firstResponse = await apiRequestRaw<IndicatorSubmissionsResponse>(buildSubmissionsPath(1), {
-              token,
-              extraHeaders: submissionsEtagRef.current ? { "If-None-Match": submissionsEtagRef.current } : undefined,
-            });
-
-            if (firstResponse.status === 304) {
-              return {
-                response: firstResponse,
-                changed: false,
-                rows: null as IndicatorSubmission[] | null,
-              };
-            }
-
-            const firstRows = readSubmissionRows(firstResponse.data);
-            const lastPage = resolveLastPage(firstResponse.data?.meta);
-            if (lastPage <= 1) {
-              return {
-                response: firstResponse,
-                changed: true,
-                rows: firstRows,
-              };
-            }
-
-            // Keep the provider snapshot complete even when history spans multiple pages.
-            const extraResponses = await Promise.all(
-              Array.from({ length: lastPage - 1 }, (_, index) =>
-                apiRequestRaw<IndicatorSubmissionsResponse>(buildSubmissionsPath(index + 2), { token }),
-              ),
-            );
-
-            return {
-              response: firstResponse,
-              changed: true,
-              rows: [
-                ...firstRows,
-                ...extraResponses.flatMap((response) => readSubmissionRows(response.data)),
-              ],
-            };
-          })(),
+        const [submissionsResponse, metricPayload, yearPayload] = await Promise.all([
+          apiRequestRaw<IndicatorSubmissionsResponse>(buildSubmissionsPath(snapshotParams), {
+            token,
+            extraHeaders: submissionsEtagRef.current ? { "If-None-Match": submissionsEtagRef.current } : undefined,
+          }),
           shouldRefreshReferenceData
             ? apiRequest<IndicatorMetricsResponse>("/api/indicators/metrics", { token })
             : Promise.resolve<IndicatorMetricsResponse | null>(null),
@@ -229,15 +318,15 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
 
         const nextEtag = normalizeEtag(
-          submissionsSnapshot.response.headers.get("X-Sync-Etag") || submissionsSnapshot.response.headers.get("ETag"),
+          submissionsResponse.headers.get("X-Sync-Etag") || submissionsResponse.headers.get("ETag"),
         );
         if (nextEtag) {
           submissionsEtagRef.current = nextEtag;
         }
 
-        const submissionsChanged = submissionsSnapshot.changed;
+        const submissionsChanged = submissionsResponse.status !== 304;
         if (submissionsChanged) {
-          setSubmissions(submissionsSnapshot.rows ?? []);
+          setSubmissions(readSubmissionRows(submissionsResponse.data));
         }
         if (shouldRefreshReferenceData) {
           setMetrics(Array.isArray(metricPayload?.data) ? metricPayload?.data : []);
@@ -245,7 +334,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           referenceDataSyncedAtRef.current = Date.now();
         }
         if (!silent || submissionsChanged || shouldRefreshReferenceData) {
-          setLastSyncedAt(submissionsSnapshot.response.headers.get("X-Synced-At") || new Date().toISOString());
+          setLastSyncedAt(submissionsResponse.headers.get("X-Synced-At") || new Date().toISOString());
         }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
@@ -478,6 +567,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       error,
       lastSyncedAt,
       refreshSubmissions,
+      listSubmissions,
       createSubmission,
       updateSubmission,
       submitSubmission,
@@ -493,6 +583,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       error,
       lastSyncedAt,
       refreshSubmissions,
+      listSubmissions,
       createSubmission,
       updateSubmission,
       submitSubmission,
