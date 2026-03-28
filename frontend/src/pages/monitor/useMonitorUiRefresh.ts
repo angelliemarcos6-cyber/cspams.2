@@ -109,13 +109,6 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
         pending.teacherLookup = true;
         pending.radarTotals = true;
       }
-      if (entity === "school_records") {
-        pending.studentLookup = true;
-        pending.teacherLookup = true;
-      }
-      if (entity === "dashboard") {
-        pending.radarTotals = true;
-      }
 
       pending.entities.add(entity);
 

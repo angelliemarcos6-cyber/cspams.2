@@ -17,14 +17,7 @@ import {
 import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
 import { MonitorSchoolRecordForm, type MonitorSchoolRecordFormProps } from "@/pages/monitor/MonitorSchoolRecordForm";
 import { MonitorSchoolRecordsList, type MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
-
-interface MonitorRadarTotals {
-  students: number;
-  teachers: number;
-  syncedAt: string | null;
-  isLoading: boolean;
-  error: string;
-}
+import type { MonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 
 interface MonitorSchoolsSectionProps {
   sectionFocusClass: (targetId: string) => string;

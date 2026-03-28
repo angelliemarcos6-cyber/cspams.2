@@ -20,7 +20,6 @@ export type SchoolDrawerTab = "snapshot" | "submissions" | "history";
 interface UseSchoolDrawerOptions {
   authSessionKey: string;
   isAuthenticated: boolean;
-  reviewCompletionSchoolKey?: string | null;
   latestRealtimeBatch: MonitorUiRealtimeBatch | null;
   resolveRecordId: (schoolKey: string | null) => string;
   resolveSchoolCode: (schoolKey: string | null) => string;
@@ -67,7 +66,6 @@ function matchesDrawerSchool(
 export function useSchoolDrawer({
   authSessionKey,
   isAuthenticated,
-  reviewCompletionSchoolKey = null,
   latestRealtimeBatch,
   resolveRecordId,
   resolveSchoolCode,
@@ -144,18 +142,6 @@ export function useSchoolDrawer({
     setSubmissionRefreshTick(0);
     setCountsRefreshTick(0);
   }, [authSessionKey]);
-
-  useEffect(() => {
-    if (!reviewCompletionSchoolKey || !schoolDrawerKey) {
-      return;
-    }
-
-    if (reviewCompletionSchoolKey !== schoolDrawerKey) {
-      return;
-    }
-
-    refreshSchoolDrawer();
-  }, [refreshSchoolDrawer, reviewCompletionSchoolKey, schoolDrawerKey]);
 
   useEffect(() => {
     if (!schoolDrawerKey || !latestRealtimeBatch) {

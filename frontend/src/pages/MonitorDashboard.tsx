@@ -49,6 +49,20 @@ import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
 import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
 import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import {
+  downloadCsvFile,
+  isUrgentRequirement,
+  navigatorButtonClass,
+  queueLaneLabel,
+  queuePriorityLabel,
+  queuePriorityTone,
+  requirementFilterLabel,
+  sanitizeAnchorToken,
+  statusTone,
+  urgencyRowTone,
+  workflowLabel,
+  workflowTone,
+} from "@/pages/monitor/monitorDashboardUiUtils";
+import {
   ALL_SCHOOL_SCOPE,
   type MonitorTopNavigatorId,
   type QueueLane,
@@ -63,15 +77,15 @@ import {
 import { useMonitorDashboardShell } from "@/pages/monitor/useMonitorDashboardShell";
 import { useMonitorDashboardHotkeys } from "@/pages/monitor/useMonitorDashboardHotkeys";
 import { useMonitorDrawerViewModel } from "@/pages/monitor/useMonitorDrawerViewModel";
+import { useMonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
+import { useMonitorReviewFlow } from "@/pages/monitor/useMonitorReviewFlow";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
 import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
 import { useSchoolDrawer } from "@/pages/monitor/useSchoolDrawer";
 import type {
   SchoolRecord,
   SchoolStatus,
-  StudentRecord,
-  TeacherRecord,
 } from "@/types";
 import {
   buildRegionAggregates,
@@ -105,14 +119,6 @@ interface QuickJumpItem {
   label: string;
   targetId: string;
   icon: NavigatorIcon;
-}
-
-interface MonitorRadarTotals {
-  students: number;
-  teachers: number;
-  syncedAt: string | null;
-  isLoading: boolean;
-  error: string;
 }
 
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
@@ -208,13 +214,6 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 
-function statusTone(status: SchoolStatus) {
-  if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "pending") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (status === "inactive") return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
-  return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
-}
-
 function isInteractiveTableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) {
     return false;
@@ -225,148 +224,6 @@ function isInteractiveTableTarget(target: EventTarget | null): boolean {
       "button, a, input, select, textarea, label, [role='button'], [contenteditable='true']",
     ),
   );
-}
-
-function workflowTone(status: string | null) {
-  if (status === "validated") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "submitted") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (status === "returned") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (status === "draft") return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
-  return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
-}
-
-function workflowLabel(status: string | null): string {
-  if (!status) return "Missing";
-  if (status === "submitted") return "For Review";
-  if (status === "validated") return "Validated";
-  if (status === "returned") return "Returned";
-  if (status === "draft") return "Missing";
-  return status;
-}
-
-function navigatorButtonClass(active: boolean, compact: boolean): string {
-  return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase leading-none tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
-    compact ? "h-11 justify-center px-2.5" : "h-11 gap-2.5 px-3"
-  } ${
-    active
-      ? "border-l-primary-100 border-r-primary-300/90 border-y-primary-300/90 bg-primary-700 text-white shadow-[inset_0_0_0_1px_rgba(147,197,253,0.4),0_10px_18px_-16px_rgba(4,80,140,0.8)]"
-      : "border-l-transparent border-r-primary-400/30 border-y-primary-400/30 bg-primary-900/45 text-primary-100 hover:border-r-primary-200/60 hover:border-y-primary-200/60 hover:bg-primary-700/80 hover:text-white"
-  }`;
-}
-
-function toCsvCell(value: string | number | null | undefined): string {
-  const raw = value == null ? "" : String(value);
-  if (/[",\n]/.test(raw)) {
-    return `"${raw.replace(/"/g, "\"\"")}"`;
-  }
-  return raw;
-}
-
-function downloadCsvFile(filename: string, headers: string[], rows: Array<Array<string | number | null | undefined>>) {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
-
-  const content = [headers.map((value) => toCsvCell(value)).join(","), ...rows.map((row) => row.map((value) => toCsvCell(value)).join(","))].join("\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  window.URL.revokeObjectURL(url);
-}
-
-function sanitizeAnchorToken(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized || "row";
-}
-
-function toTime(...candidates: Array<string | null | undefined>): number {
-  for (const candidate of candidates) {
-    const value = new Date(candidate ?? 0).getTime();
-    if (Number.isFinite(value) && value > 0) {
-      return value;
-    }
-  }
-  return 0;
-}
-
-function requirementFilterLabel(value: RequirementFilter): string {
-  return REQUIREMENT_FILTER_OPTIONS.find((option) => option.id === value)?.label ?? "All statuses";
-}
-
-function isUrgentRequirement(row: SchoolRequirementSummary): boolean {
-  return row.missingCount > 0 || row.indicatorStatus === "returned";
-}
-
-function urgencyRowTone(row: SchoolRequirementSummary): string {
-  if (row.missingCount > 0) {
-    return "bg-rose-50/80";
-  }
-  if (row.indicatorStatus === "returned") {
-    return "bg-amber-50/80";
-  }
-  return "";
-}
-
-function queuePriorityLabel(row: SchoolRequirementSummary): string {
-  if (row.indicatorStatus === "returned") return "Returned";
-  if (row.missingCount > 0) return "Missing";
-  if (row.awaitingReviewCount > 0) return "For Review";
-  return "Normal";
-}
-
-function queuePriorityTone(row: SchoolRequirementSummary): string {
-  if (row.indicatorStatus === "returned") {
-    return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  }
-
-  if (row.missingCount > 0) {
-    return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  }
-
-  if (row.awaitingReviewCount > 0) {
-    return "bg-primary-50 text-primary-700 ring-1 ring-primary-200";
-  }
-
-  return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
-}
-
-function queueLaneLabel(lane: QueueLane): string {
-  if (lane === "all") return "All lanes";
-  if (lane === "urgent") return "Urgent";
-  if (lane === "returned") return "Returned";
-  if (lane === "for_review") return "For Review";
-  return "Waiting Data";
-}
-
-function latestBySchool<
-  T extends {
-    school?: { schoolCode?: string | null; name?: string | null };
-    updatedAt?: string | null;
-    submittedAt?: string | null;
-    createdAt?: string | null;
-  },
->(entries: T[]): Map<string, T> {
-  const latest = new Map<string, T>();
-
-  for (const entry of entries) {
-    const key = normalizeSchoolKey(entry.school?.schoolCode ?? null, entry.school?.name ?? null);
-    if (key === "unknown") continue;
-
-    const current = latest.get(key);
-    if (!current) {
-      latest.set(key, entry);
-      continue;
-    }
-
-    if (toTime(entry.updatedAt, entry.submittedAt, entry.createdAt) > toTime(current.updatedAt, current.submittedAt, current.createdAt)) {
-      latest.set(key, entry);
-    }
-  }
-
-  return latest;
 }
 
 export function MonitorDashboard() {
@@ -446,13 +303,6 @@ export function MonitorDashboard() {
     resetFilters: resetMonitorFilters,
   } = useMonitorFilters();
   const { studentLookupTick, teacherLookupTick, radarTotalsTick, latestRealtimeBatch } = useMonitorUiRefresh();
-  const [monitorRadarTotals, setMonitorRadarTotals] = useState<MonitorRadarTotals>({
-    students: 0,
-    teachers: 0,
-    syncedAt: null,
-    isLoading: false,
-    error: "",
-  });
   const {
     isNavigatorCompact,
     setIsNavigatorCompact,
@@ -484,13 +334,6 @@ export function MonitorDashboard() {
   const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
-  const [lastReviewCompletion, setLastReviewCompletion] = useState<{
-    schoolKey: string;
-    schoolName: string;
-    submissionId: string;
-    action: "validated" | "returned";
-  } | null>(null);
-  const [autoAdvanceQueue, setAutoAdvanceQueue] = useState(true);
   const openStudentRecordsFromCard = () => {
     setShowSchoolLearnerRecords(true);
     setShowNavigatorManual(false);
@@ -562,6 +405,15 @@ export function MonitorDashboard() {
     setShowSchoolLearnerRecords,
     onOpenLearnerRecords: openStudentRecordsFromCard,
   });
+  const { monitorRadarTotals } = useMonitorRadarTotals({
+    authSessionKey,
+    activeTopNavigator,
+    showNavigatorManual,
+    scopedSchoolCodes,
+    radarTotalsTick,
+    queryStudents,
+    listTeachers,
+  });
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const schoolsTableScrollerRef = useRef<HTMLDivElement | null>(null);
@@ -574,13 +426,7 @@ export function MonitorDashboard() {
     moved: boolean;
   } | null>(null);
   const [isSchoolsTableDragging, setIsSchoolsTableDragging] = useState(false);
-  const radarTotalsAbortRef = useRef<AbortController | null>(null);
   const didAutoExpandMoreFiltersRef = useRef(false);
-
-  useEffect(() => {
-    radarTotalsAbortRef.current?.abort();
-    radarTotalsAbortRef.current = null;
-  }, [authSessionKey]);
 
   useEffect(() => {
     if (!filtersHydrated || didAutoExpandMoreFiltersRef.current) return;
@@ -631,79 +477,6 @@ export function MonitorDashboard() {
       pushToast("Some dashboard data failed to refresh. Please try again.", "warning");
     }
   }, [pushToast, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
-
-  const shouldSyncRadarTotals = !showNavigatorManual && activeTopNavigator === "schools";
-
-  useEffect(() => {
-    if (!shouldSyncRadarTotals) {
-      radarTotalsAbortRef.current?.abort();
-      radarTotalsAbortRef.current = null;
-      return;
-    }
-
-    let active = true;
-
-    const hydrateRadarTotals = async () => {
-      radarTotalsAbortRef.current?.abort();
-      const controller = new AbortController();
-      radarTotalsAbortRef.current = controller;
-      setMonitorRadarTotals((current) => ({
-        ...current,
-        isLoading: true,
-        error: "",
-      }));
-
-      try {
-        const [studentsResult, teachersResult] = await Promise.all([
-          queryStudents({
-            page: 1,
-            perPage: 1,
-            schoolCodes: scopedSchoolCodes,
-            academicYear: "all",
-            signal: controller.signal,
-          }),
-          listTeachers({
-            page: 1,
-            perPage: 1,
-            schoolCodes: scopedSchoolCodes,
-            signal: controller.signal,
-          }),
-        ]);
-
-        if (!active || controller.signal.aborted) return;
-
-        setMonitorRadarTotals({
-          students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? 0),
-          teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? 0),
-          syncedAt: new Date().toISOString(),
-          isLoading: false,
-          error: "",
-        });
-      } catch (err) {
-        if (!active) return;
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-        setMonitorRadarTotals((current) => ({
-          ...current,
-          isLoading: false,
-          error: err instanceof Error ? err.message : "Unable to sync totals.",
-        }));
-      } finally {
-        if (active && radarTotalsAbortRef.current === controller) {
-          radarTotalsAbortRef.current = null;
-        }
-      }
-    };
-
-    void hydrateRadarTotals();
-
-    return () => {
-      active = false;
-      radarTotalsAbortRef.current?.abort();
-      radarTotalsAbortRef.current = null;
-    };
-  }, [listTeachers, queryStudents, radarTotalsTick, scopedSchoolCodes, shouldSyncRadarTotals]);
 
   const scopedRecords = useMemo(() => {
     if (!scopedSchoolKeys) {
@@ -1068,13 +841,13 @@ export function MonitorDashboard() {
     syncedCountsError,
     openSchoolDrawer,
     closeSchoolDrawer,
+    refreshSchoolDrawer,
     setActiveSchoolDrawerTab,
     setHighlightedDrawerIndicatorKey,
     toggleDrawerIndicatorLabel,
   } = useSchoolDrawer({
     authSessionKey,
     isAuthenticated,
-    reviewCompletionSchoolKey: lastReviewCompletion?.schoolKey ?? null,
     latestRealtimeBatch,
     resolveRecordId: resolveSchoolDrawerRecordId,
     resolveSchoolCode: resolveSchoolDrawerCode,
@@ -1104,6 +877,17 @@ export function MonitorDashboard() {
     recordBySchoolKey,
     studentStatsBySchoolKey,
     accurateSyncedCountsBySchoolKey,
+  });
+  const {
+    autoAdvanceQueue,
+    setAutoAdvanceQueue,
+    handleQueueReviewCompleted,
+  } = useMonitorReviewFlow({
+    laneFilteredQueueRows,
+    activeSchoolDrawerKey: schoolDrawerKey,
+    onOpenSchoolDrawer: openSchoolDrawer,
+    onRefreshActiveDrawer: refreshSchoolDrawer,
+    onToast: pushToast,
   });
 
   const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
@@ -1313,36 +1097,6 @@ export function MonitorDashboard() {
     openSchoolDrawer(schoolKey);
     setActiveTopNavigator("reviews");
   };
-
-  const handleQueueReviewCompleted = (payload: {
-    schoolKey: string;
-    schoolName: string;
-    submissionId: string;
-    action: "validated" | "returned";
-  }) => {
-    setLastReviewCompletion(payload);
-  };
-
-  useEffect(() => {
-    if (!lastReviewCompletion) return;
-    if (!autoAdvanceQueue) {
-      setLastReviewCompletion(null);
-      return;
-    }
-
-    const currentIndex = laneFilteredQueueRows.findIndex((row) => row.schoolKey === lastReviewCompletion.schoolKey);
-    const nextRow =
-      currentIndex >= 0
-        ? laneFilteredQueueRows[currentIndex + 1] ?? laneFilteredQueueRows[currentIndex - 1] ?? null
-        : laneFilteredQueueRows[0] ?? null;
-
-    if (nextRow && nextRow.schoolKey !== lastReviewCompletion.schoolKey) {
-      openSchoolDrawer(nextRow.schoolKey);
-      pushToast(`Auto-focused next school: ${nextRow.schoolName}.`, "info");
-    }
-
-    setLastReviewCompletion(null);
-  }, [autoAdvanceQueue, laneFilteredQueueRows, lastReviewCompletion]);
 
   const jumpToDrawerIndicator = (targetKey: string, emptyMessage: string) => {
     if (!targetKey) {
