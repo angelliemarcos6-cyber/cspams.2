@@ -4182,7 +4182,7 @@ export function MonitorDashboard() {
     void hydrateAccurateSyncedCounts(false);
 
     const handleRealtimeCountsRefresh = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string; schoolId?: string }>).detail;
+      const payload = (event as CustomEvent<{ entity?: string; schoolId?: string; schoolCode?: string }>).detail;
       if (!payload) {
         return;
       }
@@ -4191,7 +4191,15 @@ export function MonitorDashboard() {
         return;
       }
 
-      if (payload.schoolId && payload.schoolId !== normalizedSchoolCode) {
+      const incomingSchoolCode = String(payload.schoolCode ?? "").trim().toUpperCase();
+      const incomingSchoolId = String(payload.schoolId ?? "").trim();
+      const currentRecordId = schoolDrawerRecordId.trim();
+
+      if (incomingSchoolCode) {
+        if (incomingSchoolCode !== normalizedSchoolCode.toUpperCase()) {
+          return;
+        }
+      } else if (incomingSchoolId && currentRecordId && incomingSchoolId !== currentRecordId) {
         return;
       }
 
@@ -4206,7 +4214,7 @@ export function MonitorDashboard() {
       schoolDetailCountsAbortRef.current = null;
       window.removeEventListener("cspams:update", handleRealtimeCountsRefresh);
     };
-  }, [schoolDetailKey, schoolDetailCode, queryStudents, listTeachers]);
+  }, [schoolDetailKey, schoolDetailCode, queryStudents, listTeachers, schoolDrawerRecordId]);
 
   const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
     const chips: Array<{ id: FilterChipId; label: string }> = [];

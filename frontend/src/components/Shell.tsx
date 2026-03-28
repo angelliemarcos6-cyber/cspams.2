@@ -15,7 +15,6 @@ interface ShellProps {
 export function Shell({ title, subtitle, children, actions }: ShellProps) {
   const { role, logout, isLoggingOut } = useAuth();
   const navigate = useNavigate();
-  const signInHref = "#/";
   const headerRef = useRef<HTMLElement | null>(null);
   const [shellCssVars, setShellCssVars] = useState<{ headerHeight: number; stickyTop: number } | null>(null);
   const [signOutError, setSignOutError] = useState("");
@@ -80,11 +79,10 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
         className="sticky top-0 z-50 border-b border-primary-200/20 bg-gradient-to-r from-primary-900 via-primary-800 to-primary-800 shadow-2xl shadow-primary-900/30"
       >
         <div className="mx-auto flex min-h-14 max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:min-h-16 sm:flex-nowrap sm:px-6 lg:px-8">
-          <a
-            href={signInHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex min-w-0 items-center gap-2 sm:gap-3"
+          <button
+            type="button"
+            onClick={() => navigate("/", { replace: true })}
+            className="flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-left sm:gap-3"
           >
             <img
               src="/depedlogo.png"
@@ -103,7 +101,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
                 Student Performance Analytics
               </p>
             </div>
-          </a>
+          </button>
 
           <div className="flex max-w-full items-center justify-end gap-1.5 text-white sm:gap-3">
             <div className="inline-flex h-10 items-center gap-1 rounded-md border border-white/20 bg-white/10 px-1.5 shadow-sm backdrop-blur-sm">

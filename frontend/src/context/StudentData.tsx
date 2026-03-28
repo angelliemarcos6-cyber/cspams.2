@@ -27,6 +27,7 @@ interface StudentSyncMeta {
   scopeKey?: string;
   academicYearFilter?: string;
   schoolId?: string;
+  schoolCode?: string;
   recordCount?: number;
   currentPage?: number;
   lastPage?: number;
@@ -57,6 +58,7 @@ interface StudentRecordDeleteResponse {
   data: {
     id: string;
     schoolId?: string;
+    schoolCode?: string;
     deleted?: boolean;
     deletedCount?: number;
   };
@@ -425,15 +427,28 @@ function normalizeSchoolId(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function emitStudentUpdateEvent(schoolId: unknown): void {
+function normalizeSchoolCodeIdentifier(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim().toUpperCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function emitStudentUpdateEvent(detailInput: { schoolId?: unknown; schoolCode?: unknown }): void {
   if (typeof window === "undefined") {
     return;
   }
 
-  const detail: { entity: "students"; schoolId?: string } = { entity: "students" };
-  const normalizedSchoolId = normalizeSchoolId(schoolId);
+  const detail: { entity: "students"; schoolId?: string; schoolCode?: string } = { entity: "students" };
+  const normalizedSchoolId = normalizeSchoolId(detailInput.schoolId);
+  const normalizedSchoolCode = normalizeSchoolCodeIdentifier(detailInput.schoolCode);
   if (normalizedSchoolId) {
     detail.schoolId = normalizedSchoolId;
+  }
+  if (normalizedSchoolCode) {
+    detail.schoolCode = normalizedSchoolCode;
   }
 
   window.dispatchEvent(new CustomEvent("cspams:update", { detail }));
@@ -807,7 +822,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
-        emitStudentUpdateEvent(nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
+        emitStudentUpdateEvent({
+          schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -819,7 +837,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError, user?.schoolId],
+    [token, syncStudents, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const updateStudent = useCallback(
@@ -854,7 +872,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
-        emitStudentUpdateEvent(nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
+        emitStudentUpdateEvent({
+          schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -866,7 +887,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError, user?.schoolId],
+    [token, syncStudents, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const deleteStudent = useCallback(
@@ -894,7 +915,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
-        emitStudentUpdateEvent(response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null);
+        emitStudentUpdateEvent({
+          schoolId: response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: response.data?.data?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -906,7 +930,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError, user?.schoolId],
+    [token, syncStudents, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const deleteStudents = useCallback(
@@ -965,7 +989,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         listCacheRef.current.clear();
         historyCacheRef.current.clear();
         setDataVersion((current) => current + 1);
-        emitStudentUpdateEvent(response.data?.meta?.schoolId ?? user?.schoolId ?? null);
+        emitStudentUpdateEvent({
+          schoolId: response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         const shouldRevalidate = options?.revalidate ?? true;
         if (shouldRevalidate) {
           await syncStudents(true);
@@ -983,7 +1010,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncStudents, handleApiError, user?.schoolId],
+    [token, syncStudents, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   useEffect(() => {
@@ -1016,14 +1043,20 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         if (!payload?.entity) return;
         if (payload.entity !== "students" && payload.entity !== "dashboard") return;
 
-        if (
-          role === "school_head"
-          && user?.schoolId !== null
-          && user?.schoolId !== undefined
-          && payload.schoolId !== undefined
-          && payload.schoolId !== null
-        ) {
-          if (String(payload.schoolId) !== String(user.schoolId)) {
+        if (role === "school_head") {
+          const incomingSchoolCode = normalizeSchoolCodeIdentifier(payload.schoolCode);
+          const userSchoolCode = normalizeSchoolCodeIdentifier(user?.schoolCode);
+          if (incomingSchoolCode && userSchoolCode) {
+            if (incomingSchoolCode !== userSchoolCode) {
+              return;
+            }
+          } else if (
+            user?.schoolId !== null
+            && user?.schoolId !== undefined
+            && payload.schoolId !== undefined
+            && payload.schoolId !== null
+            && String(payload.schoolId) !== String(user.schoolId)
+          ) {
             return;
           }
         }
@@ -1039,7 +1072,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncStudents, role, user?.schoolId]);
+  }, [token, syncStudents, role, user?.schoolId, user?.schoolCode]);
 
   const value = useMemo<StudentDataContextType>(
     () => ({

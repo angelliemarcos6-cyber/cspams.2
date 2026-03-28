@@ -722,6 +722,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -731,7 +733,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
@@ -807,6 +809,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -816,7 +820,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const issueSchoolHeadPasswordResetLink = useCallback(
@@ -878,6 +882,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -887,7 +893,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const upsertSchoolHeadAccountProfile = useCallback(
@@ -941,6 +947,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -950,7 +958,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const removeSchoolHeadAccount = useCallback(
@@ -1008,6 +1016,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -1017,7 +1027,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const bulkImportRecords = useCallback(
@@ -1112,15 +1122,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        if (
-          role === "school_head"
-          && user?.schoolId !== null
-          && user?.schoolId !== undefined
-          && payload?.schoolId !== null
-          && payload?.schoolId !== undefined
-          && (entity === "students" || entity === "teachers")
-        ) {
-          if (String(payload.schoolId) !== String(user.schoolId)) {
+        if (role === "school_head" && (entity === "students" || entity === "teachers")) {
+          const incomingSchoolCode = String(payload?.schoolCode ?? "").trim().toUpperCase();
+          const userSchoolCode = String(user?.schoolCode ?? "").trim().toUpperCase();
+          if (incomingSchoolCode && userSchoolCode) {
+            if (incomingSchoolCode !== userSchoolCode) {
+              return;
+            }
+          } else if (
+            user?.schoolId !== null
+            && user?.schoolId !== undefined
+            && payload?.schoolId !== null
+            && payload?.schoolId !== undefined
+            && String(payload.schoolId) !== String(user.schoolId)
+          ) {
             return;
           }
         }
@@ -1136,7 +1151,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncRecords, role, user?.schoolId]);
+  }, [token, syncRecords, role, user?.schoolId, user?.schoolCode]);
 
   const value = useMemo<DataContextType>(
     () => ({

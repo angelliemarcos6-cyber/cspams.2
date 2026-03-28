@@ -19,6 +19,8 @@ interface TeacherSyncMeta {
   syncedAt?: string;
   scope?: string;
   scopeKey?: string;
+  schoolId?: string;
+  schoolCode?: string;
   recordCount?: number;
   currentPage?: number;
   lastPage?: number;
@@ -42,6 +44,8 @@ interface TeacherRecordMutationResponse {
 interface TeacherRecordDeleteResponse {
   data: {
     id: string;
+    schoolId?: string;
+    schoolCode?: string;
   };
   meta?: TeacherSyncMeta;
 }
@@ -226,6 +230,46 @@ function normalizeMeta(meta: TeacherSyncMeta | undefined, params: NormalizedTeac
     to,
     hasMorePages: Boolean(meta?.hasMorePages ?? currentPage < lastPage),
   };
+}
+
+function normalizeSchoolId(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeSchoolCodeIdentifier(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim().toUpperCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function emitTeacherUpdateEvent(detailInput: { schoolId?: unknown; schoolCode?: unknown }): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const detail: { entity: "teachers"; schoolId?: string; schoolCode?: string } = {
+    entity: "teachers",
+  };
+
+  const normalizedSchoolId = normalizeSchoolId(detailInput.schoolId);
+  const normalizedSchoolCode = normalizeSchoolCodeIdentifier(detailInput.schoolCode);
+
+  if (normalizedSchoolId) {
+    detail.schoolId = normalizedSchoolId;
+  }
+  if (normalizedSchoolCode) {
+    detail.schoolCode = normalizedSchoolCode;
+  }
+
+  window.dispatchEvent(new CustomEvent("cspams:update", { detail }));
 }
 
 export function TeacherDataProvider({ children }: { children: ReactNode }) {
@@ -474,6 +518,10 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         etagRef.current = "";
+        emitTeacherUpdateEvent({
+          schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -482,7 +530,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError],
+    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const updateTeacher = useCallback(
@@ -509,6 +557,10 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         etagRef.current = "";
+        emitTeacherUpdateEvent({
+          schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -517,7 +569,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError],
+    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const deleteTeacher = useCallback(
@@ -532,13 +584,17 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        await apiRequestRaw<TeacherRecordDeleteResponse>(`/api/dashboard/teachers/${id}`, {
+        const response = await apiRequestRaw<TeacherRecordDeleteResponse>(`/api/dashboard/teachers/${id}`, {
           method: "DELETE",
           token,
         });
 
         setTeachers((current) => current.filter((item) => item.id !== id));
         etagRef.current = "";
+        emitTeacherUpdateEvent({
+          schoolId: response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: response.data?.data?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -547,7 +603,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError],
+    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   useEffect(() => {
@@ -576,15 +632,20 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        if (
-          role === "school_head"
-          && user?.schoolId !== null
-          && user?.schoolId !== undefined
-          && payload?.schoolId !== null
-          && payload?.schoolId !== undefined
-          && (entity === "teachers" || entity === "students")
-        ) {
-          if (String(payload.schoolId) !== String(user.schoolId)) {
+        if (role === "school_head" && (entity === "teachers" || entity === "students")) {
+          const incomingSchoolCode = normalizeSchoolCodeIdentifier(payload?.schoolCode);
+          const userSchoolCode = normalizeSchoolCodeIdentifier(user?.schoolCode);
+          if (incomingSchoolCode && userSchoolCode) {
+            if (incomingSchoolCode !== userSchoolCode) {
+              return;
+            }
+          } else if (
+            user?.schoolId !== null
+            && user?.schoolId !== undefined
+            && payload?.schoolId !== null
+            && payload?.schoolId !== undefined
+            && String(payload.schoolId) !== String(user.schoolId)
+          ) {
             return;
           }
         }
@@ -600,7 +661,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncTeachers, role, user?.schoolId]);
+  }, [token, syncTeachers, role, user?.schoolId, user?.schoolCode]);
 
   const value = useMemo<TeacherDataContextType>(
     () => ({
