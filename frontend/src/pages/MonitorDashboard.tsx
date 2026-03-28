@@ -50,12 +50,12 @@ import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
 import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import {
   ALL_SCHOOL_SCOPE,
-  normalizeDateInput,
   type MonitorTopNavigatorId,
   type QueueLane,
   type RequirementFilter,
   type SchoolQuickPreset,
 } from "@/pages/monitor/monitorFilters";
+import { normalizeSchoolKey } from "@/pages/monitor/monitorRequirementRules";
 import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
 import {
   useMonitorLookups,
@@ -79,7 +79,6 @@ import {
   statusLabel,
 } from "@/utils/analytics";
 
-type WorkflowStatus = Exclude<RequirementFilter, "all">;
 type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date";
 type ToastTone = "success" | "info" | "warning";
 
@@ -252,24 +251,6 @@ function workflowLabel(status: string | null): string {
   return status;
 }
 
-function resolveWorkflowStatus(summary: SchoolRequirementSummary): WorkflowStatus {
-  if (summary.missingCount > 0) return "missing";
-  if (summary.indicatorStatus === "returned") return "returned";
-  if (summary.awaitingReviewCount > 0 || summary.indicatorStatus === "submitted") return "waiting";
-  if (summary.indicatorStatus === "validated") return "validated";
-  if (summary.hasAnySubmitted) return "submitted";
-  return "missing";
-}
-
-function parseDateBoundary(value: string | null | undefined, boundary: "start" | "end"): number | null {
-  const normalized = normalizeDateInput(value);
-  if (!normalized) return null;
-
-  const suffix = boundary === "start" ? "T00:00:00" : "T23:59:59.999";
-  const parsed = new Date(`${normalized}${suffix}`).getTime();
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function navigatorButtonClass(active: boolean, compact: boolean): string {
   return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase leading-none tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
     compact ? "h-11 justify-center px-2.5" : "h-11 gap-2.5 px-3"
@@ -308,29 +289,6 @@ function sanitizeAnchorToken(value: string): string {
   return normalized || "row";
 }
 
-function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
-  const code = schoolCode?.trim().toLowerCase();
-  if (code) return `code:${code}`;
-
-  const name = schoolName?.trim().toLowerCase();
-  if (name) return `name:${name}`;
-
-  return "unknown";
-}
-
-function normalizeSearchTerms(value: string): string[] {
-  return value
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((term) => term.length > 0);
-}
-
-function matchesAllSearchTerms(searchableText: string, terms: string[]): boolean {
-  if (terms.length === 0) return true;
-  return terms.every((term) => searchableText.includes(term));
-}
-
 function toTime(...candidates: Array<string | null | undefined>): number {
   for (const candidate of candidates) {
     const value = new Date(candidate ?? 0).getTime();
@@ -339,19 +297,6 @@ function toTime(...candidates: Array<string | null | undefined>): number {
     }
   }
   return 0;
-}
-
-function isPassedToMonitor(status: string | null): boolean {
-  return status === "submitted" || status === "validated" || status === "returned";
-}
-
-function isAwaitingReview(status: string | null): boolean {
-  return status === "submitted";
-}
-
-function matchesRequirementFilter(summary: SchoolRequirementSummary, filter: RequirementFilter): boolean {
-  if (filter === "all") return true;
-  return resolveWorkflowStatus(summary) === filter;
 }
 
 function requirementFilterLabel(value: RequirementFilter): string {
@@ -370,13 +315,6 @@ function urgencyRowTone(row: SchoolRequirementSummary): string {
     return "bg-amber-50/80";
   }
   return "";
-}
-
-function queuePriorityScore(row: SchoolRequirementSummary): number {
-  if (row.indicatorStatus === "returned") return 0;
-  if (row.missingCount > 0) return 1;
-  if (row.awaitingReviewCount > 0) return 2;
-  return 3;
 }
 
 function queuePriorityLabel(row: SchoolRequirementSummary): string {
@@ -402,29 +340,12 @@ function queuePriorityTone(row: SchoolRequirementSummary): string {
   return "bg-slate-100 text-slate-600 ring-1 ring-slate-300";
 }
 
-function matchesQueueLane(row: SchoolRequirementSummary, lane: QueueLane): boolean {
-  if (lane === "all") return true;
-  if (lane === "urgent") return row.missingCount > 0 || row.indicatorStatus === "returned";
-  if (lane === "returned") return row.indicatorStatus === "returned";
-  if (lane === "for_review") return row.awaitingReviewCount > 0;
-  return row.missingCount > 0;
-}
-
 function queueLaneLabel(lane: QueueLane): string {
   if (lane === "all") return "All lanes";
   if (lane === "urgent") return "Urgent";
   if (lane === "returned") return "Returned";
   if (lane === "for_review") return "For Review";
   return "Waiting Data";
-}
-
-function matchesSchoolQuickPreset(row: SchoolRequirementSummary, preset: SchoolQuickPreset): boolean {
-  if (preset === "all") return true;
-  if (preset === "pending") return row.awaitingReviewCount > 0 || row.indicatorStatus === "submitted";
-  if (preset === "missing") return row.missingCount > 0;
-  if (preset === "returned") return row.indicatorStatus === "returned";
-  if (preset === "no_submission") return !row.hasComplianceRecord && !row.hasAnySubmitted;
-  return isUrgentRequirement(row);
 }
 
 function latestBySchool<
@@ -924,6 +845,7 @@ export function MonitorDashboard() {
     recordBySchoolKey,
     scopedRecordBySchoolKey,
     schoolStatusCounts,
+    visibleRequirementFilterIds,
     visibleRequirementFilterOptions,
     filteredRequirementRows,
     filteredSchoolKeys,
@@ -958,7 +880,6 @@ export function MonitorDashboard() {
     filterDateFrom,
     filterDateTo,
     requirementFilter,
-    setRequirementFilter,
     statusFilter,
     schoolQuickPreset,
     queueLane,
@@ -970,17 +891,6 @@ export function MonitorDashboard() {
     recordPageSize: RECORD_PAGE_SIZE,
     allSchoolScopeKey: ALL_SCHOOL_SCOPE,
     requirementFilterOptions: REQUIREMENT_FILTER_OPTIONS,
-    normalizeSchoolKey,
-    isPassedToMonitor,
-    isAwaitingReview,
-    resolveWorkflowStatus,
-    matchesRequirementFilter,
-    matchesQueueLane,
-    matchesSchoolQuickPreset,
-    queuePriorityScore,
-    normalizeSearchTerms,
-    matchesAllSearchTerms,
-    parseDateBoundary,
   });
   const dashboardLastSyncedAt = useMemo(() => {
     const recordTime = lastSyncedAt ? Date.parse(lastSyncedAt) : Number.NaN;
@@ -1417,6 +1327,13 @@ export function MonitorDashboard() {
       setRecordsPage(totalRecordPages);
     }
   }, [recordsPage, totalRecordPages]);
+
+  useEffect(() => {
+    if (visibleRequirementFilterIds.includes(requirementFilter)) {
+      return;
+    }
+    setRequirementFilter("all");
+  }, [requirementFilter, setRequirementFilter, visibleRequirementFilterIds]);
 
   const clearAllFilters = () => {
     resetMonitorFilters();

@@ -1,10 +1,22 @@
-import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
+import { useMemo } from "react";
 import type { MonitorSchoolRecordsListRow, MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type { MonitorTopNavigatorId, QueueLane, RequirementFilter, SchoolQuickPreset } from "@/pages/monitor/monitorFilters";
 import type { SchoolRecord, SchoolStatus } from "@/types";
+import {
+  isAwaitingReview,
+  isPassedToMonitor,
+  matchesAllSearchTerms,
+  matchesQueueLane,
+  matchesRequirementFilter,
+  matchesSchoolQuickPreset,
+  normalizeSchoolKey,
+  normalizeSearchTerms,
+  parseDateBoundary,
+  queuePriorityScore,
+  resolveWorkflowStatus,
+} from "@/pages/monitor/monitorRequirementRules";
 
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
-type WorkflowStatus = Exclude<RequirementFilter, "all">;
 
 interface UseMonitorRequirementDataArgs {
   records: SchoolRecord[];
@@ -19,7 +31,6 @@ interface UseMonitorRequirementDataArgs {
   filterDateFrom: string;
   filterDateTo: string;
   requirementFilter: RequirementFilter;
-  setRequirementFilter: Dispatch<SetStateAction<RequirementFilter>>;
   statusFilter: SchoolStatus | "all";
   schoolQuickPreset: SchoolQuickPreset;
   queueLane: QueueLane;
@@ -31,17 +42,6 @@ interface UseMonitorRequirementDataArgs {
   recordPageSize: number;
   allSchoolScopeKey: string;
   requirementFilterOptions: Array<{ id: RequirementFilter; label: string }>;
-  normalizeSchoolKey: (schoolCode: string | null | undefined, schoolName: string | null | undefined) => string;
-  isPassedToMonitor: (status: string | null) => boolean;
-  isAwaitingReview: (status: string | null) => boolean;
-  resolveWorkflowStatus: (summary: SchoolRequirementSummary) => WorkflowStatus;
-  matchesRequirementFilter: (summary: SchoolRequirementSummary, filter: RequirementFilter) => boolean;
-  matchesQueueLane: (row: SchoolRequirementSummary, lane: QueueLane) => boolean;
-  matchesSchoolQuickPreset: (row: SchoolRequirementSummary, preset: SchoolQuickPreset) => boolean;
-  queuePriorityScore: (row: SchoolRequirementSummary) => number;
-  normalizeSearchTerms: (value: string) => string[];
-  matchesAllSearchTerms: (searchableText: string, terms: string[]) => boolean;
-  parseDateBoundary: (value: string | null | undefined, boundary: "start" | "end") => number | null;
 }
 
 export interface UseMonitorRequirementDataResult {
@@ -52,6 +52,7 @@ export interface UseMonitorRequirementDataResult {
   scopedRecordBySchoolKey: Map<string, SchoolRecord>;
   workflowStatusCounts: Record<RequirementFilter, number>;
   schoolStatusCounts: Record<SchoolStatus | "all", number>;
+  visibleRequirementFilterIds: RequirementFilter[];
   visibleRequirementFilterOptions: Array<{ id: RequirementFilter; label: string }>;
   filteredRequirementRows: SchoolRequirementSummary[];
   filteredSchoolKeys: Set<string> | null;
@@ -86,10 +87,7 @@ export interface UseMonitorRequirementDataResult {
   paginatedCompactSchoolRows: MonitorSchoolRecordsListRow[];
 }
 
-function buildRecordBySchoolKey(
-  records: SchoolRecord[],
-  normalizeSchoolKey: (schoolCode: string | null | undefined, schoolName: string | null | undefined) => string,
-): Map<string, SchoolRecord> {
+function buildRecordBySchoolKey(records: SchoolRecord[]): Map<string, SchoolRecord> {
   const map = new Map<string, SchoolRecord>();
 
   for (const record of records) {
@@ -121,7 +119,6 @@ export function useMonitorRequirementData({
   filterDateFrom,
   filterDateTo,
   requirementFilter,
-  setRequirementFilter,
   statusFilter,
   schoolQuickPreset,
   queueLane,
@@ -133,17 +130,6 @@ export function useMonitorRequirementData({
   recordPageSize,
   allSchoolScopeKey,
   requirementFilterOptions,
-  normalizeSchoolKey,
-  isPassedToMonitor,
-  isAwaitingReview,
-  resolveWorkflowStatus,
-  matchesRequirementFilter,
-  matchesQueueLane,
-  matchesSchoolQuickPreset,
-  queuePriorityScore,
-  normalizeSearchTerms,
-  matchesAllSearchTerms,
-  parseDateBoundary,
 }: UseMonitorRequirementDataArgs): UseMonitorRequirementDataResult {
   const schoolRequirementRows = useMemo<SchoolRequirementSummary[]>(() => {
     const rows = new Map<string, SchoolRequirementSummary>();
@@ -239,7 +225,7 @@ export function useMonitorRequirementData({
         };
       })
       .sort((a, b) => a.schoolName.localeCompare(b.schoolName));
-  }, [isAwaitingReview, isPassedToMonitor, normalizeSchoolKey, records]);
+  }, [records]);
 
   const scopedRequirementRows = useMemo(() => {
     if (!scopedSchoolKeys) {
@@ -254,11 +240,8 @@ export function useMonitorRequirementData({
     [scopedRequirementRows],
   );
 
-  const recordBySchoolKey = useMemo(() => buildRecordBySchoolKey(records, normalizeSchoolKey), [normalizeSchoolKey, records]);
-  const scopedRecordBySchoolKey = useMemo(
-    () => buildRecordBySchoolKey(scopedRecords, normalizeSchoolKey),
-    [normalizeSchoolKey, scopedRecords],
-  );
+  const recordBySchoolKey = useMemo(() => buildRecordBySchoolKey(records), [records]);
+  const scopedRecordBySchoolKey = useMemo(() => buildRecordBySchoolKey(scopedRecords), [scopedRecords]);
 
   const workflowStatusCounts = useMemo<Record<RequirementFilter, number>>(() => {
     const counts: Record<RequirementFilter, number> = {
@@ -321,12 +304,7 @@ export function useMonitorRequirementData({
     [requirementFilterOptions, visibleRequirementFilterIds, workflowStatusCounts],
   );
 
-  useEffect(() => {
-    if (visibleRequirementFilterIds.includes(requirementFilter)) return;
-    setRequirementFilter("all");
-  }, [requirementFilter, setRequirementFilter, visibleRequirementFilterIds]);
-
-  const searchTerms = useMemo(() => normalizeSearchTerms(effectiveSearch), [effectiveSearch, normalizeSearchTerms]);
+  const searchTerms = useMemo(() => normalizeSearchTerms(effectiveSearch), [effectiveSearch]);
   const shouldBuildRequirementSearchIndex = searchTerms.length > 0;
 
   const requirementSearchTextByKey = useMemo(() => {
@@ -403,9 +381,6 @@ export function useMonitorRequirementData({
   }, [
     filterDateFrom,
     filterDateTo,
-    matchesAllSearchTerms,
-    matchesRequirementFilter,
-    parseDateBoundary,
     requirementFilter,
     requirementSearchTextByKey,
     scopedRequirementRows,
@@ -437,7 +412,7 @@ export function useMonitorRequirementData({
         : filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, schoolQuickPreset));
 
     return new Set(scopeRows.map((row) => row.schoolKey));
-  }, [filteredRequirementRows, hasDashboardFilters, matchesSchoolQuickPreset, schoolQuickPreset, scopedSchoolKeys]);
+  }, [filteredRequirementRows, hasDashboardFilters, schoolQuickPreset, scopedSchoolKeys]);
 
   const requirementCounts = useMemo(() => {
     const counts = {
@@ -487,7 +462,7 @@ export function useMonitorRequirementData({
 
           return a.schoolName.localeCompare(b.schoolName);
         }),
-    [filteredRequirementRows, queuePriorityScore],
+    [filteredRequirementRows],
   );
 
   const queueLaneCounts = useMemo(() => {
@@ -507,11 +482,11 @@ export function useMonitorRequirementData({
     }
 
     return counts;
-  }, [actionQueueRows, matchesQueueLane]);
+  }, [actionQueueRows]);
 
   const laneFilteredQueueRows = useMemo(
     () => actionQueueRows.filter((row) => matchesQueueLane(row, queueLane)),
-    [actionQueueRows, matchesQueueLane, queueLane],
+    [actionQueueRows, queueLane],
   );
 
   const schoolPresetCounts = useMemo<Record<SchoolQuickPreset, number>>(() => {
@@ -533,11 +508,11 @@ export function useMonitorRequirementData({
     }
 
     return counts;
-  }, [filteredRequirementRows, matchesSchoolQuickPreset]);
+  }, [filteredRequirementRows]);
 
   const filteredSchoolsByPreset = useMemo(
     () => filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, schoolQuickPreset)),
-    [filteredRequirementRows, matchesSchoolQuickPreset, schoolQuickPreset],
+    [filteredRequirementRows, schoolQuickPreset],
   );
 
   const stickySummaryStats = useMemo(
@@ -587,7 +562,7 @@ export function useMonitorRequirementData({
 
           return a.summary.schoolName.localeCompare(b.summary.schoolName);
         }),
-    [filteredSchoolsByPreset, queuePriorityScore, recordBySchoolKey, scopedRecordBySchoolKey],
+    [filteredSchoolsByPreset, recordBySchoolKey, scopedRecordBySchoolKey],
   );
 
   const totalRequirementPages = Math.max(1, Math.ceil(laneFilteredQueueRows.length / requirementPageSize));
@@ -614,6 +589,7 @@ export function useMonitorRequirementData({
     scopedRecordBySchoolKey,
     workflowStatusCounts,
     schoolStatusCounts,
+    visibleRequirementFilterIds,
     visibleRequirementFilterOptions,
     filteredRequirementRows,
     filteredSchoolKeys,
