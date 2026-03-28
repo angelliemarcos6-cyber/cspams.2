@@ -55,6 +55,9 @@ import {
   type SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
+import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
+import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
+import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import {
   ALL_SCHOOL_SCOPE,
   MONITOR_SEARCH_DEBOUNCE_MS,
@@ -1159,7 +1162,7 @@ export function MonitorDashboard() {
     setSchoolQuickPreset,
     resetFilters: resetMonitorFilters,
   } = useMonitorFilters();
-  const { studentLookupTick, teacherLookupTick, radarTotalsTick, latestRealtimeUpdate } = useMonitorUiRefresh();
+  const { studentLookupTick, teacherLookupTick, radarTotalsTick, latestRealtimeBatch } = useMonitorUiRefresh();
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
   const debouncedSchoolScopeQuery = useDebouncedValue(schoolScopeQuery, MONITOR_SEARCH_DEBOUNCE_MS);
   const [openScopeDropdownId, setOpenScopeDropdownId] = useState<ScopeDropdownId | null>(null);
@@ -3309,7 +3312,7 @@ export function MonitorDashboard() {
     authSessionKey,
     isAuthenticated,
     reviewCompletionSchoolKey: lastReviewCompletion?.schoolKey ?? null,
-    latestRealtimeUpdate,
+    latestRealtimeBatch,
     resolveRecordId: resolveSchoolDrawerRecordId,
     resolveSchoolCode: resolveSchoolDrawerCode,
     listSubmissionsForSchool,
@@ -4046,312 +4049,6 @@ export function MonitorDashboard() {
     }
   };
 
-  const renderSchoolScopeSelector = (dropdownId: ScopeDropdownId, rootClassName = "relative mt-3") => {
-    const isOpen = openScopeDropdownId === dropdownId;
-
-    return (
-      <div className={rootClassName} data-scope-dropdown-id={dropdownId}>
-        <button
-          type="button"
-          onClick={() => setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId))}
-          className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-        >
-          <span className="truncate">
-            {selectedSchoolScope ? `${selectedSchoolScope.code} - ${selectedSchoolScope.name}` : "All schools"}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            {isLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
-            <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
-          </span>
-        </button>
-        {isOpen && (
-          <div className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
-            <div className="border-b border-slate-100 p-2">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={schoolScopeQuery}
-                    onChange={(event) => setSchoolScopeQuery(event.target.value)}
-                    placeholder="Search schools"
-                    className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  />
-                  {schoolScopeQuery.trim().length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSchoolScopeQuery("")}
-                      aria-label="Clear school search"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                <span className="shrink-0 text-[10px] font-semibold text-slate-500" title="Matches / total schools">
-                  {filteredSchoolScopeOptions.length}/{schoolScopeOptions.length}
-                </span>
-              </div>
-            </div>
-            <div className="relative max-h-72 overflow-y-auto overscroll-contain p-1 pr-1 [scrollbar-gutter:stable]">
-              {schoolScopeOptions.length === 0 ? (
-                <p className="px-2.5 py-2 text-xs text-slate-500">{isLoading ? "Loading schools..." : "No schools."}</p>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-                      setSelectedStudentLookupId(null);
-                      setSelectedTeacherLookupId(null);
-                      setSchoolScopeQuery("");
-                      setOpenScopeDropdownId(null);
-                    }}
-                    className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                      !selectedSchoolScope ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    All schools
-                  </button>
-                  {filteredSchoolScopeOptions.map((option) => (
-                    <button
-                      key={option.key}
-                      type="button"
-                      title={`${option.code} - ${option.name}${option.headName ? ` \u2022 ${option.headName}` : ""}`}
-                      onClick={() => {
-                        setSelectedSchoolScopeKey(option.key);
-                        setSelectedStudentLookupId(null);
-                        setSelectedTeacherLookupId(null);
-                        setSchoolScopeQuery("");
-                        setOpenScopeDropdownId(null);
-                      }}
-                      className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                        selectedSchoolScope?.key === option.key
-                          ? "bg-primary-50 text-primary-800"
-                          : "text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex min-w-0 flex-col">
-                        <span className="truncate">
-                          <span className="font-semibold">{option.code}</span> - {option.name}
-                        </span>
-                        {(option.headName || option.headEmail) && (
-                          <span className="mt-0.5 truncate text-[11px] font-medium text-slate-500">
-                            {option.headName || option.headEmail}
-                            {option.headName && option.headEmail ? ` \u2022 ${option.headEmail}` : ""}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                  {filteredSchoolScopeOptions.length === 0 && (
-                    <p className="px-2.5 py-2 text-xs text-slate-500">No matching school.</p>
-                  )}
-                </>
-              )}
-              {schoolScopeOptions.length > 12 && (
-                <div className="pointer-events-none sticky bottom-0 h-5 bg-gradient-to-t from-white to-white/0" />
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderStudentLookupSelector = (dropdownId: ScopeDropdownId, rootClassName = "relative mt-3") => {
-    const isOpen = openScopeDropdownId === dropdownId;
-
-    return (
-      <div className={rootClassName} data-scope-dropdown-id={dropdownId}>
-        <button
-          type="button"
-          onClick={() => setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId))}
-          className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-        >
-          <span className="truncate">{selectedStudentLabel}</span>
-          <span className="inline-flex items-center gap-1">
-            {isStudentLookupSyncing && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
-            <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
-          </span>
-        </button>
-        {isOpen && (
-          <div className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
-            <div className="border-b border-slate-100 p-2">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={studentLookupQuery}
-                    onChange={(event) => setStudentLookupQuery(event.target.value)}
-                    placeholder={selectedTeacherLookup ? "Search teacher's students" : "Search students"}
-                    className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  />
-                  {studentLookupQuery.trim().length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setStudentLookupQuery("")}
-                      aria-label="Clear student search"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                <span className="shrink-0 text-[10px] font-semibold text-slate-500" title="Matches / total students">
-                  {filteredStudentLookupOptions.length}/{teacherScopedStudentLookupOptions.length}
-                </span>
-              </div>
-            </div>
-            <div className="relative max-h-72 overflow-y-auto overscroll-contain p-1 pr-1 [scrollbar-gutter:stable]">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedStudentLookupId(null);
-                  setStudentLookupQuery("");
-                  setOpenScopeDropdownId(null);
-                }}
-                className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                  !selectedStudentLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                All students
-              </button>
-              {filteredStudentLookupOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedStudentLookupId(option.id);
-                    if (option.schoolKey !== "unknown") {
-                      setSelectedSchoolScopeKey(option.schoolKey);
-                    }
-                    setStudentLookupQuery(option.fullName);
-                    setOpenScopeDropdownId(null);
-                    openStudentRecordsFromCard();
-                  }}
-                  className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                    selectedStudentLookup?.id === option.id
-                      ? "bg-primary-50 text-primary-800"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="font-semibold">{option.fullName}</span>
-                  <span className="ml-1 text-slate-500">({option.lrn})</span>
-                  <span className="ml-1 text-slate-400">{option.schoolCode} - {option.schoolName}</span>
-                </button>
-              ))}
-              {filteredStudentLookupOptions.length === 0 && (
-                <p className="px-2.5 py-2 text-xs text-slate-500">No results.</p>
-              )}
-              {teacherScopedStudentLookupOptions.length > 12 && (
-                <div className="pointer-events-none sticky bottom-0 h-5 bg-gradient-to-t from-white to-white/0" />
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderTeacherLookupSelector = (dropdownId: ScopeDropdownId, rootClassName = "relative mt-3") => {
-    const isOpen = openScopeDropdownId === dropdownId;
-
-    return (
-      <div className={rootClassName} data-scope-dropdown-id={dropdownId}>
-        <button
-          type="button"
-          onClick={() => setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId))}
-          className="inline-flex w-full items-center justify-between gap-2 border border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-        >
-          <span className="truncate">{selectedTeacherLabel}</span>
-          <span className="inline-flex items-center gap-1">
-            {isTeacherLookupSyncing && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
-            <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? "rotate-180" : ""}`} />
-          </span>
-        </button>
-        {isOpen && (
-          <div className="absolute left-0 right-0 top-full z-[80] mt-1 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
-            <div className="border-b border-slate-100 p-2">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={teacherLookupQuery}
-                    onChange={(event) => setTeacherLookupQuery(event.target.value)}
-                    placeholder="Search teachers"
-                    className="w-full border border-slate-200 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  />
-                  {teacherLookupQuery.trim().length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setTeacherLookupQuery("")}
-                      aria-label="Clear teacher search"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-                <span className="shrink-0 text-[10px] font-semibold text-slate-500" title="Matches / total teachers">
-                  {filteredTeacherLookupOptions.length}/{teacherLookupOptions.length}
-                </span>
-              </div>
-            </div>
-            <div className="relative max-h-72 overflow-y-auto overscroll-contain p-1 pr-1 [scrollbar-gutter:stable]">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedTeacherLookupId(null);
-                  setSelectedStudentLookupId(null);
-                  setTeacherLookupQuery("");
-                  setOpenScopeDropdownId(null);
-                }}
-                className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                  !selectedTeacherLookup ? "bg-primary-50 text-primary-800" : "text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                All teachers
-              </button>
-              {filteredTeacherLookupOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedTeacherLookupId(option.id);
-                    setSelectedStudentLookupId(null);
-                    if (option.schoolKey !== "unknown") {
-                      setSelectedSchoolScopeKey(option.schoolKey);
-                    }
-                    setTeacherLookupQuery(option.name);
-                    setOpenScopeDropdownId(null);
-                    openStudentRecordsFromCard();
-                  }}
-                  className={`block w-full px-2.5 py-1.5 text-left text-xs transition ${
-                    selectedTeacherLookup?.id === option.id
-                      ? "bg-primary-50 text-primary-800"
-                      : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="font-semibold">{option.name}</span>
-                  <span className="ml-1 text-slate-400">{option.schoolCode} - {option.schoolName}</span>
-                </button>
-              ))}
-              {filteredTeacherLookupOptions.length === 0 && (
-                <p className="px-2.5 py-2 text-xs text-slate-500">No results.</p>
-              )}
-              {teacherLookupOptions.length > 12 && (
-                <div className="pointer-events-none sticky bottom-0 h-5 bg-gradient-to-t from-white to-white/0" />
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const activeScreenMeta = useMemo(() => {
     switch (activeTopNavigator) {
       case "overview":
@@ -4448,6 +4145,69 @@ export function MonitorDashboard() {
     }
     handleReviewSchool(nextReview);
   };
+
+  const toggleScopeDropdown = useCallback((dropdownId: ScopeDropdownId) => {
+    setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId));
+  }, []);
+
+  const handleSelectAllSchools = useCallback(() => {
+    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+    setSelectedStudentLookupId(null);
+    setSelectedTeacherLookupId(null);
+    setSchoolScopeQuery("");
+    setOpenScopeDropdownId(null);
+  }, [setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId]);
+
+  const handleSelectSchoolScope = useCallback(
+    (option: SchoolScopeOption) => {
+      setSelectedSchoolScopeKey(option.key);
+      setSelectedStudentLookupId(null);
+      setSelectedTeacherLookupId(null);
+      setSchoolScopeQuery("");
+      setOpenScopeDropdownId(null);
+    },
+    [setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
+  );
+
+  const handleClearStudentLookup = useCallback(() => {
+    setSelectedStudentLookupId(null);
+    setStudentLookupQuery("");
+    setOpenScopeDropdownId(null);
+  }, [setSelectedStudentLookupId]);
+
+  const handleSelectStudentLookup = useCallback(
+    (option: StudentLookupOption) => {
+      setSelectedStudentLookupId(option.id);
+      if (option.schoolKey !== "unknown") {
+        setSelectedSchoolScopeKey(option.schoolKey);
+      }
+      setStudentLookupQuery(option.fullName);
+      setOpenScopeDropdownId(null);
+      openStudentRecordsFromCard();
+    },
+    [openStudentRecordsFromCard, setSelectedSchoolScopeKey, setSelectedStudentLookupId],
+  );
+
+  const handleClearTeacherLookup = useCallback(() => {
+    setSelectedTeacherLookupId(null);
+    setSelectedStudentLookupId(null);
+    setTeacherLookupQuery("");
+    setOpenScopeDropdownId(null);
+  }, [setSelectedStudentLookupId, setSelectedTeacherLookupId]);
+
+  const handleSelectTeacherLookup = useCallback(
+    (option: TeacherLookupOption) => {
+      setSelectedTeacherLookupId(option.id);
+      setSelectedStudentLookupId(null);
+      if (option.schoolKey !== "unknown") {
+        setSelectedSchoolScopeKey(option.schoolKey);
+      }
+      setTeacherLookupQuery(option.name);
+      setOpenScopeDropdownId(null);
+      openStudentRecordsFromCard();
+    },
+    [openStudentRecordsFromCard, setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
+  );
 
   const quickFiltersPanelContent = (
     <>
@@ -4578,15 +4338,60 @@ export function MonitorDashboard() {
             <div className="grid gap-2 md:grid-cols-3">
               <div className="flex items-center gap-2">
                 <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                {renderSchoolScopeSelector("schools_filters", "relative flex-1")}
+                <SchoolScopeSelector
+                  dropdownId="schools_filters"
+                  isOpen={openScopeDropdownId === "schools_filters"}
+                  rootClassName="relative flex-1"
+                  isLoading={isLoading}
+                  query={schoolScopeQuery}
+                  selectedScope={selectedSchoolScope}
+                  filteredOptions={filteredSchoolScopeOptions}
+                  allOptions={schoolScopeOptions}
+                  onToggle={() => toggleScopeDropdown("schools_filters")}
+                  onQueryChange={setSchoolScopeQuery}
+                  onClearQuery={() => setSchoolScopeQuery("")}
+                  onSelectAll={handleSelectAllSchools}
+                  onSelectOption={handleSelectSchoolScope}
+                />
               </div>
               <div className="flex items-center gap-2">
                 <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
-                {renderStudentLookupSelector("students_filters", "relative flex-1")}
+                <StudentLookupSelector
+                  dropdownId="students_filters"
+                  isOpen={openScopeDropdownId === "students_filters"}
+                  rootClassName="relative flex-1"
+                  selectedLabel={selectedStudentLabel}
+                  isSyncing={isStudentLookupSyncing}
+                  query={studentLookupQuery}
+                  placeholder={selectedTeacherLookup ? "Search teacher's students" : "Search students"}
+                  filteredOptions={filteredStudentLookupOptions}
+                  allOptions={teacherScopedStudentLookupOptions}
+                  selectedStudentId={selectedStudentLookup?.id ?? null}
+                  onToggle={() => toggleScopeDropdown("students_filters")}
+                  onQueryChange={setStudentLookupQuery}
+                  onClearQuery={() => setStudentLookupQuery("")}
+                  onClearSelection={handleClearStudentLookup}
+                  onSelectOption={handleSelectStudentLookup}
+                />
               </div>
               <div className="flex items-center gap-2">
                 <Users className="h-3.5 w-3.5 text-slate-400" />
-                {renderTeacherLookupSelector("teachers_filters", "relative flex-1")}
+                <TeacherLookupSelector
+                  dropdownId="teachers_filters"
+                  isOpen={openScopeDropdownId === "teachers_filters"}
+                  rootClassName="relative flex-1"
+                  selectedLabel={selectedTeacherLabel}
+                  isSyncing={isTeacherLookupSyncing}
+                  query={teacherLookupQuery}
+                  filteredOptions={filteredTeacherLookupOptions}
+                  allOptions={teacherLookupOptions}
+                  selectedTeacherId={selectedTeacherLookup?.id ?? null}
+                  onToggle={() => toggleScopeDropdown("teachers_filters")}
+                  onQueryChange={setTeacherLookupQuery}
+                  onClearQuery={() => setTeacherLookupQuery("")}
+                  onClearSelection={handleClearTeacherLookup}
+                  onSelectOption={handleSelectTeacherLookup}
+                />
               </div>
             </div>
           </div>
@@ -5152,7 +4957,21 @@ export function MonitorDashboard() {
                           <Building2 className="h-5 w-5" />
                         </span>
                       </div>
-                      {renderSchoolScopeSelector("schools_radar", "relative mt-2")}
+                      <SchoolScopeSelector
+                        dropdownId="schools_radar"
+                        isOpen={openScopeDropdownId === "schools_radar"}
+                        rootClassName="relative mt-2"
+                        isLoading={isLoading}
+                        query={schoolScopeQuery}
+                        selectedScope={selectedSchoolScope}
+                        filteredOptions={filteredSchoolScopeOptions}
+                        allOptions={schoolScopeOptions}
+                        onToggle={() => toggleScopeDropdown("schools_radar")}
+                        onQueryChange={setSchoolScopeQuery}
+                        onClearQuery={() => setSchoolScopeQuery("")}
+                        onSelectAll={handleSelectAllSchools}
+                        onSelectOption={handleSelectSchoolScope}
+                      />
                     </article>
 
                     <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -5169,7 +4988,23 @@ export function MonitorDashboard() {
                           <GraduationCap className="h-5 w-5" />
                         </span>
                       </div>
-                      {renderStudentLookupSelector("students_radar", "relative mt-2")}
+                      <StudentLookupSelector
+                        dropdownId="students_radar"
+                        isOpen={openScopeDropdownId === "students_radar"}
+                        rootClassName="relative mt-2"
+                        selectedLabel={selectedStudentLabel}
+                        isSyncing={isStudentLookupSyncing}
+                        query={studentLookupQuery}
+                        placeholder={selectedTeacherLookup ? "Search teacher's students" : "Search students"}
+                        filteredOptions={filteredStudentLookupOptions}
+                        allOptions={teacherScopedStudentLookupOptions}
+                        selectedStudentId={selectedStudentLookup?.id ?? null}
+                        onToggle={() => toggleScopeDropdown("students_radar")}
+                        onQueryChange={setStudentLookupQuery}
+                        onClearQuery={() => setStudentLookupQuery("")}
+                        onClearSelection={handleClearStudentLookup}
+                        onSelectOption={handleSelectStudentLookup}
+                      />
                     </article>
 
                     <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -5186,7 +5021,22 @@ export function MonitorDashboard() {
                           <Users className="h-5 w-5" />
                         </span>
                       </div>
-                      {renderTeacherLookupSelector("teachers_radar", "relative mt-2")}
+                      <TeacherLookupSelector
+                        dropdownId="teachers_radar"
+                        isOpen={openScopeDropdownId === "teachers_radar"}
+                        rootClassName="relative mt-2"
+                        selectedLabel={selectedTeacherLabel}
+                        isSyncing={isTeacherLookupSyncing}
+                        query={teacherLookupQuery}
+                        filteredOptions={filteredTeacherLookupOptions}
+                        allOptions={teacherLookupOptions}
+                        selectedTeacherId={selectedTeacherLookup?.id ?? null}
+                        onToggle={() => toggleScopeDropdown("teachers_radar")}
+                        onQueryChange={setTeacherLookupQuery}
+                        onClearQuery={() => setTeacherLookupQuery("")}
+                        onClearSelection={handleClearTeacherLookup}
+                        onSelectOption={handleSelectTeacherLookup}
+                      />
                     </article>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
@@ -5771,445 +5621,6 @@ export function MonitorDashboard() {
               actions={schoolHeadAccountActions}
             />
           )}
-          {/*
-                    Showing{" "}
-                    <span className="text-slate-700">{filteredSchoolHeadAccountRows.length}</span> of{" "}
-                    <span className="text-slate-700">{compactSchoolRows.length}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full table-fixed">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      <th className="w-20 px-3 py-1.5 text-left">Code</th>
-                      <th className="px-3 py-1.5 text-left">School</th>
-                      <th className="w-[22rem] px-3 py-1.5 text-left">Contact</th>
-                      <th className="w-36 px-3 py-1.5 text-left">Status</th>
-                      <th className="w-44 px-3 py-1.5 text-left">Activity</th>
-                      <th className="w-28 px-3 py-1.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredSchoolHeadAccountRows.length === 0 ? (
-                      <tr>
-                        <td className="px-3 py-6 text-center text-sm text-slate-500" colSpan={6}>
-                          No School Head accounts match the current filters.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredSchoolHeadAccountRows.map(({ summary, record }) => {
-                      const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
-                      if (!resolvedRecord) {
-                        return (
-                          <tr key={`account-missing-${summary.schoolKey}`}>
-                            <td className="px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
-                              <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200">
-                                {summary.schoolCode}
-                              </span>
-                            </td>
-                            <td className="px-3 py-1.5 align-top text-xs text-slate-900">
-                              <span className="block w-full truncate font-semibold text-slate-900" title={summary.schoolName}>
-                                {summary.schoolName}
-                              </span>
-                            </td>
-                            <td className="px-3 py-1.5 align-top text-xs text-slate-500" colSpan={4}>
-                              Record missing from sync.
-                            </td>
-                          </tr>
-                        );
-                      }
-
-                      const account = resolvedRecord.schoolHeadAccount ?? null;
-                      const isEditing = editingSchoolHeadAccountSchoolId === resolvedRecord.id;
-                      const isRowSaving = Boolean(accountActionKey?.startsWith(`${resolvedRecord.id}:`));
-                      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-                      const emailVerified = Boolean(account?.emailVerifiedAt);
-                      const verificationLabel =
-                        normalizedAccountStatus === "pending_setup"
-                          ? "Setup needed"
-                          : emailVerified
-                            ? "Verified"
-                            : "Not verified";
-                      const verificationTone =
-                        normalizedAccountStatus === "pending_setup" || !emailVerified
-                          ? "text-amber-700"
-                          : "text-primary-700";
-                      const setupLinkExpiresAtMs = account?.setupLinkExpiresAt
-                        ? Date.parse(account.setupLinkExpiresAt)
-                        : Number.NaN;
-                      const setupLinkExpired =
-                        Number.isFinite(setupLinkExpiresAtMs) && setupLinkExpiresAtMs < Date.now();
-
-                      return (
-                        <tr
-                          key={`account-${resolvedRecord.id}`}
-                          className={`transition ${isEditing ? "bg-primary-50/30" : "hover:bg-slate-50"}`}
-                        >
-                          <td className="px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenSchoolRecord(resolvedRecord)}
-                              className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-200"
-                              title={`Open ${summary.schoolName}`}
-                            >
-                              {summary.schoolCode}
-                            </button>
-                          </td>
-                          <td className="px-3 py-1.5 align-top text-xs text-slate-900">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenSchoolRecord(resolvedRecord)}
-                              className="block w-full truncate text-left font-semibold text-slate-900 transition hover:text-primary-700 hover:underline"
-                              title={`Open ${summary.schoolName}`}
-                            >
-                              {summary.schoolName}
-                            </button>
-                          </td>
-                          <td className="px-3 py-1.5 align-top text-xs text-slate-700">
-                            {isEditing ? (
-                              <div className="grid gap-1">
-                                <input
-                                  type="text"
-                                  value={schoolHeadAccountDraft.name}
-                                  onChange={(event) => {
-                                    setSchoolHeadAccountDraft((current) => ({ ...current, name: event.target.value }));
-                                    setSchoolHeadAccountDraftError("");
-                                  }}
-                                  className="w-full min-w-[16rem] rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                                  placeholder="Full name"
-                                />
-                                <input
-                                  type="email"
-                                  value={schoolHeadAccountDraft.email}
-                                  onChange={(event) => {
-                                    setSchoolHeadAccountDraft((current) => ({ ...current, email: event.target.value }));
-                                    setSchoolHeadAccountDraftError("");
-                                  }}
-                                  className="w-full min-w-[16rem] rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                                  placeholder="email@example.com"
-                                />
-                              </div>
-                            ) : account ? (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="block max-w-[20rem] truncate font-semibold text-slate-900" title={account.name}>
-                                  {account.name}
-                                </span>
-                                <a
-                                  href={`mailto:${account.email}`}
-                                  className="block max-w-[20rem] truncate text-[11px] font-medium text-slate-600 hover:text-primary-700 hover:underline"
-                                  title={account.email}
-                                >
-                                  {account.email}
-                                </a>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">No account</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 align-top text-xs text-slate-700">
-                            {account ? (
-                              <div className="flex flex-col gap-0.5">
-                                <span
-                                  className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${accountStatusTone(
-                                    account.accountStatus,
-                                  )}`}
-                                >
-                                  {account.deleteRecordFlagged ? <Database className="h-3.5 w-3.5 text-rose-700" /> : null}
-                                  {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
-                                  {accountStatusLabel(account.accountStatus)}
-                                </span>
-                                <span className={`text-[11px] font-semibold ${verificationTone}`}>
-                                  {verificationLabel}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">No account</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 align-top text-xs text-slate-700">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
-                                {account?.lastLoginAt ? formatDateTime(account.lastLoginAt) : account ? "Never" : "—"}
-                              </span>
-                              {account?.setupLinkExpiresAt ? (
-                                <span
-                                  className={`inline-flex max-w-[12rem] truncate whitespace-nowrap rounded-sm border px-2 py-1 text-[11px] font-medium tabular-nums ${
-                                    setupLinkExpired
-                                      ? "border-rose-200 bg-rose-50 text-rose-700"
-                                      : "border-slate-200 bg-white text-slate-600"
-                                  }`}
-                                  title={`${setupLinkExpired ? "Expired" : "Expires"} ${formatDateTime(account.setupLinkExpiresAt)}`}
-                                >
-                                  {setupLinkExpired ? "Expired" : "Expires"} {formatDateTime(account.setupLinkExpiresAt)}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-1.5 align-top text-right">
-                            {isEditing ? (
-                              <div className="inline-flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const name = schoolHeadAccountDraft.name.trim();
-                                    const email = schoolHeadAccountDraft.email.trim();
-                                    if (!name || !email) {
-                                      setSchoolHeadAccountDraftError("Account name and email are required.");
-                                      return;
-                                    }
-
-                                    const previousEmail = (account?.email ?? "").trim().toLowerCase();
-                                    const nextEmail = email.toLowerCase();
-                                    if (account && previousEmail && previousEmail !== nextEmail) {
-                                      setSchoolHeadAccountDraftError("");
-                                      openPendingAccountAction({
-                                        kind: "email_change",
-                                        schoolId: resolvedRecord.id,
-                                        schoolName: resolvedRecord.schoolName,
-                                        actionLabel: "Confirm Email Change",
-                                        payload: {
-                                          name,
-                                          email: nextEmail,
-                                        },
-                                        previousEmail,
-                                      });
-                                      return;
-                                    }
-
-                                    const actionKey = `${resolvedRecord.id}:profile`;
-                                    setAccountActionKey(actionKey);
-                                    setSchoolHeadAccountDraftError("");
-                                    try {
-                                      const result = await upsertSchoolHeadAccountProfile(resolvedRecord.id, {
-                                        name,
-                                        email: nextEmail,
-                                      });
-
-                                      pushToast(result.message || "School Head account saved.", "success");
-                                      setEditingSchoolHeadAccountSchoolId(null);
-                                    } catch (err) {
-                                      setSchoolHeadAccountDraftError(
-                                        err instanceof Error ? err.message : "Unable to save School Head account.",
-                                      );
-                                    } finally {
-                                      setAccountActionKey(null);
-                                    }
-                                  }}
-                                  disabled={isRowSaving || isSaving}
-                                  className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  <Save className="h-3.5 w-3.5" />
-                                  Save
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingSchoolHeadAccountSchoolId(null);
-                                    setSchoolHeadAccountDraftError("");
-                                  }}
-                                  disabled={isRowSaving || isSaving}
-                                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingSchoolHeadAccountSchoolId(resolvedRecord.id);
-                                    setSchoolHeadAccountDraft({
-                                      name: account?.name ?? "",
-                                      email: account?.email ?? "",
-                                    });
-                                    setSchoolHeadAccountDraftError("");
-                                  }}
-                                  disabled={isRowSaving || isSaving}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                  title={account ? "Edit account" : "Create account"}
-                                >
-                                  {account ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                                  <span className="sr-only">{account ? "Edit" : "Create"}</span>
-                                </button>
-                                {account && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleIssueSchoolHeadSetupLink(resolvedRecord)}
-                                    disabled={isRowSaving || isSaving}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-primary-200 bg-primary-50 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                    title={
-                                      normalizedAccountStatus === "pending_setup"
-                                        ? "Send Setup Link"
-                                        : "Send Password Reset Link"
-                                    }
-                                  >
-                                    <RefreshCw className="h-4 w-4" />
-                                    <span className="sr-only">
-                                      {normalizedAccountStatus === "pending_setup"
-                                        ? "Send Setup Link"
-                                        : "Send Password Reset Link"}
-                                    </span>
-                                  </button>
-                                )}
-                                {account && (
-                                  <div
-                                    className="relative inline-flex"
-                                    ref={openAccountRowMenuSchoolId === resolvedRecord.id ? accountRowMenuRef : null}
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setOpenAccountRowMenuSchoolId((current) =>
-                                          current === resolvedRecord.id ? null : resolvedRecord.id,
-                                        )
-                                      }
-                                      disabled={isRowSaving || isSaving}
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                      title="More actions"
-                                    >
-                                      <ChevronDown
-                                        className={`h-4 w-4 transition ${openAccountRowMenuSchoolId === resolvedRecord.id ? "rotate-180" : ""}`}
-                                      />
-                                      <span className="sr-only">More actions</span>
-                                    </button>
-                                    {openAccountRowMenuSchoolId === resolvedRecord.id && (
-                                      <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
-                                        {normalizedAccountStatus !== "active" &&
-                                          normalizedAccountStatus !== "pending_setup" && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                handleUpdateSchoolHeadAccount(
-                                                  resolvedRecord,
-                                                  { accountStatus: "active" },
-                                                  "Activate account",
-                                                )
-                                              }
-                                              disabled={isRowSaving || isSaving}
-                                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                            >
-                                              <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
-                                              Activate
-                                            </button>
-                                          )}
-                                        {normalizedAccountStatus === "active" && (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleUpdateSchoolHeadAccount(
-                                                resolvedRecord,
-                                                { accountStatus: "suspended" },
-                                                "Suspend account",
-                                              )
-                                            }
-                                            disabled={isRowSaving || isSaving}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                          >
-                                            <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-                                            Suspend
-                                          </button>
-                                        )}
-                                        {normalizedAccountStatus === "active" && (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleUpdateSchoolHeadAccount(
-                                                resolvedRecord,
-                                                { accountStatus: "locked" },
-                                                "Lock account",
-                                              )
-                                            }
-                                            disabled={isRowSaving || isSaving}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                          >
-                                            <ShieldCheck className="h-3.5 w-3.5 text-rose-600" />
-                                            Lock
-                                          </button>
-                                        )}
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleUpdateSchoolHeadAccount(
-                                              resolvedRecord,
-                                              { accountStatus: "archived" },
-                                              "Archive account",
-                                            )
-                                          }
-                                          disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
-                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5 text-slate-600" />
-                                          Archive
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            openPendingAccountAction({
-                                              kind: "remove",
-                                              schoolId: resolvedRecord.id,
-                                              schoolName: resolvedRecord.schoolName,
-                                              actionLabel: "Remove account",
-                                            })
-                                          }
-                                          disabled={isRowSaving || isSaving}
-                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                                          Remove account
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleUpdateSchoolHeadAccount(
-                                              resolvedRecord,
-                                              { deleteRecordFlagged: !account.deleteRecordFlagged },
-                                              account.deleteRecordFlagged ? "Remove delete record flag" : "Flag delete record",
-                                            )
-                                          }
-                                          disabled={isRowSaving || isSaving}
-                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                        >
-                                          <Database className="h-3.5 w-3.5 text-rose-700" />
-                                          {account.deleteRecordFlagged ? "Undo Delete Flag" : "Delete Record"}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleUpdateSchoolHeadAccount(
-                                              resolvedRecord,
-                                              { flagged: !account.flagged },
-                                              account.flagged ? "Unflag account" : "Flag account",
-                                            )
-                                          }
-                                          disabled={isRowSaving || isSaving}
-                                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                        >
-                                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                                          {account.flagged ? "Unflag" : "Flag"}
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-          */}
 
           {deleteError && (
             <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
@@ -6830,6 +6241,8 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
+
 
 
 

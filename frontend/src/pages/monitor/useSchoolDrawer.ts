@@ -11,7 +11,7 @@ import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
 import type { IndicatorSubmission } from "@/types";
-import type { MonitorUiRealtimeUpdate } from "./useMonitorUiRefresh";
+import type { MonitorUiRealtimeBatch } from "./useMonitorUiRefresh";
 
 const SCHOOL_DETAIL_COUNTS_CACHE_TTL_MS = 45_000;
 
@@ -21,7 +21,7 @@ interface UseSchoolDrawerOptions {
   authSessionKey: string;
   isAuthenticated: boolean;
   reviewCompletionSchoolKey?: string | null;
-  latestRealtimeUpdate: MonitorUiRealtimeUpdate | null;
+  latestRealtimeBatch: MonitorUiRealtimeBatch | null;
   resolveRecordId: (schoolKey: string | null) => string;
   resolveSchoolCode: (schoolKey: string | null) => string;
   listSubmissionsForSchool: IndicatorDataContextType["listSubmissionsForSchool"];
@@ -51,30 +51,24 @@ export interface UseSchoolDrawerResult {
 }
 
 function matchesDrawerSchool(
-  update: MonitorUiRealtimeUpdate | null,
-  recordId: string,
+  schoolId: string,
   schoolCode: string,
+  recordId: string,
+  normalizedSchoolCode: string,
 ): boolean {
-  if (!update) {
-    return false;
-  }
+  const normalizedRecordId = recordId.trim();
 
-  if (update.schoolCode) {
-    return update.schoolCode === schoolCode.trim().toUpperCase();
-  }
-
-  if (update.schoolId) {
-    return update.schoolId === recordId.trim();
-  }
-
-  return false;
+  return (
+    (Boolean(normalizedSchoolCode) && schoolCode === normalizedSchoolCode) ||
+    (Boolean(normalizedRecordId) && schoolId === normalizedRecordId)
+  );
 }
 
 export function useSchoolDrawer({
   authSessionKey,
   isAuthenticated,
   reviewCompletionSchoolKey = null,
-  latestRealtimeUpdate,
+  latestRealtimeBatch,
   resolveRecordId,
   resolveSchoolCode,
   listSubmissionsForSchool,
@@ -164,27 +158,29 @@ export function useSchoolDrawer({
   }, [refreshSchoolDrawer, reviewCompletionSchoolKey, schoolDrawerKey]);
 
   useEffect(() => {
-    if (!schoolDrawerKey || !latestRealtimeUpdate) {
+    if (!schoolDrawerKey || !latestRealtimeBatch) {
       return;
     }
 
-    if (
-      latestRealtimeUpdate.entity === "indicators" &&
-      matchesDrawerSchool(latestRealtimeUpdate, schoolDrawerRecordId, schoolDrawerSchoolCode)
-    ) {
+    const normalizedSchoolCode = schoolDrawerSchoolCode.trim().toUpperCase();
+    const hasMatchingIndicatorUpdate = latestRealtimeBatch.updates.some(
+      (update) =>
+        update.entity === "indicators" &&
+        matchesDrawerSchool(update.schoolId, update.schoolCode, schoolDrawerRecordId, normalizedSchoolCode),
+    );
+    if (hasMatchingIndicatorUpdate) {
       setSubmissionRefreshTick((current) => current + 1);
-      return;
     }
 
-    if (
-      (latestRealtimeUpdate.entity === "students" ||
-        latestRealtimeUpdate.entity === "teachers" ||
-        latestRealtimeUpdate.entity === "dashboard") &&
-      matchesDrawerSchool(latestRealtimeUpdate, schoolDrawerRecordId, schoolDrawerSchoolCode)
-    ) {
+    const hasMatchingCountUpdate = latestRealtimeBatch.updates.some(
+      (update) =>
+        (update.entity === "students" || update.entity === "teachers" || update.entity === "dashboard") &&
+        matchesDrawerSchool(update.schoolId, update.schoolCode, schoolDrawerRecordId, normalizedSchoolCode),
+    );
+    if (hasMatchingCountUpdate) {
       setCountsRefreshTick((current) => current + 1);
     }
-  }, [latestRealtimeUpdate, schoolDrawerKey, schoolDrawerRecordId, schoolDrawerSchoolCode]);
+  }, [latestRealtimeBatch, schoolDrawerKey, schoolDrawerRecordId, schoolDrawerSchoolCode]);
 
   useEffect(() => {
     if (!schoolDrawerRecordId || !isAuthenticated) {
@@ -242,8 +238,8 @@ export function useSchoolDrawer({
       return;
     }
 
-    const normalizedSchoolCode = schoolDrawerSchoolCode.trim();
-    if (!/^\d+$/.test(normalizedSchoolCode)) {
+    const normalizedSchoolCode = schoolDrawerSchoolCode.trim().toUpperCase();
+    if (!normalizedSchoolCode) {
       schoolDetailCountsAbortRef.current?.abort();
       schoolDetailCountsAbortRef.current = null;
       setSyncedCountsLoadingSchoolKey(null);

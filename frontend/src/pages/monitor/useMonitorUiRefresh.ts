@@ -1,24 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 
-export interface MonitorUiRealtimeUpdate {
+export interface MonitorUiRealtimeBatch {
+  updates: MonitorUiRealtimeTarget[];
+  entities: string[];
+  schoolIds: string[];
+  schoolCodes: string[];
+  occurredAt: number;
+}
+
+export interface MonitorUiRealtimeTarget {
   entity: string;
   schoolId: string;
   schoolCode: string;
-  occurredAt: number;
 }
 
 export interface UseMonitorUiRefreshResult {
   studentLookupTick: number;
   teacherLookupTick: number;
   radarTotalsTick: number;
-  latestRealtimeUpdate: MonitorUiRealtimeUpdate | null;
+  latestRealtimeBatch: MonitorUiRealtimeBatch | null;
 }
 
 interface PendingRealtimeState {
   studentLookup: boolean;
   teacherLookup: boolean;
   radarTotals: boolean;
-  latest: MonitorUiRealtimeUpdate | null;
+  updates: Map<string, MonitorUiRealtimeTarget>;
+  entities: Set<string>;
+  schoolIds: Set<string>;
+  schoolCodes: Set<string>;
 }
 
 const UI_REFRESH_DEBOUNCE_MS = 120;
@@ -27,13 +37,16 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
   const [studentLookupTick, setStudentLookupTick] = useState(0);
   const [teacherLookupTick, setTeacherLookupTick] = useState(0);
   const [radarTotalsTick, setRadarTotalsTick] = useState(0);
-  const [latestRealtimeUpdate, setLatestRealtimeUpdate] = useState<MonitorUiRealtimeUpdate | null>(null);
+  const [latestRealtimeBatch, setLatestRealtimeBatch] = useState<MonitorUiRealtimeBatch | null>(null);
   const flushTimeoutRef = useRef<number | null>(null);
   const pendingRef = useRef<PendingRealtimeState>({
     studentLookup: false,
     teacherLookup: false,
     radarTotals: false,
-    latest: null,
+    updates: new Map<string, MonitorUiRealtimeTarget>(),
+    entities: new Set<string>(),
+    schoolIds: new Set<string>(),
+    schoolCodes: new Set<string>(),
   });
 
   useEffect(() => {
@@ -54,15 +67,24 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
       if (pending.radarTotals) {
         setRadarTotalsTick((current) => current + 1);
       }
-      if (pending.latest) {
-        setLatestRealtimeUpdate(pending.latest);
+      if (pending.entities.size > 0) {
+        setLatestRealtimeBatch({
+          updates: Array.from(pending.updates.values()),
+          entities: Array.from(pending.entities),
+          schoolIds: Array.from(pending.schoolIds),
+          schoolCodes: Array.from(pending.schoolCodes),
+          occurredAt: Date.now(),
+        });
       }
 
       pendingRef.current = {
         studentLookup: false,
         teacherLookup: false,
         radarTotals: false,
-        latest: null,
+        updates: new Map<string, MonitorUiRealtimeTarget>(),
+        entities: new Set<string>(),
+        schoolIds: new Set<string>(),
+        schoolCodes: new Set<string>(),
       };
     };
 
@@ -79,22 +101,31 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
 
       const pending = pendingRef.current;
 
-      if (entity === "students" || entity === "dashboard" || entity === "school_records") {
+      if (entity === "students" || entity === "school_records") {
         pending.studentLookup = true;
       }
-      if (entity === "teachers" || entity === "dashboard" || entity === "school_records") {
+      if (entity === "teachers" || entity === "school_records") {
         pending.teacherLookup = true;
       }
       if (entity === "students" || entity === "teachers" || entity === "dashboard") {
         pending.radarTotals = true;
       }
 
-      pending.latest = {
+      pending.entities.add(entity);
+
+      const schoolId = String(payload.schoolId ?? "").trim();
+      const schoolCode = String(payload.schoolCode ?? "").trim().toUpperCase();
+      pending.updates.set(`${entity}|${schoolId}|${schoolCode}`, {
         entity,
-        schoolId: String(payload.schoolId ?? "").trim(),
-        schoolCode: String(payload.schoolCode ?? "").trim().toUpperCase(),
-        occurredAt: Date.now(),
-      };
+        schoolId,
+        schoolCode,
+      });
+      if (schoolId) {
+        pending.schoolIds.add(schoolId);
+      }
+      if (schoolCode) {
+        pending.schoolCodes.add(schoolCode);
+      }
 
       if (flushTimeoutRef.current !== null) {
         window.clearTimeout(flushTimeoutRef.current);
@@ -117,6 +148,6 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
     studentLookupTick,
     teacherLookupTick,
     radarTotalsTick,
-    latestRealtimeUpdate,
+    latestRealtimeBatch,
   };
 }
