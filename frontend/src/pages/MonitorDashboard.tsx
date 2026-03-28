@@ -48,7 +48,7 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
-import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, isApiError } from "@/lib/api";
 import type {
   IndicatorSubmission,
   SchoolBulkImportResult,
@@ -262,14 +262,6 @@ interface SchoolIndicatorPackageRow {
   reviewedBy: string;
 }
 
-interface IndicatorSubmissionListResponse {
-  data: IndicatorSubmission[];
-  meta?: {
-    current_page?: number;
-    last_page?: number;
-  };
-}
-
 interface PersistedMonitorFilters {
   search?: string;
   statusFilter?: SchoolStatus | "all";
@@ -396,7 +388,6 @@ const ADVANCED_ANALYTICS_HIDE_MS = 240;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
-const SCHOOL_DRAWER_SUBMISSION_CACHE_TTL_MS = 60_000;
 const SCHOOL_DETAIL_COUNTS_CACHE_TTL_MS = 45_000;
 const SCHOOL_YEAR_START_MONTH = 6;
 
@@ -1196,7 +1187,6 @@ export function MonitorDashboard() {
   const { user } = useAuth();
   const isAuthenticated = Boolean(user);
   const authSessionKey = user ? `${user.role}:${user.id}` : "";
-  const cookieSessionToken = COOKIE_SESSION_TOKEN;
   const {
     records,
     recordCount,
@@ -1225,9 +1215,9 @@ export function MonitorDashboard() {
     bulkImportRecords,
   } = useData();
   const {
-    submissions: indicatorSubmissions,
     isLoading: isIndicatorDataLoading,
     lastSyncedAt: indicatorLastSyncedAt,
+    listSubmissionsForSchool,
     refreshSubmissions,
   } = useIndicatorData();
   const {
@@ -1310,6 +1300,7 @@ export function MonitorDashboard() {
     submissionId: string;
     action: "validated" | "returned";
   } | null>(null);
+  const [autoAdvanceQueue, setAutoAdvanceQueue] = useState(true);
   const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
   const [activeSchoolDrawerTab, setActiveSchoolDrawerTab] = useState<SchoolDrawerTab>("snapshot");
   const [expandedDrawerIndicatorRows, setExpandedDrawerIndicatorRows] = useState<Record<string, boolean>>({});
@@ -1379,13 +1370,9 @@ export function MonitorDashboard() {
     moved: boolean;
   } | null>(null);
   const [isSchoolsTableDragging, setIsSchoolsTableDragging] = useState(false);
-  const [schoolDrawerSubmissions, setSchoolDrawerSubmissions] = useState<IndicatorSubmission[] | null>(null);
+  const [schoolDrawerSubmissions, setSchoolDrawerSubmissions] = useState<IndicatorSubmission[]>([]);
   const [isSchoolDrawerSubmissionsLoading, setIsSchoolDrawerSubmissionsLoading] = useState(false);
   const [schoolDrawerSubmissionsError, setSchoolDrawerSubmissionsError] = useState("");
-  const [schoolDrawerSubmissionSyncTick, setSchoolDrawerSubmissionSyncTick] = useState(0);
-  const schoolDrawerSubmissionCacheRef = useRef<Map<string, { rows: IndicatorSubmission[]; fetchedAt: number }>>(
-    new Map(),
-  );
   const schoolDetailCountsCacheRef = useRef<Map<string, { students: number; teachers: number; fetchedAt: number }>>(
     new Map(),
   );
@@ -1396,7 +1383,6 @@ export function MonitorDashboard() {
   const didAutoExpandMoreFiltersRef = useRef(false);
 
   useEffect(() => {
-    schoolDrawerSubmissionCacheRef.current.clear();
     schoolDetailCountsCacheRef.current.clear();
     schoolDetailCountsAbortRef.current?.abort();
     schoolDetailCountsAbortRef.current = null;
@@ -1551,10 +1537,6 @@ export function MonitorDashboard() {
       }
       if (payload.entity === "teachers" || payload.entity === "dashboard" || payload.entity === "school_records") {
         setTeacherLookupSyncTick((current) => current + 1);
-      }
-      if (payload.entity === "indicators") {
-        schoolDrawerSubmissionCacheRef.current.clear();
-        setSchoolDrawerSubmissionSyncTick((current) => current + 1);
       }
     };
 
@@ -3672,20 +3654,6 @@ export function MonitorDashboard() {
     schoolHeadAccountsStatusFilter,
   ]);
 
-  const schoolIndicatorSubmissions = useMemo(() => {
-    if (!schoolDrawerKey) return [] as IndicatorSubmission[];
-
-    return indicatorSubmissions
-      .filter(
-        (submission) =>
-          normalizeSchoolKey(submission.school?.schoolCode ?? null, submission.school?.name ?? null) === schoolDrawerKey,
-      )
-      .sort(
-        (a, b) =>
-          toTime(b.updatedAt, b.submittedAt, b.createdAt) - toTime(a.updatedAt, a.submittedAt, a.createdAt),
-      );
-  }, [indicatorSubmissions, schoolDrawerKey]);
-
   const schoolDrawerRecordId = useMemo(() => {
     if (!schoolDrawerKey) return "";
     return (recordBySchoolKey.get(schoolDrawerKey)?.id ?? "").trim();
@@ -3693,7 +3661,7 @@ export function MonitorDashboard() {
 
   useEffect(() => {
     if (!schoolDrawerRecordId || !isAuthenticated) {
-      setSchoolDrawerSubmissions(null);
+      setSchoolDrawerSubmissions([]);
       setIsSchoolDrawerSubmissionsLoading(false);
       setSchoolDrawerSubmissionsError("");
       return;
@@ -3703,68 +3671,21 @@ export function MonitorDashboard() {
     const abortController = new AbortController();
 
     const loadSchoolSubmissions = async () => {
-      const now = Date.now();
-      const cached = schoolDrawerSubmissionCacheRef.current.get(schoolDrawerRecordId) ?? null;
-      const cacheIsFresh = cached && now - cached.fetchedAt <= SCHOOL_DRAWER_SUBMISSION_CACHE_TTL_MS;
-
-      if (cached) {
-        setSchoolDrawerSubmissions(cached.rows);
-      } else {
-        setSchoolDrawerSubmissions(null);
-      }
-
-      if (cacheIsFresh && schoolDrawerSubmissionSyncTick === 0) {
-        setIsSchoolDrawerSubmissionsLoading(false);
-        setSchoolDrawerSubmissionsError("");
-        return;
-      }
-
       setIsSchoolDrawerSubmissionsLoading(true);
       setSchoolDrawerSubmissionsError("");
 
       try {
-        const perPage = 100;
-        const basePath = `/api/indicators/submissions?per_page=${perPage}&school_id=${encodeURIComponent(schoolDrawerRecordId)}`;
-        const firstPayload = await apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=1`, {
-          token: cookieSessionToken,
+        const allRows = await listSubmissionsForSchool(schoolDrawerRecordId, {
           signal: abortController.signal,
         });
-        const firstRows = Array.isArray(firstPayload.data) ? firstPayload.data : [];
-        const lastPage = Math.max(1, Number(firstPayload.meta?.last_page ?? 1));
-
-        const pageRequests: Array<Promise<IndicatorSubmissionListResponse>> = [];
-        for (let page = 2; page <= lastPage; page += 1) {
-          pageRequests.push(
-            apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=${page}`, {
-              token: cookieSessionToken,
-              signal: abortController.signal,
-            }),
-          );
-        }
-
-        const extraPayloads = pageRequests.length > 0 ? await Promise.all(pageRequests) : [];
-        const allRows = [
-          ...firstRows,
-          ...extraPayloads.flatMap((payload) => (Array.isArray(payload.data) ? payload.data : [])),
-        ].sort(
-          (a, b) =>
-            toTime(b.updatedAt, b.submittedAt, b.createdAt) - toTime(a.updatedAt, a.submittedAt, a.createdAt),
-        );
-
         if (!active) return;
-        schoolDrawerSubmissionCacheRef.current.set(schoolDrawerRecordId, {
-          rows: allRows,
-          fetchedAt: Date.now(),
-        });
         setSchoolDrawerSubmissions(allRows);
       } catch (err) {
         if (!active) return;
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
-        if (!cached) {
-          setSchoolDrawerSubmissions([]);
-        }
+        setSchoolDrawerSubmissions([]);
         setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
       } finally {
         if (active) {
@@ -3778,12 +3699,9 @@ export function MonitorDashboard() {
       active = false;
       abortController.abort();
     };
-  }, [cookieSessionToken, isAuthenticated, schoolDrawerRecordId, schoolDrawerSubmissionSyncTick]);
+  }, [indicatorLastSyncedAt, isAuthenticated, listSubmissionsForSchool, schoolDrawerRecordId]);
 
-  const schoolDrawerIndicatorSubmissions = useMemo(
-    () => schoolDrawerSubmissions ?? schoolIndicatorSubmissions,
-    [schoolDrawerSubmissions, schoolIndicatorSubmissions],
-  );
+  const schoolDrawerIndicatorSubmissions = schoolDrawerSubmissions;
 
   const schoolIndicatorMatrix = useMemo(() => {
     if (schoolDrawerIndicatorSubmissions.length === 0) {
@@ -4719,6 +4637,10 @@ export function MonitorDashboard() {
 
   useEffect(() => {
     if (!lastReviewCompletion) return;
+    if (!autoAdvanceQueue) {
+      setLastReviewCompletion(null);
+      return;
+    }
 
     const currentIndex = laneFilteredQueueRows.findIndex((row) => row.schoolKey === lastReviewCompletion.schoolKey);
     const nextRow =
@@ -4732,7 +4654,7 @@ export function MonitorDashboard() {
     }
 
     setLastReviewCompletion(null);
-  }, [laneFilteredQueueRows, lastReviewCompletion]);
+  }, [autoAdvanceQueue, laneFilteredQueueRows, lastReviewCompletion]);
 
   const handleSort = (column: SortColumn) => {
     if (column === sortColumn) {
@@ -6247,8 +6169,21 @@ export function MonitorDashboard() {
 
           <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <h2 className="text-base font-bold text-slate-900">Queue List</h2>
-              <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then For Review. Active lane: {queueLaneLabel(queueLane)}.</p>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Queue List</h2>
+                  <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then For Review. Active lane: {queueLaneLabel(queueLane)}.</p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={autoAdvanceQueue}
+                    onChange={(event) => setAutoAdvanceQueue(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
+                  />
+                  Auto-open next school after review
+                </label>
+              </div>
             </div>
 
             {paginatedRequirementRows.length === 0 ? (

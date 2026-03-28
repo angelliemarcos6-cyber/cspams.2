@@ -88,6 +88,7 @@ export interface IndicatorDataContextType {
   refreshSubmissions: () => Promise<void>;
   refreshAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<void>;
   listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
+  listSubmissionsForSchool: (schoolId: string, options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
@@ -193,6 +194,10 @@ function normalizeSubmissionListMeta(
   };
 }
 
+function toSubmissionSortTime(submission: IndicatorSubmission): number {
+  return new Date(submission.updatedAt ?? submission.submittedAt ?? submission.createdAt ?? 0).getTime();
+}
+
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
@@ -211,6 +216,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
   const submissionsEtagRef = useRef<string>("");
+  const schoolSubmissionsCacheRef = useRef<Map<string, { versionKey: string; rows: IndicatorSubmission[] }>>(new Map());
   const allSubmissionsCacheRef = useRef<{ versionKey: string; rows: IndicatorSubmission[] } | null>(null);
   const allSubmissionsInFlightRef = useRef<{ versionKey: string; promise: Promise<IndicatorSubmission[]> } | null>(null);
   const previousSessionKeyRef = useRef<string>("");
@@ -229,6 +235,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     syncQueuedRef.current = false;
     referenceDataSyncedAtRef.current = 0;
     submissionsEtagRef.current = "";
+    schoolSubmissionsCacheRef.current.clear();
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
     setSubmissions([]);
@@ -298,6 +305,60 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const buildAllSubmissionsVersionKey = useCallback(
     () => `${sessionKey}|${submissionsEtagRef.current || lastSyncedAt || "pending"}`,
     [lastSyncedAt, sessionKey],
+  );
+
+  const listSubmissionsForSchool = useCallback(
+    async (schoolId: string, options?: LoadAllSubmissionsOptions): Promise<IndicatorSubmission[]> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const normalizedSchoolId = normalizeFilterValue(schoolId);
+      if (!normalizedSchoolId) {
+        return [];
+      }
+
+      const signal = options?.signal;
+      throwIfAborted(signal);
+
+      const versionKey = `${buildAllSubmissionsVersionKey()}|school:${normalizedSchoolId}`;
+      const cached = schoolSubmissionsCacheRef.current.get(normalizedSchoolId);
+      if (cached && cached.versionKey === versionKey) {
+        return cached.rows;
+      }
+
+      const rows: IndicatorSubmission[] = [];
+      let nextPage = 1;
+
+      while (true) {
+        throwIfAborted(signal);
+
+        const result = await listSubmissions({
+          schoolId: normalizedSchoolId,
+          page: nextPage,
+          perPage: MAX_LIST_PER_PAGE,
+          signal,
+        });
+
+        throwIfAborted(signal);
+        rows.push(...result.data);
+
+        if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+          break;
+        }
+
+        nextPage += 1;
+      }
+
+      const sortedRows = [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
+      schoolSubmissionsCacheRef.current.set(normalizedSchoolId, {
+        versionKey,
+        rows: sortedRows,
+      });
+
+      return sortedRows;
+    },
+    [buildAllSubmissionsVersionKey, listSubmissions, token],
   );
 
   const readAllSubmissions = useCallback(
@@ -488,6 +549,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
         const submissionsChanged = submissionsResponse.status !== 304;
         if (submissionsChanged) {
+          schoolSubmissionsCacheRef.current.clear();
           allSubmissionsCacheRef.current = null;
           setSubmissions(readSubmissionRows(submissionsResponse.data));
         }
@@ -741,6 +803,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       refreshSubmissions,
       refreshAllSubmissions,
       listSubmissions,
+      listSubmissionsForSchool,
       loadAllSubmissions,
       createSubmission,
       updateSubmission,
@@ -761,6 +824,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       refreshSubmissions,
       refreshAllSubmissions,
       listSubmissions,
+      listSubmissionsForSchool,
       loadAllSubmissions,
       createSubmission,
       updateSubmission,
