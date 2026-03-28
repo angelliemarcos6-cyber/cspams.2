@@ -9,25 +9,19 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
-import { isApiError } from "@/lib/api";
 import type { MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
-import type {
-  MonitorSchoolHeadAccountRow,
-  MonitorSchoolHeadAccountsPanelProps,
-  SchoolHeadAccountsStatusFilter,
-} from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import type { MonitorSchoolHeadAccountsPanelProps } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
 import type { MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
-import type {
-  MonitorSchoolRecordFormField,
-  MonitorSchoolRecordFormProps,
-  MonitorSchoolRecordFormState,
-} from "@/pages/monitor/MonitorSchoolRecordForm";
+import type { MonitorSchoolRecordFormProps } from "@/pages/monitor/MonitorSchoolRecordForm";
 import type {
   MonitorSchoolRecordsListProps,
   MonitorSchoolRecordsListRow,
   MonitorSchoolRequirementSummary,
 } from "@/pages/monitor/MonitorSchoolRecordsList";
-import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
+import { useMonitorArchivedSchools } from "@/pages/monitor/useMonitorArchivedSchools";
+import { useMonitorSchoolBulkImport } from "@/pages/monitor/useMonitorSchoolBulkImport";
+import { useMonitorSchoolHeadAccountsPanelState } from "@/pages/monitor/useMonitorSchoolHeadAccountsPanelState";
+import { useMonitorSchoolRecordForm } from "@/pages/monitor/useMonitorSchoolRecordForm";
 import type {
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
@@ -45,47 +39,8 @@ import type {
   SchoolStatus,
 } from "@/types";
 import type { RequirementFilter, SchoolQuickPreset } from "./monitorFilters";
-import { parseSchoolBulkImportCsv } from "./monitorSchoolBulkImportCsv";
 
 type ToastTone = "success" | "info" | "warning";
-
-const EMPTY_MONITOR_RECORD_FORM: MonitorSchoolRecordFormState = {
-  schoolId: "",
-  schoolName: "",
-  level: "Elementary",
-  type: "public",
-  district: "",
-  region: "",
-  address: "",
-  createSchoolHeadAccount: true,
-  schoolHeadAccountName: "",
-  schoolHeadAccountEmail: "",
-};
-
-function extractApiValidationErrors(payload: unknown): Record<string, string> {
-  if (!payload || typeof payload !== "object" || !("errors" in payload)) {
-    return {};
-  }
-
-  const rawErrors = (payload as { errors?: unknown }).errors;
-  if (!rawErrors || typeof rawErrors !== "object") {
-    return {};
-  }
-
-  const fieldErrors: Record<string, string> = {};
-  for (const [field, value] of Object.entries(rawErrors as Record<string, unknown>)) {
-    if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
-      fieldErrors[field] = value[0];
-      continue;
-    }
-
-    if (typeof value === "string") {
-      fieldErrors[field] = value;
-    }
-  }
-
-  return fieldErrors;
-}
 
 interface UseMonitorSchoolsSectionOptions {
   isMobileViewport: boolean;
@@ -209,40 +164,8 @@ export function useMonitorSchoolsSection({
   isUrgentRequirement,
   urgencyRowTone,
 }: UseMonitorSchoolsSectionOptions): UseMonitorSchoolsSectionResult {
-  const [showRecordForm, setShowRecordForm] = useState(false);
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
-  const [recordForm, setRecordForm] = useState<MonitorSchoolRecordFormState>(EMPTY_MONITOR_RECORD_FORM);
-  const [recordFormErrors, setRecordFormErrors] = useState<Partial<Record<MonitorSchoolRecordFormField, string>>>({});
-  const [recordFormError, setRecordFormError] = useState("");
-  const [recordFormMessage, setRecordFormMessage] = useState("");
-  const [deleteError, setDeleteError] = useState("");
-  const [showSchoolHeadAccountsPanel, setShowSchoolHeadAccountsPanel] = useState(false);
-  const [schoolHeadAccountsQuery, setSchoolHeadAccountsQuery] = useState("");
-  const [schoolHeadAccountsStatusFilter, setSchoolHeadAccountsStatusFilter] =
-    useState<SchoolHeadAccountsStatusFilter>("all");
-  const [schoolHeadAccountsOnlyFlagged, setSchoolHeadAccountsOnlyFlagged] = useState(false);
-  const [schoolHeadAccountsOnlyDeleteFlagged, setSchoolHeadAccountsOnlyDeleteFlagged] = useState(false);
-  const [archivedRecords, setArchivedRecords] = useState<SchoolRecord[]>([]);
-  const [showArchivedRecords, setShowArchivedRecords] = useState(false);
-  const [isArchivedRecordsLoading, setIsArchivedRecordsLoading] = useState(false);
-  const [bulkImportSummary, setBulkImportSummary] = useState<SchoolBulkImportResult | null>(null);
-  const [bulkImportError, setBulkImportError] = useState("");
-  const [isBulkImporting, setIsBulkImporting] = useState(false);
   const [isSchoolActionsMenuOpen, setIsSchoolActionsMenuOpen] = useState(false);
-  const bulkImportInputRef = useRef<HTMLInputElement | null>(null);
   const schoolActionsMenuRef = useRef<HTMLDivElement | null>(null);
-
-  const schoolHeadAccountActions = useSchoolHeadAccountActions({
-    isPanelOpen: showSchoolHeadAccountsPanel,
-    isSaving,
-    pushToast,
-    updateSchoolHeadAccountStatus,
-    issueSchoolHeadAccountActionVerificationCode,
-    issueSchoolHeadSetupLink,
-    issueSchoolHeadPasswordResetLink,
-    upsertSchoolHeadAccountProfile,
-    removeSchoolHeadAccount,
-  });
 
   useEffect(() => {
     if (!isSchoolActionsMenuOpen || typeof window === "undefined") return;
@@ -268,257 +191,46 @@ export function useMonitorSchoolsSection({
     };
   }, [isSchoolActionsMenuOpen]);
 
-  const handleCloseSchoolHeadAccountsPanel = useCallback(() => {
-    setShowSchoolHeadAccountsPanel(false);
-    schoolHeadAccountActions.resetPanelState();
-  }, [schoolHeadAccountActions]);
+  const archivedApi = useMonitorArchivedSchools({
+    isSaving,
+    listArchivedRecords,
+    restoreRecord,
+    pushToast,
+    formatDateTime,
+  });
 
-  const resetRecordForm = useCallback(() => {
-    setEditingRecordId(null);
-    setRecordForm(EMPTY_MONITOR_RECORD_FORM);
-    setRecordFormErrors({});
-    setRecordFormError("");
-    setRecordFormMessage("");
-  }, []);
+  const bulkImportApi = useMonitorSchoolBulkImport({
+    bulkImportRecords,
+    showArchivedRecords: archivedApi.showArchivedRecords,
+    loadArchivedRecords: archivedApi.loadArchivedRecords,
+    pushToast,
+  });
 
-  const openCreateRecordForm = useCallback(() => {
-    setIsSchoolActionsMenuOpen(false);
-    resetRecordForm();
-    setBulkImportError("");
-    setBulkImportSummary(null);
-    setActiveTopNavigator("schools");
-    setShowRecordForm(true);
-  }, [resetRecordForm, setActiveTopNavigator]);
+  const recordFormApi = useMonitorSchoolRecordForm({
+    isSaving,
+    setActiveTopNavigator,
+    addRecord,
+    updateRecord,
+    clearDeleteError: archivedApi.clearDeleteError,
+    clearBulkImportError: bulkImportApi.clearBulkImportError,
+    clearBulkImportFeedback: bulkImportApi.clearBulkImportFeedback,
+  });
 
-  const closeRecordForm = useCallback(() => {
-    setShowRecordForm(false);
-    resetRecordForm();
-  }, [resetRecordForm]);
-
-  const validateRecordForm = useCallback((): boolean => {
-    const formErrors: Partial<Record<MonitorSchoolRecordFormField, string>> = {};
-    const schoolId = recordForm.schoolId.trim().toUpperCase();
-    const schoolName = recordForm.schoolName.trim();
-    const level = recordForm.level.trim();
-    const district = recordForm.district.trim();
-    const region = recordForm.region.trim();
-    const address = recordForm.address.trim();
-
-    if (!/^\d{6}$/.test(schoolId)) {
-      formErrors.schoolId = "School Code must be exactly 6 digits.";
-    }
-
-    if (!schoolName) formErrors.schoolName = "School name is required.";
-    if (!level) formErrors.level = "Level is required.";
-    if (!address) formErrors.address = "Address is required.";
-    if (!recordForm.type) formErrors.type = "Type is required.";
-
-    if (district.length > 255) formErrors.district = "District must be 255 characters or less.";
-    if (region.length > 255) formErrors.region = "Region must be 255 characters or less.";
-
-    if (!editingRecordId && recordForm.createSchoolHeadAccount) {
-      if (!recordForm.schoolHeadAccountName.trim()) {
-        formErrors.schoolHeadAccountName = "Account name is required.";
-      }
-
-      if (!recordForm.schoolHeadAccountEmail.trim()) {
-        formErrors.schoolHeadAccountEmail = "Email is required.";
-      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recordForm.schoolHeadAccountEmail.trim())) {
-        formErrors.schoolHeadAccountEmail = "Use a valid email address.";
-      }
-    }
-
-    setRecordFormErrors(formErrors);
-    if (Object.keys(formErrors).length > 0) {
-      setRecordFormError("Please fix the highlighted fields.");
-      return false;
-    }
-
-    setRecordFormError("");
-    return true;
-  }, [editingRecordId, recordForm]);
-
-  const handleRecordSubmit = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setRecordFormErrors({});
-      setRecordFormError("");
-      setRecordFormMessage("");
-      setDeleteError("");
-      setBulkImportError("");
-
-      if (!validateRecordForm()) {
-        return;
-      }
-
-      const payload: SchoolRecordPayload = {
-        schoolId: recordForm.schoolId.trim().toUpperCase(),
-        schoolName: recordForm.schoolName.trim(),
-        level: recordForm.level.trim(),
-        type: recordForm.type,
-        address: recordForm.address.trim(),
-        district: recordForm.district.trim() || undefined,
-        region: recordForm.region.trim() || undefined,
-        schoolHeadAccount:
-          !editingRecordId && recordForm.createSchoolHeadAccount
-            ? {
-                name: recordForm.schoolHeadAccountName.trim(),
-                email: recordForm.schoolHeadAccountEmail.trim(),
-              }
-            : undefined,
-      };
-
-      try {
-        if (editingRecordId) {
-          await updateRecord(editingRecordId, payload);
-          setRecordFormMessage("School record updated.");
-        } else {
-          const provisioning = await addRecord(payload);
-          const deliveryFailed = String(provisioning?.setupLinkDelivery ?? "").toLowerCase() === "failed";
-          setRecordFormMessage(
-            provisioning
-              ? deliveryFailed
-                ? "School record created. The setup email could not be delivered to the School Head account."
-                : "School record created. A setup email was sent to the School Head account."
-              : "School record created.",
-          );
-        }
-
-        window.setTimeout(() => {
-          closeRecordForm();
-        }, 800);
-      } catch (err) {
-        if (isApiError(err)) {
-          const apiFieldErrors = extractApiValidationErrors(err.payload);
-          if (Object.keys(apiFieldErrors).length > 0) {
-            const mappedErrors: Partial<Record<MonitorSchoolRecordFormField, string>> = {};
-            for (const [field, message] of Object.entries(apiFieldErrors)) {
-              if (field === "schoolHeadAccount.name") mappedErrors.schoolHeadAccountName = message;
-              else if (field === "schoolHeadAccount.email") mappedErrors.schoolHeadAccountEmail = message;
-              else if (
-                field === "schoolId" ||
-                field === "schoolName" ||
-                field === "level" ||
-                field === "type" ||
-                field === "district" ||
-                field === "region" ||
-                field === "address"
-              ) {
-                mappedErrors[field as MonitorSchoolRecordFormField] = message;
-              }
-            }
-
-            if (Object.keys(mappedErrors).length > 0) {
-              setRecordFormErrors(mappedErrors);
-              setRecordFormError("Please fix the highlighted fields.");
-              return;
-            }
-          }
-        }
-
-        setRecordFormError(err instanceof Error ? err.message : "Unable to save school record.");
-      }
-    },
-    [addRecord, closeRecordForm, editingRecordId, recordForm, updateRecord, validateRecordForm],
-  );
-
-  const loadArchivedRecords = useCallback(async () => {
-    setIsArchivedRecordsLoading(true);
-    setDeleteError("");
-    try {
-      const archived = await listArchivedRecords();
-      setArchivedRecords(archived);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Unable to load archived schools.");
-    } finally {
-      setIsArchivedRecordsLoading(false);
-    }
-  }, [listArchivedRecords]);
-
-  const toggleArchivedRecords = useCallback(async () => {
-    setIsSchoolActionsMenuOpen(false);
-    const next = !showArchivedRecords;
-    setShowArchivedRecords(next);
-    if (next) {
-      await loadArchivedRecords();
-    }
-  }, [loadArchivedRecords, showArchivedRecords]);
-
-  const handleRestoreArchivedRecord = useCallback(
-    async (record: SchoolRecord) => {
-      setDeleteError("");
-      try {
-        await restoreRecord(record.id);
-        await loadArchivedRecords();
-        pushToast(`Restored ${record.schoolName}.`, "success");
-      } catch (err) {
-        setDeleteError(err instanceof Error ? err.message : "Unable to restore school record.");
-      }
-    },
-    [loadArchivedRecords, pushToast, restoreRecord],
-  );
-
-  const openBulkImportPicker = useCallback(() => {
-    setIsSchoolActionsMenuOpen(false);
-    bulkImportInputRef.current?.click();
-  }, []);
-
-  const handleBulkImportFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      event.target.value = "";
-      if (!file) return;
-
-      setBulkImportError("");
-      setBulkImportSummary(null);
-      setIsBulkImporting(true);
-
-      try {
-        const content = await file.text();
-        const parsed = parseSchoolBulkImportCsv(content);
-        if (parsed.errors.length > 0) {
-          setBulkImportError(parsed.errors.slice(0, 5).join(" "));
-          return;
-        }
-
-        if (parsed.rows.length === 0) {
-          setBulkImportError("No valid rows found in the CSV file.");
-          return;
-        }
-
-        const summary = await bulkImportRecords(parsed.rows, {
-          updateExisting: true,
-          restoreArchived: true,
-        });
-
-        setBulkImportSummary(summary);
-        pushToast(
-          `Import complete: ${summary.created} created, ${summary.updated} updated, ${summary.restored} restored.`,
-          "success",
-        );
-
-        if (showArchivedRecords) {
-          await loadArchivedRecords();
-        }
-      } catch (err) {
-        setBulkImportError(err instanceof Error ? err.message : "Bulk import failed.");
-      } finally {
-        setIsBulkImporting(false);
-      }
-    },
-    [bulkImportRecords, loadArchivedRecords, pushToast, showArchivedRecords],
-  );
-
-  const toggleSchoolHeadAccountsPanel = useCallback(() => {
-    setIsSchoolActionsMenuOpen(false);
-    setShowSchoolHeadAccountsPanel((current) => {
-      const next = !current;
-      if (!next) {
-        schoolHeadAccountActions.resetPanelState();
-      }
-      return next;
-    });
-  }, [schoolHeadAccountActions]);
+  const schoolHeadAccountsApi = useMonitorSchoolHeadAccountsPanelState({
+    isMobileViewport,
+    isSaving,
+    compactSchoolRows,
+    recordBySchoolKey,
+    pushToast,
+    updateSchoolHeadAccountStatus,
+    issueSchoolHeadAccountActionVerificationCode,
+    issueSchoolHeadSetupLink,
+    issueSchoolHeadPasswordResetLink,
+    upsertSchoolHeadAccountProfile,
+    removeSchoolHeadAccount,
+    onOpenSchoolRecord,
+    formatDateTime,
+  });
 
   const toggleActionsMenu = useCallback(() => {
     setIsSchoolActionsMenuOpen((current) => !current);
@@ -528,157 +240,33 @@ export function useMonitorSchoolsSection({
     setIsSchoolActionsMenuOpen(false);
   }, []);
 
-  const filteredSchoolHeadAccountRows = useMemo(() => {
-    const query = schoolHeadAccountsQuery.trim().toLowerCase();
-    const statusFilter = schoolHeadAccountsStatusFilter;
+  const openCreateRecordForm = useCallback(() => {
+    closeActionsMenu();
+    recordFormApi.openCreateRecordForm();
+  }, [closeActionsMenu, recordFormApi]);
 
-    const rows = compactSchoolRows.filter(({ summary, record }) => {
-      const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
-      const account = resolvedRecord?.schoolHeadAccount ?? null;
-      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-      const needsSetup = account
-        ? normalizedAccountStatus === "pending_setup" || !account.emailVerifiedAt
-        : true;
+  const toggleSchoolHeadAccountsPanel = useCallback(() => {
+    closeActionsMenu();
+    schoolHeadAccountsApi.toggleSchoolHeadAccountsPanel();
+  }, [closeActionsMenu, schoolHeadAccountsApi]);
 
-      if (statusFilter !== "all") {
-        if (statusFilter === "needs_setup") {
-          if (!needsSetup) return false;
-        } else if (normalizedAccountStatus !== statusFilter) {
-          return false;
-        }
-      }
+  const openBulkImportPicker = useCallback(() => {
+    closeActionsMenu();
+    bulkImportApi.openBulkImportPicker();
+  }, [bulkImportApi, closeActionsMenu]);
 
-      if (schoolHeadAccountsOnlyFlagged && !(account?.flagged ?? false)) {
-        return false;
-      }
+  const toggleArchivedRecords = useCallback(async () => {
+    closeActionsMenu();
+    await archivedApi.toggleArchivedRecords();
+  }, [archivedApi, closeActionsMenu]);
 
-      if (schoolHeadAccountsOnlyDeleteFlagged && !(account?.deleteRecordFlagged ?? false)) {
-        return false;
-      }
-
-      if (query.length === 0) {
-        return true;
-      }
-
-      const haystack = [summary.schoolCode, summary.schoolName, account?.name ?? "", account?.email ?? ""]
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(query);
-    });
-
-    const priorityFor = ({ summary, record }: MonitorSchoolRecordsListRow) => {
-      const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
-      const account = resolvedRecord?.schoolHeadAccount ?? null;
-      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-
-      if (account?.deleteRecordFlagged) return 0;
-      if (!account) return 1;
-      if (normalizedAccountStatus === "pending_setup" || !account.emailVerifiedAt) return 2;
-      if (account.flagged) return 3;
-      if (normalizedAccountStatus === "active") return 4;
-      if (normalizedAccountStatus === "suspended") return 5;
-      if (normalizedAccountStatus === "locked") return 6;
-      if (normalizedAccountStatus === "archived") return 7;
-      return 99;
-    };
-
-    rows.sort((a, b) => {
-      const priorityDiff = priorityFor(a) - priorityFor(b);
-      if (priorityDiff !== 0) return priorityDiff;
-      return a.summary.schoolName.localeCompare(b.summary.schoolName);
-    });
-
-    return rows;
-  }, [
-    compactSchoolRows,
-    recordBySchoolKey,
-    schoolHeadAccountsOnlyDeleteFlagged,
-    schoolHeadAccountsOnlyFlagged,
-    schoolHeadAccountsQuery,
-    schoolHeadAccountsStatusFilter,
-  ]);
-
-  const schoolHeadAccountRows = useMemo<MonitorSchoolHeadAccountRow[]>(
-    () =>
-      filteredSchoolHeadAccountRows.map(({ summary, record }) => ({
-        schoolKey: summary.schoolKey,
-        schoolCode: summary.schoolCode,
-        schoolName: summary.schoolName,
-        record: record ?? recordBySchoolKey.get(summary.schoolKey) ?? null,
-      })),
-    [filteredSchoolHeadAccountRows, recordBySchoolKey],
+  const schoolMessagesProps = useMemo<MonitorSchoolMessagesProps>(
+    () => ({
+      ...bulkImportApi.schoolMessagesProps,
+      deleteError: archivedApi.deleteError,
+    }),
+    [archivedApi.deleteError, bulkImportApi.schoolMessagesProps],
   );
-
-  const schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null = showSchoolHeadAccountsPanel
-    ? {
-        isOpen: showSchoolHeadAccountsPanel,
-        isSaving,
-        isMobileViewport,
-        rows: schoolHeadAccountRows,
-        totalCount: compactSchoolRows.length,
-        query: schoolHeadAccountsQuery,
-        statusFilter: schoolHeadAccountsStatusFilter,
-        onlyFlagged: schoolHeadAccountsOnlyFlagged,
-        onlyDeleteFlagged: schoolHeadAccountsOnlyDeleteFlagged,
-        onQueryChange: setSchoolHeadAccountsQuery,
-        onStatusFilterChange: setSchoolHeadAccountsStatusFilter,
-        onOnlyFlaggedChange: setSchoolHeadAccountsOnlyFlagged,
-        onOnlyDeleteFlaggedChange: setSchoolHeadAccountsOnlyDeleteFlagged,
-        onClearFilters: () => {
-          setSchoolHeadAccountsQuery("");
-          setSchoolHeadAccountsStatusFilter("all");
-          setSchoolHeadAccountsOnlyFlagged(false);
-          setSchoolHeadAccountsOnlyDeleteFlagged(false);
-        },
-        onClose: handleCloseSchoolHeadAccountsPanel,
-        onOpenSchoolRecord,
-        formatDateTime: (value: string | null) => (value ? formatDateTime(value) : "-"),
-        actions: schoolHeadAccountActions,
-      }
-    : null;
-
-  const schoolMessagesProps: MonitorSchoolMessagesProps = {
-    deleteError,
-    bulkImportError,
-    bulkImportSummary,
-  };
-
-  const handleRecordFormFieldChange = useCallback((field: MonitorSchoolRecordFormField, value: string) => {
-    let normalizedValue = value;
-
-    if (field === "schoolId") {
-      normalizedValue = value.replace(/\D+/g, "").slice(0, 6);
-    }
-
-    if (field === "type") {
-      normalizedValue = value === "private" ? "private" : "public";
-    }
-
-    setRecordForm((current) => ({ ...current, [field]: normalizedValue }));
-    setRecordFormErrors((current) => ({ ...current, [field]: undefined }));
-  }, []);
-
-  const handleCreateSchoolHeadAccountChange = useCallback((checked: boolean) => {
-    setRecordForm((current) => ({
-      ...current,
-      createSchoolHeadAccount: checked,
-    }));
-  }, []);
-
-  const schoolRecordFormProps: MonitorSchoolRecordFormProps = {
-    show: showRecordForm,
-    editingRecordId,
-    isSaving,
-    recordForm,
-    recordFormErrors,
-    recordFormError,
-    recordFormMessage,
-    onClose: closeRecordForm,
-    onSubmit: handleRecordSubmit,
-    onFieldChange: handleRecordFormFieldChange,
-    onCreateSchoolHeadAccountChange: handleCreateSchoolHeadAccountChange,
-  };
 
   const schoolRecordsListProps: MonitorSchoolRecordsListProps = {
     showLoadingSkeleton: isLoading && recordsLength === 0,
@@ -709,29 +297,19 @@ export function useMonitorSchoolsSection({
     urgencyRowTone,
   };
 
-  const archivedSchoolsProps: MonitorArchivedSchoolsProps = {
-    show: showArchivedRecords,
-    archivedRecords,
-    isLoading: isArchivedRecordsLoading,
-    isSaving,
-    onRefresh: loadArchivedRecords,
-    onRestore: handleRestoreArchivedRecord,
-    formatDateTime,
-  };
-
   return {
-    bulkImportInputRef,
+    bulkImportInputRef: bulkImportApi.bulkImportInputRef,
     schoolActionsMenuRef,
-    showSchoolHeadAccountsPanel,
+    showSchoolHeadAccountsPanel: schoolHeadAccountsApi.showSchoolHeadAccountsPanel,
     isSchoolActionsMenuOpen,
-    isBulkImporting,
-    showArchivedRecords,
-    schoolHeadAccountsPanelProps,
+    isBulkImporting: bulkImportApi.isBulkImporting,
+    showArchivedRecords: archivedApi.showArchivedRecords,
+    schoolHeadAccountsPanelProps: schoolHeadAccountsApi.schoolHeadAccountsPanelProps,
     schoolMessagesProps,
-    schoolRecordFormProps,
+    schoolRecordFormProps: recordFormApi.schoolRecordFormProps,
     schoolRecordsListProps,
-    archivedSchoolsProps,
-    handleBulkImportFileChange,
+    archivedSchoolsProps: archivedApi.archivedSchoolsProps,
+    handleBulkImportFileChange: bulkImportApi.handleBulkImportFileChange,
     openCreateRecordForm,
     toggleSchoolHeadAccountsPanel,
     toggleActionsMenu,
