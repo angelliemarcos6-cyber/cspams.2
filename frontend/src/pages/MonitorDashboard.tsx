@@ -47,10 +47,17 @@ import {
   type MonitorSchoolHeadAccountRow,
   type SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import type { MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 import { MonitorLearnerRecordsSection } from "@/pages/monitor/MonitorLearnerRecordsSection";
 import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
+import type { MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
+import type {
+  MonitorSchoolRecordFormField as MonitorSchoolRecordFormComponentField,
+  MonitorSchoolRecordFormProps,
+} from "@/pages/monitor/MonitorSchoolRecordForm";
+import type { MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import type {
   IndicatorMatrixRow,
@@ -4483,510 +4490,71 @@ export function MonitorDashboard() {
         actions: schoolHeadAccountActions,
       }
     : null;
-  const schoolMessages = {
+  const schoolMessages: MonitorSchoolMessagesProps = {
     deleteError,
     bulkImportError,
     bulkImportSummary,
   };
-  const schoolRecordFormContent = showRecordForm ? (
-    <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">{editingRecordId ? "Edit School Record" : "Add School Record"}</h3>
-          <p className="mt-0.5 text-xs text-slate-500">School Code must be 6 digits. School name, level, type, and address are required. Students, teachers, and status are managed by School Head.</p>
-        </div>
-        <button
-          type="button"
-          onClick={closeRecordForm}
-          className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-        >
-          <X className="h-3.5 w-3.5" />
-          Close
-        </button>
-      </div>
-      <form className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleRecordSubmit}>
-        <div>
-          <label htmlFor="monitor-school-id" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            School Code
-          </label>
-          <input
-            id="monitor-school-id"
-            type="text"
-            value={recordForm.schoolId}
-            onChange={(event) => {
-              const normalizedSchoolId = event.target.value.replace(/\D+/g, "").slice(0, 6);
-              setRecordForm((current) => ({ ...current, schoolId: normalizedSchoolId }));
-              setRecordFormErrors((current) => ({ ...current, schoolId: undefined }));
-            }}
-            placeholder="e.g. 103811"
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-              recordFormErrors.schoolId ? "border-primary-300" : "border-slate-200"
-            }`}
-          />
-          {recordFormErrors.schoolId && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolId}</p>}
-        </div>
-        <div>
-          <label htmlFor="monitor-school-name" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            School Name
-          </label>
-          <input
-            id="monitor-school-name"
-            type="text"
-            value={recordForm.schoolName}
-            onChange={(event) => {
-              setRecordForm((current) => ({ ...current, schoolName: event.target.value }));
-              setRecordFormErrors((current) => ({ ...current, schoolName: undefined }));
-            }}
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-              recordFormErrors.schoolName ? "border-primary-300" : "border-slate-200"
-            }`}
-          />
-          {recordFormErrors.schoolName && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolName}</p>}
-        </div>
-        <div>
-          <label htmlFor="monitor-level" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Level
-          </label>
-          <input
-            id="monitor-level"
-            type="text"
-            value={recordForm.level}
-            onChange={(event) => {
-              setRecordForm((current) => ({ ...current, level: event.target.value }));
-              setRecordFormErrors((current) => ({ ...current, level: undefined }));
-            }}
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-              recordFormErrors.level ? "border-primary-300" : "border-slate-200"
-            }`}
-          />
-          {recordFormErrors.level && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.level}</p>}
-        </div>
-        <div>
-          <label htmlFor="monitor-type" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Type
-          </label>
-          <select
-            id="monitor-type"
-            value={recordForm.type}
-            onChange={(event) => {
-              setRecordForm((current) => ({ ...current, type: event.target.value as "public" | "private" }));
-              setRecordFormErrors((current) => ({ ...current, type: undefined }));
-            }}
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-              recordFormErrors.type ? "border-primary-300" : "border-slate-200"
-            }`}
-          >
-            <option value="public">Public</option>
-            <option value="private">Private</option>
-          </select>
-          {recordFormErrors.type && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.type}</p>}
-        </div>
-        <div>
-          <label htmlFor="monitor-district" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            District
-          </label>
-          <input
-            id="monitor-district"
-            type="text"
-            value={recordForm.district}
-            onChange={(event) => {
-              setRecordForm((current) => ({ ...current, district: event.target.value }));
-              setRecordFormErrors((current) => ({ ...current, district: undefined }));
-            }}
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-              recordFormErrors.district ? "border-primary-300" : "border-slate-200"
-            }`}
-          />
-          {recordFormErrors.district && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.district}</p>}
-        </div>
-        <div>
-          <label htmlFor="monitor-region" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Region
-          </label>
-          <input
-            id="monitor-region"
-            type="text"
-            value={recordForm.region}
-            onChange={(event) => {
-              setRecordForm((current) => ({ ...current, region: event.target.value }));
-              setRecordFormErrors((current) => ({ ...current, region: undefined }));
-            }}
-            placeholder="Leave blank to auto-derive from address"
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-              recordFormErrors.region ? "border-primary-300" : "border-slate-200"
-            }`}
-          />
-          {recordFormErrors.region && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.region}</p>}
-        </div>
-        <div className="md:col-span-2 xl:col-span-2">
-          <label htmlFor="monitor-address" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Address
-          </label>
-          <input
-            id="monitor-address"
-            type="text"
-            value={recordForm.address}
-            onChange={(event) => {
-              setRecordForm((current) => ({ ...current, address: event.target.value }));
-              setRecordFormErrors((current) => ({ ...current, address: undefined }));
-            }}
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-              recordFormErrors.address ? "border-primary-300" : "border-slate-200"
-            }`}
-          />
-          {recordFormErrors.address && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.address}</p>}
-        </div>
-        {!editingRecordId && (
-          <div className="md:col-span-2 xl:col-span-4 rounded-sm border border-slate-200 bg-slate-50 p-3">
-            <label className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-              <input
-                type="checkbox"
-                checked={recordForm.createSchoolHeadAccount}
-                onChange={(event) =>
-                  setRecordForm((current) => ({
-                    ...current,
-                    createSchoolHeadAccount: event.target.checked,
-                  }))
-                }
-                className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary-100"
-              />
-              Create School Head Account
-            </label>
-            {recordForm.createSchoolHeadAccount && (
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div>
-                  <label htmlFor="monitor-account-name" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Account Name
-                  </label>
-                  <input
-                    id="monitor-account-name"
-                    type="text"
-                    value={recordForm.schoolHeadAccountName}
-                    onChange={(event) => {
-                      setRecordForm((current) => ({ ...current, schoolHeadAccountName: event.target.value }));
-                      setRecordFormErrors((current) => ({ ...current, schoolHeadAccountName: undefined }));
-                    }}
-                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-                      recordFormErrors.schoolHeadAccountName ? "border-primary-300" : "border-slate-200"
-                    }`}
-                  />
-                  {recordFormErrors.schoolHeadAccountName && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountName}</p>}
-                </div>
-                <div>
-                  <label htmlFor="monitor-account-email" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Account Email
-                  </label>
-                  <input
-                    id="monitor-account-email"
-                    type="email"
-                    value={recordForm.schoolHeadAccountEmail}
-                    onChange={(event) => {
-                      setRecordForm((current) => ({ ...current, schoolHeadAccountEmail: event.target.value }));
-                      setRecordFormErrors((current) => ({ ...current, schoolHeadAccountEmail: undefined }));
-                    }}
-                    className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
-                      recordFormErrors.schoolHeadAccountEmail ? "border-primary-300" : "border-slate-200"
-                    }`}
-                  />
-                  {recordFormErrors.schoolHeadAccountEmail && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolHeadAccountEmail}</p>}
-                </div>
-                <p className="md:col-span-2 rounded-sm border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-semibold text-primary-800">
-                  A one-time setup email/link (24h expiry) will be sent after save. The account becomes active + verified once the School Head completes setup.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="flex items-end">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <Save className="h-4 w-4" />
-            {isSaving ? "Saving..." : editingRecordId ? "Save Changes" : "Create Record"}
-          </button>
-        </div>
-        {(recordFormError || recordFormMessage) && (
-          <div className="md:col-span-2 xl:col-span-4">
-            {recordFormError && (
-              <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                {recordFormError}
-              </p>
-            )}
-            {recordFormMessage && (
-              <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                {recordFormMessage}
-              </p>
-            )}
-          </div>
-        )}
-      </form>
-    </section>
-  ) : null;
-  const schoolRecordsListContent =
-    isLoading && records.length === 0 ? (
-      <div className="space-y-3 px-5 py-5">
-        <div className="skeleton-line h-4 w-48" />
-        <div className="grid gap-2">
-          <div className="skeleton-line h-12 w-full" />
-          <div className="skeleton-line h-12 w-full" />
-          <div className="skeleton-line h-12 w-full" />
-          <div className="skeleton-line h-12 w-full" />
-        </div>
-        <p className="text-xs text-slate-500">Syncing data from the backend...</p>
-      </div>
-    ) : compactSchoolRows.length === 0 ? (
-      <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
-        <AlertCircle className="h-9 w-9 text-slate-400" />
-        <p className="text-sm font-semibold">No records found</p>
-        <p className="text-xs text-slate-400">Current filters may be hiding school records.</p>
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={resetQueueFilters}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700"
-          >
-            Reset queue filters
-          </button>
-          <button
-            type="button"
-            onClick={clearAllFilters}
-            className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700"
-          >
-            Clear all
-          </button>
-        </div>
-      </div>
-    ) : (
-      <>
-        <div className="space-y-2 px-4 py-4">
-          {paginatedCompactSchoolRows.map(({ summary, record }) => {
-            const schoolKey = summary.schoolKey;
-            const rowStatus = summary.schoolStatus ?? "pending";
-            const rowTone = isUrgentRequirement(summary) ? urgencyRowTone(summary) : "bg-white";
-            const updatedLabel = summary.lastActivityAt ?? record?.lastUpdated ?? null;
-            const statusPillPressed = statusFilter === rowStatus;
-            const queuePill = (() => {
-              if (!summary.hasComplianceRecord && !summary.hasAnySubmitted) {
-                const pressed = schoolQuickPreset === "no_submission";
-                return {
-                  label: "No submission",
-                  title: "Click to filter preset: No submission",
-                  pressed,
-                  onClick: () => setSchoolQuickPreset((current) => (current === "no_submission" ? "all" : "no_submission")),
-                  className: "border border-slate-300 bg-slate-100 text-slate-700",
-                };
-              }
-
-              if (summary.indicatorStatus === "returned") {
-                const pressed = requirementFilter === "returned";
-                return {
-                  label: "Returned",
-                  title: "Click to filter queue: Returned",
-                  pressed,
-                  onClick: () => setRequirementFilter((current) => (current === "returned" ? "all" : "returned")),
-                  className: "border border-amber-200 bg-amber-50 text-amber-700",
-                };
-              }
-
-              if (summary.awaitingReviewCount > 0) {
-                const pressed = requirementFilter === "waiting";
-                return {
-                  label: `Review ${summary.awaitingReviewCount}`,
-                  title: "Click to filter queue: For review",
-                  pressed,
-                  onClick: () => setRequirementFilter((current) => (current === "waiting" ? "all" : "waiting")),
-                  className: "border border-primary-200 bg-primary-50 text-primary-700",
-                };
-              }
-
-              if (summary.missingCount > 0) {
-                const pressed = requirementFilter === "missing";
-                return {
-                  label: `Missing ${summary.missingCount}`,
-                  title: "Click to filter queue: Missing",
-                  pressed,
-                  onClick: () => setRequirementFilter((current) => (current === "missing" ? "all" : "missing")),
-                  className: "border border-rose-200 bg-rose-50 text-rose-700",
-                };
-              }
-
-              return {
-                label: "OK",
-                title: "No missing/returned/for-review items.",
-                pressed: false,
-                onClick: null as (() => void) | null,
-                className: "border border-emerald-200 bg-emerald-50 text-emerald-700",
-              };
-            })();
-
-            return (
-              <article key={schoolKey} className={`relative overflow-hidden rounded-sm border border-slate-200 p-3 ${rowTone}`}>
-                {(summary.indicatorStatus === "returned" || summary.missingCount > 0) && (
-                  <span
-                    aria-hidden
-                    className={`absolute inset-y-0 left-0 w-1 ${
-                      summary.indicatorStatus === "returned" ? "bg-amber-300" : "bg-rose-300"
-                    }`}
-                  />
-                )}
-                <div className="relative z-10 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">{summary.schoolName}</p>
-                    <p className="truncate text-[11px] text-slate-500">
-                      {summary.schoolCode} | {summary.region}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <button
-                        type="button"
-                        title={statusPillPressed ? "Click to clear status filter" : "Click to filter by this school status"}
-                        aria-pressed={statusPillPressed}
-                        onClick={() => setStatusFilter((current) => (current === rowStatus ? "all" : rowStatus))}
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-95 ${
-                          statusPillPressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
-                        } ${statusTone(rowStatus)}`}
-                      >
-                        {statusLabel(rowStatus)}
-                      </button>
-                      {queuePill.label !== "OK" &&
-                        (queuePill.onClick ? (
-                          <button
-                            type="button"
-                            title={`${queuePill.title} (Shift+click to open in Reviews)`}
-                            aria-pressed={queuePill.pressed}
-                            onClick={(event) => {
-                              if (event.shiftKey) {
-                                handleReviewSchool(summary);
-                                return;
-                              }
-                              queuePill.onClick?.();
-                            }}
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-95 ${
-                              queuePill.pressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
-                            } ${queuePill.className}`}
-                          >
-                            {queuePill.label}
-                          </button>
-                        ) : (
-                          <span
-                            title={queuePill.title}
-                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${queuePill.className}`}
-                          >
-                            {queuePill.label}
-                          </span>
-                        ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 sm:shrink-0 sm:self-start">
-                    <span
-                      title="Last activity time"
-                      className="inline-flex whitespace-nowrap rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 tabular-nums"
-                    >
-                      {updatedLabel ? formatDateTime(updatedLabel) : "N/A"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenSchool(summary)}
-                      className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      <Building2 className="h-3.5 w-3.5" />
-                      Open
-                    </button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="text-xs text-slate-600">
-            Page <span className="font-semibold text-slate-900">{safeRecordsPage}</span> of{" "}
-            <span className="font-semibold text-slate-900">{totalRecordPages}</span>
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setRecordsPage((current) => Math.max(1, current - 1))}
-              disabled={safeRecordsPage <= 1}
-              className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => setRecordsPage((current) => Math.min(totalRecordPages, current + 1))}
-              disabled={safeRecordsPage >= totalRecordPages}
-              className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      </>
-    );
-  const archivedSchoolsContent = showArchivedRecords ? (
-    <section className="border-t border-slate-200 bg-slate-50/60 px-5 py-4">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">Archived Schools</h3>
-        <button
-          type="button"
-          onClick={() => void loadArchivedRecords()}
-          disabled={isArchivedRecordsLoading}
-          className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          {isArchivedRecordsLoading ? "Loading..." : "Refresh"}
-        </button>
-      </div>
-
-      {isArchivedRecordsLoading ? (
-        <p className="mt-2 text-xs text-slate-600">Loading archived records...</p>
-      ) : archivedRecords.length === 0 ? (
-        <p className="mt-2 text-xs text-slate-600">No archived school records.</p>
-      ) : (
-        <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200 bg-white">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                <th className="px-3 py-2 text-left">School Code</th>
-                <th className="px-3 py-2 text-left">School Name</th>
-                <th className="px-3 py-2 text-left">Last Updated</th>
-                <th className="px-3 py-2 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {archivedRecords.map((record) => (
-                <tr key={`archived-${record.id}`}>
-                  <td className="px-3 py-2 text-xs text-slate-700">{record.schoolId ?? record.schoolCode ?? "N/A"}</td>
-                  <td className="px-3 py-2 text-xs text-slate-900">{record.schoolName}</td>
-                  <td className="px-3 py-2 text-xs text-slate-600">{formatDateTime(record.lastUpdated)}</td>
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => void handleRestoreArchivedRecord(record)}
-                      disabled={isSaving}
-                      className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Restore
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  ) : null;
-  const schoolRecordsBody = (
-    <>
-      {schoolRecordFormContent}
-      {schoolRecordsListContent}
-      {archivedSchoolsContent}
-    </>
-  );
+  const handleRecordFormFieldChange = (field: MonitorSchoolRecordFormComponentField, value: string) => {
+    const normalizedValue = field === "schoolId" ? value.replace(/\D+/g, "").slice(0, 6) : value;
+    setRecordForm((current) => ({ ...current, [field]: normalizedValue }));
+    setRecordFormErrors((current) => ({ ...current, [field]: undefined }));
+  };
+  const schoolRecordFormProps: MonitorSchoolRecordFormProps = {
+    show: showRecordForm,
+    editingRecordId,
+    isSaving,
+    recordForm,
+    recordFormErrors,
+    recordFormError,
+    recordFormMessage,
+    onClose: closeRecordForm,
+    onSubmit: handleRecordSubmit,
+    onFieldChange: handleRecordFormFieldChange,
+    onCreateSchoolHeadAccountChange: (checked) => {
+      setRecordForm((current) => ({
+        ...current,
+        createSchoolHeadAccount: checked,
+      }));
+    },
+  };
+  const schoolRecordsListProps: MonitorSchoolRecordsListProps = {
+    showLoadingSkeleton: isLoading && records.length === 0,
+    compactSchoolRowsCount: compactSchoolRows.length,
+    paginatedRows: paginatedCompactSchoolRows,
+    statusFilter,
+    requirementFilter,
+    schoolQuickPreset,
+    safeRecordsPage,
+    totalRecordPages,
+    canGoPrevious: safeRecordsPage > 1,
+    canGoNext: safeRecordsPage < totalRecordPages,
+    onResetQueueFilters: resetQueueFilters,
+    onClearAllFilters: clearAllFilters,
+    onToggleStatusFilter: (rowStatus) => setStatusFilter((current) => (current === rowStatus ? "all" : rowStatus)),
+    onToggleRequirementFilter: (filter) =>
+      setRequirementFilter((current) => (current === filter ? "all" : filter)),
+    onToggleSchoolQuickPreset: (preset) =>
+      setSchoolQuickPreset((current) => (current === preset ? "all" : preset)),
+    onOpenSchool: handleOpenSchool,
+    onReviewSchool: handleReviewSchool,
+    onPreviousPage: () => setRecordsPage((current) => Math.max(1, current - 1)),
+    onNextPage: () => setRecordsPage((current) => Math.min(totalRecordPages, current + 1)),
+    formatDateTime,
+    statusTone,
+    statusLabel,
+    isUrgentRequirement,
+    urgencyRowTone,
+  };
+  const archivedSchoolsProps: MonitorArchivedSchoolsProps = {
+    show: showArchivedRecords,
+    archivedRecords,
+    isLoading: isArchivedRecordsLoading,
+    isSaving,
+    onRefresh: loadArchivedRecords,
+    onRestore: handleRestoreArchivedRecord,
+    formatDateTime,
+  };
   const schoolDrawerViewState = {
     isOpen: Boolean(schoolDrawerKey),
     showNavigatorManual,
@@ -5677,7 +5245,9 @@ export function MonitorDashboard() {
             }}
             schoolHeadAccountsPanelProps={schoolHeadAccountsPanelProps}
             messages={schoolMessages}
-            schoolRecordsBody={schoolRecordsBody}
+            schoolRecordFormProps={schoolRecordFormProps}
+            schoolRecordsListProps={schoolRecordsListProps}
+            archivedSchoolsProps={archivedSchoolsProps}
           />
         <MonitorLearnerRecordsSection
           sectionFocusClass={sectionFocusClass}

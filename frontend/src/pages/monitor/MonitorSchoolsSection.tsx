@@ -5,16 +5,18 @@ import {
   Database,
   GraduationCap,
   Plus,
-  RefreshCw,
   ShieldCheck,
   Trash2,
   Users,
 } from "lucide-react";
+import { MonitorArchivedSchools, type MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
 import {
   MonitorSchoolHeadAccountsPanel,
   type MonitorSchoolHeadAccountsPanelProps,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
-import type { SchoolBulkImportResult } from "@/types";
+import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
+import { MonitorSchoolRecordForm, type MonitorSchoolRecordFormProps } from "@/pages/monitor/MonitorSchoolRecordForm";
+import { MonitorSchoolRecordsList, type MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
 
 interface MonitorRadarTotals {
   students: number;
@@ -52,12 +54,10 @@ interface MonitorSchoolsSectionProps {
   showSchoolLearnerRecords: boolean;
   onShowMfaResetApprovals: () => void;
   schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null;
-  messages: {
-    deleteError: string;
-    bulkImportError: string;
-    bulkImportSummary: SchoolBulkImportResult | null;
-  };
-  schoolRecordsBody: ReactNode;
+  messages: MonitorSchoolMessagesProps;
+  schoolRecordFormProps: MonitorSchoolRecordFormProps;
+  schoolRecordsListProps: MonitorSchoolRecordsListProps;
+  archivedSchoolsProps: MonitorArchivedSchoolsProps;
 }
 
 export function MonitorSchoolsSection({
@@ -89,7 +89,9 @@ export function MonitorSchoolsSection({
   onShowMfaResetApprovals,
   schoolHeadAccountsPanelProps,
   messages,
-  schoolRecordsBody,
+  schoolRecordFormProps,
+  schoolRecordsListProps,
+  archivedSchoolsProps,
 }: MonitorSchoolsSectionProps) {
   return (
     <>
@@ -248,24 +250,10 @@ export function MonitorSchoolsSection({
         </div>
 
         {schoolHeadAccountsPanelProps && <MonitorSchoolHeadAccountsPanel {...schoolHeadAccountsPanelProps} />}
-        {messages.deleteError && (
-          <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-            {messages.deleteError}
-          </div>
-        )}
-        {messages.bulkImportError && (
-          <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-            {messages.bulkImportError}
-          </div>
-        )}
-        {messages.bulkImportSummary && (
-          <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-            Import complete: {messages.bulkImportSummary.created} created, {messages.bulkImportSummary.updated} updated,{" "}
-            {messages.bulkImportSummary.restored} restored, {messages.bulkImportSummary.skipped} skipped,{" "}
-            {messages.bulkImportSummary.failed} failed.
-          </div>
-        )}
-        {schoolRecordsBody}
+        <MonitorSchoolMessages {...messages} />
+        <MonitorSchoolRecordForm {...schoolRecordFormProps} />
+        <MonitorSchoolRecordsList {...schoolRecordsListProps} />
+        <MonitorArchivedSchools {...archivedSchoolsProps} />
       </section>
     </>
   );
