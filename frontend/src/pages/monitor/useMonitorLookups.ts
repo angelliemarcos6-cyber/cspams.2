@@ -90,6 +90,7 @@ interface UseMonitorLookupsArgs {
   showMoreFilters: boolean;
   showAdvancedFilters: boolean;
   setShowSchoolLearnerRecords: Dispatch<SetStateAction<boolean>>;
+  onOpenLearnerRecords: () => void;
 }
 
 export interface UseMonitorLookupsResult {
@@ -121,6 +122,12 @@ export interface UseMonitorLookupsResult {
   studentRecordsLookupTerm: string;
   isStudentLookupSyncing: boolean;
   isTeacherLookupSyncing: boolean;
+  handleSelectAllSchools: () => void;
+  handleSelectSchoolScope: (option: SchoolScopeOption) => void;
+  handleClearStudentLookup: () => void;
+  handleSelectStudentLookup: (option: StudentLookupOption) => void;
+  handleClearTeacherLookup: () => void;
+  handleSelectTeacherLookup: (option: TeacherLookupOption) => void;
 }
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -223,6 +230,7 @@ export function useMonitorLookups({
   showMoreFilters,
   showAdvancedFilters,
   setShowSchoolLearnerRecords,
+  onOpenLearnerRecords,
 }: UseMonitorLookupsArgs): UseMonitorLookupsResult {
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
   const debouncedSchoolScopeQuery = useDebouncedValue(schoolScopeQuery, MONITOR_SEARCH_DEBOUNCE_MS);
@@ -764,6 +772,65 @@ export function useMonitorLookups({
     setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId));
   }, []);
 
+  const handleSelectAllSchools = useCallback(() => {
+    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+    setSelectedStudentLookupId(null);
+    setSelectedTeacherLookupId(null);
+    setSchoolScopeQuery("");
+    setOpenScopeDropdownId(null);
+  }, [setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId]);
+
+  const handleSelectSchoolScope = useCallback(
+    (option: SchoolScopeOption) => {
+      setSelectedSchoolScopeKey(option.key);
+      setSelectedStudentLookupId(null);
+      setSelectedTeacherLookupId(null);
+      setSchoolScopeQuery("");
+      setOpenScopeDropdownId(null);
+    },
+    [setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
+  );
+
+  const handleClearStudentLookup = useCallback(() => {
+    setSelectedStudentLookupId(null);
+    setStudentLookupQuery("");
+    setOpenScopeDropdownId(null);
+  }, [setSelectedStudentLookupId]);
+
+  const handleSelectStudentLookup = useCallback(
+    (option: StudentLookupOption) => {
+      setSelectedStudentLookupId(option.id);
+      if (option.schoolKey !== "unknown") {
+        setSelectedSchoolScopeKey(option.schoolKey);
+      }
+      setStudentLookupQuery(option.fullName);
+      setOpenScopeDropdownId(null);
+      onOpenLearnerRecords();
+    },
+    [onOpenLearnerRecords, setSelectedSchoolScopeKey, setSelectedStudentLookupId],
+  );
+
+  const handleClearTeacherLookup = useCallback(() => {
+    setSelectedTeacherLookupId(null);
+    setSelectedStudentLookupId(null);
+    setTeacherLookupQuery("");
+    setOpenScopeDropdownId(null);
+  }, [setSelectedStudentLookupId, setSelectedTeacherLookupId]);
+
+  const handleSelectTeacherLookup = useCallback(
+    (option: TeacherLookupOption) => {
+      setSelectedTeacherLookupId(option.id);
+      setSelectedStudentLookupId(null);
+      if (option.schoolKey !== "unknown") {
+        setSelectedSchoolScopeKey(option.schoolKey);
+      }
+      setTeacherLookupQuery(option.name);
+      setOpenScopeDropdownId(null);
+      onOpenLearnerRecords();
+    },
+    [onOpenLearnerRecords, setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
+  );
+
   return {
     schoolScopeQuery,
     setSchoolScopeQuery,
@@ -793,5 +860,11 @@ export function useMonitorLookups({
     studentRecordsLookupTerm,
     isStudentLookupSyncing,
     isTeacherLookupSyncing,
+    handleSelectAllSchools,
+    handleSelectSchoolScope,
+    handleClearStudentLookup,
+    handleSelectStudentLookup,
+    handleClearTeacherLookup,
+    handleSelectTeacherLookup,
   };
 }

@@ -67,9 +67,6 @@ import {
 import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
 import {
   useMonitorLookups,
-  type SchoolScopeOption,
-  type StudentLookupOption,
-  type TeacherLookupOption,
 } from "@/pages/monitor/useMonitorLookups";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
 import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
@@ -530,66 +527,6 @@ function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: s
   return "unknown";
 }
 
-function normalizeSchoolCodeLabel(value: string | null | undefined): string {
-  const normalized = value?.trim() ?? "";
-  return normalized.length > 0 ? normalized : "N/A";
-}
-
-function normalizeSchoolNameLabel(value: string | null | undefined): string {
-  const normalized = value?.trim() ?? "";
-  return normalized.length > 0 ? normalized : "Unknown School";
-}
-
-function resolveStudentSchoolKey(student: StudentRecord): string {
-  const fromCodeOrName = normalizeSchoolKey(student.school?.schoolCode ?? null, student.school?.name ?? null);
-  if (fromCodeOrName !== "unknown") {
-    return fromCodeOrName;
-  }
-
-  const schoolId = student.school?.id?.trim() ?? "";
-  if (schoolId.length > 0) {
-    return `id:${schoolId}`;
-  }
-
-  return "unknown";
-}
-
-function toStudentLookupOption(student: StudentRecord): StudentLookupOption {
-  return {
-    id: student.id,
-    lrn: student.lrn,
-    fullName: student.fullName,
-    teacherName: student.teacher?.trim() ?? "",
-    schoolKey: resolveStudentSchoolKey(student),
-    schoolCode: normalizeSchoolCodeLabel(student.school?.schoolCode ?? null),
-    schoolName: normalizeSchoolNameLabel(student.school?.name ?? null),
-  };
-}
-
-function resolveTeacherSchoolKey(teacher: TeacherRecord): string {
-  const fromCodeOrName = normalizeSchoolKey(teacher.school?.schoolCode ?? null, teacher.school?.name ?? null);
-  if (fromCodeOrName !== "unknown") {
-    return fromCodeOrName;
-  }
-
-  const schoolId = teacher.school?.id?.trim() ?? "";
-  if (schoolId.length > 0) {
-    return `id:${schoolId}`;
-  }
-
-  return "unknown";
-}
-
-function toTeacherLookupOption(teacher: TeacherRecord): TeacherLookupOption {
-  return {
-    id: teacher.id,
-    name: teacher.name.trim(),
-    schoolKey: resolveTeacherSchoolKey(teacher),
-    schoolCode: normalizeSchoolCodeLabel(teacher.school?.schoolCode ?? null),
-    schoolName: normalizeSchoolNameLabel(teacher.school?.name ?? null),
-  };
-}
-
 function normalizeSearchTerms(value: string): string[] {
   return value
     .trim()
@@ -840,6 +777,21 @@ export function MonitorDashboard() {
   } | null>(null);
   const [autoAdvanceQueue, setAutoAdvanceQueue] = useState(true);
   const [toasts, setToasts] = useState<DashboardToast[]>([]);
+  const openStudentRecordsFromCard = () => {
+    setShowSchoolLearnerRecords(true);
+    setShowNavigatorManual(false);
+    setActiveTopNavigator("schools");
+
+    if (isMobileViewport) {
+      setIsNavigatorVisible(false);
+    }
+
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        focusAndScrollTo("monitor-school-learners");
+      }, 50);
+    }
+  };
   const {
     schoolScopeQuery,
     setSchoolScopeQuery,
@@ -869,6 +821,12 @@ export function MonitorDashboard() {
     studentRecordsLookupTerm,
     isStudentLookupSyncing,
     isTeacherLookupSyncing,
+    handleSelectAllSchools,
+    handleSelectSchoolScope,
+    handleClearStudentLookup,
+    handleSelectStudentLookup,
+    handleClearTeacherLookup,
+    handleSelectTeacherLookup,
   } = useMonitorLookups({
     authSessionKey,
     records,
@@ -888,6 +846,7 @@ export function MonitorDashboard() {
     showMoreFilters,
     showAdvancedFilters,
     setShowSchoolLearnerRecords,
+    onOpenLearnerRecords: openStudentRecordsFromCard,
   });
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -2790,17 +2749,6 @@ export function MonitorDashboard() {
     return () => window.removeEventListener("keydown", onKeyboardShortcut);
   }, [cycleSchoolFocus, focusGlobalSearch, triggerKeyboardReview]);
 
-  const openStudentRecordsFromCard = () => {
-    setShowSchoolLearnerRecords(true);
-    handleMonitorTopNavigate("schools");
-
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => {
-        focusAndScrollTo("monitor-school-learners");
-      }, 50);
-    }
-  };
-
   const activeScreenMeta = useMemo(() => {
     switch (activeTopNavigator) {
       case "overview":
@@ -2897,65 +2845,6 @@ export function MonitorDashboard() {
     }
     handleReviewSchool(nextReview);
   };
-
-  const handleSelectAllSchools = useCallback(() => {
-    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-    setSelectedStudentLookupId(null);
-    setSelectedTeacherLookupId(null);
-    setSchoolScopeQuery("");
-    setOpenScopeDropdownId(null);
-  }, [setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId]);
-
-  const handleSelectSchoolScope = useCallback(
-    (option: SchoolScopeOption) => {
-      setSelectedSchoolScopeKey(option.key);
-      setSelectedStudentLookupId(null);
-      setSelectedTeacherLookupId(null);
-      setSchoolScopeQuery("");
-      setOpenScopeDropdownId(null);
-    },
-    [setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
-  );
-
-  const handleClearStudentLookup = useCallback(() => {
-    setSelectedStudentLookupId(null);
-    setStudentLookupQuery("");
-    setOpenScopeDropdownId(null);
-  }, [setSelectedStudentLookupId]);
-
-  const handleSelectStudentLookup = useCallback(
-    (option: StudentLookupOption) => {
-      setSelectedStudentLookupId(option.id);
-      if (option.schoolKey !== "unknown") {
-        setSelectedSchoolScopeKey(option.schoolKey);
-      }
-      setStudentLookupQuery(option.fullName);
-      setOpenScopeDropdownId(null);
-      openStudentRecordsFromCard();
-    },
-    [openStudentRecordsFromCard, setSelectedSchoolScopeKey, setSelectedStudentLookupId],
-  );
-
-  const handleClearTeacherLookup = useCallback(() => {
-    setSelectedTeacherLookupId(null);
-    setSelectedStudentLookupId(null);
-    setTeacherLookupQuery("");
-    setOpenScopeDropdownId(null);
-  }, [setSelectedStudentLookupId, setSelectedTeacherLookupId]);
-
-  const handleSelectTeacherLookup = useCallback(
-    (option: TeacherLookupOption) => {
-      setSelectedTeacherLookupId(option.id);
-      setSelectedStudentLookupId(null);
-      if (option.schoolKey !== "unknown") {
-        setSelectedSchoolScopeKey(option.schoolKey);
-      }
-      setTeacherLookupQuery(option.name);
-      setOpenScopeDropdownId(null);
-      openStudentRecordsFromCard();
-    },
-    [openStudentRecordsFromCard, setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
-  );
 
   const quickFiltersPanelContent = (
     <>
