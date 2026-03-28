@@ -65,6 +65,8 @@ import {
 } from "@/pages/monitor/monitorFilters";
 import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
 import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
+import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
+import { useSchoolDrawer, type SchoolDrawerTab } from "@/pages/monitor/useSchoolDrawer";
 import type {
   IndicatorSubmission,
   SchoolBulkImportResult,
@@ -85,7 +87,6 @@ import {
 type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "status" | "lastUpdated";
 type SortDirection = "asc" | "desc";
 type WorkflowStatus = Exclude<RequirementFilter, "all">;
-type SchoolDrawerTab = "snapshot" | "submissions" | "history";
 type ScopeDropdownId =
   | "schools_filters"
   | "schools_radar"
@@ -350,7 +351,6 @@ const ADVANCED_ANALYTICS_HIDE_MS = 240;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 const MOBILE_BREAKPOINT = 768;
-const SCHOOL_DETAIL_COUNTS_CACHE_TTL_MS = 45_000;
 const SCHOOL_YEAR_START_MONTH = 6;
 
 const SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL = "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES";
@@ -1166,6 +1166,7 @@ export function MonitorDashboard() {
     setSchoolQuickPreset,
     resetFilters: resetMonitorFilters,
   } = useMonitorFilters();
+  const { studentLookupTick, teacherLookupTick, radarTotalsTick, latestRealtimeUpdate } = useMonitorUiRefresh();
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
   const debouncedSchoolScopeQuery = useDebouncedValue(schoolScopeQuery, MONITOR_SEARCH_DEBOUNCE_MS);
   const [openScopeDropdownId, setOpenScopeDropdownId] = useState<ScopeDropdownId | null>(null);
@@ -1177,8 +1178,6 @@ export function MonitorDashboard() {
   const [dbTeacherLookupOptions, setDbTeacherLookupOptions] = useState<TeacherLookupOption[]>([]);
   const [isStudentLookupSyncing, setIsStudentLookupSyncing] = useState(false);
   const [isTeacherLookupSyncing, setIsTeacherLookupSyncing] = useState(false);
-  const [studentLookupSyncTick, setStudentLookupSyncTick] = useState(0);
-  const [teacherLookupSyncTick, setTeacherLookupSyncTick] = useState(0);
   const [monitorRadarTotals, setMonitorRadarTotals] = useState<MonitorRadarTotals>({
     students: 0,
     teachers: 0,
@@ -1214,15 +1213,6 @@ export function MonitorDashboard() {
     action: "validated" | "returned";
   } | null>(null);
   const [autoAdvanceQueue, setAutoAdvanceQueue] = useState(true);
-  const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
-  const [activeSchoolDrawerTab, setActiveSchoolDrawerTab] = useState<SchoolDrawerTab>("snapshot");
-  const [expandedDrawerIndicatorRows, setExpandedDrawerIndicatorRows] = useState<Record<string, boolean>>({});
-  const [highlightedDrawerIndicatorKey, setHighlightedDrawerIndicatorKey] = useState<string | null>(null);
-  const [accurateSyncedCountsBySchoolKey, setAccurateSyncedCountsBySchoolKey] = useState<
-    Record<string, { students: number; teachers: number }>
-  >({});
-  const [syncedCountsLoadingSchoolKey, setSyncedCountsLoadingSchoolKey] = useState<string | null>(null);
-  const [syncedCountsError, setSyncedCountsError] = useState("");
   const [toasts, setToasts] = useState<DashboardToast[]>([]);
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -1259,22 +1249,12 @@ export function MonitorDashboard() {
     moved: boolean;
   } | null>(null);
   const [isSchoolsTableDragging, setIsSchoolsTableDragging] = useState(false);
-  const [schoolDrawerSubmissions, setSchoolDrawerSubmissions] = useState<IndicatorSubmission[]>([]);
-  const [isSchoolDrawerSubmissionsLoading, setIsSchoolDrawerSubmissionsLoading] = useState(false);
-  const [schoolDrawerSubmissionsError, setSchoolDrawerSubmissionsError] = useState("");
-  const schoolDetailCountsCacheRef = useRef<Map<string, { students: number; teachers: number; fetchedAt: number }>>(
-    new Map(),
-  );
-  const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
   const radarTotalsAbortRef = useRef<AbortController | null>(null);
   const studentLookupAbortRef = useRef<AbortController | null>(null);
   const teacherLookupAbortRef = useRef<AbortController | null>(null);
   const didAutoExpandMoreFiltersRef = useRef(false);
 
   useEffect(() => {
-    schoolDetailCountsCacheRef.current.clear();
-    schoolDetailCountsAbortRef.current?.abort();
-    schoolDetailCountsAbortRef.current = null;
     radarTotalsAbortRef.current?.abort();
     radarTotalsAbortRef.current = null;
     studentLookupAbortRef.current?.abort();
@@ -1359,24 +1339,6 @@ export function MonitorDashboard() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [isSchoolActionsMenuOpen]);
-
-  useEffect(() => {
-    const handleRealtimeLookupRefresh = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string }>).detail;
-      if (!payload?.entity) return;
-      if (payload.entity === "students" || payload.entity === "dashboard" || payload.entity === "school_records") {
-        setStudentLookupSyncTick((current) => current + 1);
-      }
-      if (payload.entity === "teachers" || payload.entity === "dashboard" || payload.entity === "school_records") {
-        setTeacherLookupSyncTick((current) => current + 1);
-      }
-    };
-
-    window.addEventListener("cspams:update", handleRealtimeLookupRefresh);
-    return () => {
-      window.removeEventListener("cspams:update", handleRealtimeLookupRefresh);
-    };
-  }, []);
 
   useEffect(() => {
     if (showAdvancedAnalytics) {
@@ -2086,7 +2048,7 @@ export function MonitorDashboard() {
     scopedSchoolCodes,
     selectedTeacherLookup?.name,
     selectedTeacherLookup?.schoolCode,
-    studentLookupSyncTick,
+    studentLookupTick,
     shouldSyncStudentLookup,
   ]);
 
@@ -2219,7 +2181,7 @@ export function MonitorDashboard() {
         teacherLookupAbortRef.current = null;
       }
     };
-  }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes, teacherLookupSyncTick, shouldSyncTeacherLookup]);
+  }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes, teacherLookupTick, shouldSyncTeacherLookup]);
 
   const filteredTeacherLookupOptions = useMemo(() => {
     const query = teacherLookupQuery.trim().toLowerCase();
@@ -2298,25 +2260,12 @@ export function MonitorDashboard() {
 
     void hydrateRadarTotals();
 
-    const handleRealtimeTotalsRefresh = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string }>).detail;
-      if (!payload?.entity) return;
-      if (payload.entity !== "students" && payload.entity !== "teachers" && payload.entity !== "dashboard") {
-        return;
-      }
-
-      void hydrateRadarTotals();
-    };
-
-    window.addEventListener("cspams:update", handleRealtimeTotalsRefresh);
-
     return () => {
       active = false;
       radarTotalsAbortRef.current?.abort();
       radarTotalsAbortRef.current = null;
-      window.removeEventListener("cspams:update", handleRealtimeTotalsRefresh);
     };
-  }, [queryStudents, listTeachers, scopedSchoolCodes, shouldSyncRadarTotals]);
+  }, [listTeachers, queryStudents, radarTotalsTick, scopedSchoolCodes, shouldSyncRadarTotals]);
 
   const selectedTeacherSchoolKeys = useMemo(() => {
     if (!selectedTeacherLookup) return null;
@@ -3322,52 +3271,58 @@ export function MonitorDashboard() {
     [filteredSchoolHeadAccountRows, recordBySchoolKey],
   );
 
-  const schoolDrawerRecordId = useMemo(() => {
-    if (!schoolDrawerKey) return "";
-    return (recordBySchoolKey.get(schoolDrawerKey)?.id ?? "").trim();
-  }, [recordBySchoolKey, schoolDrawerKey]);
-
-  useEffect(() => {
-    if (!schoolDrawerRecordId || !isAuthenticated) {
-      setSchoolDrawerSubmissions([]);
-      setIsSchoolDrawerSubmissionsLoading(false);
-      setSchoolDrawerSubmissionsError("");
-      return;
-    }
-
-    let active = true;
-    const abortController = new AbortController();
-
-    const loadSchoolSubmissions = async () => {
-      setIsSchoolDrawerSubmissionsLoading(true);
-      setSchoolDrawerSubmissionsError("");
-
-      try {
-        const allRows = await listSubmissionsForSchool(schoolDrawerRecordId, {
-          signal: abortController.signal,
-        });
-        if (!active) return;
-        setSchoolDrawerSubmissions(allRows);
-      } catch (err) {
-        if (!active) return;
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-        setSchoolDrawerSubmissions([]);
-        setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
-      } finally {
-        if (active) {
-          setIsSchoolDrawerSubmissionsLoading(false);
-        }
+  const resolveSchoolDrawerRecordId = useCallback(
+    (schoolKey: string | null) => {
+      if (!schoolKey) {
+        return "";
       }
-    };
 
-    void loadSchoolSubmissions();
-    return () => {
-      active = false;
-      abortController.abort();
-    };
-  }, [indicatorLastSyncedAt, isAuthenticated, listSubmissionsForSchool, schoolDrawerRecordId]);
+      return (recordBySchoolKey.get(schoolKey)?.id ?? "").trim();
+    },
+    [recordBySchoolKey],
+  );
+
+  const resolveSchoolDrawerCode = useCallback(
+    (schoolKey: string | null) => {
+      if (!schoolKey) {
+        return "";
+      }
+
+      const summary = schoolRequirementByKey.get(schoolKey) ?? null;
+      const record = recordBySchoolKey.get(schoolKey) ?? null;
+      return (summary?.schoolCode ?? record?.schoolId ?? record?.schoolCode ?? "").trim();
+    },
+    [recordBySchoolKey, schoolRequirementByKey],
+  );
+
+  const {
+    schoolDrawerKey,
+    schoolDrawerRecordId,
+    activeSchoolDrawerTab,
+    expandedDrawerIndicatorRows,
+    highlightedDrawerIndicatorKey,
+    schoolDrawerSubmissions,
+    isSchoolDrawerSubmissionsLoading,
+    schoolDrawerSubmissionsError,
+    accurateSyncedCountsBySchoolKey,
+    syncedCountsLoadingSchoolKey,
+    syncedCountsError,
+    openSchoolDrawer,
+    closeSchoolDrawer,
+    setActiveSchoolDrawerTab,
+    setHighlightedDrawerIndicatorKey,
+    toggleDrawerIndicatorLabel,
+  } = useSchoolDrawer({
+    authSessionKey,
+    isAuthenticated,
+    reviewCompletionSchoolKey: lastReviewCompletion?.schoolKey ?? null,
+    latestRealtimeUpdate,
+    resolveRecordId: resolveSchoolDrawerRecordId,
+    resolveSchoolCode: resolveSchoolDrawerCode,
+    listSubmissionsForSchool,
+    queryStudents,
+    listTeachers,
+  });
 
   const schoolDrawerIndicatorSubmissions = schoolDrawerSubmissions;
 
@@ -3676,132 +3631,6 @@ export function MonitorDashboard() {
     return alerts;
   }, [schoolDetail, schoolDrawerSubmissionsError]);
 
-  const schoolDetailKey = schoolDetail?.schoolKey ?? null;
-  const schoolDetailCode = schoolDetail?.schoolCode ?? "";
-
-  useEffect(() => {
-    if (!schoolDetailKey) {
-      schoolDetailCountsAbortRef.current?.abort();
-      schoolDetailCountsAbortRef.current = null;
-      setSyncedCountsLoadingSchoolKey(null);
-      setSyncedCountsError("");
-      return;
-    }
-
-    const normalizedSchoolCode = schoolDetailCode.trim();
-    if (!/^\d+$/.test(normalizedSchoolCode)) {
-      schoolDetailCountsAbortRef.current?.abort();
-      schoolDetailCountsAbortRef.current = null;
-      setSyncedCountsLoadingSchoolKey(null);
-      setSyncedCountsError("");
-      return;
-    }
-
-    let active = true;
-    const readCachedCounts = () => {
-      const cached = schoolDetailCountsCacheRef.current.get(schoolDetailKey) ?? null;
-      if (!cached) return null;
-      if (Date.now() - cached.fetchedAt > SCHOOL_DETAIL_COUNTS_CACHE_TTL_MS) return null;
-      return cached;
-    };
-
-    const hydrateAccurateSyncedCounts = async (force = false) => {
-      const cached = force ? null : readCachedCounts();
-      if (cached) {
-        setAccurateSyncedCountsBySchoolKey((current) => ({
-          ...current,
-          [schoolDetailKey]: {
-            students: cached.students,
-            teachers: cached.teachers,
-          },
-        }));
-        setSyncedCountsLoadingSchoolKey(null);
-        setSyncedCountsError("");
-        return;
-      }
-
-      schoolDetailCountsAbortRef.current?.abort();
-      const controller = new AbortController();
-      schoolDetailCountsAbortRef.current = controller;
-      setSyncedCountsLoadingSchoolKey(schoolDetailKey);
-      setSyncedCountsError("");
-
-      try {
-        const [studentsResult, teachersResult] = await Promise.all([
-          queryStudents({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
-          listTeachers({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
-        ]);
-
-        if (!active || controller.signal.aborted) {
-          return;
-        }
-
-        const nextCounts = {
-          students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? studentsResult.data.length ?? 0),
-          teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? teachersResult.data.length ?? 0),
-        };
-        schoolDetailCountsCacheRef.current.set(schoolDetailKey, {
-          ...nextCounts,
-          fetchedAt: Date.now(),
-        });
-        setAccurateSyncedCountsBySchoolKey((current) => ({
-          ...current,
-          [schoolDetailKey]: nextCounts,
-        }));
-      } catch (err) {
-        if (!active) {
-          return;
-        }
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-
-        setSyncedCountsError(err instanceof Error ? err.message : "Unable to refresh synced counts.");
-      } finally {
-        if (active && schoolDetailCountsAbortRef.current === controller) {
-          schoolDetailCountsAbortRef.current = null;
-          setSyncedCountsLoadingSchoolKey((current) => (current === schoolDetailKey ? null : current));
-        }
-      }
-    };
-
-    void hydrateAccurateSyncedCounts(false);
-
-    const handleRealtimeCountsRefresh = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string; schoolId?: string; schoolCode?: string }>).detail;
-      if (!payload) {
-        return;
-      }
-
-      if (payload.entity !== "students" && payload.entity !== "teachers" && payload.entity !== "dashboard") {
-        return;
-      }
-
-      const incomingSchoolCode = String(payload.schoolCode ?? "").trim().toUpperCase();
-      const incomingSchoolId = String(payload.schoolId ?? "").trim();
-      const currentRecordId = schoolDrawerRecordId.trim();
-
-      if (incomingSchoolCode) {
-        if (incomingSchoolCode !== normalizedSchoolCode.toUpperCase()) {
-          return;
-        }
-      } else if (incomingSchoolId && currentRecordId && incomingSchoolId !== currentRecordId) {
-        return;
-      }
-
-      void hydrateAccurateSyncedCounts(true);
-    };
-
-    window.addEventListener("cspams:update", handleRealtimeCountsRefresh);
-
-    return () => {
-      active = false;
-      schoolDetailCountsAbortRef.current?.abort();
-      schoolDetailCountsAbortRef.current = null;
-      window.removeEventListener("cspams:update", handleRealtimeCountsRefresh);
-    };
-  }, [schoolDetailKey, schoolDetailCode, queryStudents, listTeachers, schoolDrawerRecordId]);
-
   const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
     const chips: Array<{ id: FilterChipId; label: string }> = [];
 
@@ -3917,18 +3746,6 @@ export function MonitorDashboard() {
       default:
         break;
     }
-  };
-
-  const openSchoolDrawer = (schoolKey: string) => {
-    setSchoolDrawerKey(schoolKey);
-    setActiveSchoolDrawerTab("snapshot");
-    setExpandedDrawerIndicatorRows({});
-    setHighlightedDrawerIndicatorKey(null);
-  };
-
-  const closeSchoolDrawer = () => {
-    setSchoolDrawerKey(null);
-    setHighlightedDrawerIndicatorKey(null);
   };
 
   const sendReminderForSchool = async (schoolKey: string, schoolName: string, notes?: string | null) => {
@@ -4102,13 +3919,6 @@ export function MonitorDashboard() {
       returnedDrawerIndicatorKeys[0] ??
       (schoolIndicatorMatrix.latestSubmission?.status === "returned" ? schoolIndicatorMatrix.rows[0]?.key ?? "" : "");
     jumpToDrawerIndicator(fallbackKey, "No returned indicators were found in the latest package.");
-  };
-
-  const toggleDrawerIndicatorLabel = (key: string) => {
-    setExpandedDrawerIndicatorRows((current) => ({
-      ...current,
-      [key]: !current[key],
-    }));
   };
 
   const handleMonitorTopNavigate = (id: MonitorTopNavigatorId) => {
@@ -5065,7 +4875,7 @@ export function MonitorDashboard() {
                   onClick={() => {
                     setShowNavigatorManual((current) => !current);
                     setFocusedSectionId(null);
-                    setSchoolDrawerKey(null);
+                    closeSchoolDrawer();
                   }}
                   className={`inline-flex items-center gap-1.5 rounded-sm border text-white transition ${
                     showNavigatorManual
@@ -5968,106 +5778,7 @@ export function MonitorDashboard() {
               actions={schoolHeadAccountActions}
             />
           )}
-
           {/*
-          {showSchoolHeadAccountsPanel && (
-            <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
-              <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
-                  <p className="mt-0.5 text-xs text-slate-600">
-                    Passwords are never shown/stored. The account becomes{" "}
-                    <span className="font-semibold">Active + Verified</span> after setup. Use{" "}
-                    <span className="font-semibold">Reset Password</span> to send a one-time password reset link.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSchoolHeadAccountsPanel(false);
-                    setEditingSchoolHeadAccountSchoolId(null);
-                    setSchoolHeadAccountDraftError("");
-                  }}
-                  className="inline-flex items-center gap-1 self-start rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Close
-                </button>
-              </div>
-
-              {schoolHeadAccountDraftError && (
-                <div className="border-b border-primary-100 bg-primary-50/70 px-4 py-2 text-xs font-semibold text-primary-800">
-                  {schoolHeadAccountDraftError}
-                </div>
-              )}
-
-              <div className="border-b border-slate-200 bg-white px-4 py-3">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-                    <div className="relative flex-1">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <input
-                        value={schoolHeadAccountsQuery}
-                        onChange={(event) => setSchoolHeadAccountsQuery(event.target.value)}
-                        placeholder="Search school, code, name, or email..."
-                        className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700">
-                        <Filter className="h-3.5 w-3.5 text-slate-500" />
-                        <span>Status</span>
-                        <select
-                          value={schoolHeadAccountsStatusFilter}
-                          onChange={(event) =>
-                            setSchoolHeadAccountsStatusFilter(
-                              event.target.value as "all" | "needs_setup" | "active" | "suspended" | "locked" | "archived",
-                            )
-                          }
-                          className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                        >
-                          <option value="all">All</option>
-                          <option value="needs_setup">Needs setup</option>
-                          <option value="active">Active</option>
-                          <option value="suspended">Suspended</option>
-                          <option value="locked">Locked</option>
-                          <option value="archived">Archived</option>
-                        </select>
-                      </div>
-                      <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={schoolHeadAccountsOnlyFlagged}
-                          onChange={(event) => setSchoolHeadAccountsOnlyFlagged(event.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
-                        />
-                        <span>Flagged</span>
-                      </label>
-                      <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={schoolHeadAccountsOnlyDeleteFlagged}
-                          onChange={(event) => setSchoolHeadAccountsOnlyDeleteFlagged(event.target.checked)}
-                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
-                        />
-                        <span>Delete flagged</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSchoolHeadAccountsQuery("");
-                          setSchoolHeadAccountsStatusFilter("all");
-                          setSchoolHeadAccountsOnlyFlagged(false);
-                          setSchoolHeadAccountsOnlyDeleteFlagged(false);
-                        }}
-                        className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  <div className="text-xs font-semibold text-slate-500">
                     Showing{" "}
                     <span className="text-slate-700">{filteredSchoolHeadAccountRows.length}</span> of{" "}
                     <span className="text-slate-700">{compactSchoolRows.length}</span>
@@ -7473,163 +7184,6 @@ export function MonitorDashboard() {
           )}
         </div>
       </aside>
-
-      {/*
-      {pendingAccountAction && (
-        <>
-          <button
-            type="button"
-            onClick={closePendingAccountAction}
-            className="fixed inset-0 z-[90] bg-slate-900/40"
-            aria-label="Close account action dialog"
-          />
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label="Account action"
-            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
-              isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">{pendingAccountAction.actionLabel}</h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  {pendingAccountAction.kind === "remove"
-                    ? `Reason and confirmation code required to remove the account for ${pendingAccountAction.schoolName}.`
-                    : pendingAccountAction.kind === "status"
-                    ? isDeactivationStatus(pendingAccountAction.update.accountStatus)
-                      ? `Reason and confirmation code required for ${pendingAccountAction.schoolName}.`
-                      : `Reason required for ${pendingAccountAction.schoolName}.`
-                    : pendingAccountAction.kind === "reset_password"
-                      ? `Reason and confirmation code required to send a password reset link for ${pendingAccountAction.schoolName}.`
-                      : `Reason and confirmation code required to change the School Head email for ${pendingAccountAction.schoolName}.`}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closePendingAccountAction}
-                className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-3">
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                Reason
-              </label>
-              <textarea
-                ref={pendingAccountReasonRef}
-                value={pendingAccountReason}
-                onChange={(event) => {
-                  setPendingAccountReason(event.target.value);
-                  setPendingAccountReasonError("");
-                }}
-                rows={3}
-                placeholder="Type a short reason (min 5 characters)"
-                className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-              {pendingAccountReasonError && (
-                <p className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                  {pendingAccountReasonError}
-                </p>
-              )}
-            </div>
-
-            {(pendingAccountAction.kind === "remove" ||
-              pendingAccountAction.kind === "reset_password" ||
-              pendingAccountAction.kind === "email_change" ||
-              (pendingAccountAction.kind === "status" &&
-                isDeactivationStatus(pendingAccountAction.update.accountStatus))) && (
-              <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Confirmation Code</p>
-                    <p className="mt-1 text-xs text-amber-700">Send a 6-digit code to your monitor email to confirm this action.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void sendPendingAccountVerificationCode()}
-                    disabled={isPendingAccountVerificationSending || isSaving}
-                    className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isPendingAccountVerificationSending
-                      ? "Sending..."
-                      : pendingAccountVerificationChallenge
-                        ? "Resend"
-                        : "Send code"}
-                  </button>
-                </div>
-
-                {pendingAccountVerificationChallenge && (
-                  <div className="mt-3">
-                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      6-digit code
-                    </label>
-                    <input
-                      ref={pendingAccountVerificationCodeRef}
-                      type="text"
-                      inputMode="numeric"
-                      value={pendingAccountVerificationCode}
-                      onChange={(event) => {
-                        setPendingAccountVerificationCode(normalizeActionVerificationCode(event.target.value));
-                        setPendingAccountVerificationError("");
-                      }}
-                      placeholder="123456"
-                      className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                    />
-                    <p className="mt-1 text-[11px] font-medium text-slate-600">
-                      Expires {formatDateTime(pendingAccountVerificationChallenge.expiresAt)}.
-                    </p>
-                  </div>
-                )}
-
-                {pendingAccountVerificationError && (
-                  <p className="mt-2 rounded-sm border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-800">
-                    {pendingAccountVerificationError}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={closePendingAccountAction}
-                disabled={isSaving}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmPendingAccountAction()}
-                disabled={
-                  isSaving ||
-                  isPendingAccountVerificationSending ||
-                  (pendingAccountReason.trim().length < 5 &&
-                    (pendingAccountAction.kind === "status" ||
-                      pendingAccountAction.kind === "remove" ||
-                      pendingAccountAction.kind === "reset_password" ||
-                      pendingAccountAction.kind === "email_change")) ||
-                  ((pendingAccountAction.kind === "remove" ||
-                    pendingAccountAction.kind === "reset_password" ||
-                    pendingAccountAction.kind === "email_change" ||
-                    (pendingAccountAction.kind === "status" &&
-                      isDeactivationStatus(pendingAccountAction.update.accountStatus))) &&
-                    (!pendingAccountVerificationChallenge || !/^\d{6}$/.test(pendingAccountVerificationCode.trim())))
-                }
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Confirm
-              </button>
-            </div>
-          </section>
-        </>
-      )}
-      */}
 
       <div
         style={{ top: "calc(var(--shell-sticky-top, 10rem) + 0.75rem)" }}
