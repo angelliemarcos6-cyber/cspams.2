@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -27,7 +27,6 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
-  TrendingUp,
   Users,
   X,
 } from "lucide-react";
@@ -42,12 +41,25 @@ import { useTeacherData } from "@/context/TeacherData";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 import { MonitorLearnerRecordsSection } from "@/pages/monitor/MonitorLearnerRecordsSection";
 import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
+import { MonitorQuickJumpChips } from "@/pages/monitor/MonitorQuickJumpChips";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
 import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
 import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
+import {
+  MONITOR_MANUAL_STATUS_GUIDE,
+  MONITOR_NAVIGATOR_ICONS,
+  MONITOR_NAVIGATOR_MANUAL,
+  MONITOR_QUICK_JUMPS,
+  MONITOR_TOP_NAVIGATOR_IDS,
+  MONITOR_TOP_NAVIGATOR_ITEMS,
+  RECORD_PAGE_SIZE,
+  REQUIREMENT_FILTER_OPTIONS,
+  REQUIREMENT_PAGE_SIZE,
+  SCHOOL_QUICK_PRESET_OPTIONS,
+} from "@/pages/monitor/monitorDashboardConfig";
 import {
   downloadCsvFile,
   isUrgentRequirement,
@@ -77,7 +89,9 @@ import {
 import { useMonitorDashboardShell } from "@/pages/monitor/useMonitorDashboardShell";
 import { useMonitorDashboardHotkeys } from "@/pages/monitor/useMonitorDashboardHotkeys";
 import { useMonitorDrawerViewModel } from "@/pages/monitor/useMonitorDrawerViewModel";
+import { useMonitorFilterUi } from "@/pages/monitor/useMonitorFilterUi";
 import { useMonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
+import { useMonitorQuickJump } from "@/pages/monitor/useMonitorQuickJump";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
 import { useMonitorReviewFlow } from "@/pages/monitor/useMonitorReviewFlow";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
@@ -95,124 +109,7 @@ import {
   statusLabel,
 } from "@/utils/analytics";
 
-type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date";
-
-interface MonitorTopNavigatorItem {
-  id: MonitorTopNavigatorId;
-  label: string;
-}
-
-interface ManualStep {
-  id: string;
-  title: string;
-  objective: string;
-  actions: string[];
-  doneWhen: string;
-}
-
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
-
-type NavigatorIcon = ComponentType<{ className?: string }>;
-
-interface QuickJumpItem {
-  id: string;
-  label: string;
-  targetId: string;
-  icon: NavigatorIcon;
-}
-
-const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
-  { id: "overview", label: "Overview" },
-  { id: "schools", label: "Schools" },
-  { id: "reviews", label: "Reviews" },
-];
-const MONITOR_TOP_NAVIGATOR_IDS: MonitorTopNavigatorId[] = MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => item.id);
-
-const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIcon> = {
-  overview: LayoutDashboard,
-  schools: Building2,
-  reviews: ClipboardList,
-};
-
-const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
-  {
-    id: "overview",
-    title: "Overview",
-    objective: "Start with overall status and analytics before opening school-level work.",
-    actions: [
-      "Check summary totals for needs action, returned, and submitted.",
-      "Use analytics to spot trends or spikes that need follow-up.",
-    ],
-    doneWhen: "Priority issues are identified for this review cycle.",
-  },
-  {
-    id: "schools",
-    title: "Schools",
-    objective: "Open school-level records and verify synchronized student and teacher data.",
-    actions: [
-      "Use search and school filters to find the school you need quickly.",
-      "Inspect school details and learner records without leaving the dashboard.",
-    ],
-    doneWhen: "The selected school context is verified and ready for review.",
-  },
-  {
-    id: "reviews",
-    title: "Reviews",
-    objective: "Work through pending compliance reviews in one focused workspace.",
-    actions: [
-      "Review queue items, validate submissions, or return with clear notes.",
-      "Use lane and workflow filters to process urgent schools first.",
-    ],
-    doneWhen: "Each queued school has a clear review action.",
-  },
-];
-
-const MONITOR_MANUAL_STATUS_GUIDE = [
-  "Missing: Requirement not yet submitted by school.",
-  "For Review: Submitted and waiting for monitor review.",
-  "Returned: Sent back to school head for correction.",
-  "Submitted: Package was sent by school.",
-  "Validated: Approved and closed.",
-];
-
-const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
-  { id: "all", label: "All statuses" },
-  { id: "missing", label: "Missing" },
-  { id: "waiting", label: "For Review" },
-  { id: "returned", label: "Returned" },
-  { id: "submitted", label: "Submitted" },
-  { id: "validated", label: "Validated" },
-];
-
-const SCHOOL_QUICK_PRESET_OPTIONS: Array<{ id: SchoolQuickPreset; label: string; hint: string }> = [
-  { id: "all", label: "All", hint: "Show every school in the current scope." },
-  { id: "pending", label: "Pending", hint: "Schools with submissions waiting for monitor review." },
-  { id: "missing", label: "Missing", hint: "Schools missing a compliance record or indicator submission." },
-  { id: "returned", label: "Returned", hint: "Schools with returned submissions that need correction." },
-  { id: "no_submission", label: "No Submission", hint: "Schools with no compliance/indicator submission yet." },
-  { id: "high_risk", label: "High Risk", hint: "Schools with missing or returned requirements." },
-];
-
-const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
-  overview: [
-    { id: "filters_overview", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
-    { id: "overview_analytics", label: "Analytics", targetId: "monitor-targets-snapshot", icon: TrendingUp },
-  ],
-  reviews: [
-    { id: "filters_queue", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },
-    { id: "queue_workspace", label: "Review Workspace", targetId: "monitor-queue-workspace", icon: ClipboardList },
-  ],
-  schools: [
-    { id: "filters_schools", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "school_records", label: "School List", targetId: "monitor-school-records", icon: Building2 },
-    { id: "school_learners", label: "Learner Records", targetId: "monitor-school-learners", icon: Users },
-  ],
-};
-
-const REQUIREMENT_PAGE_SIZE = 10;
-const RECORD_PAGE_SIZE = 10;
 
 export function MonitorDashboard() {
   const { user } = useAuth();
@@ -404,45 +301,6 @@ export function MonitorDashboard() {
   });
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
-  const didAutoExpandMoreFiltersRef = useRef(false);
-
-  useEffect(() => {
-    if (!filtersHydrated || didAutoExpandMoreFiltersRef.current) return;
-
-    didAutoExpandMoreFiltersRef.current = true;
-
-    const shouldExpand =
-      (activeTopNavigator !== "reviews" && queueLane !== "all") ||
-      selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ||
-      Boolean(selectedStudentLookupId) ||
-      Boolean(selectedTeacherLookupId);
-
-    if (shouldExpand) {
-      setShowMoreFilters(true);
-    }
-  }, [
-    activeTopNavigator,
-    filtersHydrated,
-    queueLane,
-    selectedSchoolScopeKey,
-    selectedStudentLookupId,
-    selectedTeacherLookupId,
-  ]);
-
-  useEffect(() => {
-    if (!showAdvancedFilters || typeof window === "undefined") return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (openScopeDropdownId) return;
-      setShowAdvancedFilters(false);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [openScopeDropdownId, showAdvancedFilters]);
 
   const handleRefreshDashboard = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -573,97 +431,12 @@ export function MonitorDashboard() {
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
   );
-  const shouldShowQuickJump = quickJumpItems.length > 0;
   const scrollQueueRowIntoView = (schoolKey: string) => {
     if (typeof document === "undefined") return;
     const targetId = `monitor-queue-row-${sanitizeAnchorToken(schoolKey)}`;
     const row = document.getElementById(targetId);
     if (!row) return;
     row.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
-
-  const resolveQuickJumpTargetId = (targetId: string): string => {
-    if (targetId === "monitor-analytics-toggle") {
-      return "monitor-targets-snapshot";
-    }
-
-    return targetId;
-  };
-
-  const canResolveQuickJumpTarget = (targetId: string): boolean => {
-    const resolvedTargetId = resolveQuickJumpTargetId(targetId);
-
-    if (resolvedTargetId === "monitor-submission-filters") {
-      return true;
-    }
-
-    if (typeof document === "undefined") {
-      return true;
-    }
-
-    return Boolean(document.getElementById(resolvedTargetId));
-  };
-
-  const handleQuickJump = (item: QuickJumpItem) => {
-    const resolvedTargetId = resolveQuickJumpTargetId(item.targetId);
-
-    if (resolvedTargetId === "monitor-submission-filters" && !showAdvancedFilters) {
-      setShowAdvancedFilters(true);
-      window.setTimeout(() => {
-        focusAndScrollTo(resolvedTargetId);
-      }, 80);
-      return;
-    }
-
-    if (item.targetId === "monitor-analytics-toggle") {
-      if (!showAdvancedAnalytics) {
-        setShowAdvancedAnalytics(true);
-      }
-      window.setTimeout(() => {
-        focusAndScrollTo(resolvedTargetId);
-      }, 80);
-      return;
-    }
-
-    focusAndScrollTo(resolvedTargetId);
-  };
-
-  const renderQuickJumpChips = (mobile: boolean) => {
-    if (!shouldShowQuickJump) {
-      return null;
-    }
-
-    return (
-      <div className={mobile ? "mt-2 flex gap-2 overflow-x-auto pb-1" : "flex flex-wrap items-center justify-end gap-2"}>
-        {quickJumpItems.map((item) => {
-          const Icon = item.icon;
-          const resolvedTargetId = resolveQuickJumpTargetId(item.targetId);
-          const isActive = focusedSectionId === resolvedTargetId;
-          const isAvailable = canResolveQuickJumpTarget(item.targetId);
-          const quickJumpIndex = quickJumpItems.findIndex((candidate) => candidate.id === item.id);
-          const shortcutLabel = quickJumpIndex >= 0 && quickJumpIndex < 9 ? `Alt+Shift+${quickJumpIndex + 1}` : null;
-
-          return (
-            <button
-              key={`monitor-quick-jump-${item.id}`}
-              type="button"
-              onClick={() => handleQuickJump(item)}
-              disabled={!isAvailable}
-              aria-pressed={isActive}
-              title={shortcutLabel ? `${item.label} (${shortcutLabel})` : item.label}
-              className={`inline-flex shrink-0 items-center gap-1 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                isActive
-                  ? "border-primary-300 bg-primary-50 text-primary-700"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              } ${isAvailable ? "" : "cursor-not-allowed opacity-50"}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-    );
   };
 
   const studentStatsBySchoolKey = useMemo(() => {
@@ -776,41 +549,57 @@ export function MonitorDashboard() {
     onRefreshActiveDrawer: refreshSchoolDrawer,
     onToast: pushToast,
   });
-
-  const activeFilterChips = useMemo<Array<{ id: FilterChipId; label: string }>>(() => {
-    const chips: Array<{ id: FilterChipId; label: string }> = [];
-
-    if (effectiveSearch.trim()) chips.push({ id: "search", label: `Search: ${effectiveSearch.trim()}` });
-    if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
-    if (requirementFilter !== "all") chips.push({ id: "requirement", label: `Queue: ${requirementFilterLabel(requirementFilter)}` });
-    if (queueLane !== "all") chips.push({ id: "lane", label: `Lane: ${queueLaneLabel(queueLane)}` });
-    if (schoolQuickPreset !== "all") {
-      const presetLabel = SCHOOL_QUICK_PRESET_OPTIONS.find((option) => option.id === schoolQuickPreset)?.label ?? schoolQuickPreset;
-      chips.push({ id: "preset", label: `Preset: ${presetLabel}` });
-    }
-    if (filterDateFrom || filterDateTo) {
-      chips.push({
-        id: "date",
-        label: `Date: ${filterDateFrom || "Any"} to ${filterDateTo || "Any"}`,
-      });
-    }
-    if (selectedSchoolScope) chips.push({ id: "school", label: `School: ${selectedSchoolScope.code}` });
-    if (selectedStudentLookup) chips.push({ id: "student", label: `Student: ${selectedStudentLookup.fullName}` });
-    if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup.name}` });
-
-    return chips;
-  }, [
+  const quickJump = useMonitorQuickJump({
+    quickJumpItems,
+    focusedSectionId,
+    showAdvancedFilters,
+    showAdvancedAnalytics,
+    setShowAdvancedFilters,
+    setShowAdvancedAnalytics,
+    focusAndScrollTo,
+  });
+  const {
+    activeFilterChips,
+    hiddenAdvancedFilterCount,
+    clearAllFilters,
+    resetQueueFilters,
+    clearFilterChip,
+  } = useMonitorFilterUi({
+    filtersHydrated,
+    activeTopNavigator,
+    queueLane,
+    selectedSchoolScopeKey,
+    selectedStudentLookupId,
+    selectedTeacherLookupId,
     filterDateFrom,
     filterDateTo,
-    queueLane,
     requirementFilter,
     schoolQuickPreset,
     effectiveSearch,
+    statusFilter,
     selectedSchoolScope,
     selectedStudentLookup,
     selectedTeacherLookup,
-    statusFilter,
-  ]);
+    showAdvancedFilters,
+    openScopeDropdownId,
+    setShowMoreFilters,
+    setShowAdvancedFilters,
+    resetMonitorFilters,
+    setSchoolScopeQuery,
+    setStudentLookupQuery,
+    setTeacherLookupQuery,
+    setOpenScopeDropdownId,
+    setSearch,
+    setStatusFilter,
+    setRequirementFilter,
+    setQueueLane,
+    setSchoolQuickPreset,
+    setFilterDateFrom,
+    setFilterDateTo,
+    setSelectedSchoolScopeKey,
+    setSelectedStudentLookupId,
+    setSelectedTeacherLookupId,
+  });
 
   useEffect(() => {
     setRequirementsPage(1);
@@ -845,61 +634,6 @@ export function MonitorDashboard() {
     }
     setRequirementFilter("all");
   }, [requirementFilter, setRequirementFilter, visibleRequirementFilterIds]);
-
-  const clearAllFilters = () => {
-    resetMonitorFilters();
-    setSchoolScopeQuery("");
-    setStudentLookupQuery("");
-    setTeacherLookupQuery("");
-    setOpenScopeDropdownId(null);
-  };
-
-  const resetQueueFilters = () => {
-    setRequirementFilter("all");
-    setQueueLane("all");
-  };
-
-  const clearFilterChip = (chipId: FilterChipId) => {
-    switch (chipId) {
-      case "search":
-        setSearch("");
-        break;
-      case "status":
-        setStatusFilter("all");
-        break;
-      case "requirement":
-        setRequirementFilter("all");
-        break;
-      case "lane":
-        setQueueLane("all");
-        break;
-      case "preset":
-        setSchoolQuickPreset("all");
-        break;
-      case "date":
-        setFilterDateFrom("");
-        setFilterDateTo("");
-        break;
-      case "school":
-        setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-        setSelectedStudentLookupId(null);
-        setSelectedTeacherLookupId(null);
-        setSchoolScopeQuery("");
-        setStudentLookupQuery("");
-        setTeacherLookupQuery("");
-        break;
-      case "student":
-        setSelectedStudentLookupId(null);
-        setStudentLookupQuery("");
-        break;
-      case "teacher":
-        setSelectedTeacherLookupId(null);
-        setTeacherLookupQuery("");
-        break;
-      default:
-        break;
-    }
-  };
 
   const sendReminderForSchool = async (schoolKey: string, schoolName: string, notes?: string | null) => {
     const record = scopedRecordBySchoolKey.get(schoolKey) ?? recordBySchoolKey.get(schoolKey);
@@ -1108,10 +842,10 @@ export function MonitorDashboard() {
   useMonitorDashboardHotkeys({
     topNavigatorIds: MONITOR_TOP_NAVIGATOR_IDS,
     quickJumpItems,
-    shouldShowQuickJump,
-    canResolveQuickJumpTarget,
+    shouldShowQuickJump: quickJump.shouldShowQuickJump,
+    canResolveQuickJumpTarget: quickJump.canResolveQuickJumpTarget,
     onNavigateTop: handleMonitorTopNavigate,
-    onQuickJump: handleQuickJump,
+    onQuickJump: quickJump.handleQuickJump,
     onFocusGlobalSearch: focusGlobalSearch,
     onCycleSchoolFocus: cycleSchoolFocus,
     onTriggerKeyboardReview: triggerKeyboardReview,
@@ -1319,21 +1053,11 @@ export function MonitorDashboard() {
           >
             <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
             Advanced
-            {(() => {
-              const hiddenActiveCount =
-                (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? 1 : 0) +
-                (selectedStudentLookupId ? 1 : 0) +
-                (selectedTeacherLookupId ? 1 : 0) +
-                (activeTopNavigator !== "reviews" && queueLane !== "all" ? 1 : 0);
-
-              if (!hiddenActiveCount) return null;
-
-              return (
-                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-primary-50 px-1 text-[10px] font-bold text-primary-700">
-                  {hiddenActiveCount}
-                </span>
-              );
-            })()}
+            {hiddenAdvancedFilterCount > 0 && (
+              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-primary-50 px-1 text-[10px] font-bold text-primary-700">
+                {hiddenAdvancedFilterCount}
+              </span>
+            )}
             <ChevronDown className={`h-3.5 w-3.5 transition ${showMoreFilters ? "rotate-180" : ""}`} />
           </button>
         </div>
@@ -1447,8 +1171,22 @@ export function MonitorDashboard() {
     </>
   );
 
-  const desktopQuickJumpChips = renderQuickJumpChips(false);
-  const mobileQuickJumpChips = renderQuickJumpChips(true);
+  const desktopQuickJumpChips = (
+    <MonitorQuickJumpChips
+      items={quickJumpItems}
+      mobile={false}
+      getQuickJumpMeta={quickJump.getQuickJumpMeta}
+      onQuickJump={quickJump.handleQuickJump}
+    />
+  );
+  const mobileQuickJumpChips = (
+    <MonitorQuickJumpChips
+      items={quickJumpItems}
+      mobile
+      getQuickJumpMeta={quickJump.getQuickJumpMeta}
+      onQuickJump={quickJump.handleQuickJump}
+    />
+  );
   const schoolsSectionApi = useMonitorSchoolsSection({
     isMobileViewport,
     isLoading,
