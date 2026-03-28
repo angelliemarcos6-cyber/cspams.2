@@ -61,6 +61,7 @@ import {
   useMonitorLookups,
 } from "@/pages/monitor/useMonitorLookups";
 import { useMonitorDashboardShell } from "@/pages/monitor/useMonitorDashboardShell";
+import { useMonitorDashboardHotkeys } from "@/pages/monitor/useMonitorDashboardHotkeys";
 import { useMonitorDrawerViewModel } from "@/pages/monitor/useMonitorDrawerViewModel";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
@@ -119,6 +120,7 @@ const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "schools", label: "Schools" },
   { id: "reviews", label: "Reviews" },
 ];
+const MONITOR_TOP_NAVIGATOR_IDS: MonitorTopNavigatorId[] = MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => item.id);
 
 const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorItem["id"], NavigatorIcon> = {
   overview: LayoutDashboard,
@@ -581,38 +583,6 @@ export function MonitorDashboard() {
   }, [authSessionKey]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-
-      const target = event.target as HTMLElement | null;
-      if (target) {
-        const tagName = target.tagName.toLowerCase();
-        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
-          return;
-        }
-      }
-
-      const shortcutIndex = Number(event.key) - 1;
-      if (!Number.isInteger(shortcutIndex)) return;
-
-      const shortcutItem = MONITOR_TOP_NAVIGATOR_ITEMS[shortcutIndex];
-      if (!shortcutItem) return;
-
-      event.preventDefault();
-      setShowNavigatorManual(false);
-      setActiveTopNavigator(shortcutItem.id);
-      if (isMobileViewport) {
-        setIsNavigatorVisible(false);
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isMobileViewport]);
-
-  useEffect(() => {
     if (!filtersHydrated || didAutoExpandMoreFiltersRef.current) return;
 
     didAutoExpandMoreFiltersRef.current = true;
@@ -1036,38 +1006,6 @@ export function MonitorDashboard() {
     }
   };
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !shouldShowQuickJump) return;
-
-    const onQuickJumpHotkey = (event: KeyboardEvent) => {
-      if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
-
-      const target = event.target as HTMLElement | null;
-      if (target) {
-        const tagName = target.tagName.toLowerCase();
-        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
-          return;
-        }
-      }
-
-      const shortcutIndex = Number(event.key) - 1;
-      if (!Number.isInteger(shortcutIndex) || shortcutIndex < 0 || shortcutIndex >= quickJumpItems.length) {
-        return;
-      }
-
-      const quickJumpItem = quickJumpItems[shortcutIndex];
-      if (!quickJumpItem || !canResolveQuickJumpTarget(quickJumpItem.targetId)) {
-        return;
-      }
-
-      event.preventDefault();
-      handleQuickJump(quickJumpItem);
-    };
-
-    window.addEventListener("keydown", onQuickJumpHotkey);
-    return () => window.removeEventListener("keydown", onQuickJumpHotkey);
-  }, [quickJumpItems, shouldShowQuickJump, handleQuickJump, canResolveQuickJumpTarget]);
-
   const studentStatsBySchoolKey = useMemo(() => {
     const map = new Map<string, { students: number; teachers: Set<string> }>();
 
@@ -1470,6 +1408,18 @@ export function MonitorDashboard() {
     }
   };
 
+  const handleKeyboardTopNavigate = useCallback(
+    (id: MonitorTopNavigatorId) => {
+      setShowNavigatorManual(false);
+      setActiveTopNavigator(id);
+
+      if (isMobileViewport) {
+        setIsNavigatorVisible(false);
+      }
+    },
+    [isMobileViewport, setActiveTopNavigator, setIsNavigatorVisible, setShowNavigatorManual],
+  );
+
   const focusGlobalSearch = useCallback(() => {
     const input = globalSearchInputRef.current;
     if (!input) return;
@@ -1526,46 +1476,17 @@ export function MonitorDashboard() {
     handleReviewSchool(activeSummary);
   }, [actionQueueRows, compactSchoolRows, handleReviewSchool, laneFilteredQueueRows, pushToast, schoolDrawerKey, schoolRequirementByKey]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const onKeyboardShortcut = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-
-      const target = event.target as HTMLElement | null;
-      if (target) {
-        const tagName = target.tagName.toLowerCase();
-        if (tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable) {
-          return;
-        }
-      }
-
-      if (event.key === "/") {
-        event.preventDefault();
-        focusGlobalSearch();
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      if (key === "j") {
-        event.preventDefault();
-        cycleSchoolFocus(1);
-        return;
-      }
-      if (key === "k") {
-        event.preventDefault();
-        cycleSchoolFocus(-1);
-        return;
-      }
-      if (key === "r") {
-        event.preventDefault();
-        triggerKeyboardReview();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyboardShortcut);
-    return () => window.removeEventListener("keydown", onKeyboardShortcut);
-  }, [cycleSchoolFocus, focusGlobalSearch, triggerKeyboardReview]);
+  useMonitorDashboardHotkeys({
+    topNavigatorIds: MONITOR_TOP_NAVIGATOR_IDS,
+    quickJumpItems,
+    shouldShowQuickJump,
+    canResolveQuickJumpTarget,
+    onNavigateTop: handleKeyboardTopNavigate,
+    onQuickJump: handleQuickJump,
+    onFocusGlobalSearch: focusGlobalSearch,
+    onCycleSchoolFocus: cycleSchoolFocus,
+    onTriggerKeyboardReview: triggerKeyboardReview,
+  });
 
   const activeScreenMeta = useMemo(() => {
     switch (activeTopNavigator) {
