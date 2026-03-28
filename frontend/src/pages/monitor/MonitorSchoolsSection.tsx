@@ -10,6 +10,11 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import {
+  MonitorSchoolHeadAccountsPanel,
+  type MonitorSchoolHeadAccountsPanelProps,
+} from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import type { SchoolBulkImportResult } from "@/types";
 
 interface MonitorRadarTotals {
   students: number;
@@ -46,8 +51,12 @@ interface MonitorSchoolsSectionProps {
   onToggleSchoolLearnerRecords: () => void;
   showSchoolLearnerRecords: boolean;
   onShowMfaResetApprovals: () => void;
-  schoolHeadAccountsPanel: ReactNode;
-  messagesContent: ReactNode;
+  schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null;
+  messages: {
+    deleteError: string;
+    bulkImportError: string;
+    bulkImportSummary: SchoolBulkImportResult | null;
+  };
   schoolRecordsBody: ReactNode;
 }
 
@@ -78,8 +87,8 @@ export function MonitorSchoolsSection({
   onToggleSchoolLearnerRecords,
   showSchoolLearnerRecords,
   onShowMfaResetApprovals,
-  schoolHeadAccountsPanel,
-  messagesContent,
+  schoolHeadAccountsPanelProps,
+  messages,
   schoolRecordsBody,
 }: MonitorSchoolsSectionProps) {
   return (
@@ -238,8 +247,24 @@ export function MonitorSchoolsSection({
           </div>
         </div>
 
-        {schoolHeadAccountsPanel}
-        {messagesContent}
+        {schoolHeadAccountsPanelProps && <MonitorSchoolHeadAccountsPanel {...schoolHeadAccountsPanelProps} />}
+        {messages.deleteError && (
+          <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+            {messages.deleteError}
+          </div>
+        )}
+        {messages.bulkImportError && (
+          <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+            {messages.bulkImportError}
+          </div>
+        )}
+        {messages.bulkImportSummary && (
+          <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+            Import complete: {messages.bulkImportSummary.created} created, {messages.bulkImportSummary.updated} updated,{" "}
+            {messages.bulkImportSummary.restored} restored, {messages.bulkImportSummary.skipped} skipped,{" "}
+            {messages.bulkImportSummary.failed} failed.
+          </div>
+        )}
         {schoolRecordsBody}
       </section>
     </>

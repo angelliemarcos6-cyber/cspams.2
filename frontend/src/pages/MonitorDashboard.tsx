@@ -44,7 +44,6 @@ import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { apiRequest, isApiError } from "@/lib/api";
 import {
-  MonitorSchoolHeadAccountsPanel,
   type MonitorSchoolHeadAccountRow,
   type SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
@@ -4457,53 +4456,38 @@ export function MonitorDashboard() {
       onSelectOption={handleSelectTeacherLookup}
     />
   );
-  const schoolHeadAccountsPanelContent = showSchoolHeadAccountsPanel ? (
-    <MonitorSchoolHeadAccountsPanel
-      isOpen={showSchoolHeadAccountsPanel}
-      isSaving={isSaving}
-      isMobileViewport={isMobileViewport}
-      rows={schoolHeadAccountRows}
-      totalCount={compactSchoolRows.length}
-      query={schoolHeadAccountsQuery}
-      statusFilter={schoolHeadAccountsStatusFilter}
-      onlyFlagged={schoolHeadAccountsOnlyFlagged}
-      onlyDeleteFlagged={schoolHeadAccountsOnlyDeleteFlagged}
-      onQueryChange={setSchoolHeadAccountsQuery}
-      onStatusFilterChange={setSchoolHeadAccountsStatusFilter}
-      onOnlyFlaggedChange={setSchoolHeadAccountsOnlyFlagged}
-      onOnlyDeleteFlaggedChange={setSchoolHeadAccountsOnlyDeleteFlagged}
-      onClearFilters={() => {
-        setSchoolHeadAccountsQuery("");
-        setSchoolHeadAccountsStatusFilter("all");
-        setSchoolHeadAccountsOnlyFlagged(false);
-        setSchoolHeadAccountsOnlyDeleteFlagged(false);
-      }}
-      onClose={handleCloseSchoolHeadAccountsPanel}
-      onOpenSchoolRecord={handleOpenSchoolRecord}
-      formatDateTime={(value) => (value ? formatDateTime(value) : "-")}
-      actions={schoolHeadAccountActions}
-    />
-  ) : null;
-  const schoolMessagesContent = (
-    <>
-      {deleteError && (
-        <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-          {deleteError}
-        </div>
-      )}
-      {bulkImportError && (
-        <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-          {bulkImportError}
-        </div>
-      )}
-      {bulkImportSummary && (
-        <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-          Import complete: {bulkImportSummary.created} created, {bulkImportSummary.updated} updated,{" "}
-          {bulkImportSummary.restored} restored, {bulkImportSummary.skipped} skipped, {bulkImportSummary.failed} failed.
-        </div>
-      )}
-    </>
-  );
+  const schoolHeadAccountsPanelProps = showSchoolHeadAccountsPanel
+    ? {
+        isOpen: showSchoolHeadAccountsPanel,
+        isSaving,
+        isMobileViewport,
+        rows: schoolHeadAccountRows,
+        totalCount: compactSchoolRows.length,
+        query: schoolHeadAccountsQuery,
+        statusFilter: schoolHeadAccountsStatusFilter,
+        onlyFlagged: schoolHeadAccountsOnlyFlagged,
+        onlyDeleteFlagged: schoolHeadAccountsOnlyDeleteFlagged,
+        onQueryChange: setSchoolHeadAccountsQuery,
+        onStatusFilterChange: setSchoolHeadAccountsStatusFilter,
+        onOnlyFlaggedChange: setSchoolHeadAccountsOnlyFlagged,
+        onOnlyDeleteFlaggedChange: setSchoolHeadAccountsOnlyDeleteFlagged,
+        onClearFilters: () => {
+          setSchoolHeadAccountsQuery("");
+          setSchoolHeadAccountsStatusFilter("all");
+          setSchoolHeadAccountsOnlyFlagged(false);
+          setSchoolHeadAccountsOnlyDeleteFlagged(false);
+        },
+        onClose: handleCloseSchoolHeadAccountsPanel,
+        onOpenSchoolRecord: handleOpenSchoolRecord,
+        formatDateTime: (value: string | null) => (value ? formatDateTime(value) : "-"),
+        actions: schoolHeadAccountActions,
+      }
+    : null;
+  const schoolMessages = {
+    deleteError,
+    bulkImportError,
+    bulkImportSummary,
+  };
   const schoolRecordFormContent = showRecordForm ? (
     <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -5691,8 +5675,8 @@ export function MonitorDashboard() {
               setIsSchoolActionsMenuOpen(false);
               setShowMfaResetApprovalsDialog(true);
             }}
-            schoolHeadAccountsPanel={schoolHeadAccountsPanelContent}
-            messagesContent={schoolMessagesContent}
+            schoolHeadAccountsPanelProps={schoolHeadAccountsPanelProps}
+            messages={schoolMessages}
             schoolRecordsBody={schoolRecordsBody}
           />
         <MonitorLearnerRecordsSection

@@ -28,7 +28,7 @@ export interface MonitorSchoolHeadAccountRow {
   record: SchoolRecord | null;
 }
 
-interface MonitorSchoolHeadAccountsPanelProps {
+export interface MonitorSchoolHeadAccountsPanelProps {
   isOpen: boolean;
   isSaving: boolean;
   isMobileViewport: boolean;
