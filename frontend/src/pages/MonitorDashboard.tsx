@@ -54,6 +54,16 @@ import {
   type MonitorSchoolHeadAccountRow,
   type SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import {
+  ALL_SCHOOL_SCOPE,
+  MONITOR_SEARCH_DEBOUNCE_MS,
+  normalizeDateInput,
+  type MonitorTopNavigatorId,
+  type QueueLane,
+  type RequirementFilter,
+  type SchoolQuickPreset,
+} from "@/pages/monitor/monitorFilters";
+import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
 import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
 import type {
   IndicatorSubmission,
@@ -74,12 +84,8 @@ import {
 
 type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "status" | "lastUpdated";
 type SortDirection = "asc" | "desc";
-type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 type WorkflowStatus = Exclude<RequirementFilter, "all">;
-type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
-type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission" | "high_risk";
 type SchoolDrawerTab = "snapshot" | "submissions" | "history";
-type MonitorTopNavigatorId = "overview" | "schools" | "reviews";
 type ScopeDropdownId =
   | "schools_filters"
   | "schools_radar"
@@ -237,22 +243,6 @@ interface SchoolIndicatorPackageRow {
   reviewedBy: string;
 }
 
-interface PersistedMonitorFilters {
-  search?: string;
-  statusFilter?: SchoolStatus | "all";
-  requirementFilter?: RequirementFilter;
-  queueLane?: QueueLane;
-  schoolQuickPreset?: SchoolQuickPreset;
-  schoolScopeKey?: string;
-  studentLookupId?: string | null;
-  teacherLookupId?: string | null;
-  teacherLookup?: string | null;
-  filterDateFrom?: string;
-  filterDateTo?: string;
-  activeTopNavigator?: MonitorTopNavigatorId;
-}
-
-
 const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "overview", label: "Overview" },
   { id: "schools", label: "Schools" },
@@ -355,10 +345,7 @@ const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
   schoolHeadAccountEmail: "",
 };
 
-const ALL_SCHOOL_SCOPE = "__all_schools__";
-const MONITOR_FILTER_STORAGE_KEY = "cspams.monitor.filters.v1";
 const MONITOR_NAV_STORAGE_KEY = "cspams.monitor.nav.v1";
-const SEARCH_DEBOUNCE_MS = 320;
 const ADVANCED_ANALYTICS_HIDE_MS = 240;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
@@ -580,43 +567,6 @@ function resolveWorkflowStatus(summary: SchoolRequirementSummary): WorkflowStatu
   if (summary.indicatorStatus === "validated") return "validated";
   if (summary.hasAnySubmitted) return "submitted";
   return "missing";
-}
-
-function isValidRequirementFilter(value: string | null | undefined): value is RequirementFilter {
-  return value === "all" || value === "missing" || value === "waiting" || value === "returned" || value === "submitted" || value === "validated";
-}
-
-function isValidQueueLane(value: string | null | undefined): value is QueueLane {
-  return value === "all" || value === "urgent" || value === "returned" || value === "for_review" || value === "waiting_data";
-}
-
-function isValidSchoolQuickPreset(value: string | null | undefined): value is SchoolQuickPreset {
-  return value === "all" || value === "pending" || value === "missing" || value === "returned" || value === "no_submission" || value === "high_risk";
-}
-
-function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {
-  return value === "all" || value === "active" || value === "inactive" || value === "pending";
-}
-
-function resolveMonitorTopNavigator(value: string | null | undefined): MonitorTopNavigatorId | null {
-  if (value === "overview" || value === "schools" || value === "reviews") {
-    return value;
-  }
-
-  if (value === "reports") {
-    return "overview";
-  }
-
-  if (value === "action_queue" || value === "compliance_review") {
-    return "reviews";
-  }
-
-  return null;
-}
-
-function normalizeDateInput(value: string | null | undefined): string {
-  const normalized = (value ?? "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
 }
 
 function parseDateBoundary(value: string | null | undefined, boundary: "start" | "end"): number | null {
@@ -1189,26 +1139,40 @@ export function MonitorDashboard() {
     listTeachers,
   } = useTeacherData();
 
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
-  const effectiveSearch = useMemo(
-    () => (search.trim().length === 0 ? "" : debouncedSearch),
-    [debouncedSearch, search],
-  );
-  const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [requirementFilter, setRequirementFilter] = useState<RequirementFilter>("all");
-  const [selectedSchoolScopeKey, setSelectedSchoolScopeKey] = useState<string>(ALL_SCHOOL_SCOPE);
+  const {
+    search,
+    effectiveSearch,
+    statusFilter,
+    filterDateFrom,
+    filterDateTo,
+    requirementFilter,
+    selectedSchoolScopeKey,
+    selectedStudentLookupId,
+    selectedTeacherLookupId,
+    filtersHydrated,
+    activeTopNavigator,
+    queueLane,
+    schoolQuickPreset,
+    setSearch,
+    setStatusFilter,
+    setFilterDateFrom,
+    setFilterDateTo,
+    setRequirementFilter,
+    setSelectedSchoolScopeKey,
+    setSelectedStudentLookupId,
+    setSelectedTeacherLookupId,
+    setActiveTopNavigator,
+    setQueueLane,
+    setSchoolQuickPreset,
+    resetFilters: resetMonitorFilters,
+  } = useMonitorFilters();
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
-  const debouncedSchoolScopeQuery = useDebouncedValue(schoolScopeQuery, SEARCH_DEBOUNCE_MS);
+  const debouncedSchoolScopeQuery = useDebouncedValue(schoolScopeQuery, MONITOR_SEARCH_DEBOUNCE_MS);
   const [openScopeDropdownId, setOpenScopeDropdownId] = useState<ScopeDropdownId | null>(null);
   const [studentLookupQuery, setStudentLookupQuery] = useState("");
   const [teacherLookupQuery, setTeacherLookupQuery] = useState("");
-  const debouncedStudentLookupQuery = useDebouncedValue(studentLookupQuery, SEARCH_DEBOUNCE_MS);
-  const debouncedTeacherLookupQuery = useDebouncedValue(teacherLookupQuery, SEARCH_DEBOUNCE_MS);
-  const [selectedStudentLookup, setSelectedStudentLookup] = useState<StudentLookupOption | null>(null);
-  const [selectedTeacherLookup, setSelectedTeacherLookup] = useState<TeacherLookupOption | null>(null);
+  const debouncedStudentLookupQuery = useDebouncedValue(studentLookupQuery, MONITOR_SEARCH_DEBOUNCE_MS);
+  const debouncedTeacherLookupQuery = useDebouncedValue(teacherLookupQuery, MONITOR_SEARCH_DEBOUNCE_MS);
   const [dbStudentLookupOptions, setDbStudentLookupOptions] = useState<StudentLookupOption[]>([]);
   const [dbTeacherLookupOptions, setDbTeacherLookupOptions] = useState<TeacherLookupOption[]>([]);
   const [isStudentLookupSyncing, setIsStudentLookupSyncing] = useState(false);
@@ -1222,12 +1186,8 @@ export function MonitorDashboard() {
     isLoading: false,
     error: "",
   });
-  const [pendingStudentLookupId, setPendingStudentLookupId] = useState<string | null>(null);
-  const [pendingTeacherLookupId, setPendingTeacherLookupId] = useState<string | null>(null);
-  const [filtersHydrated, setFiltersHydrated] = useState(false);
   const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [activeTopNavigator, setActiveTopNavigator] = useState<MonitorTopNavigatorId>("overview");
   const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= 768,
@@ -1246,8 +1206,6 @@ export function MonitorDashboard() {
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
-  const [queueLane, setQueueLane] = useState<QueueLane>("all");
-  const [schoolQuickPreset, setSchoolQuickPreset] = useState<SchoolQuickPreset>("all");
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [lastReviewCompletion, setLastReviewCompletion] = useState<{
     schoolKey: string;
@@ -1509,82 +1467,6 @@ export function MonitorDashboard() {
   }, [isMobileViewport]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-    const hasQueryFilters = ["q", "status", "workflow", "lane", "preset", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
-      params.has(key),
-    );
-    const requestedTab = params.get("tab");
-
-    let persisted: PersistedMonitorFilters | null = null;
-
-    if (hasQueryFilters) {
-      persisted = {
-        search: params.get("q") ?? "",
-        statusFilter: (params.get("status") as SchoolStatus | "all" | null) ?? undefined,
-        requirementFilter: (params.get("workflow") as RequirementFilter | null) ?? undefined,
-        queueLane: (params.get("lane") as QueueLane | null) ?? undefined,
-        schoolQuickPreset: (params.get("preset") as SchoolQuickPreset | null) ?? undefined,
-        schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
-        studentLookupId: params.get("student"),
-        teacherLookupId: params.get("teacher"),
-        filterDateFrom: params.get("from") ?? "",
-        filterDateTo: params.get("to") ?? "",
-        activeTopNavigator: (params.get("tab") as MonitorTopNavigatorId | null) ?? undefined,
-      };
-    } else {
-      try {
-        const raw = localStorage.getItem(MONITOR_FILTER_STORAGE_KEY);
-        if (raw) {
-          persisted = JSON.parse(raw) as PersistedMonitorFilters;
-        }
-      } catch {
-        persisted = null;
-      }
-    }
-
-    if (persisted) {
-      setSearch(persisted.search?.trim() ?? "");
-      if (isValidSchoolStatusFilter(persisted.statusFilter)) {
-        setStatusFilter(persisted.statusFilter);
-      }
-      if (isValidRequirementFilter(persisted.requirementFilter)) {
-        setRequirementFilter(persisted.requirementFilter);
-      }
-      if (isValidQueueLane(persisted.queueLane)) {
-        setQueueLane(persisted.queueLane);
-      }
-      if (isValidSchoolQuickPreset(persisted.schoolQuickPreset)) {
-        setSchoolQuickPreset(persisted.schoolQuickPreset);
-      }
-      if (persisted.schoolScopeKey) {
-        setSelectedSchoolScopeKey(persisted.schoolScopeKey);
-      }
-      const persistedTeacherLookupId = persisted.teacherLookupId ?? null;
-      if (persistedTeacherLookupId) {
-        setPendingTeacherLookupId(persistedTeacherLookupId);
-      } else if (persisted.teacherLookup) {
-        setTeacherLookupQuery(persisted.teacherLookup);
-      }
-      setFilterDateFrom(normalizeDateInput(persisted.filterDateFrom));
-      setFilterDateTo(normalizeDateInput(persisted.filterDateTo));
-      if (persisted.studentLookupId) {
-        setPendingStudentLookupId(persisted.studentLookupId);
-      }
-    }
-
-    const resolvedNavigator = resolveMonitorTopNavigator(requestedTab);
-    if (resolvedNavigator) {
-      setActiveTopNavigator(resolvedNavigator);
-    } else {
-      setActiveTopNavigator("overview");
-    }
-
-    setFiltersHydrated(true);
-  }, []);
-
-  useEffect(() => {
     if (!filtersHydrated || didAutoExpandMoreFiltersRef.current) return;
 
     didAutoExpandMoreFiltersRef.current = true;
@@ -1592,10 +1474,8 @@ export function MonitorDashboard() {
     const shouldExpand =
       (activeTopNavigator !== "reviews" && queueLane !== "all") ||
       selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ||
-      Boolean(selectedStudentLookup) ||
-      Boolean(pendingStudentLookupId) ||
-      Boolean(selectedTeacherLookup) ||
-      Boolean(pendingTeacherLookupId);
+      Boolean(selectedStudentLookupId) ||
+      Boolean(selectedTeacherLookupId);
 
     if (shouldExpand) {
       setShowMoreFilters(true);
@@ -1603,12 +1483,10 @@ export function MonitorDashboard() {
   }, [
     activeTopNavigator,
     filtersHydrated,
-    pendingStudentLookupId,
-    pendingTeacherLookupId,
     queueLane,
     selectedSchoolScopeKey,
-    selectedStudentLookup,
-    selectedTeacherLookup,
+    selectedStudentLookupId,
+    selectedTeacherLookupId,
   ]);
 
   useEffect(() => {
@@ -1645,67 +1523,6 @@ export function MonitorDashboard() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [openScopeDropdownId, showAdvancedFilters]);
-
-  useEffect(() => {
-    if (!filtersHydrated || typeof window === "undefined") return;
-
-    const payload: PersistedMonitorFilters = {
-      search: effectiveSearch,
-      statusFilter,
-      requirementFilter,
-      queueLane,
-      schoolQuickPreset,
-      schoolScopeKey: selectedSchoolScopeKey,
-      studentLookupId: selectedStudentLookup?.id ?? pendingStudentLookupId ?? null,
-      teacherLookupId: selectedTeacherLookup?.id ?? pendingTeacherLookupId ?? null,
-      filterDateFrom,
-      filterDateTo,
-    };
-
-    try {
-      localStorage.setItem(MONITOR_FILTER_STORAGE_KEY, JSON.stringify(payload));
-    } catch {
-      // Ignore storage failures in restricted browser modes.
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const setOrDelete = (key: string, value: string | null) => {
-      if (!value) {
-        params.delete(key);
-      } else {
-        params.set(key, value);
-      }
-    };
-
-    setOrDelete("q", effectiveSearch.trim() ? effectiveSearch.trim() : null);
-    setOrDelete("status", statusFilter !== "all" ? statusFilter : null);
-    setOrDelete("workflow", requirementFilter !== "all" ? requirementFilter : null);
-    setOrDelete("lane", queueLane !== "all" ? queueLane : null);
-    setOrDelete("preset", schoolQuickPreset !== "all" ? schoolQuickPreset : null);
-    setOrDelete("school", selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
-    setOrDelete("student", selectedStudentLookup?.id ?? pendingStudentLookupId ?? null);
-    setOrDelete("teacher", selectedTeacherLookup?.id ?? pendingTeacherLookupId ?? null);
-    setOrDelete("from", filterDateFrom.trim() ? filterDateFrom.trim() : null);
-    setOrDelete("to", filterDateTo.trim() ? filterDateTo.trim() : null);
-
-    const nextQuery = params.toString();
-    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
-    window.history.replaceState(null, "", nextUrl);
-  }, [
-    filterDateFrom,
-    filterDateTo,
-    filtersHydrated,
-    pendingStudentLookupId,
-    pendingTeacherLookupId,
-    queueLane,
-    requirementFilter,
-    schoolQuickPreset,
-    effectiveSearch,
-    selectedSchoolScopeKey,
-    selectedStudentLookup?.id,
-    selectedTeacherLookup?.id,
-    statusFilter,
-  ]);
 
   const pushToast = (message: string, tone: ToastTone = "info") => {
     const toastId = Date.now() + Math.floor(Math.random() * 1000);
@@ -2128,16 +1945,62 @@ export function MonitorDashboard() {
     [scopedStudentPool],
   );
 
+  const localTeacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
+    const optionsById = new Map<string, TeacherLookupOption>();
+
+    for (const student of scopedStudentPool) {
+      const teacherName = student.teacher?.trim() ?? "";
+      if (!teacherName) continue;
+
+      const schoolKey = resolveStudentSchoolKey(student);
+      const optionId = `local:${teacherName.toLowerCase()}|${schoolKey}`;
+      if (optionsById.has(optionId)) continue;
+
+      optionsById.set(optionId, {
+        id: optionId,
+        name: teacherName,
+        schoolKey,
+        schoolCode: normalizeSchoolCodeLabel(student.school?.schoolCode ?? null),
+        schoolName: normalizeSchoolNameLabel(student.school?.name ?? null),
+      });
+    }
+
+    return [...optionsById.values()].sort((a, b) =>
+      a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName),
+    );
+  }, [scopedStudentPool]);
+
+  const teacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
+    const merged = new Map<string, TeacherLookupOption>();
+
+    for (const option of localTeacherLookupOptions) {
+      merged.set(option.id, option);
+    }
+
+    for (const option of dbTeacherLookupOptions) {
+      merged.set(option.id, option);
+    }
+
+    return [...merged.values()].sort((a, b) =>
+      a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName),
+    );
+  }, [dbTeacherLookupOptions, localTeacherLookupOptions]);
+
+  const selectedTeacherLookup = useMemo(
+    () => teacherLookupOptions.find((option) => option.id === selectedTeacherLookupId) ?? null,
+    [selectedTeacherLookupId, teacherLookupOptions],
+  );
+
   const shouldSyncStudentLookup = useMemo(() => {
     if (openScopeDropdownId === "students_filters" || openScopeDropdownId === "students_radar") {
       return true;
     }
 
-    if (pendingStudentLookupId) {
+    if (selectedStudentLookupId) {
       return true;
     }
 
-    if (selectedStudentLookup) {
+    if (selectedStudentLookupId) {
       return true;
     }
 
@@ -2153,8 +2016,7 @@ export function MonitorDashboard() {
   }, [
     debouncedStudentLookupQuery,
     openScopeDropdownId,
-    pendingStudentLookupId,
-    selectedStudentLookup,
+    selectedStudentLookupId,
     selectedTeacherLookup,
   ]);
 
@@ -2239,12 +2101,13 @@ export function MonitorDashboard() {
       merged.set(option.id, option);
     }
 
-    if (selectedStudentLookup) {
-      merged.set(selectedStudentLookup.id, selectedStudentLookup);
-    }
-
     return [...merged.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
-  }, [dbStudentLookupOptions, localStudentLookupOptions, selectedStudentLookup]);
+  }, [dbStudentLookupOptions, localStudentLookupOptions]);
+
+  const selectedStudentLookup = useMemo(
+    () => studentLookupOptions.find((option) => option.id === selectedStudentLookupId) ?? null,
+    [selectedStudentLookupId, studentLookupOptions],
+  );
 
   const teacherScopedStudentLookupOptions = useMemo(() => {
     if (!selectedTeacherLookup) {
@@ -2286,41 +2149,12 @@ export function MonitorDashboard() {
     );
   }, [studentLookupQuery, teacherScopedStudentLookupOptions]);
 
-  const localTeacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
-    const optionsById = new Map<string, TeacherLookupOption>();
-
-    for (const student of scopedStudentPool) {
-      const teacherName = student.teacher?.trim() ?? "";
-      if (!teacherName) continue;
-
-      const schoolKey = resolveStudentSchoolKey(student);
-      const optionId = `local:${teacherName.toLowerCase()}|${schoolKey}`;
-      if (optionsById.has(optionId)) continue;
-
-      optionsById.set(optionId, {
-        id: optionId,
-        name: teacherName,
-        schoolKey,
-        schoolCode: normalizeSchoolCodeLabel(student.school?.schoolCode ?? null),
-        schoolName: normalizeSchoolNameLabel(student.school?.name ?? null),
-      });
-    }
-
-    return [...optionsById.values()].sort((a, b) =>
-      a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName),
-    );
-  }, [scopedStudentPool]);
-
   const shouldSyncTeacherLookup = useMemo(() => {
     if (openScopeDropdownId === "teachers_filters" || openScopeDropdownId === "teachers_radar") {
       return true;
     }
 
-    if (pendingTeacherLookupId) {
-      return true;
-    }
-
-    if (selectedTeacherLookup) {
+    if (selectedTeacherLookupId) {
       return true;
     }
 
@@ -2329,7 +2163,7 @@ export function MonitorDashboard() {
     }
 
     return false;
-  }, [debouncedTeacherLookupQuery, openScopeDropdownId, pendingTeacherLookupId, selectedTeacherLookup]);
+  }, [debouncedTeacherLookupQuery, openScopeDropdownId, selectedTeacherLookupId]);
 
   useEffect(() => {
     if (!shouldSyncTeacherLookup) {
@@ -2386,24 +2220,6 @@ export function MonitorDashboard() {
       }
     };
   }, [debouncedTeacherLookupQuery, listTeachers, scopedSchoolCodes, teacherLookupSyncTick, shouldSyncTeacherLookup]);
-
-  const teacherLookupOptions = useMemo<TeacherLookupOption[]>(() => {
-    const merged = new Map<string, TeacherLookupOption>();
-
-    for (const option of localTeacherLookupOptions) {
-      merged.set(option.id, option);
-    }
-    for (const option of dbTeacherLookupOptions) {
-      merged.set(option.id, option);
-    }
-    if (selectedTeacherLookup) {
-      merged.set(selectedTeacherLookup.id, selectedTeacherLookup);
-    }
-
-    return [...merged.values()].sort((a, b) =>
-      a.name.localeCompare(b.name) || a.schoolName.localeCompare(b.schoolName),
-    );
-  }, [dbTeacherLookupOptions, localTeacherLookupOptions, selectedTeacherLookup]);
 
   const filteredTeacherLookupOptions = useMemo(() => {
     const query = teacherLookupQuery.trim().toLowerCase();
@@ -2535,8 +2351,7 @@ export function MonitorDashboard() {
       selectedTeacherLookup.schoolKey === "unknown" || selectedStudentLookup.schoolKey === selectedTeacherLookup.schoolKey;
 
     if (!matchesTeacher || !matchesSchool) {
-      setSelectedStudentLookup(null);
-      setPendingStudentLookupId(null);
+      setSelectedStudentLookupId(null);
     }
   }, [
     selectedStudentLookup?.id,
@@ -2545,6 +2360,7 @@ export function MonitorDashboard() {
     selectedTeacherLookup?.id,
     selectedTeacherLookup?.name,
     selectedTeacherLookup?.schoolKey,
+    setSelectedStudentLookupId,
   ]);
 
   const selectedStudentLabel = selectedStudentLookup
@@ -2558,66 +2374,37 @@ export function MonitorDashboard() {
     : selectedTeacherLookup?.name ?? "";
 
   useEffect(() => {
-    if (!selectedStudentLookup) return;
-    if (studentLookupOptions.some((option) => option.id === selectedStudentLookup.id)) return;
-    setSelectedStudentLookup(null);
-  }, [selectedStudentLookup, studentLookupOptions]);
-
-  useEffect(() => {
-    if (!pendingStudentLookupId) return;
-    const restored = studentLookupOptions.find((option) => option.id === pendingStudentLookupId);
-    if (!restored) return;
-
-    setSelectedStudentLookup(restored);
-    if (restored.schoolKey !== "unknown") {
-      setSelectedSchoolScopeKey(restored.schoolKey);
-    }
-    setPendingStudentLookupId(null);
-  }, [pendingStudentLookupId, studentLookupOptions]);
-
-  useEffect(() => {
-    if (!pendingStudentLookupId) return;
+    if (!selectedStudentLookupId) return;
     if (isStudentDataLoading) return;
-    if (studentLookupOptions.some((option) => option.id === pendingStudentLookupId)) return;
+    if (studentLookupOptions.some((option) => option.id === selectedStudentLookupId)) return;
 
     // Remove stale student IDs so URL/filter state stays truthful.
-    setPendingStudentLookupId(null);
-  }, [isStudentDataLoading, pendingStudentLookupId, studentLookupOptions]);
+    setSelectedStudentLookupId(null);
+  }, [isStudentDataLoading, selectedStudentLookupId, setSelectedStudentLookupId, studentLookupOptions]);
+
+  useEffect(() => {
+    if (!selectedTeacherLookupId) return;
+    if (isTeacherLookupSyncing) return;
+    if (teacherLookupOptions.some((option) => option.id === selectedTeacherLookupId)) return;
+
+    setSelectedTeacherLookupId(null);
+  }, [isTeacherLookupSyncing, selectedTeacherLookupId, setSelectedTeacherLookupId, teacherLookupOptions]);
+
+  useEffect(() => {
+    if (!selectedStudentLookup) return;
+    if (selectedStudentLookup.schoolKey === "unknown") return;
+    if (selectedSchoolScopeKey === selectedStudentLookup.schoolKey) return;
+
+    setSelectedSchoolScopeKey(selectedStudentLookup.schoolKey);
+  }, [selectedSchoolScopeKey, selectedStudentLookup, setSelectedSchoolScopeKey]);
 
   useEffect(() => {
     if (!selectedTeacherLookup) return;
-    if (teacherLookupOptions.some((option) => option.id === selectedTeacherLookup.id)) return;
-    setSelectedTeacherLookup(null);
-  }, [selectedTeacherLookup, teacherLookupOptions]);
+    if (selectedTeacherLookup.schoolKey === "unknown") return;
+    if (selectedSchoolScopeKey === selectedTeacherLookup.schoolKey) return;
 
-  useEffect(() => {
-    if (!pendingTeacherLookupId) return;
-    const restored = teacherLookupOptions.find((option) => option.id === pendingTeacherLookupId);
-    if (!restored) return;
-
-    setSelectedTeacherLookup(restored);
-    if (restored.schoolKey !== "unknown") {
-      setSelectedSchoolScopeKey(restored.schoolKey);
-    }
-    setPendingTeacherLookupId(null);
-  }, [pendingTeacherLookupId, teacherLookupOptions]);
-
-  useEffect(() => {
-    if (!pendingTeacherLookupId) return;
-    if (isTeacherLookupSyncing) return;
-    if (teacherLookupOptions.some((option) => option.id === pendingTeacherLookupId)) return;
-
-    setPendingTeacherLookupId(null);
-  }, [isTeacherLookupSyncing, pendingTeacherLookupId, teacherLookupOptions]);
-
-  useEffect(() => {
-    if (!filterDateFrom || !filterDateTo) return;
-    if (filterDateFrom <= filterDateTo) return;
-
-    // Keep a valid inclusive range even when one endpoint is edited out of order.
-    setFilterDateFrom(filterDateTo);
-    setFilterDateTo(filterDateFrom);
-  }, [filterDateFrom, filterDateTo]);
+    setSelectedSchoolScopeKey(selectedTeacherLookup.schoolKey);
+  }, [selectedSchoolScopeKey, selectedTeacherLookup, setSelectedSchoolScopeKey]);
 
   useEffect(() => {
     if (!selectedStudentLookup && !selectedTeacherLookup) return;
@@ -4046,7 +3833,7 @@ export function MonitorDashboard() {
     effectiveSearch,
     selectedSchoolScope,
     selectedStudentLookup,
-    selectedTeacherLookup?.id,
+    selectedTeacherLookup,
     statusFilter,
   ]);
 
@@ -4060,8 +3847,8 @@ export function MonitorDashboard() {
     schoolQuickPreset,
     effectiveSearch,
     selectedSchoolScopeKey,
-    selectedStudentLookup?.id,
-    selectedTeacherLookup?.id,
+    selectedStudentLookupId,
+    selectedTeacherLookupId,
     statusFilter,
   ]);
 
@@ -4078,18 +3865,7 @@ export function MonitorDashboard() {
   }, [recordsPage, totalRecordPages]);
 
   const clearAllFilters = () => {
-    setSearch("");
-    setStatusFilter("all");
-    setFilterDateFrom("");
-    setFilterDateTo("");
-    setRequirementFilter("all");
-    setQueueLane("all");
-    setSchoolQuickPreset("all");
-    setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-    setSelectedStudentLookup(null);
-    setPendingStudentLookupId(null);
-    setSelectedTeacherLookup(null);
-    setPendingTeacherLookupId(null);
+    resetMonitorFilters();
     setSchoolScopeQuery("");
     setStudentLookupQuery("");
     setTeacherLookupQuery("");
@@ -4124,22 +3900,18 @@ export function MonitorDashboard() {
         break;
       case "school":
         setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-        setSelectedStudentLookup(null);
-        setPendingStudentLookupId(null);
-        setSelectedTeacherLookup(null);
-        setPendingTeacherLookupId(null);
+        setSelectedStudentLookupId(null);
+        setSelectedTeacherLookupId(null);
         setSchoolScopeQuery("");
         setStudentLookupQuery("");
         setTeacherLookupQuery("");
         break;
       case "student":
-        setSelectedStudentLookup(null);
-        setPendingStudentLookupId(null);
+        setSelectedStudentLookupId(null);
         setStudentLookupQuery("");
         break;
       case "teacher":
-        setSelectedTeacherLookup(null);
-        setPendingTeacherLookupId(null);
+        setSelectedTeacherLookupId(null);
         setTeacherLookupQuery("");
         break;
       default:
@@ -4527,10 +4299,8 @@ export function MonitorDashboard() {
                     type="button"
                     onClick={() => {
                       setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-                      setSelectedStudentLookup(null);
-                      setPendingStudentLookupId(null);
-                      setSelectedTeacherLookup(null);
-                      setPendingTeacherLookupId(null);
+                      setSelectedStudentLookupId(null);
+                      setSelectedTeacherLookupId(null);
                       setSchoolScopeQuery("");
                       setOpenScopeDropdownId(null);
                     }}
@@ -4547,10 +4317,8 @@ export function MonitorDashboard() {
                       title={`${option.code} - ${option.name}${option.headName ? ` \u2022 ${option.headName}` : ""}`}
                       onClick={() => {
                         setSelectedSchoolScopeKey(option.key);
-                        setSelectedStudentLookup(null);
-                        setPendingStudentLookupId(null);
-                        setSelectedTeacherLookup(null);
-                        setPendingTeacherLookupId(null);
+                        setSelectedStudentLookupId(null);
+                        setSelectedTeacherLookupId(null);
                         setSchoolScopeQuery("");
                         setOpenScopeDropdownId(null);
                       }}
@@ -4637,8 +4405,7 @@ export function MonitorDashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedStudentLookup(null);
-                  setPendingStudentLookupId(null);
+                  setSelectedStudentLookupId(null);
                   setStudentLookupQuery("");
                   setOpenScopeDropdownId(null);
                 }}
@@ -4653,8 +4420,7 @@ export function MonitorDashboard() {
                   key={option.id}
                   type="button"
                   onClick={() => {
-                    setSelectedStudentLookup(option);
-                    setPendingStudentLookupId(null);
+                    setSelectedStudentLookupId(option.id);
                     if (option.schoolKey !== "unknown") {
                       setSelectedSchoolScopeKey(option.schoolKey);
                     }
@@ -4735,10 +4501,8 @@ export function MonitorDashboard() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedTeacherLookup(null);
-                  setPendingTeacherLookupId(null);
-                  setSelectedStudentLookup(null);
-                  setPendingStudentLookupId(null);
+                  setSelectedTeacherLookupId(null);
+                  setSelectedStudentLookupId(null);
                   setTeacherLookupQuery("");
                   setOpenScopeDropdownId(null);
                 }}
@@ -4753,10 +4517,8 @@ export function MonitorDashboard() {
                   key={option.id}
                   type="button"
                   onClick={() => {
-                    setSelectedTeacherLookup(option);
-                    setPendingTeacherLookupId(null);
-                    setSelectedStudentLookup(null);
-                    setPendingStudentLookupId(null);
+                    setSelectedTeacherLookupId(option.id);
+                    setSelectedStudentLookupId(null);
                     if (option.schoolKey !== "unknown") {
                       setSelectedSchoolScopeKey(option.schoolKey);
                     }
@@ -4992,8 +4754,8 @@ export function MonitorDashboard() {
             {(() => {
               const hiddenActiveCount =
                 (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? 1 : 0) +
-                (selectedStudentLookup || pendingStudentLookupId ? 1 : 0) +
-                (selectedTeacherLookup || pendingTeacherLookupId ? 1 : 0) +
+                (selectedStudentLookupId ? 1 : 0) +
+                (selectedTeacherLookupId ? 1 : 0) +
                 (activeTopNavigator !== "reviews" && queueLane !== "all" ? 1 : 0);
 
               if (!hiddenActiveCount) return null;

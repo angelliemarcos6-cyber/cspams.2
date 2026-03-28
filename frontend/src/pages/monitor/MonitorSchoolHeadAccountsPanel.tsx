@@ -331,7 +331,7 @@ export function MonitorSchoolHeadAccountsPanel({
                       <td className="px-3 py-1.5 align-top text-xs text-slate-700">
                         <div className="flex flex-col gap-0.5">
                           <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
-                            {account?.lastLoginAt ? formatDateTime(account.lastLoginAt) : account ? "Never" : "â€”"}
+                            {account?.lastLoginAt ? formatDateTime(account.lastLoginAt) : account ? "Never" : "-"}
                           </span>
                           {account?.setupLinkExpiresAt ? (
                             <span
@@ -345,7 +345,7 @@ export function MonitorSchoolHeadAccountsPanel({
                               {setupLinkExpired ? "Expired" : "Expires"} {formatDateTime(account.setupLinkExpiresAt)}
                             </span>
                           ) : (
-                            <span className="text-slate-400">â€”</span>
+                            <span className="text-slate-400">-</span>
                           )}
                         </div>
                       </td>
