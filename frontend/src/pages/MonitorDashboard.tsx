@@ -883,45 +883,6 @@ export function MonitorDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!openScopeDropdownId || typeof window === "undefined") return;
-
-    const onPointerDown = (event: MouseEvent) => {
-      const root = document.querySelector(`[data-scope-dropdown-id="${openScopeDropdownId}"]`);
-      if (!root) {
-        setOpenScopeDropdownId(null);
-        return;
-      }
-      if (root.contains(event.target as Node)) return;
-      setOpenScopeDropdownId(null);
-    };
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpenScopeDropdownId(null);
-      }
-    };
-
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [openScopeDropdownId]);
-
-  useEffect(() => {
-    if (!openScopeDropdownId || typeof window === "undefined") return;
-
-    window.setTimeout(() => {
-      const root = document.querySelector(`[data-scope-dropdown-id="${openScopeDropdownId}"]`);
-      const input = root?.querySelector("input");
-      if (input instanceof HTMLInputElement) {
-        input.focus();
-      }
-    }, 0);
-  }, [openScopeDropdownId]);
-
-  useEffect(() => {
     if (showAdvancedAnalytics) {
       setRenderAdvancedAnalytics(true);
       setIsHidingAdvancedAnalytics(false);
@@ -1031,26 +992,6 @@ export function MonitorDashboard() {
     selectedStudentLookupId,
     selectedTeacherLookupId,
   ]);
-
-  useEffect(() => {
-    if (showMoreFilters) return;
-
-    if (
-      openScopeDropdownId === "schools_filters" ||
-      openScopeDropdownId === "students_filters" ||
-      openScopeDropdownId === "teachers_filters"
-    ) {
-      setOpenScopeDropdownId(null);
-    }
-  }, [openScopeDropdownId, showMoreFilters]);
-
-  useEffect(() => {
-    if (showAdvancedFilters) return;
-
-    if (openScopeDropdownId && openScopeDropdownId.endsWith("_filters")) {
-      setOpenScopeDropdownId(null);
-    }
-  }, [openScopeDropdownId, showAdvancedFilters]);
 
   useEffect(() => {
     if (!showAdvancedFilters || typeof window === "undefined") return;
