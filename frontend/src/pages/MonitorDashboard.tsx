@@ -60,6 +60,7 @@ import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
 import {
   useMonitorLookups,
 } from "@/pages/monitor/useMonitorLookups";
+import { useMonitorDashboardShell } from "@/pages/monitor/useMonitorDashboardShell";
 import { useMonitorDrawerViewModel } from "@/pages/monitor/useMonitorDrawerViewModel";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
@@ -80,7 +81,6 @@ import {
 } from "@/utils/analytics";
 
 type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date";
-type ToastTone = "success" | "info" | "warning";
 
 interface MonitorTopNavigatorItem {
   id: MonitorTopNavigatorId;
@@ -104,12 +104,6 @@ interface QuickJumpItem {
   label: string;
   targetId: string;
   icon: NavigatorIcon;
-}
-
-interface DashboardToast {
-  id: number;
-  message: string;
-  tone: ToastTone;
 }
 
 interface MonitorRadarTotals {
@@ -209,11 +203,8 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   ],
 };
 
-const MONITOR_NAV_STORAGE_KEY = "cspams.monitor.nav.v1";
-const ADVANCED_ANALYTICS_HIDE_MS = 240;
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
-const MOBILE_BREAKPOINT = 768;
 
 function statusTone(status: SchoolStatus) {
   if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
@@ -460,25 +451,37 @@ export function MonitorDashboard() {
     isLoading: false,
     error: "",
   });
-  const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
-  const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
-    typeof window === "undefined" ? true : window.innerWidth >= 768,
-  );
-  const [isMobileViewport, setIsMobileViewport] = useState(() =>
-    typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
-  );
-  const [showNavigatorManual, setShowNavigatorManual] = useState(false);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const {
+    isNavigatorCompact,
+    setIsNavigatorCompact,
+    isNavigatorVisible,
+    setIsNavigatorVisible,
+    isMobileViewport,
+    showNavigatorManual,
+    setShowNavigatorManual,
+    showAdvancedFilters,
+    setShowAdvancedFilters,
+    showAdvancedAnalytics,
+    setShowAdvancedAnalytics,
+    showHelpDialog,
+    setShowHelpDialog,
+    showMfaResetApprovalsDialog,
+    setShowMfaResetApprovalsDialog,
+    renderAdvancedAnalytics,
+    isHidingAdvancedAnalytics,
+    focusedSectionId,
+    setFocusedSectionId,
+    showMoreFilters,
+    setShowMoreFilters,
+    toasts,
+    pushToast,
+    dismissToast,
+    focusAndScrollTo,
+    sectionFocusClass,
+  } = useMonitorDashboardShell();
   const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
-  const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
-  const [showHelpDialog, setShowHelpDialog] = useState(false);
-  const [showMfaResetApprovalsDialog, setShowMfaResetApprovalsDialog] = useState(false);
-  const [renderAdvancedAnalytics, setRenderAdvancedAnalytics] = useState(false);
-  const [isHidingAdvancedAnalytics, setIsHidingAdvancedAnalytics] = useState(false);
-  const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
-  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [lastReviewCompletion, setLastReviewCompletion] = useState<{
     schoolKey: string;
     schoolName: string;
@@ -486,7 +489,6 @@ export function MonitorDashboard() {
     action: "validated" | "returned";
   } | null>(null);
   const [autoAdvanceQueue, setAutoAdvanceQueue] = useState(true);
-  const [toasts, setToasts] = useState<DashboardToast[]>([]);
   const openStudentRecordsFromCard = () => {
     setShowSchoolLearnerRecords(true);
     setShowNavigatorManual(false);
@@ -581,76 +583,6 @@ export function MonitorDashboard() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const syncViewport = () => {
-      setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
-    };
-
-    syncViewport();
-    window.addEventListener("resize", syncViewport);
-    return () => {
-      window.removeEventListener("resize", syncViewport);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (showAdvancedAnalytics) {
-      setRenderAdvancedAnalytics(true);
-      setIsHidingAdvancedAnalytics(false);
-      return;
-    }
-
-    if (!renderAdvancedAnalytics) {
-      return;
-    }
-
-    setIsHidingAdvancedAnalytics(true);
-
-    if (typeof window === "undefined") {
-      setRenderAdvancedAnalytics(false);
-      setIsHidingAdvancedAnalytics(false);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setRenderAdvancedAnalytics(false);
-      setIsHidingAdvancedAnalytics(false);
-    }, ADVANCED_ANALYTICS_HIDE_MS);
-
-    return () => window.clearTimeout(timeout);
-  }, [showAdvancedAnalytics, renderAdvancedAnalytics]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(MONITOR_NAV_STORAGE_KEY);
-      if (!raw) return;
-      const persisted = JSON.parse(raw) as { compact?: boolean; visible?: boolean };
-      if (typeof persisted.compact === "boolean") {
-        setIsNavigatorCompact(persisted.compact);
-      }
-      if (typeof persisted.visible === "boolean") {
-        setIsNavigatorVisible(persisted.visible);
-      }
-    } catch {
-      // Ignore invalid persisted navigator state.
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      localStorage.setItem(
-        MONITOR_NAV_STORAGE_KEY,
-        JSON.stringify({ compact: isNavigatorCompact, visible: isNavigatorVisible }),
-      );
-    } catch {
-      // Ignore storage failures.
-    }
-  }, [isNavigatorCompact, isNavigatorVisible]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 
@@ -717,18 +649,6 @@ export function MonitorDashboard() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [openScopeDropdownId, showAdvancedFilters]);
-
-  const pushToast = (message: string, tone: ToastTone = "info") => {
-    const toastId = Date.now() + Math.floor(Math.random() * 1000);
-    setToasts((current) => [...current, { id: toastId, message, tone }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((item) => item.id !== toastId));
-    }, 3200);
-  };
-
-  const dismissToast = (id: number) => {
-    setToasts((current) => current.filter((item) => item.id !== id));
-  };
 
   const handleRefreshDashboard = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -933,22 +853,6 @@ export function MonitorDashboard() {
     [activeTopNavigator],
   );
   const shouldShowQuickJump = quickJumpItems.length > 0;
-
-  const clearFocusAfterDelay = (targetId: string) => {
-    if (typeof window === "undefined") return;
-    window.setTimeout(() => {
-      setFocusedSectionId((current) => (current === targetId ? null : current));
-    }, 3000);
-  };
-
-  const focusAndScrollTo = (targetId: string) => {
-    if (typeof document === "undefined") return;
-    const section = document.getElementById(targetId);
-    if (!section) return;
-    section.scrollIntoView({ behavior: "smooth", block: "start" });
-    setFocusedSectionId(targetId);
-    clearFocusAfterDelay(targetId);
-  };
   const scrollQueueRowIntoView = (schoolKey: string) => {
     if (typeof document === "undefined") return;
     const targetId = `monitor-queue-row-${sanitizeAnchorToken(schoolKey)}`;
@@ -956,8 +860,6 @@ export function MonitorDashboard() {
     if (!row) return;
     row.scrollIntoView({ behavior: "smooth", block: "center" });
   };
-
-  const sectionFocusClass = (targetId: string) => (focusedSectionId === targetId ? "dashboard-focus-glow" : "");
 
   const resolveQuickJumpTargetId = (targetId: string): string => {
     if (targetId === "monitor-analytics-toggle") {
