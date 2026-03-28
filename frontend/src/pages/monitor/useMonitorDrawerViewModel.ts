@@ -8,6 +8,16 @@ import type {
   SchoolIndicatorPackageRow,
   SchoolIndicatorRowGroup,
 } from "@/pages/monitor/monitorDrawerTypes";
+import {
+  SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL,
+  deriveSchoolYearLabel,
+  indicatorCategoryLabel,
+  indicatorDisplayLabel,
+  schoolTypeLabel,
+  sortSchoolYears,
+  toDisplayValue,
+  typedYearValues,
+} from "@/pages/monitor/monitorDrawerViewModelUtils";
 import type { IndicatorSubmission, SchoolRecord } from "@/types";
 
 interface UseMonitorDrawerViewModelArgs {
@@ -18,14 +28,6 @@ interface UseMonitorDrawerViewModelArgs {
   recordBySchoolKey: Map<string, SchoolRecord>;
   studentStatsBySchoolKey: Map<string, { students: number; teachers: Set<string> }>;
   accurateSyncedCountsBySchoolKey: Record<string, { students: number; teachers: number }>;
-  deriveSchoolYearLabel: (dateInput: string | null | undefined) => string;
-  toDisplayValue: (value: unknown) => string;
-  typedYearValues: (payload: Record<string, unknown> | null | undefined) => Record<string, string>;
-  indicatorCategoryLabel: (metricCode: string | null | undefined) => string;
-  indicatorDisplayLabel: (metricCode: string | null | undefined, fallbackName: string) => string;
-  sortSchoolYears: (years: Iterable<string>) => string[];
-  schoolTypeLabel: (value: string | null | undefined) => string;
-  schoolAchievementsCategoryLabel: string;
 }
 
 export interface UseMonitorDrawerViewModelResult {
@@ -50,14 +52,6 @@ export function useMonitorDrawerViewModel({
   recordBySchoolKey,
   studentStatsBySchoolKey,
   accurateSyncedCountsBySchoolKey,
-  deriveSchoolYearLabel,
-  toDisplayValue,
-  typedYearValues,
-  indicatorCategoryLabel,
-  indicatorDisplayLabel,
-  sortSchoolYears,
-  schoolTypeLabel,
-  schoolAchievementsCategoryLabel,
 }: UseMonitorDrawerViewModelArgs): UseMonitorDrawerViewModelResult {
   const schoolIndicatorMatrix = useMemo<SchoolIndicatorMatrix>(() => {
     if (schoolDrawerSubmissions.length === 0) {
@@ -161,7 +155,7 @@ export function useMonitorDrawerViewModel({
     }
 
     const sortedYears = sortSchoolYears(years);
-    const categoryRank = (category: string) => (category === schoolAchievementsCategoryLabel ? 0 : 1);
+    const categoryRank = (category: string) => (category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL ? 0 : 1);
 
     const sortedRows = [...rowMap.values()].sort((a, b) => {
       const byCategory = categoryRank(a.category) - categoryRank(b.category);
@@ -181,14 +175,7 @@ export function useMonitorDrawerViewModel({
       latestSubmission: schoolDrawerSubmissions[0] ?? null,
     };
   }, [
-    deriveSchoolYearLabel,
-    indicatorCategoryLabel,
-    indicatorDisplayLabel,
-    schoolAchievementsCategoryLabel,
     schoolDrawerSubmissions,
-    sortSchoolYears,
-    toDisplayValue,
-    typedYearValues,
   ]);
 
   const schoolIndicatorRowsByCategory = useMemo(
@@ -223,7 +210,7 @@ export function useMonitorDrawerViewModel({
             : null,
         reviewedBy: submission.reviewedBy?.name?.trim() || "Unassigned",
       })),
-    [deriveSchoolYearLabel, schoolDrawerSubmissions],
+    [schoolDrawerSubmissions],
   );
 
   const latestSchoolPackage = useMemo(
