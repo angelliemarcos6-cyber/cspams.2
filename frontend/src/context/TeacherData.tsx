@@ -36,6 +36,12 @@ interface TeacherRecordsResponse {
   meta?: TeacherSyncMeta;
 }
 
+interface TeacherListCacheEntry {
+  etag: string;
+  scopeKey: string | null;
+  result: TeacherListResult;
+}
+
 interface TeacherRecordMutationResponse {
   data: TeacherRecord;
   meta?: TeacherSyncMeta;
@@ -79,6 +85,7 @@ export interface TeacherListResult {
 }
 
 export interface TeacherDataContextType {
+  teachers: TeacherRecord[];
   teacherSnapshot: TeacherRecord[];
   isLoading: boolean;
   isSaving: boolean;
@@ -86,6 +93,7 @@ export interface TeacherDataContextType {
   lastSyncedAt: string | null;
   syncScope: TeacherSyncScope;
   totalCount: number;
+  dataVersion: number;
   refreshTeachers: () => Promise<void>;
   listTeachers: (params?: TeacherListParams) => Promise<TeacherListResult>;
   addTeacher: (payload: TeacherRecordPayload) => Promise<void>;
@@ -106,6 +114,7 @@ const DataContext = createContext<TeacherDataContextType | undefined>(undefined)
 const SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 25;
 const MAX_PER_PAGE = 200;
+const LIST_CACHE_MAX_ENTRIES = 64;
 
 const EMPTY_META: TeacherListMeta = {
   syncedAt: null,
@@ -232,6 +241,36 @@ function normalizeMeta(meta: TeacherSyncMeta | undefined, params: NormalizedTeac
   };
 }
 
+function buildTeacherListCacheKey(params: NormalizedTeacherListParams): string {
+  return [
+    params.page,
+    params.perPage,
+    params.search.toLowerCase(),
+    params.sex,
+    params.schoolCode,
+    params.schoolCodes.join(","),
+  ].join("|");
+}
+
+function storeTeacherListCacheEntry(
+  cache: Map<string, TeacherListCacheEntry>,
+  key: string,
+  entry: TeacherListCacheEntry,
+): void {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+  cache.set(key, entry);
+
+  while (cache.size > LIST_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    cache.delete(oldestKey);
+  }
+}
+
 function normalizeSchoolId(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
@@ -284,6 +323,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncScope, setSyncScope] = useState<TeacherSyncScope>(null);
   const [totalCount, setTotalCount] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
   const [snapshotMeta, setSnapshotMeta] = useState<TeacherListMeta>(EMPTY_META);
 
   const snapshotParamsRef = useRef<NormalizedTeacherListParams>(
@@ -293,6 +333,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const syncQueuedRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
+  const listCacheRef = useRef<Map<string, TeacherListCacheEntry>>(new Map());
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
@@ -320,6 +361,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     syncQueuedRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    listCacheRef.current.clear();
     clearRealtimeSyncTimer();
     setTeachers([]);
     setIsLoading(false);
@@ -328,6 +370,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(null);
     setSyncScope(null);
     setTotalCount(0);
+    setDataVersion(0);
     setSnapshotMeta(EMPTY_META);
   }, [sessionKey]);
 
@@ -352,14 +395,52 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
   const requestTeachers = useCallback(
     async (tokenValue: string, params: NormalizedTeacherListParams, signal?: AbortSignal): Promise<TeacherListResult> => {
-      const response = await apiRequestRaw<TeacherRecordsResponse>(buildListPath(params), { token: tokenValue, signal });
+      const path = buildListPath(params);
+      const cacheKey = buildTeacherListCacheKey(params);
+      const cached = listCacheRef.current.get(cacheKey);
+      const hasScopeMismatch = Boolean(
+        cached?.scopeKey
+          && syncScopeKeyRef.current
+          && cached.scopeKey !== syncScopeKeyRef.current,
+      );
+      if (hasScopeMismatch && cached) {
+        listCacheRef.current.delete(cacheKey);
+      }
+      const cacheEntry = hasScopeMismatch ? null : cached;
+
+      let response = await apiRequestRaw<TeacherRecordsResponse>(path, {
+        token: tokenValue,
+        signal,
+        extraHeaders: cacheEntry?.etag ? { "If-None-Match": cacheEntry.etag } : undefined,
+      });
+
+      if (response.status === 304) {
+        if (cacheEntry) {
+          return cacheEntry.result;
+        }
+
+        response = await apiRequestRaw<TeacherRecordsResponse>(path, {
+          token: tokenValue,
+          signal,
+        });
+      }
+
       const data = Array.isArray(response.data?.data) ? response.data.data : [];
       const meta = normalizeMeta(response.data?.meta, params, data.length);
-
-      return {
+      const result: TeacherListResult = {
         data,
         meta,
       };
+
+      const responseEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+      const responseScopeKey = normalizeScopeKey(response.headers.get("X-Sync-Scope-Key") || response.data?.meta?.scopeKey);
+      storeTeacherListCacheEntry(listCacheRef.current, cacheKey, {
+        etag: responseEtag,
+        scopeKey: responseScopeKey,
+        result,
+      });
+
+      return result;
     },
     [],
   );
@@ -382,6 +463,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setSnapshotMeta(EMPTY_META);
         etagRef.current = "";
         syncScopeKeyRef.current = "";
+        listCacheRef.current.clear();
         return;
       }
 
@@ -415,6 +497,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         if (scopeKeyFromHeaders) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== scopeKeyFromHeaders) {
             etagRef.current = "";
+            listCacheRef.current.clear();
           }
           syncScopeKeyRef.current = scopeKeyFromHeaders;
         }
@@ -438,6 +521,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         if (payloadScopeKey) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== payloadScopeKey) {
             etagRef.current = "";
+            listCacheRef.current.clear();
           }
           syncScopeKeyRef.current = payloadScopeKey;
         }
@@ -518,6 +602,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         etagRef.current = "";
+        listCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
         emitTeacherUpdateEvent({
           schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
           schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
@@ -557,6 +643,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         etagRef.current = "";
+        listCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
         emitTeacherUpdateEvent({
           schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
           schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
@@ -591,6 +679,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
         setTeachers((current) => current.filter((item) => item.id !== id));
         etagRef.current = "";
+        listCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
         emitTeacherUpdateEvent({
           schoolId: response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
           schoolCode: response.data?.data?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
@@ -665,6 +755,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<TeacherDataContextType>(
     () => ({
+      teachers,
       teacherSnapshot: teachers,
       isLoading,
       isSaving,
@@ -672,6 +763,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       syncScope,
       totalCount,
+      dataVersion,
       refreshTeachers,
       listTeachers,
       addTeacher,
@@ -686,6 +778,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       syncScope,
       totalCount,
+      dataVersion,
       refreshTeachers,
       listTeachers,
       addTeacher,

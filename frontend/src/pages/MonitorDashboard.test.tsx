@@ -260,6 +260,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     vi.mocked(useStudentData).mockReturnValue(studentDataMock);
 
     const teacherDataMock = {
+      teachers: [],
       teacherSnapshot: [],
       isLoading: false,
       isSaving: false,
@@ -267,6 +268,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       lastSyncedAt: null,
       syncScope: "division",
       totalCount: 0,
+      dataVersion: 0,
       refreshTeachers: vi.fn(),
       listTeachers: vi.fn(),
       addTeacher: vi.fn(),
