@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -214,18 +214,6 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
 const REQUIREMENT_PAGE_SIZE = 10;
 const RECORD_PAGE_SIZE = 10;
 
-function isInteractiveTableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) {
-    return false;
-  }
-
-  return Boolean(
-    target.closest(
-      "button, a, input, select, textarea, label, [role='button'], [contenteditable='true']",
-    ),
-  );
-}
-
 export function MonitorDashboard() {
   const { user } = useAuth();
   const isAuthenticated = Boolean(user);
@@ -416,16 +404,6 @@ export function MonitorDashboard() {
   });
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
-  const schoolsTableScrollerRef = useRef<HTMLDivElement | null>(null);
-  const schoolsTableDragStateRef = useRef<{
-    active: boolean;
-    pointerId: number;
-    startX: number;
-    startScrollLeft: number;
-    button: number;
-    moved: boolean;
-  } | null>(null);
-  const [isSchoolsTableDragging, setIsSchoolsTableDragging] = useState(false);
   const didAutoExpandMoreFiltersRef = useRef(false);
 
   useEffect(() => {
@@ -686,97 +664,6 @@ export function MonitorDashboard() {
         })}
       </div>
     );
-  };
-
-  const endSchoolsTableDrag = (pointerId?: number) => {
-    const state = schoolsTableDragStateRef.current;
-    const scroller = schoolsTableScrollerRef.current;
-
-    if (!state) {
-      return;
-    }
-
-    if (typeof pointerId === "number" && state.pointerId !== pointerId) {
-      return;
-    }
-
-    if (scroller) {
-      try {
-        scroller.releasePointerCapture(state.pointerId);
-      } catch {
-        // Ignore release failures.
-      }
-    }
-
-    schoolsTableDragStateRef.current = null;
-    setIsSchoolsTableDragging(false);
-  };
-
-  const handleSchoolsTablePointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    const scroller = schoolsTableScrollerRef.current;
-    if (!scroller) return;
-
-    // Keep row/table actions clickable; only start drag on non-interactive surface.
-    if (isInteractiveTableTarget(event.target)) {
-      return;
-    }
-
-    if (scroller.scrollWidth <= scroller.clientWidth) return;
-
-    if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 2) {
-      return;
-    }
-
-    schoolsTableDragStateRef.current = {
-      active: true,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startScrollLeft: scroller.scrollLeft,
-      button: event.button,
-      moved: false,
-    };
-    setIsSchoolsTableDragging(true);
-
-    try {
-      scroller.setPointerCapture(event.pointerId);
-    } catch {
-      // Ignore capture failures.
-    }
-
-    if (event.pointerType === "mouse") {
-      event.preventDefault();
-    }
-  };
-
-  const handleSchoolsTablePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    const scroller = schoolsTableScrollerRef.current;
-    const state = schoolsTableDragStateRef.current;
-    if (!scroller || !state || state.pointerId !== event.pointerId) {
-      return;
-    }
-
-    const deltaX = event.clientX - state.startX;
-    if (Math.abs(deltaX) > 3) {
-      state.moved = true;
-    }
-
-    scroller.scrollLeft = state.startScrollLeft - deltaX;
-
-    if (state.moved) {
-      event.preventDefault();
-    }
-  };
-
-  const handleSchoolsTableContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const state = schoolsTableDragStateRef.current;
-    if (!state) {
-      return;
-    }
-
-    if (state.button === 2) {
-      event.preventDefault();
-      endSchoolsTableDrag(state.pointerId);
-    }
   };
 
   const studentStatsBySchoolKey = useMemo(() => {
@@ -1138,7 +1025,7 @@ export function MonitorDashboard() {
     jumpToDrawerIndicator(fallbackKey, "No returned indicators were found in the latest package.");
   };
 
-  const handleMonitorTopNavigate = (id: MonitorTopNavigatorId) => {
+  const handleMonitorTopNavigate = useCallback((id: MonitorTopNavigatorId) => {
     setShowNavigatorManual(false);
     setActiveTopNavigator(id);
 
@@ -1160,19 +1047,7 @@ export function MonitorDashboard() {
     if (isMobileViewport) {
       setIsNavigatorVisible(false);
     }
-  };
-
-  const handleKeyboardTopNavigate = useCallback(
-    (id: MonitorTopNavigatorId) => {
-      setShowNavigatorManual(false);
-      setActiveTopNavigator(id);
-
-      if (isMobileViewport) {
-        setIsNavigatorVisible(false);
-      }
-    },
-    [isMobileViewport, setActiveTopNavigator, setIsNavigatorVisible, setShowNavigatorManual],
-  );
+  }, [focusAndScrollTo, isMobileViewport, setActiveTopNavigator, setIsNavigatorVisible, setShowNavigatorManual]);
 
   const focusGlobalSearch = useCallback(() => {
     const input = globalSearchInputRef.current;
@@ -1235,7 +1110,7 @@ export function MonitorDashboard() {
     quickJumpItems,
     shouldShowQuickJump,
     canResolveQuickJumpTarget,
-    onNavigateTop: handleKeyboardTopNavigate,
+    onNavigateTop: handleMonitorTopNavigate,
     onQuickJump: handleQuickJump,
     onFocusGlobalSearch: focusGlobalSearch,
     onCycleSchoolFocus: cycleSchoolFocus,

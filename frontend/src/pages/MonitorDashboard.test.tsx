@@ -73,10 +73,13 @@ vi.mock("@/components/students/StudentRecordsPanel", () => ({
 }));
 
 const issueSchoolHeadSetupLinkMock = vi.fn();
+const scrollIntoViewMock = vi.fn();
 
 describe("MonitorDashboard School Head delivery flows", () => {
   beforeEach(() => {
     issueSchoolHeadSetupLinkMock.mockReset();
+    scrollIntoViewMock.mockReset();
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
     issueSchoolHeadSetupLinkMock.mockResolvedValue({
       account: {
         id: "account-1",
@@ -250,7 +253,21 @@ describe("MonitorDashboard School Head delivery flows", () => {
       totalCount: 0,
       dataVersion: 0,
       refreshStudents: vi.fn(),
-      queryStudents: vi.fn(),
+      queryStudents: vi.fn().mockResolvedValue({
+        data: [],
+        meta: {
+          syncedAt: null,
+          scope: "division",
+          recordCount: 0,
+          currentPage: 1,
+          lastPage: 1,
+          perPage: 1,
+          total: 0,
+          from: null,
+          to: null,
+          hasMorePages: false,
+        },
+      }),
       listStudentHistory: vi.fn(),
       addStudent: vi.fn(),
       updateStudent: vi.fn(),
@@ -270,7 +287,21 @@ describe("MonitorDashboard School Head delivery flows", () => {
       totalCount: 0,
       dataVersion: 0,
       refreshTeachers: vi.fn(),
-      listTeachers: vi.fn(),
+      listTeachers: vi.fn().mockResolvedValue({
+        data: [],
+        meta: {
+          syncedAt: null,
+          scope: "division",
+          recordCount: 0,
+          currentPage: 1,
+          lastPage: 1,
+          perPage: 1,
+          total: 0,
+          from: null,
+          to: null,
+          hasMorePages: false,
+        },
+      }),
       addTeacher: vi.fn(),
       updateTeacher: vi.fn(),
       deleteTeacher: vi.fn(),
@@ -297,5 +328,19 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByText("Message queued.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /copy link/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /reveal link/i })).toBeNull();
+  });
+
+  it("uses the same focus-and-scroll behavior for keyboard top navigation", async () => {
+    render(<MonitorDashboard />);
+    scrollIntoViewMock.mockClear();
+
+    fireEvent.keyDown(window, { key: "2", altKey: true });
+
+    await waitFor(() => {
+      expect(scrollIntoViewMock).toHaveBeenCalled();
+    });
+
+    const openSchoolsButtons = screen.getAllByRole("button", { name: "Open Schools" });
+    expect(openSchoolsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
   });
 });
