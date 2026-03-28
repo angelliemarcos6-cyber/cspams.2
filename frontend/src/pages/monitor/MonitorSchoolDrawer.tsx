@@ -1,96 +1,67 @@
 import { Fragment } from "react";
 import { X } from "lucide-react";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
+import type {
+  SchoolDetailSnapshot,
+  SchoolDrawerCriticalAlert,
+  SchoolIndicatorMatrix,
+  SchoolIndicatorPackageRow,
+  SchoolIndicatorRowGroup,
+} from "@/pages/monitor/monitorDrawerTypes";
 import type { SchoolDrawerTab } from "@/pages/monitor/useSchoolDrawer";
 import type { IndicatorSubmission } from "@/types";
-
-interface SchoolDetailSnapshot {
-  schoolKey: string;
-  schoolCode: string;
-  schoolName: string;
-  region: string;
-  level: string;
-  type: string;
-  address: string;
-  hasComplianceRecord: boolean;
-  indicatorStatus: string | null;
-  missingCount: number;
-  awaitingReviewCount: number;
-  lastActivityAt: string | null;
-  reportedStudents: number;
-  reportedTeachers: number;
-  synchronizedStudents: number;
-  synchronizedTeachers: number;
-}
-
-interface SchoolIndicatorPackageRow {
-  id: string;
-  schoolYear: string;
-  reportingPeriod: string;
-  status: string | null;
-  submittedAt: string | null;
-  reviewedAt: string | null;
-  complianceRatePercent: number | null;
-  reviewedBy: string;
-}
-
-interface IndicatorMatrixRowCell {
-  target: string;
-  actual: string;
-}
-
-interface IndicatorMatrixRow {
-  key: string;
-  code: string;
-  label: string;
-  category: string;
-  sortOrder: number;
-  valuesByYear: Record<string, IndicatorMatrixRowCell>;
-}
-
-interface SchoolDrawerCriticalAlert {
-  id: string;
-  tone: "warning" | "info";
-  title: string;
-  detail: string;
-}
-
-interface MonitorSchoolDrawerProps {
+interface MonitorSchoolDrawerViewState {
   isOpen: boolean;
   showNavigatorManual: boolean;
   isMobileViewport: boolean;
   activeTopNavigator: MonitorTopNavigatorId;
-  schoolDetail: SchoolDetailSnapshot | null;
   activeSchoolDrawerTab: SchoolDrawerTab;
+  highlightedDrawerIndicatorKey: string | null;
+  expandedDrawerIndicatorRows: Record<string, boolean>;
+}
+
+interface MonitorSchoolDrawerLoadingState {
+  syncedCountsLoadingSchoolKey: string | null;
+  syncedCountsError: string;
+  isSchoolDrawerSubmissionsLoading: boolean;
+  schoolDrawerSubmissionsError: string;
+}
+
+interface MonitorSchoolDrawerData {
+  schoolDetail: SchoolDetailSnapshot | null;
+  schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
+  schoolIndicatorPackageRows: SchoolIndicatorPackageRow[];
+  latestSchoolPackage: SchoolIndicatorPackageRow | null;
+  schoolIndicatorMatrix: SchoolIndicatorMatrix;
+  latestSchoolIndicatorYear: string;
+  schoolDrawerIndicatorSubmissions: IndicatorSubmission[];
+  schoolIndicatorRowsByCategory: SchoolIndicatorRowGroup[];
+  missingDrawerIndicatorKeys: string[];
+  returnedDrawerIndicatorKeys: string[];
+  missingDrawerIndicatorKeySet: Set<string>;
+  returnedDrawerIndicatorKeySet: Set<string>;
+}
+
+interface MonitorSchoolDrawerActions {
   setActiveSchoolDrawerTab: (tab: SchoolDrawerTab) => void;
   closeSchoolDrawer: () => void;
   handleJumpToMissingIndicators: () => void;
   handleJumpToReturnedIndicators: () => void;
-  missingDrawerIndicatorKeys: string[];
-  returnedDrawerIndicatorKeys: string[];
-  syncedCountsLoadingSchoolKey: string | null;
-  syncedCountsError: string;
-  schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
-  schoolIndicatorPackageRows: SchoolIndicatorPackageRow[];
-  latestSchoolPackage: SchoolIndicatorPackageRow | null;
-  isSchoolDrawerSubmissionsLoading: boolean;
-  schoolDrawerSubmissionsError: string;
-  schoolIndicatorMatrix: {
-    years: string[];
-    rows: IndicatorMatrixRow[];
-    latestSubmission: IndicatorSubmission | null;
-  };
-  latestSchoolIndicatorYear: string;
-  schoolDrawerIndicatorSubmissions: IndicatorSubmission[];
-  schoolIndicatorRowsByCategory: Array<{ category: string; rows: IndicatorMatrixRow[] }>;
-  expandedDrawerIndicatorRows: Record<string, boolean>;
-  highlightedDrawerIndicatorKey: string | null;
-  missingDrawerIndicatorKeySet: Set<string>;
-  returnedDrawerIndicatorKeySet: Set<string>;
   toggleDrawerIndicatorLabel: (key: string) => void;
+}
+
+interface MonitorSchoolDrawerFormatting {
   workflowTone: (status: string | null) => string;
   workflowLabel: (status: string | null) => string;
   formatDateTime: (value: string) => string;
+}
+
+interface MonitorSchoolDrawerProps {
+  viewState: MonitorSchoolDrawerViewState;
+  loadingState: MonitorSchoolDrawerLoadingState;
+  data: MonitorSchoolDrawerData;
+  actions: MonitorSchoolDrawerActions;
+  formatting: MonitorSchoolDrawerFormatting;
 }
 
 function truncateIndicatorDescription(value: string, maxLength = 48): string {
@@ -108,38 +79,50 @@ function sanitizeAnchorToken(value: string): string {
 }
 
 export function MonitorSchoolDrawer({
-  isOpen,
-  showNavigatorManual,
-  isMobileViewport,
-  activeTopNavigator,
-  schoolDetail,
-  activeSchoolDrawerTab,
-  setActiveSchoolDrawerTab,
-  closeSchoolDrawer,
-  handleJumpToMissingIndicators,
-  handleJumpToReturnedIndicators,
-  missingDrawerIndicatorKeys,
-  returnedDrawerIndicatorKeys,
-  syncedCountsLoadingSchoolKey,
-  syncedCountsError,
-  schoolDrawerCriticalAlerts,
-  schoolIndicatorPackageRows,
-  latestSchoolPackage,
-  isSchoolDrawerSubmissionsLoading,
-  schoolDrawerSubmissionsError,
-  schoolIndicatorMatrix,
-  latestSchoolIndicatorYear,
-  schoolDrawerIndicatorSubmissions,
-  schoolIndicatorRowsByCategory,
-  expandedDrawerIndicatorRows,
-  highlightedDrawerIndicatorKey,
-  missingDrawerIndicatorKeySet,
-  returnedDrawerIndicatorKeySet,
-  toggleDrawerIndicatorLabel,
-  workflowTone,
-  workflowLabel,
-  formatDateTime,
+  viewState,
+  loadingState,
+  data,
+  actions,
+  formatting,
 }: MonitorSchoolDrawerProps) {
+  const {
+    isOpen,
+    showNavigatorManual,
+    isMobileViewport,
+    activeTopNavigator,
+    activeSchoolDrawerTab,
+    highlightedDrawerIndicatorKey,
+    expandedDrawerIndicatorRows,
+  } = viewState;
+  const {
+    syncedCountsLoadingSchoolKey,
+    syncedCountsError,
+    isSchoolDrawerSubmissionsLoading,
+    schoolDrawerSubmissionsError,
+  } = loadingState;
+  const {
+    schoolDetail,
+    schoolDrawerCriticalAlerts,
+    schoolIndicatorPackageRows,
+    latestSchoolPackage,
+    schoolIndicatorMatrix,
+    latestSchoolIndicatorYear,
+    schoolDrawerIndicatorSubmissions,
+    schoolIndicatorRowsByCategory,
+    missingDrawerIndicatorKeys,
+    returnedDrawerIndicatorKeys,
+    missingDrawerIndicatorKeySet,
+    returnedDrawerIndicatorKeySet,
+  } = data;
+  const {
+    setActiveSchoolDrawerTab,
+    closeSchoolDrawer,
+    handleJumpToMissingIndicators,
+    handleJumpToReturnedIndicators,
+    toggleDrawerIndicatorLabel,
+  } = actions;
+  const { workflowTone, workflowLabel, formatDateTime } = formatting;
+
   return (
     <>
       {!showNavigatorManual && isOpen && activeTopNavigator !== "reviews" && (
