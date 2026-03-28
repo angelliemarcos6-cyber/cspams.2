@@ -2,9 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   BellRing,
   BookOpenText,
   Building2,
@@ -68,6 +65,7 @@ import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
 import {
   useMonitorLookups,
 } from "@/pages/monitor/useMonitorLookups";
+import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
 import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
 import { useSchoolDrawer } from "@/pages/monitor/useSchoolDrawer";
@@ -86,8 +84,6 @@ import {
   statusLabel,
 } from "@/utils/analytics";
 
-type SortColumn = "schoolName" | "region" | "studentCount" | "teacherCount" | "status" | "lastUpdated";
-type SortDirection = "asc" | "desc";
 type WorkflowStatus = Exclude<RequirementFilter, "all">;
 type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date";
 type ToastTone = "success" | "info" | "warning";
@@ -451,34 +447,6 @@ function parseDateBoundary(value: string | null | undefined, boundary: "start" |
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function compareRecords(a: SchoolRecord, b: SchoolRecord, column: SortColumn, direction: SortDirection) {
-  const sign = direction === "asc" ? 1 : -1;
-
-  switch (column) {
-    case "schoolName":
-      return sign * a.schoolName.localeCompare(b.schoolName);
-    case "region":
-      return sign * a.region.localeCompare(b.region);
-    case "studentCount":
-      return sign * (a.studentCount - b.studentCount);
-    case "teacherCount":
-      return sign * (a.teacherCount - b.teacherCount);
-    case "status":
-      return sign * a.status.localeCompare(b.status);
-    case "lastUpdated":
-      return sign * (new Date(a.lastUpdated).getTime() - new Date(b.lastUpdated).getTime());
-    default:
-      return 0;
-  }
-}
-
-function SortIndicator({ active, direction }: { active: boolean; direction: SortDirection }) {
-  if (!active) {
-    return <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />;
-  }
-  return direction === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
-}
-
 function navigatorButtonClass(active: boolean, compact: boolean): string {
   return `relative flex w-full items-center rounded-sm border-l-4 border-r border-y text-left text-xs font-semibold uppercase leading-none tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100/80 focus-visible:ring-offset-1 focus-visible:ring-offset-primary-900 ${
     compact ? "h-11 justify-center px-2.5" : "h-11 gap-2.5 px-3"
@@ -748,8 +716,6 @@ export function MonitorDashboard() {
     isLoading: false,
     error: "",
   });
-  const [sortColumn, setSortColumn] = useState<SortColumn>("lastUpdated");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isNavigatorCompact, setIsNavigatorCompact] = useState(false);
   const [isNavigatorVisible, setIsNavigatorVisible] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= 768,
@@ -1130,421 +1096,69 @@ export function MonitorDashboard() {
     () => (shouldComputeOverviewCharts ? buildSubmissionTrend(scopedRecords) : []),
     [scopedRecords, shouldComputeOverviewCharts],
   );
-
-  const schoolRequirementRows = useMemo<SchoolRequirementSummary[]>(() => {
-    const rows = new Map<string, SchoolRequirementSummary>();
-
-    const ensureRow = (
-      schoolCode: string | null | undefined,
-      schoolName: string | null | undefined,
-      region: string | null | undefined,
-      schoolStatus: SchoolStatus | null = null,
-    ) => {
-      const key = normalizeSchoolKey(schoolCode, schoolName);
-      if (key === "unknown") return null;
-
-      const normalizedCode = schoolCode?.trim() || "N/A";
-      const normalizedName = schoolName?.trim() || normalizedCode || "Unknown School";
-      const normalizedRegion = region?.trim() || "N/A";
-
-      let row = rows.get(key);
-      if (!row) {
-        row = {
-          schoolKey: key,
-          schoolCode: normalizedCode,
-          schoolName: normalizedName,
-          region: normalizedRegion,
-          schoolStatus,
-          hasComplianceRecord: false,
-          indicatorStatus: null,
-          hasAnySubmitted: false,
-          isComplete: false,
-          awaitingReviewCount: 0,
-          missingCount: 2,
-          lastActivityAt: null,
-          lastActivityTime: 0,
-        };
-        rows.set(key, row);
-      } else {
-        if (row.schoolCode === "N/A" && normalizedCode !== "N/A") {
-          row.schoolCode = normalizedCode;
-        }
-        if ((row.schoolName === "Unknown School" || row.schoolName === "N/A") && normalizedName !== "Unknown School") {
-          row.schoolName = normalizedName;
-        }
-        if (row.region === "N/A" && normalizedRegion !== "N/A") {
-          row.region = normalizedRegion;
-        }
-        if (!row.schoolStatus && schoolStatus) {
-          row.schoolStatus = schoolStatus;
-        }
-      }
-
-      return row;
-    };
-
-    const setLastActivity = (row: SchoolRequirementSummary, ...dates: Array<string | null | undefined>) => {
-      const activityTime = toTime(...dates);
-      if (activityTime > row.lastActivityTime) {
-        row.lastActivityTime = activityTime;
-        row.lastActivityAt = new Date(activityTime).toISOString();
-      }
-    };
-
-    for (const record of records) {
-      const row = ensureRow(record.schoolId ?? record.schoolCode ?? null, record.schoolName, record.region, record.status);
-      if (!row) continue;
-
-      row.hasComplianceRecord = true;
-      row.schoolStatus = record.status;
-      setLastActivity(row, record.lastUpdated);
-
-      const indicatorLatest = record.indicatorLatest ?? null;
-      if (indicatorLatest) {
-        row.indicatorStatus = indicatorLatest.status ?? null;
-        setLastActivity(row, indicatorLatest.updatedAt, indicatorLatest.submittedAt, indicatorLatest.createdAt);
-      }
-    }
-
-    return [...rows.values()]
-      .map((row) => {
-        const indicatorSubmitted = isPassedToMonitor(row.indicatorStatus);
-        const missingCount =
-          (row.hasComplianceRecord ? 0 : 1) +
-          (indicatorSubmitted ? 0 : 1);
-        const awaitingReviewCount =
-          (isAwaitingReview(row.indicatorStatus) ? 1 : 0);
-
-        return {
-          ...row,
-          hasAnySubmitted: row.hasComplianceRecord || indicatorSubmitted,
-          isComplete: missingCount === 0,
-          missingCount,
-          awaitingReviewCount,
-        };
-      })
-      .sort((a, b) => a.schoolName.localeCompare(b.schoolName));
-  }, [records]);
-
-  const scopedRequirementRows = useMemo(() => {
-    if (!scopedSchoolKeys) {
-      return schoolRequirementRows;
-    }
-
-    return schoolRequirementRows.filter((row) => scopedSchoolKeys.has(row.schoolKey));
-  }, [schoolRequirementRows, scopedSchoolKeys]);
-
-  const schoolRequirementByKey = useMemo(
-    () => new Map(scopedRequirementRows.map((row) => [row.schoolKey, row])),
-    [scopedRequirementRows],
-  );
-
-  const scopedRecordBySchoolKey = useMemo(() => {
-    const map = new Map<string, SchoolRecord>();
-
-    for (const record of scopedRecords) {
-      const key = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-      if (key === "unknown") continue;
-
-      const existing = map.get(key);
-      const existingUpdatedAt = new Date(existing?.lastUpdated ?? 0).getTime();
-      const candidateUpdatedAt = new Date(record.lastUpdated ?? 0).getTime();
-
-      if (!existing || candidateUpdatedAt >= existingUpdatedAt) {
-        map.set(key, record);
-      }
-    }
-
-    return map;
-  }, [scopedRecords]);
-
-  const workflowStatusCounts = useMemo<Record<RequirementFilter, number>>(() => {
-    const counts: Record<RequirementFilter, number> = {
-      all: scopedRequirementRows.length,
-      missing: 0,
-      waiting: 0,
-      returned: 0,
-      submitted: 0,
-      validated: 0,
-    };
-
-    for (const row of scopedRequirementRows) {
-      counts[resolveWorkflowStatus(row)] += 1;
-    }
-
-    return counts;
-  }, [scopedRequirementRows]);
-
-  const schoolStatusCounts = useMemo<Record<SchoolStatus | "all", number>>(() => {
-    const counts: Record<SchoolStatus | "all", number> = {
-      all: scopedRequirementRows.length,
-      active: 0,
-      inactive: 0,
-      pending: 0,
-    };
-
-    for (const row of scopedRequirementRows) {
-      if (row.schoolStatus === "active") {
-        counts.active += 1;
-      } else if (row.schoolStatus === "inactive") {
-        counts.inactive += 1;
-      } else if (row.schoolStatus === "pending") {
-        counts.pending += 1;
-      }
-    }
-
-    return counts;
-  }, [scopedRequirementRows]);
-
-  const visibleRequirementFilterIds = useMemo<RequirementFilter[]>(() => {
-    if (activeTopNavigator === "reviews") {
-      return ["all", "missing", "waiting", "returned"];
-    }
-
-    if (activeTopNavigator === "overview") {
-      return ["all", "waiting", "returned", "submitted", "validated"];
-    }
-
-    return ["all", "missing", "waiting", "returned", "submitted", "validated"];
-  }, [activeTopNavigator]);
-
-  const visibleRequirementFilterOptions = useMemo(
-    () =>
-      REQUIREMENT_FILTER_OPTIONS
-        .filter((option) => visibleRequirementFilterIds.includes(option.id))
-        .map((option) => ({
-          id: option.id,
-          label: `${option.label} (${workflowStatusCounts[option.id]})`,
-        })),
-    [visibleRequirementFilterIds, workflowStatusCounts],
-  );
-
-  useEffect(() => {
-    if (visibleRequirementFilterIds.includes(requirementFilter)) return;
-    setRequirementFilter("all");
-  }, [requirementFilter, visibleRequirementFilterIds]);
-
-  const searchTerms = useMemo(() => normalizeSearchTerms(effectiveSearch), [effectiveSearch]);
-  const shouldBuildRequirementSearchIndex = searchTerms.length > 0;
-  const requirementSearchTextByKey = useMemo(() => {
-    if (!shouldBuildRequirementSearchIndex) {
-      return null;
-    }
-
-    const index = new Map<string, string>();
-
-    for (const row of scopedRequirementRows) {
-      const record = scopedRecordBySchoolKey.get(row.schoolKey);
-      const searchableText = [
-        row.schoolName,
-        row.schoolCode,
-        row.region,
-        record?.level ?? "",
-        record?.type ?? "",
-        record?.address ?? record?.district ?? "",
-        record?.submittedBy ?? "",
-        record?.schoolHeadAccount?.name ?? "",
-        record?.schoolHeadAccount?.email ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      index.set(row.schoolKey, searchableText);
-    }
-
-    return index;
-  }, [scopedRecordBySchoolKey, scopedRequirementRows, shouldBuildRequirementSearchIndex]);
-
-  const filteredRequirementRows = useMemo(() => {
-    const fromTime = parseDateBoundary(filterDateFrom, "start");
-    const toTime = parseDateBoundary(filterDateTo, "end");
-    const selectedStudentSchoolKey =
+  const {
+    schoolRequirementByKey,
+    recordBySchoolKey,
+    scopedRecordBySchoolKey,
+    schoolStatusCounts,
+    visibleRequirementFilterOptions,
+    filteredRequirementRows,
+    filteredSchoolKeys,
+    requirementCounts,
+    needsActionCount,
+    actionQueueRows,
+    queueLaneCounts,
+    laneFilteredQueueRows,
+    schoolPresetCounts,
+    stickySummaryStats,
+    queueWorkspaceSchoolFilterKeys,
+    compactSchoolRows,
+    totalRequirementPages,
+    safeRequirementsPage,
+    paginatedRequirementRows,
+    totalRecordPages,
+    safeRecordsPage,
+    paginatedCompactSchoolRows,
+  } = useMonitorRequirementData({
+    records,
+    scopedRecords,
+    scopedSchoolKeys,
+    selectedSchoolScopeKey,
+    hasSelectedSchoolScope: Boolean(selectedSchoolScope),
+    selectedStudentLookupSchoolKey:
       selectedStudentLookup?.schoolKey && selectedStudentLookup.schoolKey !== "unknown"
         ? selectedStudentLookup.schoolKey
-        : null;
-
-    const hasSearchTerms = searchTerms.length > 0;
-    const results: SchoolRequirementSummary[] = [];
-
-    for (const row of scopedRequirementRows) {
-      if (selectedStudentSchoolKey && row.schoolKey !== selectedStudentSchoolKey) {
-        continue;
-      }
-
-      if (selectedTeacherSchoolKeys && !selectedTeacherSchoolKeys.has(row.schoolKey)) {
-        continue;
-      }
-
-      if (statusFilter !== "all" && row.schoolStatus !== statusFilter) {
-        continue;
-      }
-
-      if (!matchesRequirementFilter(row, requirementFilter)) {
-        continue;
-      }
-
-      if (fromTime !== null && (row.lastActivityTime <= 0 || row.lastActivityTime < fromTime)) {
-        continue;
-      }
-
-      if (toTime !== null && (row.lastActivityTime <= 0 || row.lastActivityTime > toTime)) {
-        continue;
-      }
-
-      if (hasSearchTerms) {
-        const searchableText = requirementSearchTextByKey?.get(row.schoolKey) ?? "";
-        if (!matchesAllSearchTerms(searchableText, searchTerms)) {
-          continue;
-        }
-      }
-
-      results.push(row);
-    }
-
-    return results;
-  }, [
+        : null,
+    hasSelectedStudentLookup: Boolean(selectedStudentLookup),
+    selectedTeacherSchoolKeys,
+    hasSelectedTeacherLookup: Boolean(selectedTeacherLookup),
     filterDateFrom,
     filterDateTo,
     requirementFilter,
-    scopedRequirementRows,
-    requirementSearchTextByKey,
-    searchTerms,
-    selectedStudentLookup,
-    selectedTeacherSchoolKeys,
+    setRequirementFilter,
     statusFilter,
-  ]);
-
-  const hasDashboardFilters =
-    searchTerms.length > 0 ||
-    statusFilter !== "all" ||
-    requirementFilter !== "all" ||
-    schoolQuickPreset !== "all" ||
-    Boolean(selectedSchoolScope) ||
-    filterDateFrom.length > 0 ||
-    filterDateTo.length > 0 ||
-    Boolean(selectedStudentLookup) ||
-    Boolean(selectedTeacherLookup);
-  const filteredSchoolKeys = useMemo(() => {
-    if (!hasDashboardFilters && !scopedSchoolKeys) {
-      return null;
-    }
-
-    const scopeRows =
-      schoolQuickPreset === "all"
-        ? filteredRequirementRows
-        : filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, schoolQuickPreset));
-    return new Set(scopeRows.map((row) => row.schoolKey));
-  }, [filteredRequirementRows, hasDashboardFilters, schoolQuickPreset, scopedSchoolKeys]);
-
-  const requirementCounts = useMemo(() => {
-    const counts = {
-      total: scopedRequirementRows.length,
-      submittedAny: 0,
-      complete: 0,
-      awaitingReview: 0,
-      missing: 0,
-      returned: 0,
-    };
-
-    for (const row of scopedRequirementRows) {
-      if (row.hasAnySubmitted) counts.submittedAny += 1;
-      if (row.isComplete) counts.complete += 1;
-      if (row.awaitingReviewCount > 0) counts.awaitingReview += 1;
-      if (row.missingCount > 0) counts.missing += 1;
-      if (row.indicatorStatus === "returned") counts.returned += 1;
-    }
-
-    return counts;
-  }, [scopedRequirementRows]);
-  const needsActionCount = useMemo(
-    () =>
-      scopedRequirementRows.filter(
-        (row) => row.missingCount > 0 || row.awaitingReviewCount > 0 || row.indicatorStatus === "returned",
-      ).length,
-    [scopedRequirementRows],
-  );
-  const actionQueueRows = useMemo(
-    () =>
-      filteredRequirementRows
-        .filter((row) => row.missingCount > 0 || row.awaitingReviewCount > 0 || row.indicatorStatus === "returned")
-        .sort((a, b) => {
-          const priorityDiff = queuePriorityScore(a) - queuePriorityScore(b);
-          if (priorityDiff !== 0) return priorityDiff;
-
-          const missingDiff = b.missingCount - a.missingCount;
-          if (missingDiff !== 0) return missingDiff;
-
-          const waitingDiff = b.awaitingReviewCount - a.awaitingReviewCount;
-          if (waitingDiff !== 0) return waitingDiff;
-
-          const activityDiff = b.lastActivityTime - a.lastActivityTime;
-          if (activityDiff !== 0) return activityDiff;
-
-          return a.schoolName.localeCompare(b.schoolName);
-        }),
-    [filteredRequirementRows],
-  );
-  const queueLaneCounts = useMemo(() => {
-    const counts = {
-      all: actionQueueRows.length,
-      urgent: 0,
-      returned: 0,
-      for_review: 0,
-      waiting_data: 0,
-    };
-
-    for (const row of actionQueueRows) {
-      if (matchesQueueLane(row, "urgent")) counts.urgent += 1;
-      if (matchesQueueLane(row, "returned")) counts.returned += 1;
-      if (matchesQueueLane(row, "for_review")) counts.for_review += 1;
-      if (matchesQueueLane(row, "waiting_data")) counts.waiting_data += 1;
-    }
-
-    return counts;
-  }, [actionQueueRows]);
-  const laneFilteredQueueRows = useMemo(
-    () => actionQueueRows.filter((row) => matchesQueueLane(row, queueLane)),
-    [actionQueueRows, queueLane],
-  );
-  const schoolPresetCounts = useMemo<Record<SchoolQuickPreset, number>>(() => {
-    const counts: Record<SchoolQuickPreset, number> = {
-      all: filteredRequirementRows.length,
-      pending: 0,
-      missing: 0,
-      returned: 0,
-      no_submission: 0,
-      high_risk: 0,
-    };
-
-    for (const row of filteredRequirementRows) {
-      if (matchesSchoolQuickPreset(row, "pending")) counts.pending += 1;
-      if (matchesSchoolQuickPreset(row, "missing")) counts.missing += 1;
-      if (matchesSchoolQuickPreset(row, "returned")) counts.returned += 1;
-      if (matchesSchoolQuickPreset(row, "no_submission")) counts.no_submission += 1;
-      if (matchesSchoolQuickPreset(row, "high_risk")) counts.high_risk += 1;
-    }
-
-    return counts;
-  }, [filteredRequirementRows]);
-  const filteredSchoolsByPreset = useMemo(
-    () => filteredRequirementRows.filter((row) => matchesSchoolQuickPreset(row, schoolQuickPreset)),
-    [filteredRequirementRows, schoolQuickPreset],
-  );
-  const stickySummaryStats = useMemo(() => {
-    return {
-      totalSchools: schoolPresetCounts.all,
-      pending: schoolPresetCounts.pending,
-      missing: schoolPresetCounts.missing,
-      returned: schoolPresetCounts.returned,
-      atRisk: schoolPresetCounts.high_risk,
-    };
-  }, [
-    schoolPresetCounts.all,
-    schoolPresetCounts.high_risk,
-    schoolPresetCounts.missing,
-    schoolPresetCounts.pending,
-    schoolPresetCounts.returned,
-  ]);
+    schoolQuickPreset,
+    queueLane,
+    effectiveSearch,
+    activeTopNavigator,
+    requirementsPage,
+    recordsPage,
+    requirementPageSize: REQUIREMENT_PAGE_SIZE,
+    recordPageSize: RECORD_PAGE_SIZE,
+    allSchoolScopeKey: ALL_SCHOOL_SCOPE,
+    requirementFilterOptions: REQUIREMENT_FILTER_OPTIONS,
+    normalizeSchoolKey,
+    isPassedToMonitor,
+    isAwaitingReview,
+    resolveWorkflowStatus,
+    matchesRequirementFilter,
+    matchesQueueLane,
+    matchesSchoolQuickPreset,
+    queuePriorityScore,
+    normalizeSearchTerms,
+    matchesAllSearchTerms,
+    parseDateBoundary,
+  });
   const dashboardLastSyncedAt = useMemo(() => {
     const recordTime = lastSyncedAt ? Date.parse(lastSyncedAt) : Number.NaN;
     const indicatorTime = indicatorLastSyncedAt ? Date.parse(indicatorLastSyncedAt) : Number.NaN;
@@ -1560,12 +1174,6 @@ export function MonitorDashboard() {
   }, [indicatorLastSyncedAt, lastSyncedAt, studentLastSyncedAt, teacherLastSyncedAt]);
   const isDashboardSyncing =
     isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading;
-  const queueWorkspaceSchoolFilterKeys = useMemo(() => {
-    if (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE) {
-      return new Set([selectedSchoolScopeKey]);
-    }
-    return filteredSchoolKeys;
-  }, [filteredSchoolKeys, selectedSchoolScopeKey]);
   const showSubmissionFilters = showAdvancedFilters;
   const returnedCount = requirementCounts.returned;
   const submittedCount = requirementCounts.submittedAny;
@@ -1825,47 +1433,6 @@ export function MonitorDashboard() {
     return () => window.removeEventListener("keydown", onQuickJumpHotkey);
   }, [quickJumpItems, shouldShowQuickJump, handleQuickJump, canResolveQuickJumpTarget]);
 
-  const filteredRecords = useMemo(() => {
-    const fromTime = parseDateBoundary(filterDateFrom, "start");
-    const toTime = parseDateBoundary(filterDateTo, "end");
-    const base = filteredSchoolKeys
-      ? scopedRecords.filter((record) =>
-          filteredSchoolKeys.has(normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName)),
-        )
-      : scopedRecords;
-
-    const dateFiltered = base.filter((record) => {
-      const updatedAt = new Date(record.lastUpdated ?? 0).getTime();
-      if (!Number.isFinite(updatedAt) || updatedAt <= 0) {
-        return fromTime === null && toTime === null;
-      }
-      if (fromTime !== null && updatedAt < fromTime) return false;
-      if (toTime !== null && updatedAt > toTime) return false;
-      return true;
-    });
-
-    return [...dateFiltered].sort((a, b) => compareRecords(a, b, sortColumn, sortDirection));
-  }, [filterDateFrom, filterDateTo, scopedRecords, filteredSchoolKeys, sortColumn, sortDirection]);
-
-  const recordBySchoolKey = useMemo(() => {
-    const map = new Map<string, SchoolRecord>();
-
-    for (const record of records) {
-      const key = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-      if (key === "unknown") continue;
-
-      const existing = map.get(key);
-      const existingUpdatedAt = new Date(existing?.lastUpdated ?? 0).getTime();
-      const candidateUpdatedAt = new Date(record.lastUpdated ?? 0).getTime();
-
-      if (!existing || candidateUpdatedAt >= existingUpdatedAt) {
-        map.set(key, record);
-      }
-    }
-
-    return map;
-  }, [records]);
-
   const studentStatsBySchoolKey = useMemo(() => {
     const map = new Map<string, { students: number; teachers: Set<string> }>();
 
@@ -1889,45 +1456,6 @@ export function MonitorDashboard() {
 
     return map;
   }, [students]);
-
-  const compactSchoolRows = useMemo(
-    () =>
-      filteredSchoolsByPreset
-        .map((summary) => {
-          const record = scopedRecordBySchoolKey.get(summary.schoolKey) ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
-          return { summary, record };
-        })
-        .sort((a, b) => {
-          const priorityDiff = queuePriorityScore(a.summary) - queuePriorityScore(b.summary);
-          if (priorityDiff !== 0) return priorityDiff;
-
-          const missingDiff = b.summary.missingCount - a.summary.missingCount;
-          if (missingDiff !== 0) return missingDiff;
-
-          const waitingDiff = b.summary.awaitingReviewCount - a.summary.awaitingReviewCount;
-          if (waitingDiff !== 0) return waitingDiff;
-
-          const activityDiff = b.summary.lastActivityTime - a.summary.lastActivityTime;
-          if (activityDiff !== 0) return activityDiff;
-
-          return a.summary.schoolName.localeCompare(b.summary.schoolName);
-        }),
-    [filteredSchoolsByPreset, recordBySchoolKey, scopedRecordBySchoolKey],
-  );
-
-  const totalRequirementPages = Math.max(1, Math.ceil(laneFilteredQueueRows.length / REQUIREMENT_PAGE_SIZE));
-  const safeRequirementsPage = Math.min(requirementsPage, totalRequirementPages);
-  const paginatedRequirementRows = useMemo(() => {
-    const start = (safeRequirementsPage - 1) * REQUIREMENT_PAGE_SIZE;
-    return laneFilteredQueueRows.slice(start, start + REQUIREMENT_PAGE_SIZE);
-  }, [laneFilteredQueueRows, safeRequirementsPage]);
-
-  const totalRecordPages = Math.max(1, Math.ceil(compactSchoolRows.length / RECORD_PAGE_SIZE));
-  const safeRecordsPage = Math.min(recordsPage, totalRecordPages);
-  const paginatedCompactSchoolRows = useMemo(() => {
-    const start = (safeRecordsPage - 1) * RECORD_PAGE_SIZE;
-    return compactSchoolRows.slice(start, start + RECORD_PAGE_SIZE);
-  }, [compactSchoolRows, safeRecordsPage]);
 
   const resolveSchoolDrawerRecordId = useCallback(
     (schoolKey: string | null) => {
@@ -2519,15 +2047,6 @@ export function MonitorDashboard() {
 
     setLastReviewCompletion(null);
   }, [autoAdvanceQueue, laneFilteredQueueRows, lastReviewCompletion]);
-
-  const handleSort = (column: SortColumn) => {
-    if (column === sortColumn) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortColumn(column);
-    setSortDirection("asc");
-  };
 
   const jumpToDrawerIndicator = (targetKey: string, emptyMessage: string) => {
     if (!targetKey) {
