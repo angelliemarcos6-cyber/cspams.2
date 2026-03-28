@@ -45,6 +45,7 @@ import { useTeacherData } from "@/context/TeacherData";
 import { apiRequest, isApiError } from "@/lib/api";
 import {
   type MonitorSchoolHeadAccountRow,
+  type MonitorSchoolHeadAccountsPanelProps,
   type SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
 import type { MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
@@ -54,10 +55,14 @@ import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import type { MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
 import type {
-  MonitorSchoolRecordFormField as MonitorSchoolRecordFormComponentField,
+  MonitorSchoolRecordFormField,
   MonitorSchoolRecordFormProps,
+  MonitorSchoolRecordFormState,
 } from "@/pages/monitor/MonitorSchoolRecordForm";
-import type { MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
+import type {
+  MonitorSchoolRecordsListProps,
+  MonitorSchoolRequirementSummary,
+} from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import type {
   IndicatorMatrixRow,
@@ -123,45 +128,7 @@ interface ManualStep {
   doneWhen: string;
 }
 
-interface SchoolRequirementSummary {
-  schoolKey: string;
-  schoolCode: string;
-  schoolName: string;
-  region: string;
-  schoolStatus: SchoolStatus | null;
-  hasComplianceRecord: boolean;
-  indicatorStatus: string | null;
-  hasAnySubmitted: boolean;
-  isComplete: boolean;
-  awaitingReviewCount: number;
-  missingCount: number;
-  lastActivityAt: string | null;
-  lastActivityTime: number;
-}
-
-interface MonitorRecordFormState {
-  schoolId: string;
-  schoolName: string;
-  level: string;
-  type: "public" | "private";
-  district: string;
-  region: string;
-  address: string;
-  createSchoolHeadAccount: boolean;
-  schoolHeadAccountName: string;
-  schoolHeadAccountEmail: string;
-}
-
-type MonitorRecordFormField =
-  | "schoolId"
-  | "schoolName"
-  | "level"
-  | "type"
-  | "district"
-  | "region"
-  | "address"
-  | "schoolHeadAccountName"
-  | "schoolHeadAccountEmail";
+type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
 
 interface SchoolScopeOption {
   key: string;
@@ -302,7 +269,7 @@ const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   ],
 };
 
-const EMPTY_MONITOR_RECORD_FORM: MonitorRecordFormState = {
+const EMPTY_MONITOR_RECORD_FORM: MonitorSchoolRecordFormState = {
   schoolId: "",
   schoolName: "",
   level: "Elementary",
@@ -1177,8 +1144,8 @@ export function MonitorDashboard() {
   const [toasts, setToasts] = useState<DashboardToast[]>([]);
   const [showRecordForm, setShowRecordForm] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
-  const [recordForm, setRecordForm] = useState<MonitorRecordFormState>(EMPTY_MONITOR_RECORD_FORM);
-  const [recordFormErrors, setRecordFormErrors] = useState<Partial<Record<MonitorRecordFormField, string>>>({});
+  const [recordForm, setRecordForm] = useState<MonitorSchoolRecordFormState>(EMPTY_MONITOR_RECORD_FORM);
+  const [recordFormErrors, setRecordFormErrors] = useState<Partial<Record<MonitorSchoolRecordFormField, string>>>({});
   const [recordFormError, setRecordFormError] = useState("");
   const [recordFormMessage, setRecordFormMessage] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -1537,7 +1504,7 @@ export function MonitorDashboard() {
   };
 
   const validateRecordForm = (): boolean => {
-    const formErrors: Partial<Record<MonitorRecordFormField, string>> = {};
+    const formErrors: Partial<Record<MonitorSchoolRecordFormField, string>> = {};
     const schoolId = recordForm.schoolId.trim().toUpperCase();
     const schoolName = recordForm.schoolName.trim();
     const level = recordForm.level.trim();
@@ -1631,7 +1598,7 @@ export function MonitorDashboard() {
       if (isApiError(err)) {
         const apiFieldErrors = extractApiValidationErrors(err.payload);
         if (Object.keys(apiFieldErrors).length > 0) {
-          const mappedErrors: Partial<Record<MonitorRecordFormField, string>> = {};
+          const mappedErrors: Partial<Record<MonitorSchoolRecordFormField, string>> = {};
           for (const [field, message] of Object.entries(apiFieldErrors)) {
             if (field === "schoolHeadAccount.name") mappedErrors.schoolHeadAccountName = message;
             else if (field === "schoolHeadAccount.email") mappedErrors.schoolHeadAccountEmail = message;
@@ -1644,7 +1611,7 @@ export function MonitorDashboard() {
               field === "region" ||
               field === "address"
             ) {
-              mappedErrors[field as MonitorRecordFormField] = message;
+              mappedErrors[field as MonitorSchoolRecordFormField] = message;
             }
           }
 
@@ -4463,7 +4430,7 @@ export function MonitorDashboard() {
       onSelectOption={handleSelectTeacherLookup}
     />
   );
-  const schoolHeadAccountsPanelProps = showSchoolHeadAccountsPanel
+  const schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null = showSchoolHeadAccountsPanel
     ? {
         isOpen: showSchoolHeadAccountsPanel,
         isSaving,
@@ -4490,16 +4457,31 @@ export function MonitorDashboard() {
         actions: schoolHeadAccountActions,
       }
     : null;
-  const schoolMessages: MonitorSchoolMessagesProps = {
+  const schoolMessagesProps: MonitorSchoolMessagesProps = {
     deleteError,
     bulkImportError,
     bulkImportSummary,
   };
-  const handleRecordFormFieldChange = (field: MonitorSchoolRecordFormComponentField, value: string) => {
-    const normalizedValue = field === "schoolId" ? value.replace(/\D+/g, "").slice(0, 6) : value;
+  const handleRecordFormFieldChange = useCallback((field: MonitorSchoolRecordFormField, value: string) => {
+    let normalizedValue = value;
+
+    if (field === "schoolId") {
+      normalizedValue = value.replace(/\D+/g, "").slice(0, 6);
+    }
+
+    if (field === "type") {
+      normalizedValue = value === "private" ? "private" : "public";
+    }
+
     setRecordForm((current) => ({ ...current, [field]: normalizedValue }));
     setRecordFormErrors((current) => ({ ...current, [field]: undefined }));
-  };
+  }, []);
+  const handleCreateSchoolHeadAccountChange = useCallback((checked: boolean) => {
+    setRecordForm((current) => ({
+      ...current,
+      createSchoolHeadAccount: checked,
+    }));
+  }, []);
   const schoolRecordFormProps: MonitorSchoolRecordFormProps = {
     show: showRecordForm,
     editingRecordId,
@@ -4511,12 +4493,7 @@ export function MonitorDashboard() {
     onClose: closeRecordForm,
     onSubmit: handleRecordSubmit,
     onFieldChange: handleRecordFormFieldChange,
-    onCreateSchoolHeadAccountChange: (checked) => {
-      setRecordForm((current) => ({
-        ...current,
-        createSchoolHeadAccount: checked,
-      }));
-    },
+    onCreateSchoolHeadAccountChange: handleCreateSchoolHeadAccountChange,
   };
   const schoolRecordsListProps: MonitorSchoolRecordsListProps = {
     showLoadingSkeleton: isLoading && records.length === 0,
@@ -5244,7 +5221,7 @@ export function MonitorDashboard() {
               setShowMfaResetApprovalsDialog(true);
             }}
             schoolHeadAccountsPanelProps={schoolHeadAccountsPanelProps}
-            messages={schoolMessages}
+            messages={schoolMessagesProps}
             schoolRecordFormProps={schoolRecordFormProps}
             schoolRecordsListProps={schoolRecordsListProps}
             archivedSchoolsProps={archivedSchoolsProps}

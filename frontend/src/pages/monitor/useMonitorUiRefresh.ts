@@ -101,13 +101,19 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
 
       const pending = pendingRef.current;
 
-      if (entity === "students" || entity === "school_records") {
+      if (entity === "students") {
         pending.studentLookup = true;
+        pending.radarTotals = true;
       }
-      if (entity === "teachers" || entity === "school_records") {
+      if (entity === "teachers") {
+        pending.teacherLookup = true;
+        pending.radarTotals = true;
+      }
+      if (entity === "school_records") {
+        pending.studentLookup = true;
         pending.teacherLookup = true;
       }
-      if (entity === "students" || entity === "teachers" || entity === "dashboard") {
+      if (entity === "dashboard") {
         pending.radarTotals = true;
       }
 
