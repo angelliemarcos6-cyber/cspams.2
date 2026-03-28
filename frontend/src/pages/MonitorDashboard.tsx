@@ -49,12 +49,16 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { apiRequest, isApiError } from "@/lib/api";
+import {
+  MonitorSchoolHeadAccountsPanel,
+  type MonitorSchoolHeadAccountRow,
+  type SchoolHeadAccountsStatusFilter,
+} from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
 import type {
   IndicatorSubmission,
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
-  SchoolHeadAccountPayload,
-  SchoolHeadAccountStatusUpdatePayload,
   SchoolRecord,
   SchoolStatus,
   StudentRecord,
@@ -85,35 +89,6 @@ type ScopeDropdownId =
   | "teachers_radar";
 type FilterChipId = "search" | "status" | "requirement" | "lane" | "preset" | "school" | "student" | "teacher" | "date";
 type ToastTone = "success" | "info" | "warning";
-
-type PendingAccountAction =
-  | {
-      kind: "status";
-      schoolId: string;
-      schoolName: string;
-      actionLabel: string;
-      update: Omit<SchoolHeadAccountStatusUpdatePayload, "reason">;
-    }
-  | {
-      kind: "reset_password";
-      schoolId: string;
-      schoolName: string;
-      actionLabel: string;
-    }
-  | {
-      kind: "email_change";
-      schoolId: string;
-      schoolName: string;
-      actionLabel: string;
-      payload: SchoolHeadAccountPayload;
-      previousEmail: string;
-    }
-  | {
-      kind: "remove";
-      schoolId: string;
-      schoolName: string;
-      actionLabel: string;
-    };
 
 interface MonitorTopNavigatorItem {
   id: MonitorTopNavigatorId;
@@ -579,26 +554,6 @@ function schoolTypeLabel(value: string | null | undefined): string {
   if (normalized === "public") return "Public";
   if (normalized === "private") return "Private";
   return value;
-}
-
-function accountStatusLabel(status: string | null | undefined): string {
-  if (!status) return "No Account";
-  const normalized = status.toLowerCase();
-  if (normalized === "active") return "Active";
-  if (normalized === "pending_setup") return "Pending Setup";
-  if (normalized === "suspended") return "Suspended";
-  if (normalized === "locked") return "Locked";
-  if (normalized === "archived") return "Archived";
-  return status;
-}
-
-function accountStatusTone(status: string | null | undefined): string {
-  const normalized = (status ?? "").toLowerCase();
-  if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (normalized === "suspended" || normalized === "locked") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  if (normalized === "archived") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-  return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
 function workflowTone(status: string | null) {
@@ -1321,32 +1276,11 @@ export function MonitorDashboard() {
   const [deletingRecordId, setDeletingRecordId] = useState<string | null>(null);
   const [showSchoolHeadAccountsPanel, setShowSchoolHeadAccountsPanel] = useState(false);
   const [schoolHeadAccountsQuery, setSchoolHeadAccountsQuery] = useState("");
-  const [schoolHeadAccountsStatusFilter, setSchoolHeadAccountsStatusFilter] = useState<
-    "all" | "needs_setup" | "active" | "suspended" | "locked" | "archived"
-  >("all");
+  const [schoolHeadAccountsStatusFilter, setSchoolHeadAccountsStatusFilter] =
+    useState<SchoolHeadAccountsStatusFilter>("all");
   const [schoolHeadAccountsOnlyFlagged, setSchoolHeadAccountsOnlyFlagged] = useState(false);
   const [schoolHeadAccountsOnlyDeleteFlagged, setSchoolHeadAccountsOnlyDeleteFlagged] = useState(false);
-  const [editingSchoolHeadAccountSchoolId, setEditingSchoolHeadAccountSchoolId] = useState<string | null>(null);
-  const [schoolHeadAccountDraft, setSchoolHeadAccountDraft] = useState<SchoolHeadAccountPayload>({
-    name: "",
-    email: "",
-  });
-  const [schoolHeadAccountDraftError, setSchoolHeadAccountDraftError] = useState("");
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
-  const [accountActionKey, setAccountActionKey] = useState<string | null>(null);
-  const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
-  const [pendingAccountAction, setPendingAccountAction] = useState<PendingAccountAction | null>(null);
-  const [pendingAccountReason, setPendingAccountReason] = useState("");
-  const [pendingAccountReasonError, setPendingAccountReasonError] = useState("");
-  const [pendingAccountVerificationChallenge, setPendingAccountVerificationChallenge] = useState<{
-    challengeId: string;
-    expiresAt: string;
-    delivery: string;
-    deliveryMessage: string;
-  } | null>(null);
-  const [pendingAccountVerificationCode, setPendingAccountVerificationCode] = useState("");
-  const [pendingAccountVerificationError, setPendingAccountVerificationError] = useState("");
-  const [isPendingAccountVerificationSending, setIsPendingAccountVerificationSending] = useState(false);
   const [archivedRecords, setArchivedRecords] = useState<SchoolRecord[]>([]);
   const [showArchivedRecords, setShowArchivedRecords] = useState(false);
   const [isArchivedRecordsLoading, setIsArchivedRecordsLoading] = useState(false);
@@ -1357,9 +1291,6 @@ export function MonitorDashboard() {
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const bulkImportInputRef = useRef<HTMLInputElement | null>(null);
   const schoolActionsMenuRef = useRef<HTMLDivElement | null>(null);
-  const accountRowMenuRef = useRef<HTMLDivElement | null>(null);
-  const pendingAccountReasonRef = useRef<HTMLTextAreaElement | null>(null);
-  const pendingAccountVerificationCodeRef = useRef<HTMLInputElement | null>(null);
   const schoolsTableScrollerRef = useRef<HTMLDivElement | null>(null);
   const schoolsTableDragStateRef = useRef<{
     active: boolean;
@@ -1393,15 +1324,6 @@ export function MonitorDashboard() {
     teacherLookupAbortRef.current?.abort();
     teacherLookupAbortRef.current = null;
   }, [authSessionKey]);
-
-  useEffect(() => {
-    if (showSchoolHeadAccountsPanel) return;
-
-    setOpenAccountRowMenuSchoolId(null);
-    setPendingAccountAction(null);
-    setPendingAccountReason("");
-    setPendingAccountReasonError("");
-  }, [showSchoolHeadAccountsPanel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1479,54 +1401,6 @@ export function MonitorDashboard() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [isSchoolActionsMenuOpen]);
-
-  useEffect(() => {
-    if (!openAccountRowMenuSchoolId || typeof window === "undefined") return;
-
-    const onPointerDown = (event: MouseEvent) => {
-      const menu = accountRowMenuRef.current;
-      if (!menu) {
-        setOpenAccountRowMenuSchoolId(null);
-        return;
-      }
-      if (menu.contains(event.target as Node)) return;
-      setOpenAccountRowMenuSchoolId(null);
-    };
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpenAccountRowMenuSchoolId(null);
-      }
-    };
-
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [openAccountRowMenuSchoolId]);
-
-  useEffect(() => {
-    if (!pendingAccountAction || typeof window === "undefined") return;
-
-    window.setTimeout(() => {
-      pendingAccountReasonRef.current?.focus();
-    }, 0);
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setPendingAccountAction(null);
-        setPendingAccountReason("");
-        setPendingAccountReasonError("");
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [pendingAccountAction]);
 
   useEffect(() => {
     const handleRealtimeLookupRefresh = (event: Event) => {
@@ -1857,25 +1731,21 @@ export function MonitorDashboard() {
     }
   }, [pushToast, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
 
-  const announceSchoolHeadAccountDelivery = (
-    receipt: { delivery?: unknown; deliveryMessage?: string },
-    schoolName: string,
-    linkLabel: "Setup link" | "Password reset link",
-  ) => {
-    const normalizedDelivery = String(receipt.delivery ?? "").toLowerCase();
-    const deliveryFailed = normalizedDelivery === "failed";
+  const schoolHeadAccountActions = useSchoolHeadAccountActions({
+    isPanelOpen: showSchoolHeadAccountsPanel,
+    isSaving,
+    pushToast,
+    updateSchoolHeadAccountStatus,
+    issueSchoolHeadAccountActionVerificationCode,
+    issueSchoolHeadSetupLink,
+    issueSchoolHeadPasswordResetLink,
+    upsertSchoolHeadAccountProfile,
+    removeSchoolHeadAccount,
+  });
 
-    pushToast(
-      deliveryFailed
-        ? `${linkLabel} was prepared for ${schoolName}, but email delivery failed.`
-        : `${linkLabel} email sent for ${schoolName}.`,
-      deliveryFailed ? "warning" : "success",
-    );
-
-    const deliveryMessage = receipt.deliveryMessage?.trim();
-    if (deliveryMessage) {
-      pushToast(deliveryMessage, deliveryFailed ? "warning" : "info");
-    }
+  const handleCloseSchoolHeadAccountsPanel = () => {
+    setShowSchoolHeadAccountsPanel(false);
+    schoolHeadAccountActions.resetPanelState();
   };
 
   const resetRecordForm = () => {
@@ -3654,6 +3524,17 @@ export function MonitorDashboard() {
     schoolHeadAccountsStatusFilter,
   ]);
 
+  const schoolHeadAccountRows = useMemo<MonitorSchoolHeadAccountRow[]>(
+    () =>
+      filteredSchoolHeadAccountRows.map(({ summary, record }) => ({
+        schoolKey: summary.schoolKey,
+        schoolCode: summary.schoolCode,
+        schoolName: summary.schoolName,
+        record: record ?? recordBySchoolKey.get(summary.schoolKey) ?? null,
+      })),
+    [filteredSchoolHeadAccountRows, recordBySchoolKey],
+  );
+
   const schoolDrawerRecordId = useMemo(() => {
     if (!schoolDrawerKey) return "";
     return (recordBySchoolKey.get(schoolDrawerKey)?.id ?? "").trim();
@@ -4364,260 +4245,6 @@ export function MonitorDashboard() {
     }
 
     void sendReminderForSchool(schoolKey, record.schoolName);
-  };
-
-  const normalizeActionVerificationCode = (value: string): string => value.replace(/\D/g, "").slice(0, 6);
-
-  const isDeactivationStatus = (value: unknown): value is "suspended" | "locked" | "archived" => {
-    const normalized = String(value ?? "").toLowerCase();
-    return normalized === "suspended" || normalized === "locked" || normalized === "archived";
-  };
-
-  const openPendingAccountAction = (action: PendingAccountAction) => {
-    setOpenAccountRowMenuSchoolId(null);
-    setPendingAccountAction(action);
-    setPendingAccountReason("");
-    setPendingAccountReasonError("");
-    setPendingAccountVerificationChallenge(null);
-    setPendingAccountVerificationCode("");
-    setPendingAccountVerificationError("");
-  };
-
-  const closePendingAccountAction = () => {
-    setPendingAccountAction(null);
-    setPendingAccountReason("");
-    setPendingAccountReasonError("");
-    setPendingAccountVerificationChallenge(null);
-    setPendingAccountVerificationCode("");
-    setPendingAccountVerificationError("");
-  };
-
-  const sendPendingAccountVerificationCode = async () => {
-    if (!pendingAccountAction) {
-      return;
-    }
-
-    const targetStatus =
-      pendingAccountAction.kind === "remove"
-        ? "deleted"
-        : pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus)
-          ? (String(pendingAccountAction.update.accountStatus).toLowerCase() as "suspended" | "locked" | "archived")
-          : pendingAccountAction.kind === "reset_password"
-            ? "password_reset"
-            : pendingAccountAction.kind === "email_change"
-              ? "email_change"
-          : null;
-
-    if (!targetStatus) return;
-
-    setIsPendingAccountVerificationSending(true);
-    setPendingAccountVerificationError("");
-    setPendingAccountVerificationCode("");
-
-    try {
-      const result = await issueSchoolHeadAccountActionVerificationCode(pendingAccountAction.schoolId, targetStatus);
-      setPendingAccountVerificationChallenge(result);
-
-      pushToast(result.deliveryMessage || "Confirmation code sent.", "info");
-
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => {
-          pendingAccountVerificationCodeRef.current?.focus();
-        }, 0);
-      }
-    } catch (err) {
-      setPendingAccountVerificationError(err instanceof Error ? err.message : "Unable to send confirmation code.");
-    } finally {
-      setIsPendingAccountVerificationSending(false);
-    }
-  };
-
-  const confirmPendingAccountAction = async () => {
-    if (!pendingAccountAction) {
-      return;
-    }
-
-    const reason = pendingAccountReason.trim();
-    const requiresReason =
-      pendingAccountAction.kind === "status" ||
-      pendingAccountAction.kind === "remove" ||
-      pendingAccountAction.kind === "reset_password" ||
-      pendingAccountAction.kind === "email_change";
-    if (requiresReason && reason.length < 5) {
-      setPendingAccountReasonError("Please provide a reason with at least 5 characters.");
-      return;
-    }
-
-    const actionKey = `${pendingAccountAction.schoolId}:${pendingAccountAction.actionLabel}`;
-    setAccountActionKey(actionKey);
-    setPendingAccountReasonError("");
-    setPendingAccountVerificationError("");
-
-    try {
-      if (pendingAccountAction.kind === "status") {
-        if (isDeactivationStatus(pendingAccountAction.update.accountStatus)) {
-          const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
-          const code = pendingAccountVerificationCode.trim();
-
-          if (!challengeId) {
-            setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
-            return;
-          }
-
-          if (!/^\d{6}$/.test(code)) {
-            setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
-            return;
-          }
-
-          const result = await updateSchoolHeadAccountStatus(pendingAccountAction.schoolId, {
-            ...pendingAccountAction.update,
-            reason,
-            verificationChallengeId: challengeId,
-            verificationCode: code,
-          });
-          pushToast(result.message || `School Head account updated for ${pendingAccountAction.schoolName}.`, "success");
-          closePendingAccountAction();
-          return;
-        }
-
-        const result = await updateSchoolHeadAccountStatus(pendingAccountAction.schoolId, {
-          ...pendingAccountAction.update,
-          reason,
-        });
-        pushToast(result.message || `School Head account updated for ${pendingAccountAction.schoolName}.`, "success");
-      } else if (pendingAccountAction.kind === "remove") {
-        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
-        const code = pendingAccountVerificationCode.trim();
-
-        if (!challengeId) {
-          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
-          return;
-        }
-
-        if (!/^\d{6}$/.test(code)) {
-          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
-          return;
-        }
-
-        const result = await removeSchoolHeadAccount(pendingAccountAction.schoolId, {
-          reason,
-          verificationChallengeId: challengeId,
-          verificationCode: code,
-        });
-        pushToast(result.message || `School Head account removed for ${pendingAccountAction.schoolName}.`, "success");
-      } else if (pendingAccountAction.kind === "reset_password") {
-        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
-        const code = pendingAccountVerificationCode.trim();
-
-        if (!challengeId) {
-          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
-          return;
-        }
-
-        if (!/^\d{6}$/.test(code)) {
-          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
-          return;
-        }
-
-        const receipt = await issueSchoolHeadPasswordResetLink(pendingAccountAction.schoolId, {
-          reason,
-          verificationChallengeId: challengeId,
-          verificationCode: code,
-        });
-        announceSchoolHeadAccountDelivery(receipt, pendingAccountAction.schoolName, "Password reset link");
-      } else {
-        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
-        const code = pendingAccountVerificationCode.trim();
-
-        if (!challengeId) {
-          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
-          return;
-        }
-
-        if (!/^\d{6}$/.test(code)) {
-          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
-          return;
-        }
-
-        const result = await upsertSchoolHeadAccountProfile(pendingAccountAction.schoolId, {
-          ...pendingAccountAction.payload,
-          reason,
-          verificationChallengeId: challengeId,
-          verificationCode: code,
-        });
-
-        pushToast(result.message || `School Head account saved for ${pendingAccountAction.schoolName}.`, "success");
-        setEditingSchoolHeadAccountSchoolId(null);
-        closePendingAccountAction();
-        return;
-      }
-
-      closePendingAccountAction();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to complete account action.";
-      if (
-        pendingAccountAction.kind === "remove" ||
-        pendingAccountAction.kind === "reset_password" ||
-        pendingAccountAction.kind === "email_change" ||
-        (pendingAccountAction.kind === "status" && isDeactivationStatus(pendingAccountAction.update.accountStatus))
-      ) {
-        setPendingAccountVerificationError(message);
-      } else {
-        setPendingAccountReasonError(message);
-      }
-    } finally {
-      setAccountActionKey(null);
-    }
-  };
-
-  const handleUpdateSchoolHeadAccount = (
-    record: SchoolRecord,
-    update: Omit<SchoolHeadAccountStatusUpdatePayload, "reason">,
-    actionLabel: string,
-  ) => {
-    const account = record.schoolHeadAccount;
-    if (!account) {
-      pushToast(`No School Head account is linked to ${record.schoolName}.`, "warning");
-      return;
-    }
-
-    openPendingAccountAction({
-      kind: "status",
-      schoolId: record.id,
-      schoolName: record.schoolName,
-      actionLabel,
-      update,
-    });
-  };
-
-  const handleIssueSchoolHeadSetupLink = async (record: SchoolRecord) => {
-    const account = record.schoolHeadAccount;
-    if (!account) {
-      pushToast(`No School Head account is linked to ${record.schoolName}.`, "warning");
-      return;
-    }
-
-    const accountStatus = String(account.accountStatus ?? "").toLowerCase();
-    if (accountStatus !== "pending_setup") {
-      openPendingAccountAction({
-        kind: "reset_password",
-        schoolId: record.id,
-        schoolName: record.schoolName,
-        actionLabel: "Send Password Reset Link",
-      });
-      return;
-    }
-
-    const actionKey = `${record.id}:setup-link`;
-    setAccountActionKey(actionKey);
-    try {
-      const receipt = await issueSchoolHeadSetupLink(record.id, null);
-      announceSchoolHeadAccountDelivery(receipt, record.schoolName, "Setup link");
-    } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Unable to send setup link.", "warning");
-    } finally {
-      setAccountActionKey(null);
-    }
   };
 
   const handleQueueSchoolFocus = (schoolKey: string) => {
@@ -6474,9 +6101,13 @@ export function MonitorDashboard() {
                   type="button"
                   onClick={() => {
                     setIsSchoolActionsMenuOpen(false);
-                    setShowSchoolHeadAccountsPanel((current) => !current);
-                    setEditingSchoolHeadAccountSchoolId(null);
-                    setSchoolHeadAccountDraftError("");
+                    setShowSchoolHeadAccountsPanel((current) => {
+                      const next = !current;
+                      if (!next) {
+                        schoolHeadAccountActions.resetPanelState();
+                      }
+                      return next;
+                    });
                   }}
                   className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition ${
                     showSchoolHeadAccountsPanel
@@ -6548,6 +6179,35 @@ export function MonitorDashboard() {
             </div>
           </div>
 
+          {showSchoolHeadAccountsPanel && (
+            <MonitorSchoolHeadAccountsPanel
+              isOpen={showSchoolHeadAccountsPanel}
+              isSaving={isSaving}
+              isMobileViewport={isMobileViewport}
+              rows={schoolHeadAccountRows}
+              totalCount={compactSchoolRows.length}
+              query={schoolHeadAccountsQuery}
+              statusFilter={schoolHeadAccountsStatusFilter}
+              onlyFlagged={schoolHeadAccountsOnlyFlagged}
+              onlyDeleteFlagged={schoolHeadAccountsOnlyDeleteFlagged}
+              onQueryChange={setSchoolHeadAccountsQuery}
+              onStatusFilterChange={setSchoolHeadAccountsStatusFilter}
+              onOnlyFlaggedChange={setSchoolHeadAccountsOnlyFlagged}
+              onOnlyDeleteFlaggedChange={setSchoolHeadAccountsOnlyDeleteFlagged}
+              onClearFilters={() => {
+                setSchoolHeadAccountsQuery("");
+                setSchoolHeadAccountsStatusFilter("all");
+                setSchoolHeadAccountsOnlyFlagged(false);
+                setSchoolHeadAccountsOnlyDeleteFlagged(false);
+              }}
+              onClose={handleCloseSchoolHeadAccountsPanel}
+              onOpenSchoolRecord={handleOpenSchoolRecord}
+              formatDateTime={(value) => (value ? formatDateTime(value) : "-")}
+              actions={schoolHeadAccountActions}
+            />
+          )}
+
+          {/*
           {showSchoolHeadAccountsPanel && (
             <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
               <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-start md:justify-between">
@@ -7083,6 +6743,7 @@ export function MonitorDashboard() {
               </div>
             </section>
           )}
+          */}
 
           {deleteError && (
             <div className="mx-5 mt-4 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
@@ -8051,6 +7712,7 @@ export function MonitorDashboard() {
         </div>
       </aside>
 
+      {/*
       {pendingAccountAction && (
         <>
           <button
@@ -8205,6 +7867,7 @@ export function MonitorDashboard() {
           </section>
         </>
       )}
+      */}
 
       <div
         style={{ top: "calc(var(--shell-sticky-top, 10rem) + 0.75rem)" }}
