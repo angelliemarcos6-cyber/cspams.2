@@ -104,16 +104,16 @@ function AppRoutes() {
 
 function RealtimeBridge() {
   const { role, user } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const hasCookieSession = Boolean(user && role);
   const schoolId = user?.schoolId ?? null;
 
   useEffect(() => {
-    if (!token || !role) {
+    if (!hasCookieSession || !role) {
       stopRealtimeBridge();
       return;
     }
 
-    startRealtimeBridge(token, {
+    startRealtimeBridge(COOKIE_SESSION_TOKEN, {
       role,
       schoolId,
     });
@@ -121,7 +121,7 @@ function RealtimeBridge() {
     return () => {
       stopRealtimeBridge();
     };
-  }, [token, role, schoolId]);
+  }, [hasCookieSession, role, schoolId]);
 
   return null;
 }

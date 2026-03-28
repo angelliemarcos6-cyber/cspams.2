@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { stopRealtimeBridge } from "@/lib/realtime";
+import { clearClientSessionArtifacts } from "@/lib/sessionCleanup";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -196,9 +198,19 @@ function normalizeUser(user: SessionUser): SessionUser {
 function assertCookieSessionAuthResponse(payload: BearerTokenAuthPayload, operationLabel: string): void {
   if (typeof payload.token === "string" && payload.token.trim().length > 0) {
     throw new Error(
-      `Backend returned bearer-token auth during ${operationLabel}. Check SANCTUM_STATEFUL_DOMAINS, CORS, and session cookie settings.`,
+      `Backend returned bearer-token auth during ${operationLabel}. This frontend expects Sanctum cookie-session auth. Check VITE_API_BASE_URL, SANCTUM_STATEFUL_DOMAINS, CORS_ALLOWED_ORIGINS, and session cookie settings.`,
     );
   }
+}
+
+function finalizeClientLogout(
+  setUser: (user: SessionUser | null) => void,
+  clearAuthError: () => void,
+): void {
+  stopRealtimeBridge();
+  clearClientSessionArtifacts();
+  setUser(null);
+  clearAuthError();
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -512,18 +524,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
       });
-      setUser(null);
-      clearAuthError();
+      finalizeClientLogout(setUser, clearAuthError);
     } catch (err) {
       if (isApiError(err) && err.status === 401) {
-        setUser(null);
-        clearAuthError();
+        finalizeClientLogout(setUser, clearAuthError);
         return;
       }
 
       if (options?.force) {
-        setUser(null);
-        clearAuthError();
+        finalizeClientLogout(setUser, clearAuthError);
         return;
       }
 

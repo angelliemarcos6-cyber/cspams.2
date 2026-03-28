@@ -3,10 +3,13 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { getApiBaseUrl } from "@/lib/api";
+import * as realtime from "@/lib/realtime";
 
 describe("AuthProvider logout", () => {
   beforeEach(() => {
     document.cookie = "XSRF-TOKEN=test-xsrf-token; path=/";
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -14,7 +17,7 @@ describe("AuthProvider logout", () => {
     vi.unstubAllGlobals();
   });
 
-  it("clears the current user after a successful 204 logout response", async () => {
+  it("clears the current user and client session artifacts after a successful 204 logout response", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -41,6 +44,10 @@ describe("AuthProvider logout", () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     vi.stubGlobal("fetch", fetchMock);
+    const stopRealtimeBridgeSpy = vi.spyOn(realtime, "stopRealtimeBridge").mockImplementation(() => {});
+    window.localStorage.setItem("cspams.monitor.filters.v1", JSON.stringify({ q: "north" }));
+    window.sessionStorage.setItem("cspams.monitor.nav.v1", JSON.stringify({ visible: true }));
+    window.history.replaceState(null, "", "/?tab=reviews#/monitor");
 
     const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
     const { result } = renderHook(() => useAuth(), { wrapper });
@@ -60,6 +67,11 @@ describe("AuthProvider logout", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/logout`);
+    expect(stopRealtimeBridgeSpy).toHaveBeenCalledTimes(1);
+    expect(window.localStorage.getItem("cspams.monitor.filters.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("cspams.monitor.nav.v1")).toBeNull();
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("#/monitor");
   });
 
   it("captures restore-time 403 details without leaving a user session", async () => {
@@ -150,7 +162,7 @@ describe("AuthProvider logout", () => {
           password: "Password123!",
         }),
       ).rejects.toThrow(
-        "Backend returned bearer-token auth during login. Check SANCTUM_STATEFUL_DOMAINS, CORS, and session cookie settings.",
+        "Backend returned bearer-token auth during login. This frontend expects Sanctum cookie-session auth. Check VITE_API_BASE_URL, SANCTUM_STATEFUL_DOMAINS, CORS_ALLOWED_ORIGINS, and session cookie settings.",
       );
     });
 

@@ -1194,7 +1194,9 @@ function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImportRowP
 
 export function MonitorDashboard() {
   const { user } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const isAuthenticated = Boolean(user);
+  const authSessionKey = user ? `${user.role}:${user.id}` : "";
+  const cookieSessionToken = COOKIE_SESSION_TOKEN;
   const {
     records,
     recordCount,
@@ -1404,7 +1406,7 @@ export function MonitorDashboard() {
     studentLookupAbortRef.current = null;
     teacherLookupAbortRef.current?.abort();
     teacherLookupAbortRef.current = null;
-  }, [token]);
+  }, [authSessionKey]);
 
   useEffect(() => {
     if (showSchoolHeadAccountsPanel) return;
@@ -3690,7 +3692,7 @@ export function MonitorDashboard() {
   }, [recordBySchoolKey, schoolDrawerKey]);
 
   useEffect(() => {
-    if (!schoolDrawerRecordId || !token) {
+    if (!schoolDrawerRecordId || !isAuthenticated) {
       setSchoolDrawerSubmissions(null);
       setIsSchoolDrawerSubmissionsLoading(false);
       setSchoolDrawerSubmissionsError("");
@@ -3724,7 +3726,7 @@ export function MonitorDashboard() {
         const perPage = 100;
         const basePath = `/api/indicators/submissions?per_page=${perPage}&school_id=${encodeURIComponent(schoolDrawerRecordId)}`;
         const firstPayload = await apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=1`, {
-          token,
+          token: cookieSessionToken,
           signal: abortController.signal,
         });
         const firstRows = Array.isArray(firstPayload.data) ? firstPayload.data : [];
@@ -3734,7 +3736,7 @@ export function MonitorDashboard() {
         for (let page = 2; page <= lastPage; page += 1) {
           pageRequests.push(
             apiRequest<IndicatorSubmissionListResponse>(`${basePath}&page=${page}`, {
-              token,
+              token: cookieSessionToken,
               signal: abortController.signal,
             }),
           );
@@ -3776,7 +3778,7 @@ export function MonitorDashboard() {
       active = false;
       abortController.abort();
     };
-  }, [schoolDrawerRecordId, schoolDrawerSubmissionSyncTick, token]);
+  }, [cookieSessionToken, isAuthenticated, schoolDrawerRecordId, schoolDrawerSubmissionSyncTick]);
 
   const schoolDrawerIndicatorSubmissions = useMemo(
     () => schoolDrawerSubmissions ?? schoolIndicatorSubmissions,
@@ -5558,7 +5560,7 @@ export function MonitorDashboard() {
       <DashboardHelpDialog open={showHelpDialog} variant="monitor" onClose={() => setShowHelpDialog(false)} />
       <MonitorMfaResetApprovalsDialog
         open={showMfaResetApprovalsDialog}
-        token={token}
+        isAuthenticated={isAuthenticated}
         onClose={() => setShowMfaResetApprovalsDialog(false)}
       />
 

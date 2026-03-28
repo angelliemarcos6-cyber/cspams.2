@@ -28,8 +28,8 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
     setSignOutError("");
 
     try {
-      await logout();
-      navigate("/");
+      await logout({ force: true });
+      navigate("/", { replace: true });
     } catch (err) {
       setSignOutError(err instanceof Error ? err.message : "Logout failed. Try again.");
     }

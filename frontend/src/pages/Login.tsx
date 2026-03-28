@@ -84,6 +84,7 @@ export function Login() {
   const [showPasscode, setShowPasscode] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isMfaChallengeActive = pendingMfa !== null;
 
   const roleMeta = ROLE_META[activeRole];
   const forgotPasswordHref = (() => {
@@ -155,19 +156,18 @@ export function Login() {
         setError("Enter a 6-digit verification code or backup code in XXXX-XXXX format.");
         return;
       }
-    }
+    } else {
+      if (!password) {
+        setError("Enter your passcode.");
+        return;
+      }
 
-    if (!password) {
-      setError("Enter your passcode.");
-      return;
-    }
-
-    if (requiresPasswordReset && !pendingMfa) {
-      if (!newPassword || !confirmPassword) {
+      if (requiresPasswordReset && (!newPassword || !confirmPassword)) {
         setError("Enter and confirm your new passcode.");
         return;
       }
-      if (newPassword !== confirmPassword) {
+
+      if (requiresPasswordReset && newPassword !== confirmPassword) {
         setError("New passcode and confirmation do not match.");
         return;
       }
@@ -306,11 +306,12 @@ export function Login() {
                     clearResetState();
                     clearMfaState();
                   }}
+                  disabled={isMfaChallengeActive}
                   className={`rounded-xl border px-3 py-3 text-left transition ${
                     activeRole === "school_head"
                       ? "border-primary-300 bg-white text-primary-800 shadow-[0_14px_28px_-24px_rgba(2,46,80,0.65)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
                 >
                   <p className="inline-flex items-center gap-2 text-sm font-semibold">
                     <UserCog className="h-4 w-4" />
@@ -327,11 +328,12 @@ export function Login() {
                     clearResetState();
                     clearMfaState();
                   }}
+                  disabled={isMfaChallengeActive}
                   className={`rounded-xl border px-3 py-3 text-left transition ${
                     activeRole === "monitor"
                       ? "border-primary-300 bg-white text-primary-800 shadow-[0_14px_28px_-24px_rgba(2,46,80,0.65)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
                 >
                   <p className="inline-flex items-center gap-2 text-sm font-semibold">
                     <Radar className="h-4 w-4" />
@@ -369,6 +371,7 @@ export function Login() {
                     inputMode={activeRole === "school_head" ? "numeric" : "text"}
                     maxLength={activeRole === "school_head" ? 6 : 255}
                     pattern={activeRole === "school_head" ? "\\d{6}" : undefined}
+                    disabled={isMfaChallengeActive}
                     className={`${formInputClass} pl-10`}
                   />
                 </div>
@@ -393,11 +396,13 @@ export function Login() {
                       clearMfaState();
                     }}
                     placeholder="Enter passcode"
+                    disabled={isMfaChallengeActive}
                     className={`${formInputClass} py-3 pl-10 pr-11`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPasscode((current) => !current)}
+                    disabled={isMfaChallengeActive}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                     aria-label={showPasscode ? "Hide passcode" : "Show passcode"}
                   >
