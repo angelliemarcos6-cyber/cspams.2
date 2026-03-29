@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -90,10 +90,13 @@ import { useMonitorDashboardShell } from "@/pages/monitor/useMonitorDashboardShe
 import { useMonitorDashboardHotkeys } from "@/pages/monitor/useMonitorDashboardHotkeys";
 import { useMonitorDrawerViewModel } from "@/pages/monitor/useMonitorDrawerViewModel";
 import { useMonitorFilterUi } from "@/pages/monitor/useMonitorFilterUi";
+import { useMonitorDrawerJumpActions } from "@/pages/monitor/useMonitorDrawerJumpActions";
+import { useMonitorPageStateGuard } from "@/pages/monitor/useMonitorPageStateGuard";
 import { useMonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import { useMonitorQuickJump } from "@/pages/monitor/useMonitorQuickJump";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
 import { useMonitorReviewFlow } from "@/pages/monitor/useMonitorReviewFlow";
+import { useMonitorSchoolActionRouter } from "@/pages/monitor/useMonitorSchoolActionRouter";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
 import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
 import { useSchoolDrawer } from "@/pages/monitor/useSchoolDrawer";
@@ -108,8 +111,6 @@ import {
   formatDateTime,
   statusLabel,
 } from "@/utils/analytics";
-
-type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
 
 export function MonitorDashboard() {
   const { user } = useAuth();
@@ -299,7 +300,6 @@ export function MonitorDashboard() {
     queryStudents,
     listTeachers,
   });
-  const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleRefreshDashboard = useCallback(async () => {
@@ -431,14 +431,6 @@ export function MonitorDashboard() {
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
     [activeTopNavigator],
   );
-  const scrollQueueRowIntoView = (schoolKey: string) => {
-    if (typeof document === "undefined") return;
-    const targetId = `monitor-queue-row-${sanitizeAnchorToken(schoolKey)}`;
-    const row = document.getElementById(targetId);
-    if (!row) return;
-    row.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
-
   const studentStatsBySchoolKey = useMemo(() => {
     const map = new Map<string, { students: number; teachers: Set<string> }>();
 
@@ -600,11 +592,7 @@ export function MonitorDashboard() {
     setSelectedStudentLookupId,
     setSelectedTeacherLookupId,
   });
-
-  useEffect(() => {
-    setRequirementsPage(1);
-    setRecordsPage(1);
-  }, [
+  useMonitorPageStateGuard({
     filterDateFrom,
     filterDateTo,
     requirementFilter,
@@ -614,150 +602,45 @@ export function MonitorDashboard() {
     selectedStudentLookupId,
     selectedTeacherLookupId,
     statusFilter,
-  ]);
-
-  useEffect(() => {
-    if (requirementsPage > totalRequirementPages) {
-      setRequirementsPage(totalRequirementPages);
-    }
-  }, [requirementsPage, totalRequirementPages]);
-
-  useEffect(() => {
-    if (recordsPage > totalRecordPages) {
-      setRecordsPage(totalRecordPages);
-    }
-  }, [recordsPage, totalRecordPages]);
-
-  useEffect(() => {
-    if (visibleRequirementFilterIds.includes(requirementFilter)) {
-      return;
-    }
-    setRequirementFilter("all");
-  }, [requirementFilter, setRequirementFilter, visibleRequirementFilterIds]);
-
-  const sendReminderForSchool = async (schoolKey: string, schoolName: string, notes?: string | null) => {
-    const record = scopedRecordBySchoolKey.get(schoolKey) ?? recordBySchoolKey.get(schoolKey);
-    if (!record) {
-      pushToast(`Unable to send reminder for ${schoolName}: school record not found.`, "warning");
-      return;
-    }
-
-    setRemindingSchoolKey(schoolKey);
-    try {
-      const receipt = await sendReminder(record.id, notes);
-      const recipientLabel = receipt.recipientCount === 1 ? "recipient" : "recipients";
-      pushToast(`Reminder sent to ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : `Unable to send reminder for ${schoolName}.`;
-      pushToast(message, "warning");
-    } finally {
-      setRemindingSchoolKey((current) => (current === schoolKey ? null : current));
-    }
-  };
-
-  const handleReviewSchool = (summary: SchoolRequirementSummary) => {
-    openSchoolDrawer(summary.schoolKey);
-    setActiveTopNavigator("reviews");
-    window.setTimeout(() => {
-      focusAndScrollTo("monitor-queue-workspace");
-      scrollQueueRowIntoView(summary.schoolKey);
-    }, 80);
-    pushToast(`Review workspace opened for ${summary.schoolName}.`, "info");
-  };
-
-  const handleOpenSchool = (summary: SchoolRequirementSummary) => {
-    setActiveTopNavigator("schools");
-    openSchoolDrawer(summary.schoolKey);
-    window.setTimeout(() => {
-      focusAndScrollTo("monitor-school-records");
-    }, 80);
-    pushToast(`Opened school details for ${summary.schoolName}.`, "info");
-  };
-
-  const handleSendReminder = (summary: SchoolRequirementSummary) => {
-    void sendReminderForSchool(summary.schoolKey, summary.schoolName);
-  };
-
-  const handleReviewRecord = (record: SchoolRecord) => {
-    const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-    if (schoolKey === "unknown") {
-      pushToast(`Unable to open review for ${record.schoolName}: school key is missing.`, "warning");
-      return;
-    }
-    const summary = schoolRequirementByKey.get(schoolKey);
-
-    if (summary) {
-      handleReviewSchool(summary);
-      return;
-    }
-
-    openSchoolDrawer(schoolKey);
-    setActiveTopNavigator("reviews");
-    window.setTimeout(() => {
-      focusAndScrollTo("monitor-queue-workspace");
-    }, 80);
-    pushToast(`Review workspace opened for ${record.schoolName}.`, "info");
-  };
-
-  const handleOpenSchoolRecord = (record: SchoolRecord) => {
-    const schoolKey = normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName);
-    if (schoolKey === "unknown") {
-      pushToast(`Unable to open school details for ${record.schoolName}: school key is missing.`, "warning");
-      return;
-    }
-    setActiveTopNavigator("schools");
-    openSchoolDrawer(schoolKey);
-    window.setTimeout(() => {
-      focusAndScrollTo("monitor-school-records");
-    }, 80);
-    pushToast(`Opened school details for ${record.schoolName}.`, "info");
-  };
-
-  const handleQueueSchoolFocus = (schoolKey: string) => {
-    if (schoolKey === "unknown") return;
-    openSchoolDrawer(schoolKey);
-    setActiveTopNavigator("reviews");
-  };
-
-  const jumpToDrawerIndicator = (targetKey: string, emptyMessage: string) => {
-    if (!targetKey) {
-      pushToast(emptyMessage, "info");
-      return;
-    }
-
-    setActiveSchoolDrawerTab("history");
-    const targetId = `school-drawer-indicator-${sanitizeAnchorToken(targetKey)}`;
-
-    if (typeof window === "undefined" || typeof document === "undefined") {
-      return;
-    }
-
-    window.setTimeout(() => {
-      const row = document.getElementById(targetId);
-      if (!row) {
-        pushToast("Indicator row was not found in this package.", "warning");
-        return;
-      }
-
-      row.scrollIntoView({ behavior: "smooth", block: "center" });
-      setHighlightedDrawerIndicatorKey(targetKey);
-      window.setTimeout(() => {
-        setHighlightedDrawerIndicatorKey((current) => (current === targetKey ? null : current));
-      }, 2200);
-    }, 120);
-  };
-
-  const handleJumpToMissingIndicators = () => {
-    const targetKey = missingDrawerIndicatorKeys[0] ?? "";
-    jumpToDrawerIndicator(targetKey, "No missing indicators were detected.");
-  };
-
-  const handleJumpToReturnedIndicators = () => {
-    const fallbackKey =
-      returnedDrawerIndicatorKeys[0] ??
-      (schoolIndicatorMatrix.latestSubmission?.status === "returned" ? schoolIndicatorMatrix.rows[0]?.key ?? "" : "");
-    jumpToDrawerIndicator(fallbackKey, "No returned indicators were found in the latest package.");
-  };
+    requirementsPage,
+    recordsPage,
+    totalRequirementPages,
+    totalRecordPages,
+    visibleRequirementFilterIds,
+    setRequirementsPage,
+    setRecordsPage,
+    setRequirementFilter,
+  });
+  const {
+    remindingSchoolKey,
+    sendReminderForSchool,
+    handleReviewSchool,
+    handleOpenSchool,
+    handleSendReminder,
+    handleReviewRecord,
+    handleOpenSchoolRecord,
+    handleQueueSchoolFocus,
+  } = useMonitorSchoolActionRouter({
+    scopedRecordBySchoolKey,
+    recordBySchoolKey,
+    schoolRequirementByKey,
+    setActiveTopNavigator,
+    openSchoolDrawer,
+    focusAndScrollTo,
+    pushToast,
+    sendReminder,
+  });
+  const {
+    handleJumpToMissingIndicators,
+    handleJumpToReturnedIndicators,
+  } = useMonitorDrawerJumpActions({
+    missingDrawerIndicatorKeys,
+    returnedDrawerIndicatorKeys,
+    schoolIndicatorMatrix,
+    setActiveSchoolDrawerTab,
+    setHighlightedDrawerIndicatorKey,
+    pushToast,
+  });
 
   const handleMonitorTopNavigate = useCallback((id: MonitorTopNavigatorId) => {
     setShowNavigatorManual(false);
