@@ -1,5 +1,4 @@
 ﻿import { useCallback, useMemo, useRef, useState } from "react";
-import { CircleHelp, RefreshCw } from "lucide-react";
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { MonitorMfaResetApprovalsDialog } from "@/components/MonitorMfaResetApprovalsDialog";
 import { Shell } from "@/components/Shell";
@@ -14,6 +13,7 @@ import { MonitorFiltersPanel } from "@/pages/monitor/MonitorFiltersPanel";
 import { MonitorLearnerRecordsSection } from "@/pages/monitor/MonitorLearnerRecordsSection";
 import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
 import { MonitorMobileNavigator } from "@/pages/monitor/MonitorMobileNavigator";
+import { MonitorDashboardShellActions } from "@/pages/monitor/MonitorDashboardShellActions";
 import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
@@ -949,35 +949,14 @@ export function MonitorDashboard() {
       title="Division Monitor Dashboard"
       subtitle="Three-screen workflow: Overview, Schools, Reviews."
       actions={
-        <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm border border-white/20 bg-white/10 p-1.5 sm:gap-2">
-          <button
-            type="button"
-            onClick={() => void handleRefreshDashboard()}
-            disabled={isDashboardSyncing}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-70"
-            aria-label="Refresh dashboard data"
-            title={isDashboardSyncing ? "Refreshing..." : "Refresh"}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isDashboardSyncing ? "animate-spin" : ""}`} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowHelpDialog(true)}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-white text-primary-700 shadow-sm transition hover:bg-white/90"
-            aria-label="Open quick guide"
-            title="Help"
-          >
-            <CircleHelp className="h-3.5 w-3.5" />
-          </button>
-          <span className="hidden max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 sm:inline-flex lg:max-w-[21rem]">
-            {syncStatus === "up_to_date" ? "Up to date" : "Updated"}
-            {" | "}
-            {dashboardLastSyncedAt
-              ? new Date(dashboardLastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              : "Not synced"}
-            {syncScope ? ` | ${syncScope}` : ""}
-          </span>
-        </div>
+        <MonitorDashboardShellActions
+          isDashboardSyncing={isDashboardSyncing}
+          dashboardLastSyncedAt={dashboardLastSyncedAt}
+          syncStatus={syncStatus}
+          syncScope={syncScope}
+          onRefresh={() => void handleRefreshDashboard()}
+          onOpenHelp={() => setShowHelpDialog(true)}
+        />
       }
     >
       {error && (
