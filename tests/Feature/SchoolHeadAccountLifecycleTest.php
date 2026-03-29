@@ -265,4 +265,60 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $schoolHead->refresh();
         $this->assertSame(AccountStatus::ACTIVE, $schoolHead->accountStatus());
     }
+
+    public function test_reset_password_completion_is_blocked_for_pending_verification_account(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead->forceFill([
+            'account_status' => AccountStatus::PENDING_VERIFICATION->value,
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'email_verified_at' => now(),
+        ])->save();
+
+        // Even with a syntactically valid token, inactive accounts are blocked
+        // before the password broker runs.
+        $response = $this->postJson('/api/auth/reset-password', [
+            'role' => 'school_head',
+            'email' => $schoolHead->email,
+            'token' => 'any-token-value',
+            'password' => 'NewStrongPass@123',
+            'password_confirmation' => 'NewStrongPass@123',
+        ]);
+
+        $response->assertStatus(Response::HTTP_FORBIDDEN);
+        $response->assertJsonFragment([
+            'message' => 'This account is waiting for Division Monitor activation. Password reset is not available until activation.',
+            'requiresMonitorApproval' => true,
+            'accountStatus' => AccountStatus::PENDING_VERIFICATION->value,
+        ]);
+    }
+
+    public function test_reset_password_completion_is_blocked_for_pending_setup_account(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        // Ensure still at pending_setup (seeded state)
+        $this->assertSame(AccountStatus::PENDING_SETUP, $schoolHead->accountStatus());
+
+        $response = $this->postJson('/api/auth/reset-password', [
+            'role' => 'school_head',
+            'email' => $schoolHead->email,
+            'token' => 'any-token-value',
+            'password' => 'NewStrongPass@123',
+            'password_confirmation' => 'NewStrongPass@123',
+        ]);
+
+        $response->assertStatus(Response::HTTP_FORBIDDEN);
+        $response->assertJsonFragment([
+            'message' => 'This account has not completed setup yet. Use the setup link sent by your Division Monitor.',
+            'requiresAccountSetup' => true,
+            'accountStatus' => AccountStatus::PENDING_SETUP->value,
+        ]);
+    }
 }
