@@ -481,16 +481,39 @@ class AuthController extends Controller
             );
         }
 
-        if (! $user->canAuthenticate() && ! $user->must_reset_password) {
-            if (($inactiveResponse = $this->rejectInactiveAccount(
+        if (! $user->canAuthenticate()) {
+            $status = $user->accountStatus();
+
+            $resetMessage = match ($status) {
+                AccountStatus::PENDING_SETUP => 'This account has not completed setup yet. Use the setup link sent by your Division Monitor.',
+                AccountStatus::PENDING_VERIFICATION => 'This account is waiting for Division Monitor activation. Password reset is not available until activation.',
+                default => $this->inactiveAccountMessage($status),
+            };
+
+            AuthAuditLogger::record(
                 $request,
+                'auth.reset_password.failed',
+                'failure',
                 $user,
                 $role,
                 $email,
-                'auth.reset_password.failed',
-            )) instanceof JsonResponse) {
-                return $inactiveResponse;
+                [
+                    'reason' => 'account_not_active',
+                    'account_status' => $status->value,
+                ],
+            );
+
+            $payload = ['message' => $resetMessage, 'accountStatus' => $status->value];
+
+            if ($status === AccountStatus::PENDING_SETUP) {
+                $payload['requiresAccountSetup'] = true;
             }
+
+            if ($status === AccountStatus::PENDING_VERIFICATION) {
+                $payload['requiresMonitorApproval'] = true;
+            }
+
+            return response()->json($payload, Response::HTTP_FORBIDDEN);
         }
 
         $revocationSummary = ['revokedTokens' => 0, 'revokedWebSessions' => 0];

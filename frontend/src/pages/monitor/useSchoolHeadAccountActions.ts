@@ -604,6 +604,16 @@ export function useSchoolHeadAccountActions({
       }
 
       const accountStatus = String(account.accountStatus ?? "").toLowerCase();
+      if (accountStatus === "pending_verification") {
+        openPendingAccountAction({
+          kind: "activate",
+          schoolId: record.id,
+          schoolName: record.schoolName,
+          actionLabel: "Activate account",
+        });
+        return;
+      }
+
       if (accountStatus !== "pending_setup") {
         openPendingAccountAction({
           kind: "reset_password",

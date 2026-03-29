@@ -956,6 +956,20 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
+        if ($status === AccountStatus::PENDING_VERIFICATION) {
+            return response()->json(
+                ['message' => 'This account is waiting for Division Monitor activation. Activate the account or reissue setup instead of sending a password reset link.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if ($status !== AccountStatus::ACTIVE) {
+            return response()->json(
+                ['message' => 'Password reset links can only be issued for active School Head accounts.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
         $reason = trim($request->string('reason')->toString());
         $challengeId = trim($request->string('verificationChallengeId')->toString());
         $code = trim($request->string('verificationCode')->toString());

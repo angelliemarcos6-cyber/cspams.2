@@ -22,6 +22,11 @@ class UpdateSchoolHeadAccountStatusRequest extends FormRequest
             'accountStatus' => [
                 'sometimes',
                 'string',
+                // NOTE: ACTIVE must remain here because this generic PATCH route is also used
+                // to reactivate previously suspended/locked/archived accounts (active→suspended→active).
+                // First-time activation from PENDING_VERIFICATION is a separate concern and is
+                // explicitly blocked in SchoolHeadAccountController::update(); it must go through
+                // the dedicated activate() action at POST /school-head-account/activate instead.
                 Rule::in([
                     AccountStatus::ACTIVE->value,
                     AccountStatus::SUSPENDED->value,
