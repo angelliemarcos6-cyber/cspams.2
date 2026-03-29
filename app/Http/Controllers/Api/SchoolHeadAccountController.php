@@ -536,18 +536,17 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
+        // Block reactivation only when the account has never had a password set.
+        // must_reset_password=true on a suspended/locked account means "force a
+        // password change at next login" — not that the account lacks a password.
+        // Allowing reactivation in that case is safe: canAuthenticate() returns true
+        // for active accounts, and the forced reset is enforced at login.
         if (
             $nextStatus === AccountStatus::ACTIVE->value &&
-            ($account->must_reset_password || $account->password_changed_at === null)
+            $account->password_changed_at === null
         ) {
-            $message = $previousStatus === AccountStatus::PENDING_SETUP
-                ? 'This account has not completed setup yet. Reissue the setup link instead.'
-                : ($previousStatus === AccountStatus::PENDING_VERIFICATION
-                    ? 'Use the Activate Account action after reviewing this setup.'
-                    : 'Password reset is required before activation. Issue a password reset link first.');
-
             return response()->json(
-                ['message' => $message],
+                ['message' => 'This account has not completed setup yet. Reissue the setup link instead.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
