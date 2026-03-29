@@ -182,7 +182,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         // The controller blocks pending_verification → active via the generic route.
         // Activation must go through /school-head-account/activate instead.
         $response = $this->actingAs($monitor, 'sanctum')->patchJson(
-            '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account/status',
+            '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account',
             [
                 'accountStatus' => AccountStatus::ACTIVE->value,
                 'reason' => 'Trying to activate via generic route.',
@@ -194,5 +194,40 @@ class SchoolHeadAccountLifecycleTest extends TestCase
 
         $schoolHead->refresh();
         $this->assertSame(AccountStatus::PENDING_VERIFICATION, $schoolHead->accountStatus());
+    }
+
+    public function test_generic_patch_can_reactivate_suspended_account(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->forceFill([
+            'account_status' => AccountStatus::SUSPENDED->value,
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'email_verified_at' => now(),
+            'verified_by_user_id' => $monitor->id,
+            'verified_at' => now(),
+        ])->save();
+
+        // Reactivating suspended/locked/archived accounts goes through the generic PATCH route.
+        // This is intentional — there is no dedicated reactivation endpoint.
+        $response = $this->actingAs($monitor, 'sanctum')->patchJson(
+            '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account',
+            [
+                'accountStatus' => AccountStatus::ACTIVE->value,
+                'reason' => 'Reactivating suspended account after review.',
+            ],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ACTIVE, $schoolHead->accountStatus());
     }
 }

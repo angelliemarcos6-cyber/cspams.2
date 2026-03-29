@@ -481,7 +481,7 @@ class AuthController extends Controller
             );
         }
 
-        if (! $user->canAuthenticate() && ! $user->must_reset_password) {
+        if (! $user->canAuthenticate()) {
             if (($inactiveResponse = $this->rejectInactiveAccount(
                 $request,
                 $user,
