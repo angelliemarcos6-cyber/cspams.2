@@ -1,20 +1,5 @@
 ﻿import { useCallback, useMemo, useRef, useState } from "react";
-import {
-  AlertCircle,
-  AlertTriangle,
-  BellRing,
-  CheckCircle2,
-  CircleHelp,
-  Database,
-  Edit2,
-  Eye,
-  LayoutDashboard,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  Trash2,
-  X,
-} from "lucide-react";
+import { CircleHelp, RefreshCw } from "lucide-react";
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { MonitorMfaResetApprovalsDialog } from "@/components/MonitorMfaResetApprovalsDialog";
 import { Shell } from "@/components/Shell";
@@ -31,11 +16,9 @@ import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
 import { MonitorMobileNavigator } from "@/pages/monitor/MonitorMobileNavigator";
 import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
-import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import { MonitorSideNavigator } from "@/pages/monitor/MonitorSideNavigator";
 import { MonitorToastStack } from "@/pages/monitor/MonitorToastStack";
-import { buildMonitorSchoolDrawerProps } from "@/pages/monitor/buildMonitorSchoolDrawerProps";
 import {
   MONITOR_QUICK_JUMPS,
   MONITOR_TOP_NAVIGATOR_IDS,
@@ -80,12 +63,9 @@ import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirement
 import { useMonitorReviewFlow } from "@/pages/monitor/useMonitorReviewFlow";
 import { useMonitorSchoolActionRouter } from "@/pages/monitor/useMonitorSchoolActionRouter";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
+import { useMonitorDashboardBindings } from "@/pages/monitor/useMonitorDashboardBindings";
 import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
 import { useSchoolDrawer } from "@/pages/monitor/useSchoolDrawer";
-import type {
-  SchoolRecord,
-  SchoolStatus,
-} from "@/types";
 import {
   buildRegionAggregates,
   buildStatusDistribution,
@@ -813,53 +793,20 @@ export function MonitorDashboard() {
     handleReviewSchool(nextReview);
   };
 
-  const quickJumpBindings = {
-    items: quickJumpItems,
+  const {
+    quickJumpBindings,
+    quickFiltersProps,
+    schoolScopeRadarSelectorProps,
+    studentRadarSelectorProps,
+    teacherRadarSelectorProps,
+    schoolDrawerProps,
+  } = useMonitorDashboardBindings({
+    quickJumpItems,
     getQuickJumpMeta: quickJump.getQuickJumpMeta,
     onQuickJump: quickJump.handleQuickJump,
-  };
-  const clearSchoolScopeQuery = () => setSchoolScopeQuery("");
-  const clearStudentLookupQuery = () => setStudentLookupQuery("");
-  const clearTeacherLookupQuery = () => setTeacherLookupQuery("");
-  const schoolScopeSelectorSharedProps = {
-    isLoading,
-    query: schoolScopeQuery,
-    selectedScope: selectedSchoolScope,
-    filteredOptions: filteredSchoolScopeOptions,
-    allOptions: schoolScopeOptions,
-    onQueryChange: setSchoolScopeQuery,
-    onClearQuery: clearSchoolScopeQuery,
-    onSelectAll: handleSelectAllSchools,
-    onSelectOption: handleSelectSchoolScope,
-  };
-  const studentLookupSelectorSharedProps = {
-    selectedLabel: selectedStudentLabel,
-    isSyncing: isStudentLookupSyncing,
-    query: studentLookupQuery,
-    placeholder: selectedTeacherLookup ? "Search teacher's students" : "Search students",
-    filteredOptions: filteredStudentLookupOptions,
-    allOptions: teacherScopedStudentLookupOptions,
-    selectedStudentId: selectedStudentLookup?.id ?? null,
-    onQueryChange: setStudentLookupQuery,
-    onClearQuery: clearStudentLookupQuery,
-    onClearSelection: handleClearStudentLookup,
-    onSelectOption: handleSelectStudentLookup,
-  };
-  const teacherLookupSelectorSharedProps = {
-    selectedLabel: selectedTeacherLabel,
-    isSyncing: isTeacherLookupSyncing,
-    query: teacherLookupQuery,
-    filteredOptions: filteredTeacherLookupOptions,
-    allOptions: teacherLookupOptions,
-    selectedTeacherId: selectedTeacherLookup?.id ?? null,
-    onQueryChange: setTeacherLookupQuery,
-    onClearQuery: clearTeacherLookupQuery,
-    onClearSelection: handleClearTeacherLookup,
-    onSelectOption: handleSelectTeacherLookup,
-  };
-  const quickFiltersProps = {
     activeTopNavigator,
     showMoreFilters,
+    setShowMoreFilters,
     hiddenAdvancedFilterCount,
     statusFilter,
     onStatusFilterChange: setStatusFilter,
@@ -874,59 +821,74 @@ export function MonitorDashboard() {
     filterDateTo,
     onFilterDateFromChange: setFilterDateFrom,
     onFilterDateToChange: setFilterDateTo,
-    onClearDateRange: () => {
-      setFilterDateFrom("");
-      setFilterDateTo("");
-    },
-    onToggleShowMoreFilters: () => setShowMoreFilters((current) => !current),
-    schoolScopeSelectorProps: {
-      ...schoolScopeSelectorSharedProps,
-      dropdownId: "schools_filters",
-      isOpen: openScopeDropdownId === "schools_filters",
-      rootClassName: "relative flex-1",
-      onToggle: () => toggleScopeDropdown("schools_filters"),
-    },
-    studentLookupSelectorProps: {
-      ...studentLookupSelectorSharedProps,
-      dropdownId: "students_filters",
-      isOpen: openScopeDropdownId === "students_filters",
-      rootClassName: "relative flex-1",
-      onToggle: () => toggleScopeDropdown("students_filters"),
-    },
-    teacherLookupSelectorProps: {
-      ...teacherLookupSelectorSharedProps,
-      dropdownId: "teachers_filters",
-      isOpen: openScopeDropdownId === "teachers_filters",
-      rootClassName: "relative flex-1",
-      onToggle: () => toggleScopeDropdown("teachers_filters"),
-    },
+    isLoading,
+    schoolScopeQuery,
+    setSchoolScopeQuery,
+    selectedSchoolScope,
+    filteredSchoolScopeOptions,
+    schoolScopeOptions,
+    handleSelectAllSchools,
+    handleSelectSchoolScope,
+    studentLookupQuery,
+    setStudentLookupQuery,
+    selectedStudentLabel,
+    isStudentLookupSyncing,
+    studentLookupPlaceholder: selectedTeacherLookup ? "Search teacher's students" : "Search students",
+    filteredStudentLookupOptions,
+    teacherScopedStudentLookupOptions,
+    selectedStudentId: selectedStudentLookup?.id ?? null,
+    handleClearStudentLookup,
+    handleSelectStudentLookup,
+    teacherLookupQuery,
+    setTeacherLookupQuery,
+    selectedTeacherLabel,
+    isTeacherLookupSyncing,
+    filteredTeacherLookupOptions,
+    teacherLookupOptions,
+    selectedTeacherId: selectedTeacherLookup?.id ?? null,
+    handleClearTeacherLookup,
+    handleSelectTeacherLookup,
+    openScopeDropdownId,
+    toggleScopeDropdown,
     showAdvancedAnalytics,
-    onToggleAdvancedAnalytics: () => setShowAdvancedAnalytics((current) => !current),
+    setShowAdvancedAnalytics,
     activeFilterChips,
-    onClearAllFilters: clearAllFilters,
-    onClearFilterChip: clearFilterChip,
-  };
-  const schoolScopeRadarSelectorProps = {
-    ...schoolScopeSelectorSharedProps,
-    dropdownId: "schools_radar",
-    isOpen: openScopeDropdownId === "schools_radar",
-    rootClassName: "relative mt-2",
-    onToggle: () => toggleScopeDropdown("schools_radar"),
-  };
-  const studentRadarSelectorProps = {
-    ...studentLookupSelectorSharedProps,
-    dropdownId: "students_radar",
-    isOpen: openScopeDropdownId === "students_radar",
-    rootClassName: "relative mt-2",
-    onToggle: () => toggleScopeDropdown("students_radar"),
-  };
-  const teacherRadarSelectorProps = {
-    ...teacherLookupSelectorSharedProps,
-    dropdownId: "teachers_radar",
-    isOpen: openScopeDropdownId === "teachers_radar",
-    rootClassName: "relative mt-2",
-    onToggle: () => toggleScopeDropdown("teachers_radar"),
-  };
+    clearAllFilters,
+    clearFilterChip,
+    schoolDrawerBuildArgs: {
+      isOpen: Boolean(schoolDrawerKey),
+      showNavigatorManual,
+      isMobileViewport,
+      activeTopNavigator,
+      activeSchoolDrawerTab,
+      highlightedDrawerIndicatorKey,
+      expandedDrawerIndicatorRows,
+      syncedCountsLoadingSchoolKey,
+      syncedCountsError,
+      isSchoolDrawerSubmissionsLoading,
+      schoolDrawerSubmissionsError,
+      schoolDetail,
+      schoolDrawerCriticalAlerts,
+      schoolIndicatorPackageRows,
+      latestSchoolPackage,
+      schoolIndicatorMatrix,
+      latestSchoolIndicatorYear,
+      schoolDrawerIndicatorSubmissions,
+      schoolIndicatorRowsByCategory,
+      missingDrawerIndicatorKeys,
+      returnedDrawerIndicatorKeys,
+      missingDrawerIndicatorKeySet,
+      returnedDrawerIndicatorKeySet,
+      setActiveSchoolDrawerTab,
+      closeSchoolDrawer,
+      handleJumpToMissingIndicators,
+      handleJumpToReturnedIndicators,
+      toggleDrawerIndicatorLabel,
+      workflowTone,
+      workflowLabel,
+      formatDateTime,
+    },
+  });
   const schoolsSectionApi = useMonitorSchoolsSection({
     isMobileViewport,
     isLoading,
@@ -967,39 +929,6 @@ export function MonitorDashboard() {
     statusLabel,
     isUrgentRequirement,
     urgencyRowTone,
-  });
-  const schoolDrawerProps = buildMonitorSchoolDrawerProps({
-    isOpen: Boolean(schoolDrawerKey),
-    showNavigatorManual,
-    isMobileViewport,
-    activeTopNavigator,
-    activeSchoolDrawerTab,
-    highlightedDrawerIndicatorKey,
-    expandedDrawerIndicatorRows,
-    syncedCountsLoadingSchoolKey,
-    syncedCountsError,
-    isSchoolDrawerSubmissionsLoading,
-    schoolDrawerSubmissionsError,
-    schoolDetail,
-    schoolDrawerCriticalAlerts,
-    schoolIndicatorPackageRows,
-    latestSchoolPackage,
-    schoolIndicatorMatrix,
-    latestSchoolIndicatorYear,
-    schoolDrawerIndicatorSubmissions,
-    schoolIndicatorRowsByCategory,
-    missingDrawerIndicatorKeys,
-    returnedDrawerIndicatorKeys,
-    missingDrawerIndicatorKeySet,
-    returnedDrawerIndicatorKeySet,
-    setActiveSchoolDrawerTab,
-    closeSchoolDrawer,
-    handleJumpToMissingIndicators,
-    handleJumpToReturnedIndicators,
-    toggleDrawerIndicatorLabel,
-    workflowTone,
-    workflowLabel,
-    formatDateTime,
   });
   const handleToggleNavigatorChrome = useCallback(() => {
     if (isMobileViewport) {
