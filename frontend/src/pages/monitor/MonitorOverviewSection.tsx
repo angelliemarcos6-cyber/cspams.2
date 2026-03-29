@@ -1,9 +1,10 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { AlertTriangle, ArrowDown, CheckCircle2 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { RegionBarChart } from "@/components/charts/RegionBarChart";
 import { StatusPieChart } from "@/components/charts/StatusPieChart";
 import { SubmissionTrendChart } from "@/components/charts/SubmissionTrendChart";
+import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
 
 interface TargetsMetSummary {
   generatedAt: string | null;
@@ -24,8 +25,7 @@ interface SyncAlert {
 
 interface MonitorOverviewSectionProps {
   isMobileViewport: boolean;
-  desktopQuickJumpChips: ReactNode;
-  mobileQuickJumpChips: ReactNode;
+  quickJumpBindings: MonitorQuickJumpBindings;
   sectionFocusClass: (targetId: string) => string;
   needsActionCount: number;
   returnedCount: number;
@@ -41,8 +41,7 @@ interface MonitorOverviewSectionProps {
 
 export function MonitorOverviewSection({
   isMobileViewport,
-  desktopQuickJumpChips,
-  mobileQuickJumpChips,
+  quickJumpBindings,
   sectionFocusClass,
   needsActionCount,
   returnedCount,
@@ -64,9 +63,9 @@ export function MonitorOverviewSection({
               <h2 className="text-base font-bold text-slate-900">Overview</h2>
               <p className="mt-1 text-xs text-slate-600">Summary cards and analytics for division monitoring.</p>
             </div>
-            {!isMobileViewport && desktopQuickJumpChips}
+            {!isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile={false} />}
           </div>
-          {isMobileViewport && mobileQuickJumpChips}
+          {isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile />}
         </div>
         <div id="monitor-overview-metrics" className={`p-4 ${sectionFocusClass("monitor-overview-metrics")}`}>
           <div className="rounded-sm border border-slate-200 bg-slate-50 p-3">

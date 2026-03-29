@@ -1,4 +1,4 @@
-import type { ChangeEvent, ReactNode, RefObject } from "react";
+import type { ChangeEvent, ComponentProps, RefObject } from "react";
 import {
   Building2,
   ChevronDown,
@@ -17,18 +17,21 @@ import {
 import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
 import { MonitorSchoolRecordForm, type MonitorSchoolRecordFormProps } from "@/pages/monitor/MonitorSchoolRecordForm";
 import { MonitorSchoolRecordsList, type MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
+import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
+import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
+import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
+import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import type { MonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 
 interface MonitorSchoolsSectionProps {
   sectionFocusClass: (targetId: string) => string;
   isMobileViewport: boolean;
-  desktopQuickJumpChips: ReactNode;
-  mobileQuickJumpChips: ReactNode;
+  quickJumpBindings: MonitorQuickJumpBindings;
   totalSchoolsInScope: number;
   monitorRadarTotals: MonitorRadarTotals;
-  schoolScopeRadarControl: ReactNode;
-  studentRadarControl: ReactNode;
-  teacherRadarControl: ReactNode;
+  schoolScopeRadarSelectorProps: ComponentProps<typeof SchoolScopeSelector>;
+  studentRadarSelectorProps: ComponentProps<typeof StudentLookupSelector>;
+  teacherRadarSelectorProps: ComponentProps<typeof TeacherLookupSelector>;
   paginatedCompactSchoolRowsCount: number;
   compactSchoolRowsCount: number;
   schoolActionsMenuRef: RefObject<HTMLDivElement>;
@@ -56,13 +59,12 @@ interface MonitorSchoolsSectionProps {
 export function MonitorSchoolsSection({
   sectionFocusClass,
   isMobileViewport,
-  desktopQuickJumpChips,
-  mobileQuickJumpChips,
+  quickJumpBindings,
   totalSchoolsInScope,
   monitorRadarTotals,
-  schoolScopeRadarControl,
-  studentRadarControl,
-  teacherRadarControl,
+  schoolScopeRadarSelectorProps,
+  studentRadarSelectorProps,
+  teacherRadarSelectorProps,
   paginatedCompactSchoolRowsCount,
   compactSchoolRowsCount,
   schoolActionsMenuRef,
@@ -100,7 +102,7 @@ export function MonitorSchoolsSection({
                 <Building2 className="h-5 w-5" />
               </span>
             </div>
-            {schoolScopeRadarControl}
+            <SchoolScopeSelector {...schoolScopeRadarSelectorProps} />
           </article>
 
           <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -115,7 +117,7 @@ export function MonitorSchoolsSection({
                 <GraduationCap className="h-5 w-5" />
               </span>
             </div>
-            {studentRadarControl}
+            <StudentLookupSelector {...studentRadarSelectorProps} />
           </article>
 
           <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -130,7 +132,7 @@ export function MonitorSchoolsSection({
                 <Users className="h-5 w-5" />
               </span>
             </div>
-            {teacherRadarControl}
+            <TeacherLookupSelector {...teacherRadarSelectorProps} />
           </article>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
@@ -155,9 +157,9 @@ export function MonitorSchoolsSection({
               <h2 className="text-base font-bold text-slate-900">Schools</h2>
               <p className="mt-1 text-xs text-slate-600">Inspect school profile, records, and latest activity.</p>
             </div>
-            {!isMobileViewport && desktopQuickJumpChips}
+            {!isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile={false} />}
           </div>
-          {isMobileViewport && mobileQuickJumpChips}
+          {isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile />}
         </div>
 
         <div className="border-b border-slate-100 px-5 py-4">

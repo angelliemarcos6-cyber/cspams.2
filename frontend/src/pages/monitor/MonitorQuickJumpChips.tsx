@@ -1,11 +1,14 @@
 import type { QuickJumpItem } from "@/pages/monitor/monitorDashboardConfig";
 import type { MonitorQuickJumpMeta } from "@/pages/monitor/useMonitorQuickJump";
 
-interface MonitorQuickJumpChipsProps {
+export interface MonitorQuickJumpBindings {
   items: QuickJumpItem[];
-  mobile: boolean;
   getQuickJumpMeta: (item: QuickJumpItem) => MonitorQuickJumpMeta;
   onQuickJump: (item: QuickJumpItem) => void;
+}
+
+interface MonitorQuickJumpChipsProps extends MonitorQuickJumpBindings {
+  mobile: boolean;
 }
 
 export function MonitorQuickJumpChips({

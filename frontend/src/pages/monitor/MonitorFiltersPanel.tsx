@@ -1,18 +1,19 @@
-import type { ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { X } from "lucide-react";
+import { MonitorQuickFiltersContent } from "@/pages/monitor/MonitorQuickFiltersContent";
 
 interface MonitorFiltersPanelProps {
   isOpen: boolean;
   isMobileViewport: boolean;
   onClose: () => void;
-  children: ReactNode;
+  quickFiltersProps: ComponentProps<typeof MonitorQuickFiltersContent>;
 }
 
 export function MonitorFiltersPanel({
   isOpen,
   isMobileViewport,
   onClose,
-  children,
+  quickFiltersProps,
 }: MonitorFiltersPanelProps) {
   if (!isOpen) {
     return null;
@@ -49,7 +50,7 @@ export function MonitorFiltersPanel({
             <X className="h-4 w-4" />
           </button>
         </div>
-        {children}
+        <MonitorQuickFiltersContent {...quickFiltersProps} />
       </section>
     </>
   );

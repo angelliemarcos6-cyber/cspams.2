@@ -1,4 +1,4 @@
-import type { ComponentProps, Dispatch, ReactNode, SetStateAction } from "react";
+import type { ComponentProps, Dispatch, SetStateAction } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { MonitorIndicatorPanel } from "@/components/indicators/MonitorIndicatorPanel";
+import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
 import type { SchoolRecord, SchoolStatus } from "@/types";
 
 interface ReviewQueueRow {
@@ -30,8 +31,7 @@ interface ReviewQueueRow {
 
 interface MonitorReviewsSectionProps {
   isMobileViewport: boolean;
-  desktopQuickJumpChips: ReactNode;
-  mobileQuickJumpChips: ReactNode;
+  quickJumpBindings: MonitorQuickJumpBindings;
   sectionFocusClass: (targetId: string) => string;
   needsActionCount: number;
   returnedCount: number;
@@ -69,8 +69,7 @@ interface MonitorReviewsSectionProps {
 
 export function MonitorReviewsSection({
   isMobileViewport,
-  desktopQuickJumpChips,
-  mobileQuickJumpChips,
+  quickJumpBindings,
   sectionFocusClass,
   needsActionCount,
   returnedCount,
@@ -113,9 +112,9 @@ export function MonitorReviewsSection({
             <h2 className="text-base font-bold text-slate-900">Reviews</h2>
             <p className="mt-1 text-xs text-slate-600">Single workspace for triage, school context, and review actions.</p>
           </div>
-          {!isMobileViewport && desktopQuickJumpChips}
+          {!isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile={false} />}
         </div>
-        {isMobileViewport && mobileQuickJumpChips}
+        {isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile />}
         <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
           <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
