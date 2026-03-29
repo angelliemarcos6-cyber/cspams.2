@@ -166,7 +166,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
 
         $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
         $response->assertJsonFragment([
-            'message' => 'This account is waiting for Division Monitor activation. Activate the account or reissue setup instead of sending a password reset link.',
+            'message' => 'This account is waiting for Division Monitor activation. Activate the account before sending a password reset link.',
         ]);
     }
 

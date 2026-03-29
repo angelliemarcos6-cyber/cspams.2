@@ -957,7 +957,7 @@ class SchoolHeadAccountController extends Controller
 
         if ($status === AccountStatus::PENDING_VERIFICATION) {
             return response()->json(
-                ['message' => 'This account is waiting for Division Monitor activation. Activate the account or reissue setup instead of sending a password reset link.'],
+                ['message' => 'This account is waiting for Division Monitor activation. Activate the account before sending a password reset link.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
