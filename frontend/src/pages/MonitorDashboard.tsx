@@ -52,6 +52,7 @@ import {
   useMonitorLookups,
 } from "@/pages/monitor/useMonitorLookups";
 import { useMonitorDashboardShell } from "@/pages/monitor/useMonitorDashboardShell";
+import { useMonitorDashboardGlobalCommands } from "@/pages/monitor/useMonitorDashboardGlobalCommands";
 import { useMonitorDashboardHotkeys } from "@/pages/monitor/useMonitorDashboardHotkeys";
 import { useMonitorDrawerViewModel } from "@/pages/monitor/useMonitorDrawerViewModel";
 import { useMonitorFilterUi } from "@/pages/monitor/useMonitorFilterUi";
@@ -264,18 +265,21 @@ export function MonitorDashboard() {
     listTeachers,
   });
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
-
-  const handleRefreshDashboard = useCallback(async () => {
-    const results = await Promise.allSettled([
-      refreshRecords(),
-      refreshSubmissions(),
-      refreshStudents(),
-      refreshTeachers(),
-    ]);
-    if (results.some((result) => result.status === "rejected")) {
-      pushToast("Some dashboard data failed to refresh. Please try again.", "warning");
-    }
-  }, [pushToast, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
+  const {
+    handleRefreshDashboard,
+    handleMonitorTopNavigate,
+  } = useMonitorDashboardGlobalCommands({
+    refreshRecords,
+    refreshSubmissions,
+    refreshStudents,
+    refreshTeachers,
+    onToast: pushToast,
+    setShowNavigatorManual,
+    setActiveTopNavigator,
+    focusAndScrollTo,
+    isMobileViewport,
+    setIsNavigatorVisible,
+  });
 
   const scopedRecords = useMemo(() => {
     if (!scopedSchoolKeys) {
@@ -604,30 +608,6 @@ export function MonitorDashboard() {
     setHighlightedDrawerIndicatorKey,
     pushToast,
   });
-
-  const handleMonitorTopNavigate = useCallback((id: MonitorTopNavigatorId) => {
-    setShowNavigatorManual(false);
-    setActiveTopNavigator(id);
-
-    if (typeof window !== "undefined") {
-      const targetByNav: Record<MonitorTopNavigatorId, string> = {
-        overview: "monitor-overview-metrics",
-        schools: "monitor-school-records",
-        reviews: "monitor-action-queue",
-      };
-
-      const targetId = targetByNav[id];
-      if (targetId) {
-        window.setTimeout(() => {
-          focusAndScrollTo(targetId);
-        }, 70);
-      }
-    }
-
-    if (isMobileViewport) {
-      setIsNavigatorVisible(false);
-    }
-  }, [focusAndScrollTo, isMobileViewport, setActiveTopNavigator, setIsNavigatorVisible, setShowNavigatorManual]);
   const {
     activeScreenMeta,
     isPrimaryActionDisabled,
