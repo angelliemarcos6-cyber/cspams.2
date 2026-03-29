@@ -152,14 +152,49 @@ class SchoolHeadAccountLifecycleTest extends TestCase
             'account_status' => AccountStatus::PENDING_VERIFICATION->value,
         ])->save();
 
+        // IssueSchoolHeadPasswordResetLinkRequest requires verificationChallengeId and
+        // verificationCode to pass validation. Provide format-valid dummies so that
+        // FormRequest validation passes and the controller's status guard fires first.
         $response = $this->actingAs($monitor, 'sanctum')->postJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account/password-reset-link',
-            ['reason' => 'Test reset attempt.'],
+            [
+                'reason' => 'Test reset attempt.',
+                'verificationChallengeId' => '00000000-0000-0000-0000-000000000000',
+                'verificationCode' => '000000',
+            ],
         );
 
         $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
         $response->assertJsonFragment([
             'message' => 'This account is waiting for Division Monitor activation. Activate the account or reissue setup instead of sending a password reset link.',
+        ]);
+    }
+
+    public function test_password_reset_is_blocked_for_non_active_accounts(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->forceFill([
+            'account_status' => AccountStatus::SUSPENDED->value,
+        ])->save();
+
+        $response = $this->actingAs($monitor, 'sanctum')->postJson(
+            '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account/password-reset-link',
+            [
+                'reason' => 'Test reset attempt on suspended account.',
+                'verificationChallengeId' => '00000000-0000-0000-0000-000000000000',
+                'verificationCode' => '000000',
+            ],
+        );
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
+        $response->assertJsonFragment([
+            'message' => 'Password reset links can only be issued for active School Head accounts.',
         ]);
     }
 
