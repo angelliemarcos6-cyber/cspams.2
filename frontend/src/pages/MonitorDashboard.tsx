@@ -3,14 +3,10 @@ import {
   AlertCircle,
   AlertTriangle,
   BellRing,
-  BookOpenText,
   Building2,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
   ClipboardList,
   CircleHelp,
   Database,
@@ -40,21 +36,21 @@ import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 import { MonitorLearnerRecordsSection } from "@/pages/monitor/MonitorLearnerRecordsSection";
+import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
+import { MonitorMobileNavigator } from "@/pages/monitor/MonitorMobileNavigator";
 import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
 import { MonitorQuickJumpChips } from "@/pages/monitor/MonitorQuickJumpChips";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
+import { MonitorSideNavigator } from "@/pages/monitor/MonitorSideNavigator";
 import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
+import { MonitorToastStack } from "@/pages/monitor/MonitorToastStack";
 import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
 import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import {
-  MONITOR_MANUAL_STATUS_GUIDE,
-  MONITOR_NAVIGATOR_ICONS,
-  MONITOR_NAVIGATOR_MANUAL,
   MONITOR_QUICK_JUMPS,
   MONITOR_TOP_NAVIGATOR_IDS,
-  MONITOR_TOP_NAVIGATOR_ITEMS,
   RECORD_PAGE_SIZE,
   REQUIREMENT_FILTER_OPTIONS,
   REQUIREMENT_PAGE_SIZE,
@@ -63,7 +59,6 @@ import {
 import {
   downloadCsvFile,
   isUrgentRequirement,
-  navigatorButtonClass,
   queueLaneLabel,
   queuePriorityLabel,
   queuePriorityTone,
@@ -1206,6 +1201,19 @@ export function MonitorDashboard() {
     workflowLabel,
     formatDateTime,
   };
+  const handleToggleNavigatorChrome = useCallback(() => {
+    if (isMobileViewport) {
+      setIsNavigatorVisible((current) => !current);
+      return;
+    }
+
+    setIsNavigatorCompact((current) => !current);
+  }, [isMobileViewport, setIsNavigatorCompact, setIsNavigatorVisible]);
+  const handleToggleNavigatorManual = useCallback(() => {
+    setShowNavigatorManual((current) => !current);
+    setFocusedSectionId(null);
+    closeSchoolDrawer();
+  }, [closeSchoolDrawer, setFocusedSectionId, setShowNavigatorManual]);
 
   return (
     <Shell
@@ -1257,46 +1265,11 @@ export function MonitorDashboard() {
       />
 
       {!showNavigatorManual && isMobileViewport && (
-        <section className="dashboard-shell mb-4 rounded-sm border border-slate-200 bg-white p-2 lg:hidden">
-          <div className="grid grid-cols-3 gap-2">
-            {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => {
-              const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
-              const isActive = activeTopNavigator === item.id;
-              const meta = navigatorBadges[item.id];
-              const count = typeof meta.primary === "number" && meta.primary > 0 ? meta.primary : null;
-
-              return (
-                <button
-                  key={`monitor-mobile-nav-${item.id}`}
-                  type="button"
-                  onClick={() => handleMonitorTopNavigate(item.id)}
-                  className={`rounded-sm border px-2 py-2 text-left transition ${
-                    isActive
-                      ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="min-w-0 truncate text-sm font-semibold">{item.label}</span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-1">
-                    {count !== null && (
-                      <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-sm border border-primary-200 bg-white px-1 py-0.5 text-[10px] font-bold text-primary-700">
-                        {count > 99 ? "99+" : count}
-                      </span>
-                    )}
-                    {item.id === "reviews" && typeof meta.secondary === "number" && meta.secondary > 0 && (
-                      <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1 py-0.5 text-[10px] font-bold text-amber-700">
-                        R{meta.secondary}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        <MonitorMobileNavigator
+          activeTopNavigator={activeTopNavigator}
+          navigatorBadges={navigatorBadges}
+          onNavigate={handleMonitorTopNavigate}
+        />
       )}
 
       <div
@@ -1304,230 +1277,21 @@ export function MonitorDashboard() {
           isNavigatorCompact ? "lg:grid-cols-[5.25rem_minmax(0,1fr)]" : "lg:grid-cols-[17rem_minmax(0,1fr)]"
         }`}
       >
-        <aside className="dashboard-side-rail hidden w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:block lg:w-auto lg:self-stretch lg:min-h-full">
-          <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
-            <div className="flex items-start justify-between gap-2">
-              <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isMobileViewport) {
-                        setIsNavigatorVisible((current) => !current);
-                        return;
-                      }
-                      setIsNavigatorCompact((current) => !current);
-                    }}
-                    className={`inline-flex shrink-0 items-center rounded-sm border border-primary-400/40 bg-primary-700/65 text-white transition hover:bg-primary-700 ${
-                      showNavigatorHeaderText
-                        ? "h-11 w-full justify-center gap-2 px-3 text-[11px] font-semibold uppercase tracking-wide"
-                        : "h-11 w-11 justify-center"
-                    }`}
-                    aria-label={
-                      isMobileViewport
-                        ? isNavigatorVisible
-                          ? "Hide navigator"
-                          : "Show navigator"
-                        : isNavigatorCompact
-                          ? "Expand navigator"
-                          : "Collapse navigator"
-                    }
-                    title={
-                      isMobileViewport
-                        ? isNavigatorVisible
-                          ? "Hide navigator"
-                          : "Show navigator"
-                        : isNavigatorCompact
-                          ? "Expand navigator"
-                          : "Collapse navigator"
-                    }
-                  >
-                    {isMobileViewport ? (
-                      isNavigatorVisible ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />
-                    ) : isNavigatorCompact ? (
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    )}
-                    {showNavigatorHeaderText && (
-                      <span>
-                        {isMobileViewport
-                          ? isNavigatorVisible
-                            ? "Hide Menu"
-                            : "Show Menu"
-                          : isNavigatorCompact
-                            ? "Expand Menu"
-                            : "Collapse Menu"}
-                      </span>
-                    )}
-                  </button>
-                </div>
-                <p
-                  className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
-                    showNavigatorHeaderText ? "mt-1 max-h-5 opacity-100" : "mt-0 max-h-0 opacity-0"
-                  }`}
-                >
-                  Division Monitor
-                </p>
-              </div>
-            </div>
-
-            <div
-              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
-                shouldRenderNavigatorItems ? "mt-4 max-h-[34rem] opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
-              }`}
-            >
-              <div className={`grid ${isNavigatorCompact ? "gap-2" : "gap-2.5"}`}>
-                {MONITOR_TOP_NAVIGATOR_ITEMS.map((item, index) => {
-                  const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
-                  const isActive = activeTopNavigator === item.id;
-                  const meta = navigatorBadges[item.id];
-                  const hasPrimaryBadge = typeof meta.primary === "number" && meta.primary > 0;
-                  const hasSecondaryBadge = typeof meta.secondary === "number" && meta.secondary > 0;
-                  const urgencyTone =
-                    meta.urgency === "high" ? "bg-rose-500" : meta.urgency === "medium" ? "bg-amber-400" : "bg-transparent";
-
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleMonitorTopNavigate(item.id)}
-                      className={navigatorButtonClass(isActive, isNavigatorCompact)}
-                      title={`${item.label} (Alt+${index + 1})`}
-                      aria-current={isActive ? "page" : undefined}
-                      aria-label={`Open ${item.label}`}
-                    >
-                      <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
-                        <Icon className="h-4 w-4" />
-                        {meta.urgency !== "none" && <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${urgencyTone}`} />}
-                      </span>
-                      {!isNavigatorCompact && <span className="flex-1 truncate text-left">{item.label}</span>}
-
-                      {!isNavigatorCompact && hasPrimaryBadge && (
-                        <span className="ml-auto inline-flex items-center gap-1">
-                          <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold text-primary-700">
-                            {meta.primary}
-                          </span>
-                          {item.id === "reviews" && hasSecondaryBadge && (
-                            <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                              R{meta.secondary}
-                            </span>
-                          )}
-                        </span>
-                      )}
-
-                      {isNavigatorCompact && hasPrimaryBadge && (
-                        <span className="absolute right-1 top-1 inline-flex min-w-[1rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1 text-[9px] font-bold text-primary-700">
-                          {meta.primary && meta.primary > 99 ? "99+" : meta.primary}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div
-              className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
-                shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
-              }`}
-            >
-              <div className={`border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowNavigatorManual((current) => !current);
-                    setFocusedSectionId(null);
-                    closeSchoolDrawer();
-                  }}
-                  className={`inline-flex items-center gap-1.5 rounded-sm border text-white transition ${
-                    showNavigatorManual
-                      ? "border-primary-100 bg-primary-700"
-                      : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
-                  } ${
-                    isNavigatorCompact ? "h-11 w-11 justify-center p-0" : "h-11 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
-                  }`}
-                  title={showNavigatorManual ? "Close User Manual" : "Open User Manual"}
-                  aria-label={showNavigatorManual ? "Close user manual" : "Open user manual"}
-                >
-                  <BookOpenText className="h-3.5 w-3.5" />
-                  {!isNavigatorCompact && <span>{showNavigatorManual ? "Back to Data" : "User Manual"}</span>}
-                </button>
-              </div>
-            </div>
-          </div>
-        </aside>
+        <MonitorSideNavigator
+          activeTopNavigator={activeTopNavigator}
+          navigatorBadges={navigatorBadges}
+          isNavigatorCompact={isNavigatorCompact}
+          isNavigatorVisible={isNavigatorVisible}
+          isMobileViewport={isMobileViewport}
+          showNavigatorManual={showNavigatorManual}
+          shouldRenderNavigatorItems={shouldRenderNavigatorItems}
+          showNavigatorHeaderText={showNavigatorHeaderText}
+          onToggleNavigator={handleToggleNavigatorChrome}
+          onNavigate={handleMonitorTopNavigate}
+          onToggleManual={handleToggleNavigatorManual}
+        />
         <div className="dashboard-main-pane mt-4 min-w-0 lg:mt-0">
-          {showNavigatorManual && (
-            <section id="monitor-user-manual" className="dashboard-shell mb-5 overflow-hidden rounded-sm border border-slate-200 bg-white animate-fade-slide">
-              <div className="min-h-[72vh] p-4 md:p-6 xl:p-8">
-                <div className="mx-auto flex h-full w-full max-w-6xl flex-col justify-center gap-6">
-                  <header className="text-center">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary-700">Division Monitor Dashboard</p>
-                    <h2 className="mt-2 text-2xl font-bold text-slate-900 md:text-3xl">User Manual</h2>
-                    <p className="mx-auto mt-2 max-w-3xl text-sm text-slate-600 md:text-base">
-                      This guide appears in the main workspace so monitors can review process steps clearly before working on live data.
-                    </p>
-                  </header>
-
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-                    <article className="rounded-sm border border-slate-200 bg-slate-50 p-4 md:p-5">
-                      <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Step-by-step Workflow</p>
-                      <ol className="mt-3 space-y-3">
-                        {MONITOR_NAVIGATOR_MANUAL.map((step, index) => (
-                          <li key={step.id} className="rounded-sm border border-slate-200 bg-white p-3">
-                            <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-sm bg-primary-100 text-xs font-bold text-primary-700">
-                                {index + 1}
-                              </span>
-                              {step.title}
-                            </p>
-                            <p className="mt-2 text-sm font-medium text-slate-700">{step.objective}</p>
-                            <ul className="mt-2 space-y-1">
-                              {step.actions.map((action) => (
-                                <li key={`${step.id}-${action}`} className="ml-5 list-disc text-sm text-slate-700">
-                                  {action}
-                                </li>
-                              ))}
-                            </ul>
-                            <p className="mt-2 text-sm font-semibold text-primary-700">Done when: {step.doneWhen}</p>
-                          </li>
-                        ))}
-                      </ol>
-                    </article>
-
-                    <aside className="space-y-4">
-                      <article className="rounded-sm border border-slate-200 bg-white p-4 md:p-5">
-                        <p className="text-sm font-semibold uppercase tracking-wide text-slate-700">Workflow Status Guide</p>
-                        <ul className="mt-3 space-y-2">
-                          {MONITOR_MANUAL_STATUS_GUIDE.map((item) => (
-                            <li key={item} className="ml-5 list-disc text-sm text-slate-700">
-                              {item}
-                            </li>
-                          ))}
-                        </ul>
-                      </article>
-                      <article className="rounded-sm border border-primary-200 bg-primary-50 p-4 md:p-5">
-                        <p className="text-sm font-semibold uppercase tracking-wide text-primary-700">Quick Reminders</p>
-                        <ul className="mt-3 space-y-2">
-                          <li className="ml-5 list-disc text-sm text-primary-700">Review urgent schools first before routine checks.</li>
-                          <li className="ml-5 list-disc text-sm text-primary-700">Write clear return notes to reduce repeated revisions.</li>
-                          <li className="ml-5 list-disc text-sm text-primary-700">Use school and learner filters before sending reminders.</li>
-                        </ul>
-                      </article>
-                      <button
-                        type="button"
-                        onClick={() => setShowNavigatorManual(false)}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                      >
-                        Return to Dashboard Data
-                      </button>
-                    </aside>
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
+          {showNavigatorManual && <MonitorManualScreen onClose={() => setShowNavigatorManual(false)} />}
 
           {!showNavigatorManual && (
             <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
@@ -1861,34 +1625,7 @@ export function MonitorDashboard() {
         formatting={schoolDrawerFormatting}
       />
 
-      <div
-        style={{ top: "calc(var(--shell-sticky-top, 10rem) + 0.75rem)" }}
-        className="pointer-events-none fixed right-4 z-[85] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2"
-      >
-        {toasts.map((toast) => (
-          <article
-            key={toast.id}
-            className={`pointer-events-auto rounded-sm border px-3 py-2 text-xs font-semibold shadow-lg ${
-              toast.tone === "success"
-                ? "border-primary-200 bg-primary-50 text-primary-700"
-                : toast.tone === "warning"
-                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                  : "border-slate-300 bg-white text-slate-700"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p>{toast.message}</p>
-              <button
-                type="button"
-                onClick={() => dismissToast(toast.id)}
-                className="rounded-sm border border-transparent p-0.5 text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
+      <MonitorToastStack toasts={toasts} onDismiss={dismissToast} />
         </div>
       </div>
     </Shell>
