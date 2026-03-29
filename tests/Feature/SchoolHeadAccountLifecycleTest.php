@@ -266,6 +266,45 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $this->assertSame(AccountStatus::ACTIVE, $schoolHead->accountStatus());
     }
 
+    public function test_generic_patch_can_reactivate_suspended_account_with_forced_reset_pending(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+
+        // Simulate: account was active, monitor issued a reset link (sets must_reset_password=true),
+        // then monitor suspended the account. must_reset_password=true + suspended is NOT a deadlock —
+        // the monitor should still be able to reactivate; forced reset is enforced at login.
+        $schoolHead->forceFill([
+            'account_status' => AccountStatus::SUSPENDED->value,
+            'must_reset_password' => true,
+            'password_changed_at' => now()->subDays(30), // password was previously set
+            'email_verified_at' => now()->subDays(30),
+            'verified_by_user_id' => $monitor->id,
+            'verified_at' => now()->subDays(30),
+        ])->save();
+
+        $response = $this->actingAs($monitor, 'sanctum')->patchJson(
+            '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account',
+            [
+                'accountStatus' => AccountStatus::ACTIVE->value,
+                'reason' => 'Reactivating; School Head must reset password at next login.',
+            ],
+        );
+
+        $response->assertOk();
+        $response->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ACTIVE, $schoolHead->accountStatus());
+        // must_reset_password stays true — will be enforced at login
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+    }
+
     public function test_reset_password_completion_is_blocked_for_pending_verification_account(): void
     {
         $this->seed();
