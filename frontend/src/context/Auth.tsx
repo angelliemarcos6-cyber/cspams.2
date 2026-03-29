@@ -122,7 +122,7 @@ interface AuthContextType {
   resetMonitorPassword: (input: ResetMonitorPasswordInput) => Promise<ResetMonitorPasswordResponse>;
   requestMonitorMfaReset: (input: RequestMonitorMfaResetInput) => Promise<RequestMonitorMfaResetResponse>;
   completeMonitorMfaReset: (input: CompleteMonitorMfaResetInput) => Promise<CompleteMonitorMfaResetResult>;
-  completeAccountSetup: (input: CompleteAccountSetupInput) => Promise<void>;
+  completeAccountSetup: (input: CompleteAccountSetupInput) => Promise<string>;
   resetRequiredPassword: (input: LoginInput & { newPassword: string; confirmPassword: string }) => Promise<void>;
   logout: (options?: { force?: boolean }) => Promise<void>;
   listActiveSessions: () => Promise<ActiveSessionDevice[]>;
@@ -153,7 +153,9 @@ interface MeResponse {
 
 type ResetRequiredPasswordResponse = AuthenticatedResponse;
 
-type CompleteAccountSetupResponse = AuthenticatedResponse;
+interface CompleteAccountSetupResponse {
+  message?: string;
+}
 
 interface ActiveSessionsResponse {
   data: ActiveSessionDevice[];
@@ -507,9 +509,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        assertCookieSessionAuthResponse(payload, "account setup");
-        setUser(normalizeUser(payload.user));
         clearAuthError();
+
+        return payload.message?.trim() || "Account setup completed. Await Division Monitor approval before sign-in.";
       } finally {
         setIsAuthenticating(false);
       }

@@ -21,6 +21,7 @@ use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Domain\SchoolStatus;
+use App\Support\Domain\StudentStatus;
 use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Carbon\Carbon;
@@ -1228,6 +1229,7 @@ class SchoolRecordController extends Controller
      *     sectionCount: int,
      *     studentCount: int,
      *     indicatorSubmissionCount: int,
+     *     studentStatusSignature: string,
      *     latestAt: ?Carbon
      * }
      */
@@ -1245,6 +1247,7 @@ class SchoolRecordController extends Controller
         $sectionCount = 0;
         $studentCount = 0;
         $indicatorSubmissionCount = 0;
+        $studentStatusSignature = '';
         $latestSectionUpdatedAt = null;
         $latestStudentUpdatedAt = null;
         $latestStudentStatusAt = null;
@@ -1272,6 +1275,19 @@ class SchoolRecordController extends Controller
             $studentCount = (int) ($studentProbe?->aggregate_count ?? 0);
             $latestStudentUpdatedAt = $studentProbe?->latest_updated_at;
             $latestStudentStatusAt = $studentProbe?->latest_status_changed_at;
+            $studentStatusSignature = Student::query()
+                ->whereIn('school_id', $schoolIds)
+                ->selectRaw('status, COUNT(*) as aggregate_count')
+                ->groupBy('status')
+                ->orderBy('status')
+                ->get()
+                ->map(static function (object $row): string {
+                    $status = $row->status;
+                    $statusValue = $status instanceof StudentStatus ? $status->value : (string) $status;
+
+                    return sprintf('%s:%d', $statusValue, (int) $row->aggregate_count);
+                })
+                ->implode(',');
 
             $indicatorProbe = IndicatorSubmission::query()
                 ->whereIn('school_id', $schoolIds)
@@ -1303,6 +1319,7 @@ class SchoolRecordController extends Controller
             'sectionCount' => $sectionCount,
             'studentCount' => $studentCount,
             'indicatorSubmissionCount' => $indicatorSubmissionCount,
+            'studentStatusSignature' => $studentStatusSignature,
             'latestAt' => $latestAt,
         ];
     }
@@ -1313,6 +1330,7 @@ class SchoolRecordController extends Controller
      *     sectionCount: int,
      *     studentCount: int,
      *     indicatorSubmissionCount: int,
+     *     studentStatusSignature: string,
      *     latestAt: ?Carbon
      * } $syncFingerprint
      */
@@ -1325,6 +1343,7 @@ class SchoolRecordController extends Controller
             (string) $syncFingerprint['sectionCount'],
             (string) $syncFingerprint['studentCount'],
             (string) $syncFingerprint['indicatorSubmissionCount'],
+            (string) $syncFingerprint['studentStatusSignature'],
             $syncFingerprint['latestAt']?->format('U.u') ?? '0',
         ]));
     }

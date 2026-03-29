@@ -212,6 +212,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       restoreRecord: vi.fn(),
       sendReminder: vi.fn(),
       updateSchoolHeadAccountStatus: vi.fn(),
+      activateSchoolHeadAccount: vi.fn(),
       issueSchoolHeadAccountActionVerificationCode: vi.fn(),
       issueSchoolHeadSetupLink: issueSchoolHeadSetupLinkMock,
       issueSchoolHeadPasswordResetLink: vi.fn(),

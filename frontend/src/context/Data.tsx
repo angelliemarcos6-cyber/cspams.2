@@ -12,6 +12,7 @@ import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
+  SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountRemovalResult,
   SchoolHeadAccountPayload,
@@ -97,6 +98,10 @@ interface SchoolHeadAccountActionVerificationCodeResponse {
   data: SchoolHeadAccountActionVerificationCodeResult;
 }
 
+interface SchoolHeadAccountActivationResponse {
+  data: SchoolHeadAccountActivationResult;
+}
+
 interface SchoolHeadSetupLinkResponse {
   data: SchoolHeadSetupLinkResult;
 }
@@ -136,6 +141,10 @@ interface DataContextType {
     schoolId: string,
     payload: SchoolHeadAccountStatusUpdatePayload,
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
+  activateSchoolHeadAccount: (
+    schoolId: string,
+    payload?: { reason?: string | null },
+  ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
     targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
@@ -771,6 +780,61 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
+  const activateSchoolHeadAccount = useCallback(
+    async (
+      schoolId: string,
+      payload?: { reason?: string | null },
+    ): Promise<SchoolHeadAccountActivationResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountActivationResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/activate`,
+          {
+            method: "POST",
+            token,
+            body: {
+              reason: payload?.reason?.trim() || undefined,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account) {
+          throw new Error("Account activation response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError, syncRecords],
+  );
+
   const issueSchoolHeadSetupLink = useCallback(
     async (schoolId: string, reason?: string | null): Promise<SchoolHeadSetupLinkResult> => {
       if (!token) {
@@ -1174,6 +1238,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       restoreRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
+      activateSchoolHeadAccount,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,
@@ -1201,6 +1266,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       restoreRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
+      activateSchoolHeadAccount,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,

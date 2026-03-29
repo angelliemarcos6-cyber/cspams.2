@@ -7,6 +7,7 @@ import type {
 import type { MonitorSchoolRecordsListRow } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
 import type {
+  SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
@@ -30,6 +31,10 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
     schoolId: string,
     payload: SchoolHeadAccountStatusUpdatePayload,
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
+  activateSchoolHeadAccount: (
+    schoolId: string,
+    payload?: { reason?: string | null },
+  ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
     targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change",
@@ -64,6 +69,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
   recordBySchoolKey,
   pushToast,
   updateSchoolHeadAccountStatus,
+  activateSchoolHeadAccount,
   issueSchoolHeadAccountActionVerificationCode,
   issueSchoolHeadSetupLink,
   issueSchoolHeadPasswordResetLink,
@@ -84,6 +90,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
     isSaving,
     pushToast,
     updateSchoolHeadAccountStatus,
+    activateSchoolHeadAccount,
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
     issueSchoolHeadPasswordResetLink,
@@ -114,9 +121,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
       const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
       const account = resolvedRecord?.schoolHeadAccount ?? null;
       const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-      const needsSetup = account
-        ? normalizedAccountStatus === "pending_setup" || !account.emailVerifiedAt
-        : true;
+      const needsSetup = account ? normalizedAccountStatus === "pending_setup" : true;
 
       if (statusFilter !== "all") {
         if (statusFilter === "needs_setup") {
@@ -152,12 +157,13 @@ export function useMonitorSchoolHeadAccountsPanelState({
 
       if (account?.deleteRecordFlagged) return 0;
       if (!account) return 1;
-      if (normalizedAccountStatus === "pending_setup" || !account.emailVerifiedAt) return 2;
-      if (account.flagged) return 3;
-      if (normalizedAccountStatus === "active") return 4;
-      if (normalizedAccountStatus === "suspended") return 5;
-      if (normalizedAccountStatus === "locked") return 6;
-      if (normalizedAccountStatus === "archived") return 7;
+      if (normalizedAccountStatus === "pending_setup") return 2;
+      if (normalizedAccountStatus === "pending_verification") return 3;
+      if (account.flagged) return 4;
+      if (normalizedAccountStatus === "active") return 5;
+      if (normalizedAccountStatus === "suspended") return 6;
+      if (normalizedAccountStatus === "locked") return 7;
+      if (normalizedAccountStatus === "archived") return 8;
       return 99;
     };
 

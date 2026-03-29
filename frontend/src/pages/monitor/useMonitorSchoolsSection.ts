@@ -23,6 +23,7 @@ import { useMonitorSchoolBulkImport } from "@/pages/monitor/useMonitorSchoolBulk
 import { useMonitorSchoolHeadAccountsPanelState } from "@/pages/monitor/useMonitorSchoolHeadAccountsPanelState";
 import { useMonitorSchoolRecordForm } from "@/pages/monitor/useMonitorSchoolRecordForm";
 import type {
+  SchoolHeadAccountActivationResult,
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
   SchoolHeadAccountActionVerificationCodeResult,
@@ -72,6 +73,10 @@ interface UseMonitorSchoolsSectionOptions {
     schoolId: string,
     payload: SchoolHeadAccountStatusUpdatePayload,
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
+  activateSchoolHeadAccount: (
+    schoolId: string,
+    payload?: { reason?: string | null },
+  ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
     targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change",
@@ -147,6 +152,7 @@ export function useMonitorSchoolsSection({
   restoreRecord,
   bulkImportRecords,
   updateSchoolHeadAccountStatus,
+  activateSchoolHeadAccount,
   issueSchoolHeadAccountActionVerificationCode,
   issueSchoolHeadSetupLink,
   issueSchoolHeadPasswordResetLink,
@@ -223,6 +229,7 @@ export function useMonitorSchoolsSection({
     recordBySchoolKey,
     pushToast,
     updateSchoolHeadAccountStatus,
+    activateSchoolHeadAccount,
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
     issueSchoolHeadPasswordResetLink,

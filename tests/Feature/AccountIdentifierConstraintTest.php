@@ -56,7 +56,7 @@ class AccountIdentifierConstraintTest extends TestCase
     public function test_school_code_identifier_is_unique_case_insensitive_at_database_level(): void
     {
         School::query()->create([
-            'school_code' => 'AB12CD',
+            'school_code' => '123456',
             'name' => 'Alpha School',
             'district' => 'District 1',
             'region' => 'Region II',
@@ -67,8 +67,8 @@ class AccountIdentifierConstraintTest extends TestCase
         $this->expectException(QueryException::class);
 
         DB::table('schools')->insert([
-            'school_code' => 'ab12cd',
-            'school_code_normalized' => 'ab12cd',
+            'school_code' => '123456',
+            'school_code_normalized' => '123456',
             'name' => 'Beta School',
             'district' => 'District 2',
             'region' => 'Region II',

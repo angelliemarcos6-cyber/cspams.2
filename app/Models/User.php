@@ -32,6 +32,9 @@ class User extends Authenticatable
         'last_login_ip',
         'last_login_user_agent',
         'account_status',
+        'verified_by_user_id',
+        'verified_at',
+        'verification_notes',
         'mfa_backup_codes',
         'mfa_backup_codes_generated_at',
         'school_id',
@@ -63,6 +66,7 @@ class User extends Authenticatable
             'password_changed_at' => 'datetime',
             'last_login_at' => 'datetime',
             'account_status' => AccountStatus::class,
+            'verified_at' => 'datetime',
             'mfa_backup_codes' => 'array',
             'mfa_backup_codes_generated_at' => 'datetime',
             'flagged_at' => 'datetime',
@@ -136,5 +140,10 @@ class User extends Authenticatable
     public function flaggedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'flagged_by_user_id');
+    }
+
+    public function verifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by_user_id');
     }
 }

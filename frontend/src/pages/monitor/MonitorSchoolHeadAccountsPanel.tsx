@@ -19,7 +19,7 @@ import type { SchoolRecord } from "@/types";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 export type SchoolHeadAccountsStatusFilter =
-  "all" | "needs_setup" | "active" | "suspended" | "locked" | "archived";
+  "all" | "needs_setup" | "pending_verification" | "active" | "suspended" | "locked" | "archived";
 
 export interface MonitorSchoolHeadAccountRow {
   schoolKey: string;
@@ -54,6 +54,7 @@ function accountStatusLabel(status: string | null | undefined): string {
   const normalized = status.toLowerCase();
   if (normalized === "active") return "Active";
   if (normalized === "pending_setup") return "Pending Setup";
+  if (normalized === "pending_verification") return "Pending Verification";
   if (normalized === "suspended") return "Suspended";
   if (normalized === "locked") return "Locked";
   if (normalized === "archived") return "Archived";
@@ -64,6 +65,7 @@ function accountStatusTone(status: string | null | undefined): string {
   const normalized = (status ?? "").toLowerCase();
   if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (normalized === "pending_verification") return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
   if (normalized === "suspended" || normalized === "locked") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
   if (normalized === "archived") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
@@ -100,8 +102,8 @@ export function MonitorSchoolHeadAccountsPanel({
           <div>
             <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
             <p className="mt-0.5 text-xs text-slate-600">
-              Passwords are never shown/stored. The account becomes{" "}
-              <span className="font-semibold">Active + Verified</span> after setup. Use{" "}
+              Passwords are never shown/stored. After setup, the account moves to{" "}
+              <span className="font-semibold">Pending Verification</span> until a Division Monitor activates it. Use{" "}
               <span className="font-semibold">Reset Password</span> to send a one-time password reset link.
             </p>
           </div>
@@ -144,6 +146,7 @@ export function MonitorSchoolHeadAccountsPanel({
                   >
                     <option value="all">All</option>
                     <option value="needs_setup">Needs setup</option>
+                    <option value="pending_verification">Pending verification</option>
                     <option value="active">Active</option>
                     <option value="suspended">Suspended</option>
                     <option value="locked">Locked</option>
@@ -232,14 +235,17 @@ export function MonitorSchoolHeadAccountsPanel({
                   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${resolvedRecord.id}:`));
                   const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
                   const emailVerified = Boolean(account?.emailVerifiedAt);
-                  const verificationLabel =
-                    normalizedAccountStatus === "pending_setup"
-                      ? "Setup needed"
-                      : emailVerified
-                        ? "Verified"
-                        : "Not verified";
+                  const verificationLabel = normalizedAccountStatus === "pending_setup"
+                    ? "Setup needed"
+                    : normalizedAccountStatus === "pending_verification"
+                      ? "Awaiting monitor approval"
+                      : account?.verifiedAt
+                        ? "Monitor approved"
+                        : emailVerified
+                          ? "Verified"
+                          : "Not verified";
                   const verificationTone =
-                    normalizedAccountStatus === "pending_setup" || !emailVerified
+                    normalizedAccountStatus === "pending_setup" || normalizedAccountStatus === "pending_verification" || !emailVerified
                       ? "text-amber-700"
                       : "text-primary-700";
                   const setupLinkExpiresAtMs = account?.setupLinkExpiresAt
@@ -333,6 +339,18 @@ export function MonitorSchoolHeadAccountsPanel({
                           <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
                             {account?.lastLoginAt ? formatDateTime(account.lastLoginAt) : account ? "Never" : "-"}
                           </span>
+                          {account?.verifiedAt ? (
+                            <span
+                              className="max-w-[12rem] truncate text-[11px] font-medium text-primary-700"
+                              title={
+                                account.verifiedByName
+                                  ? `Approved by ${account.verifiedByName} on ${formatDateTime(account.verifiedAt)}`
+                                  : `Approved ${formatDateTime(account.verifiedAt)}`
+                              }
+                            >
+                              Approved {formatDateTime(account.verifiedAt)}
+                            </span>
+                          ) : null}
                           {account?.setupLinkExpiresAt ? (
                             <span
                               className={`inline-flex max-w-[12rem] truncate whitespace-nowrap rounded-sm border px-2 py-1 text-[11px] font-medium tabular-nums ${
@@ -418,21 +436,41 @@ export function MonitorSchoolHeadAccountsPanel({
                                 </button>
                                 {actions.openAccountRowMenuSchoolId === resolvedRecord.id && (
                                   <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
-                                    {normalizedAccountStatus !== "active" && normalizedAccountStatus !== "pending_setup" && (
+                                    {normalizedAccountStatus === "pending_verification" && (
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          actions.handleUpdateSchoolHeadAccount(
-                                            resolvedRecord,
-                                            { accountStatus: "active" },
-                                            "Activate account",
-                                          )
+                                          actions.openPendingAccountAction({
+                                            kind: "activate",
+                                            schoolId: resolvedRecord.id,
+                                            schoolName: resolvedRecord.schoolName,
+                                            actionLabel: "Activate account",
+                                          })
                                         }
                                         disabled={isRowSaving || isSaving}
                                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
                                       >
                                         <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
                                         Activate
+                                      </button>
+                                    )}
+                                    {normalizedAccountStatus !== "active" &&
+                                      normalizedAccountStatus !== "pending_setup" &&
+                                      normalizedAccountStatus !== "pending_verification" && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          actions.handleUpdateSchoolHeadAccount(
+                                            resolvedRecord,
+                                            { accountStatus: "active" },
+                                            "Reactivate account",
+                                          )
+                                        }
+                                        disabled={isRowSaving || isSaving}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
+                                        Reactivate
                                       </button>
                                     )}
                                     {normalizedAccountStatus === "active" && (
@@ -579,14 +617,18 @@ export function MonitorSchoolHeadAccountsPanel({
 
             <div className="mt-3">
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                Reason
+                {actions.pendingAccountAction.kind === "activate" ? "Activation Note" : "Reason"}
               </label>
               <textarea
                 ref={actions.pendingAccountReasonRef}
                 value={actions.pendingAccountReason}
                 onChange={(event) => actions.updatePendingAccountReason(event.target.value)}
                 rows={3}
-                placeholder="Type a short reason (min 5 characters)"
+                placeholder={
+                  actions.pendingAccountAction.kind === "activate"
+                    ? "Optional note for approval"
+                    : "Type a short reason (min 5 characters)"
+                }
                 className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               />
               {actions.pendingAccountReasonError && (

@@ -912,7 +912,10 @@ class AuthController extends Controller
                 'must_reset_password' => false,
                 'password_changed_at' => now(),
                 'email_verified_at' => now(),
-                'account_status' => AccountStatus::ACTIVE->value,
+                'account_status' => AccountStatus::PENDING_VERIFICATION->value,
+                'verified_by_user_id' => null,
+                'verified_at' => null,
+                'verification_notes' => null,
             ])->save();
 
             return $this->revokeUserSessionsAndTokens($user);
@@ -935,16 +938,6 @@ class AuthController extends Controller
             );
         }
 
-        if ($request->hasSession()) {
-            Auth::guard('web')->login($user);
-            $request->session()->regenerate();
-        }
-
-        $tokenPayload = $this->shouldIssueBearerToken($request)
-            ? $this->issueDashboardToken($user, $role, $request, false)
-            : null;
-        $this->recordSuccessfulLoginTelemetry($user, $request);
-
         AuthAuditLogger::record(
             $request,
             'auth.account_setup.completed',
@@ -954,28 +947,14 @@ class AuthController extends Controller
             $identifier !== '' ? $identifier : null,
             [
                 'previous_account_status' => $previousStatus,
-                'new_account_status' => AccountStatus::ACTIVE->value,
-                'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
-                'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
+                'new_account_status' => AccountStatus::PENDING_VERIFICATION->value,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
 
-        if ($tokenPayload === null) {
-            return response()->json([
-                'user' => $this->serializeUser($user->fresh('school'), $role),
-                'message' => 'Account setup completed successfully.',
-            ]);
-        }
-
         return response()->json([
-            'token' => $tokenPayload['token'],
-            'tokenType' => 'Bearer',
-            'expiresAt' => $tokenPayload['expiresAt'],
-            'refreshAfter' => $tokenPayload['refreshAfter'],
-            'user' => $this->serializeUser($user->fresh('school'), $role),
-            'message' => 'Account setup completed successfully.',
+            'message' => 'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
         ]);
     }
 
@@ -2321,6 +2300,10 @@ class AuthController extends Controller
             $payload['requiresAccountSetup'] = true;
         }
 
+        if ($status === AccountStatus::PENDING_VERIFICATION) {
+            $payload['requiresMonitorApproval'] = true;
+        }
+
         return response()->json(
             $payload,
             Response::HTTP_FORBIDDEN,
@@ -2331,6 +2314,7 @@ class AuthController extends Controller
     {
         return match ($status) {
             AccountStatus::PENDING_SETUP => 'Your account setup is not complete yet. Use your one-time setup link to activate your account.',
+            AccountStatus::PENDING_VERIFICATION => 'Your account setup is complete, but your Division Monitor has not activated your access yet.',
             AccountStatus::SUSPENDED => 'Your account is suspended. Please contact your administrator.',
             AccountStatus::LOCKED => 'Your account is locked. Please contact your administrator.',
             AccountStatus::ARCHIVED => 'Your account is archived and can no longer sign in.',

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import type {
+  SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
@@ -20,6 +21,12 @@ export type PendingAccountAction =
       schoolName: string;
       actionLabel: string;
       update: Omit<SchoolHeadAccountStatusUpdatePayload, "reason">;
+    }
+  | {
+      kind: "activate";
+      schoolId: string;
+      schoolName: string;
+      actionLabel: string;
     }
   | {
       kind: "reset_password";
@@ -49,6 +56,10 @@ interface UseSchoolHeadAccountActionsOptions {
     schoolId: string,
     payload: SchoolHeadAccountStatusUpdatePayload,
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
+  activateSchoolHeadAccount: (
+    schoolId: string,
+    payload?: { reason?: string | null },
+  ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
     targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change",
@@ -182,6 +193,10 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
     return `Reason and confirmation code required to remove the account for ${action.schoolName}.`;
   }
 
+  if (action.kind === "activate") {
+    return `Optional activation note for ${action.schoolName}.`;
+  }
+
   if (action.kind === "status") {
     return isDeactivationStatus(action.update.accountStatus)
       ? `Reason and confirmation code required for ${action.schoolName}.`
@@ -222,6 +237,7 @@ export function useSchoolHeadAccountActions({
   isSaving,
   pushToast,
   updateSchoolHeadAccountStatus,
+  activateSchoolHeadAccount,
   issueSchoolHeadAccountActionVerificationCode,
   issueSchoolHeadSetupLink,
   issueSchoolHeadPasswordResetLink,
@@ -418,6 +434,15 @@ export function useSchoolHeadAccountActions({
     setPendingAccountVerificationError("");
 
     try {
+      if (pendingAccountAction.kind === "activate") {
+        const result = await activateSchoolHeadAccount(pendingAccountAction.schoolId, {
+          reason: reason || undefined,
+        });
+        pushToast(result.message || `School Head account activated for ${pendingAccountAction.schoolName}.`, "success");
+        closePendingAccountAction();
+        return;
+      }
+
       if (pendingAccountAction.kind === "status") {
         if (isDeactivationStatus(pendingAccountAction.update.accountStatus)) {
           const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
@@ -542,6 +567,7 @@ export function useSchoolHeadAccountActions({
     pendingAccountVerificationCode,
     pushToast,
     removeSchoolHeadAccount,
+    activateSchoolHeadAccount,
     updateSchoolHeadAccountStatus,
     upsertSchoolHeadAccountProfile,
   ]);

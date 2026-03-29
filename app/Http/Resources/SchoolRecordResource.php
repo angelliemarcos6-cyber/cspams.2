@@ -93,8 +93,10 @@ class SchoolRecordResource extends JsonResource
         $setupToken = null;
 
         if (Schema::hasTable('account_setup_tokens')) {
-            $account->loadMissing('latestAccountSetupToken');
+            $account->loadMissing(['latestAccountSetupToken', 'verifiedBy']);
             $setupToken = $account->latestAccountSetupToken;
+        } else {
+            $account->loadMissing('verifiedBy');
         }
         $setupLinkExpiresAt = null;
 
@@ -110,6 +112,10 @@ class SchoolRecordResource extends JsonResource
             'lastLoginAt' => $account->last_login_at?->toISOString(),
             'accountStatus' => $status->value,
             'mustResetPassword' => (bool) $account->must_reset_password,
+            'verifiedAt' => $account->verified_at?->toISOString(),
+            'verifiedByUserId' => $account->verified_by_user_id ? (string) $account->verified_by_user_id : null,
+            'verifiedByName' => $account->verifiedBy?->name,
+            'verificationNotes' => $account->verification_notes,
             'flagged' => $account->flagged_at !== null,
             'flaggedAt' => $account->flagged_at?->toISOString(),
             'flagReason' => $account->flagged_reason,

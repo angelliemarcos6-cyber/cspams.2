@@ -1,5 +1,11 @@
 export type UserRole = "school_head" | "monitor" | null;
-export type AccountStatus = "active" | "pending_setup" | "suspended" | "locked" | "archived";
+export type AccountStatus =
+  | "active"
+  | "pending_setup"
+  | "pending_verification"
+  | "suspended"
+  | "locked"
+  | "archived";
 
 export type SchoolStatus = "active" | "inactive" | "pending";
 export type WorkflowStatus = "draft" | "submitted" | "validated" | "returned";
@@ -57,6 +63,10 @@ export interface SchoolHeadAccountSummary {
   lastLoginAt: string | null;
   accountStatus: AccountStatus | string;
   mustResetPassword: boolean;
+  verifiedAt?: string | null;
+  verifiedByUserId?: string | null;
+  verifiedByName?: string | null;
+  verificationNotes?: string | null;
   flagged: boolean;
   flaggedAt: string | null;
   flagReason: string | null;
@@ -76,6 +86,11 @@ export interface SchoolHeadAccountStatusUpdatePayload {
 }
 
 export interface SchoolHeadAccountStatusUpdateResult {
+  account: SchoolHeadAccountSummary;
+  message: string;
+}
+
+export interface SchoolHeadAccountActivationResult {
   account: SchoolHeadAccountSummary;
   message: string;
 }

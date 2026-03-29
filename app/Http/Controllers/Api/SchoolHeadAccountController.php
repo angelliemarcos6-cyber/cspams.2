@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\ActivateSchoolHeadAccountRequest;
 use App\Http\Requests\Api\IssueSchoolHeadAccountActionVerificationCodeRequest;
 use App\Http\Requests\Api\IssueSchoolHeadPasswordResetLinkRequest;
 use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
@@ -176,6 +177,9 @@ class SchoolHeadAccountController extends Controller
                 $updates['email_verified_at'] = null;
                 $updates['must_reset_password'] = true;
                 $updates['password_changed_at'] = null;
+                $updates['verified_by_user_id'] = null;
+                $updates['verified_at'] = null;
+                $updates['verification_notes'] = null;
             }
 
             if ($reissueAllowed) {
@@ -316,6 +320,9 @@ class SchoolHeadAccountController extends Controller
         $account->must_reset_password = true;
         $account->password_changed_at = null;
         $account->account_status = AccountStatus::PENDING_SETUP->value;
+        $account->verified_by_user_id = null;
+        $account->verified_at = null;
+        $account->verification_notes = null;
         $account->school_id = $school->id;
         if (Schema::hasColumn('users', 'account_type')) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
@@ -396,6 +403,89 @@ class SchoolHeadAccountController extends Controller
         ], Response::HTTP_CREATED);
     }
 
+    public function activate(
+        ActivateSchoolHeadAccountRequest $request,
+        School $school,
+    ): JsonResponse {
+        $monitor = $this->requireMonitor($request);
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $status = $account->accountStatus();
+        if ($status !== AccountStatus::PENDING_VERIFICATION) {
+            return response()->json(
+                ['message' => 'Only accounts awaiting monitor verification can be activated.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (
+            $account->must_reset_password
+            || $account->password_changed_at === null
+            || $account->email_verified_at === null
+        ) {
+            return response()->json(
+                ['message' => 'Account setup is not complete yet.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $reason = trim($request->string('reason')->toString());
+
+        $account->forceFill([
+            'account_status' => AccountStatus::ACTIVE->value,
+            'verified_by_user_id' => $monitor->id,
+            'verified_at' => now(),
+            'verification_notes' => $reason !== '' ? $reason : null,
+        ])->save();
+
+        $this->loadLatestAccountSetupToken($account);
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.activated',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'previous_status' => $status->value,
+                'new_status' => $account->accountStatus()->value,
+                'reason' => $reason !== '' ? $reason : null,
+                'verified_at' => $account->verified_at?->toISOString(),
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_head_account.activated',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'accountStatus' => $account->accountStatus()->value,
+        ]));
+
+        return response()->json([
+            'data' => [
+                'account' => $this->serializeSchoolHeadAccount($account),
+                'message' => 'School Head account activated.',
+            ],
+        ]);
+    }
+
     public function update(
         UpdateSchoolHeadAccountStatusRequest $request,
         School $school,
@@ -452,10 +542,19 @@ class SchoolHeadAccountController extends Controller
         ) {
             $message = $previousStatus === AccountStatus::PENDING_SETUP
                 ? 'This account has not completed setup yet. Reissue the setup link instead.'
-                : 'Password reset is required before activation. Issue a password reset link first.';
+                : ($previousStatus === AccountStatus::PENDING_VERIFICATION
+                    ? 'Use the Activate Account action after reviewing this setup.'
+                    : 'Password reset is required before activation. Issue a password reset link first.');
 
             return response()->json(
                 ['message' => $message],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if ($statusChanged && $previousStatus === AccountStatus::PENDING_VERIFICATION && $nextStatus === AccountStatus::ACTIVE->value) {
+            return response()->json(
+                ['message' => 'Use the Activate Account action after reviewing this setup.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -657,6 +756,9 @@ class SchoolHeadAccountController extends Controller
                     'must_reset_password' => true,
                     'password_changed_at' => null,
                     'email_verified_at' => null,
+                    'verified_by_user_id' => null,
+                    'verified_at' => null,
+                    'verification_notes' => null,
                     'school_id' => null,
                 ])->save();
 
@@ -749,6 +851,9 @@ class SchoolHeadAccountController extends Controller
             'must_reset_password' => true,
             'password_changed_at' => null,
             'email_verified_at' => null,
+            'verified_by_user_id' => null,
+            'verified_at' => null,
+            'verification_notes' => null,
         ])->save();
 
         $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
@@ -979,7 +1084,7 @@ class SchoolHeadAccountController extends Controller
 
         if (Schema::hasColumn('users', 'account_type')) {
             return $query
-                ->with('roles')
+                ->with(['roles', 'verifiedBy'])
                 ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
                 ->first();
         }
@@ -987,7 +1092,7 @@ class SchoolHeadAccountController extends Controller
         $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
 
         return $query
-            ->with('roles')
+            ->with(['roles', 'verifiedBy'])
             ->whereHas('roles', static function ($builder) use ($aliases): void {
                 $builder->whereIn('name', $aliases);
             })
@@ -1000,6 +1105,7 @@ class SchoolHeadAccountController extends Controller
     private function serializeSchoolHeadAccount(User $account): array
     {
         $status = $account->accountStatus();
+        $account->load('verifiedBy');
         $setupToken = null;
         if ($this->accountSetupTokensAvailable()) {
             $this->loadLatestAccountSetupToken($account);
@@ -1019,6 +1125,10 @@ class SchoolHeadAccountController extends Controller
             'lastLoginAt' => $account->last_login_at?->toISOString(),
             'accountStatus' => $status->value,
             'mustResetPassword' => (bool) $account->must_reset_password,
+            'verifiedAt' => $account->verified_at?->toISOString(),
+            'verifiedByUserId' => $account->verified_by_user_id ? (string) $account->verified_by_user_id : null,
+            'verifiedByName' => $account->verifiedBy?->name,
+            'verificationNotes' => $account->verification_notes,
             'flagged' => $account->flagged_at !== null,
             'flaggedAt' => $account->flagged_at?->toISOString(),
             'flagReason' => $account->flagged_reason,
@@ -1057,7 +1167,7 @@ class SchoolHeadAccountController extends Controller
     private function loadLatestAccountSetupToken(User $account): void
     {
         if ($this->accountSetupTokensAvailable()) {
-            $account->loadMissing('latestAccountSetupToken');
+            $account->load('latestAccountSetupToken');
         }
     }
 

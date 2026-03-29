@@ -109,7 +109,10 @@ class AuthSessionSecurityTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('user.mustResetPassword', false);
+            ->assertJsonPath(
+                'message',
+                'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
+            );
 
         $this->assertDatabaseMissing('personal_access_tokens', ['name' => 'legacy-reset-token']);
         $this->assertDatabaseMissing('sessions', ['id' => $legacySessionId]);
@@ -121,7 +124,7 @@ class AuthSessionSecurityTest extends TestCase
             ->latest('id')
             ->firstOrFail();
 
-        $this->assertSame('active', data_get($resetAudit->metadata, 'new_account_status'));
+        $this->assertSame('pending_verification', data_get($resetAudit->metadata, 'new_account_status'));
     }
 
     public function test_active_sessions_endpoint_lists_devices_and_can_revoke_others(): void

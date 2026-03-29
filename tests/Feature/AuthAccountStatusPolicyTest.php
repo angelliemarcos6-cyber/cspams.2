@@ -83,6 +83,7 @@ class AuthAccountStatusPolicyTest extends TestCase
     {
         return [
             'pending_setup' => [AccountStatus::PENDING_SETUP->value],
+            'pending_verification' => [AccountStatus::PENDING_VERIFICATION->value],
             'suspended' => [AccountStatus::SUSPENDED->value],
             'locked' => [AccountStatus::LOCKED->value],
             'archived' => [AccountStatus::ARCHIVED->value],

@@ -117,6 +117,8 @@ export function Login() {
       const statusMessage =
         accountStatus === "pending_setup"
           ? "Account setup is still pending."
+          : accountStatus === "pending_verification"
+            ? "Your account setup is complete, but your Division Monitor has not activated it yet."
           : accountStatus === "suspended"
             ? "Your account is suspended."
             : accountStatus === "locked"
@@ -238,6 +240,10 @@ export function Login() {
           pendingMfa === null &&
           err.status === 403 &&
           Boolean((err.payload as { requiresAccountSetup?: boolean } | null)?.requiresAccountSetup);
+        const requiresMonitorApproval =
+          pendingMfa === null &&
+          err.status === 403 &&
+          Boolean((err.payload as { requiresMonitorApproval?: boolean } | null)?.requiresMonitorApproval);
 
         if (requiresReset) {
           clearMfaState();
@@ -247,6 +253,10 @@ export function Login() {
           clearMfaState();
           clearResetState();
           setError("Account setup is required. Use your one-time setup link, or request a new one from your Division Monitor.");
+        } else if (requiresMonitorApproval) {
+          clearMfaState();
+          clearResetState();
+          setError("Your account setup is complete, but your Division Monitor has not activated it yet.");
         } else {
           if (pendingMfa === null) {
             clearResetState();

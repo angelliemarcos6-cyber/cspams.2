@@ -62,6 +62,8 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboa
         ->middleware('throttle:auth-account-management');
     Route::patch('/records/{school}/school-head-account', [SchoolHeadAccountController::class, 'update'])
         ->middleware('throttle:auth-account-management');
+    Route::post('/records/{school}/school-head-account/activate', [SchoolHeadAccountController::class, 'activate'])
+        ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/verification-code', [SchoolHeadAccountController::class, 'issueActionVerificationCode'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])

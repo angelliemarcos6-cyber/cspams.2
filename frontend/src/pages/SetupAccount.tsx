@@ -1,11 +1,10 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { isApiError } from "@/lib/api";
 
 export function SetupAccount() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { completeAccountSetup, isAuthenticating } = useAuth();
 
@@ -16,11 +15,13 @@ export function SetupAccount() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setSuccessMessage("");
 
     if (!token.trim()) {
       setError("Setup token is required.");
@@ -39,12 +40,14 @@ export function SetupAccount() {
 
     setIsSubmitting(true);
     try {
-      await completeAccountSetup({
+      const message = await completeAccountSetup({
         token: token.trim(),
         password,
         confirmPassword,
       });
-      navigate("/school-admin", { replace: true });
+      setSuccessMessage(message);
+      setPassword("");
+      setConfirmPassword("");
     } catch (err) {
       if (isApiError(err)) {
         setError(err.message);
@@ -66,7 +69,7 @@ export function SetupAccount() {
           </p>
           <h1 className="mt-2 text-xl font-bold text-slate-900">Set your School Head password</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Complete this one-time setup to activate your account.
+            Complete this one-time setup to submit your account for Division Monitor approval.
           </p>
         </div>
 
@@ -140,17 +143,23 @@ export function SetupAccount() {
               {error}
             </p>
           )}
+          {successMessage && (
+            <div className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
+              <p className="font-semibold">Setup completed.</p>
+              <p className="mt-1">{successMessage}</p>
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={isSubmitting || isAuthenticating}
             className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {isSubmitting || isAuthenticating ? "Setting up account..." : "Activate Account"}
+            {isSubmitting || isAuthenticating ? "Completing setup..." : "Complete Setup"}
           </button>
 
           <p className="text-center text-xs text-slate-500">
-            Already activated?{" "}
+            Ready to sign in later?{" "}
             <Link className="font-semibold text-primary-700 hover:text-primary-800" to="/">
               Go to sign in
             </Link>

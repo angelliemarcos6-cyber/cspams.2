@@ -93,7 +93,7 @@ class DemoDataSeeder extends Seeder
             );
         }
 
-        $monitor = User::query()->firstOrNew(['email' => 'cspams.local@gmail.com']);
+        $monitor = User::query()->firstOrNew(['email' => 'cspamsmonitor@gmail.com']);
         $monitorWasRecentlyCreated = ! $monitor->exists;
         $monitor->name = 'Division Monitor';
         $monitor->account_status = AccountStatus::ACTIVE->value;
@@ -121,6 +121,9 @@ class DemoDataSeeder extends Seeder
                 $head->must_reset_password = false;
                 $head->password_changed_at = now();
                 $head->email_verified_at = now();
+                $head->verified_by_user_id = $monitor->id;
+                $head->verified_at = now();
+                $head->verification_notes = 'Seeded demo account approved by Division Monitor.';
             }
 
             $head->save();

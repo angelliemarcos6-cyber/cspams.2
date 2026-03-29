@@ -57,11 +57,17 @@ class SantiagoCitySchoolAccountsSeeder extends Seeder
                     $schoolHead->must_reset_password = true;
                     $schoolHead->password_changed_at = null;
                     $schoolHead->email_verified_at = null;
+                    $schoolHead->verified_by_user_id = null;
+                    $schoolHead->verified_at = null;
+                    $schoolHead->verification_notes = null;
                 } else {
                     $schoolHead->password = Hash::make($this->seedTempPassword());
                     $schoolHead->must_reset_password = false;
                     $schoolHead->password_changed_at = now();
                     $schoolHead->email_verified_at = now();
+                    $schoolHead->verified_by_user_id = null;
+                    $schoolHead->verified_at = now();
+                    $schoolHead->verification_notes = 'Seeded direct-access school head account.';
                 }
             }
 
