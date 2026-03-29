@@ -1,29 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
   BellRing,
-  Building2,
-  CalendarDays,
   CheckCircle2,
-  ChevronDown,
-  ClipboardList,
   CircleHelp,
   Database,
   Edit2,
   Eye,
-  Filter,
-  GraduationCap,
   LayoutDashboard,
-  ListChecks,
   Plus,
   RefreshCw,
-  Save,
-  Search,
   ShieldCheck,
-  SlidersHorizontal,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
@@ -35,10 +24,13 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
+import { MonitorDashboardToolbar } from "@/pages/monitor/MonitorDashboardToolbar";
+import { MonitorFiltersPanel } from "@/pages/monitor/MonitorFiltersPanel";
 import { MonitorLearnerRecordsSection } from "@/pages/monitor/MonitorLearnerRecordsSection";
 import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
 import { MonitorMobileNavigator } from "@/pages/monitor/MonitorMobileNavigator";
 import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
+import { MonitorQuickFiltersContent } from "@/pages/monitor/MonitorQuickFiltersContent";
 import { MonitorQuickJumpChips } from "@/pages/monitor/MonitorQuickJumpChips";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
@@ -54,7 +46,6 @@ import {
   RECORD_PAGE_SIZE,
   REQUIREMENT_FILTER_OPTIONS,
   REQUIREMENT_PAGE_SIZE,
-  SCHOOL_QUICK_PRESET_OPTIONS,
 } from "@/pages/monitor/monitorDashboardConfig";
 import {
   downloadCsvFile,
@@ -826,229 +817,84 @@ export function MonitorDashboard() {
     handleReviewSchool(nextReview);
   };
 
-  const quickFiltersPanelContent = (
-    <>
-      <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
-        <div
-          className={`grid gap-2 sm:grid-cols-2 ${
-            activeTopNavigator === "reviews" || showMoreFilters ? "lg:grid-cols-5" : "lg:grid-cols-4"
-          }`}
-        >
-          <label
-            title="School status"
-            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-          >
-            <Filter className="h-3.5 w-3.5 text-slate-400" />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as SchoolStatus | "all")}
-              className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            >
-              <option value="all">All ({schoolStatusCounts.all})</option>
-              <option value="active">Active ({schoolStatusCounts.active})</option>
-              <option value="inactive">Inactive ({schoolStatusCounts.inactive})</option>
-              <option value="pending">Pending ({schoolStatusCounts.pending})</option>
-            </select>
-          </label>
-
-          <label
-            title="Workflow status"
-            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-          >
-            <ClipboardList className="h-3.5 w-3.5 text-slate-400" />
-            <select
-              value={requirementFilter}
-              onChange={(event) => setRequirementFilter(event.target.value as RequirementFilter)}
-              className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            >
-              {visibleRequirementFilterOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {(activeTopNavigator === "reviews" || showMoreFilters) && (
-            <label
-              title="Queue lane"
-              className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-            >
-              <ListChecks className="h-3.5 w-3.5 text-slate-400" />
-              <select
-                value={queueLane}
-                onChange={(event) => setQueueLane(event.target.value as QueueLane)}
-                className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-              >
-                <option value="all">All ({queueLaneCounts.all})</option>
-                <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
-                <option value="returned">Returned ({queueLaneCounts.returned})</option>
-                <option value="for_review">Review ({queueLaneCounts.for_review})</option>
-                <option value="waiting_data">Waiting ({queueLaneCounts.waiting_data})</option>
-              </select>
-            </label>
-          )}
-
-          <div
-            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-            title="Date range"
-          >
-            <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-            <input
-              type="date"
-              value={filterDateFrom}
-              onChange={(event) => setFilterDateFrom(event.target.value)}
-              className="min-w-0 flex-1 border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            />
-            <span className="text-slate-300">–</span>
-            <input
-              type="date"
-              value={filterDateTo}
-              onChange={(event) => setFilterDateTo(event.target.value)}
-              className="min-w-0 flex-1 border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            />
-            {(filterDateFrom.trim() || filterDateTo.trim()) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFilterDateFrom("");
-                  setFilterDateTo("");
-                }}
-                className="ml-auto rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                aria-label="Clear date range"
-                title="Clear date range"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowMoreFilters((current) => !current)}
-            className="inline-flex w-full items-center justify-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
-            aria-expanded={showMoreFilters}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
-            Advanced
-            {hiddenAdvancedFilterCount > 0 && (
-              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-primary-50 px-1 text-[10px] font-bold text-primary-700">
-                {hiddenAdvancedFilterCount}
-              </span>
-            )}
-            <ChevronDown className={`h-3.5 w-3.5 transition ${showMoreFilters ? "rotate-180" : ""}`} />
-          </button>
-        </div>
-
-        {showMoreFilters && (
-          <div className="mt-2 border-t border-slate-200 pt-2">
-            <div className="grid gap-2 md:grid-cols-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                <SchoolScopeSelector
-                  dropdownId="schools_filters"
-                  isOpen={openScopeDropdownId === "schools_filters"}
-                  rootClassName="relative flex-1"
-                  isLoading={isLoading}
-                  query={schoolScopeQuery}
-                  selectedScope={selectedSchoolScope}
-                  filteredOptions={filteredSchoolScopeOptions}
-                  allOptions={schoolScopeOptions}
-                  onToggle={() => toggleScopeDropdown("schools_filters")}
-                  onQueryChange={setSchoolScopeQuery}
-                  onClearQuery={() => setSchoolScopeQuery("")}
-                  onSelectAll={handleSelectAllSchools}
-                  onSelectOption={handleSelectSchoolScope}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
-                <StudentLookupSelector
-                  dropdownId="students_filters"
-                  isOpen={openScopeDropdownId === "students_filters"}
-                  rootClassName="relative flex-1"
-                  selectedLabel={selectedStudentLabel}
-                  isSyncing={isStudentLookupSyncing}
-                  query={studentLookupQuery}
-                  placeholder={selectedTeacherLookup ? "Search teacher's students" : "Search students"}
-                  filteredOptions={filteredStudentLookupOptions}
-                  allOptions={teacherScopedStudentLookupOptions}
-                  selectedStudentId={selectedStudentLookup?.id ?? null}
-                  onToggle={() => toggleScopeDropdown("students_filters")}
-                  onQueryChange={setStudentLookupQuery}
-                  onClearQuery={() => setStudentLookupQuery("")}
-                  onClearSelection={handleClearStudentLookup}
-                  onSelectOption={handleSelectStudentLookup}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="h-3.5 w-3.5 text-slate-400" />
-                <TeacherLookupSelector
-                  dropdownId="teachers_filters"
-                  isOpen={openScopeDropdownId === "teachers_filters"}
-                  rootClassName="relative flex-1"
-                  selectedLabel={selectedTeacherLabel}
-                  isSyncing={isTeacherLookupSyncing}
-                  query={teacherLookupQuery}
-                  filteredOptions={filteredTeacherLookupOptions}
-                  allOptions={teacherLookupOptions}
-                  selectedTeacherId={selectedTeacherLookup?.id ?? null}
-                  onToggle={() => toggleScopeDropdown("teachers_filters")}
-                  onQueryChange={setTeacherLookupQuery}
-                  onClearQuery={() => setTeacherLookupQuery("")}
-                  onClearSelection={handleClearTeacherLookup}
-                  onSelectOption={handleSelectTeacherLookup}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showMoreFilters && activeTopNavigator === "overview" && (
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-            <p className="text-[11px] font-semibold text-slate-700">Analytics</p>
-            <button
-              id="monitor-analytics-toggle"
-              type="button"
-              onClick={() => setShowAdvancedAnalytics((current) => !current)}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              {showAdvancedAnalytics ? "Hide" : "Show"}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {activeFilterChips.length > 0 && (
-        <div className="mt-2">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Active</p>
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            {activeFilterChips.map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                onClick={() => clearFilterChip(chip.id)}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:border-primary-200 hover:text-primary-700"
-              >
-                {chip.label}
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
+  const quickFiltersContent = (
+    <MonitorQuickFiltersContent
+      activeTopNavigator={activeTopNavigator}
+      showMoreFilters={showMoreFilters}
+      hiddenAdvancedFilterCount={hiddenAdvancedFilterCount}
+      statusFilter={statusFilter}
+      onStatusFilterChange={setStatusFilter}
+      schoolStatusCounts={schoolStatusCounts}
+      requirementFilter={requirementFilter}
+      onRequirementFilterChange={setRequirementFilter}
+      visibleRequirementFilterOptions={visibleRequirementFilterOptions}
+      queueLane={queueLane}
+      onQueueLaneChange={setQueueLane}
+      queueLaneCounts={queueLaneCounts}
+      filterDateFrom={filterDateFrom}
+      filterDateTo={filterDateTo}
+      onFilterDateFromChange={setFilterDateFrom}
+      onFilterDateToChange={setFilterDateTo}
+      onClearDateRange={() => {
+        setFilterDateFrom("");
+        setFilterDateTo("");
+      }}
+      onToggleShowMoreFilters={() => setShowMoreFilters((current) => !current)}
+      schoolScopeSelectorProps={{
+        dropdownId: "schools_filters",
+        isOpen: openScopeDropdownId === "schools_filters",
+        rootClassName: "relative flex-1",
+        isLoading,
+        query: schoolScopeQuery,
+        selectedScope: selectedSchoolScope,
+        filteredOptions: filteredSchoolScopeOptions,
+        allOptions: schoolScopeOptions,
+        onToggle: () => toggleScopeDropdown("schools_filters"),
+        onQueryChange: setSchoolScopeQuery,
+        onClearQuery: () => setSchoolScopeQuery(""),
+        onSelectAll: handleSelectAllSchools,
+        onSelectOption: handleSelectSchoolScope,
+      }}
+      studentLookupSelectorProps={{
+        dropdownId: "students_filters",
+        isOpen: openScopeDropdownId === "students_filters",
+        rootClassName: "relative flex-1",
+        selectedLabel: selectedStudentLabel,
+        isSyncing: isStudentLookupSyncing,
+        query: studentLookupQuery,
+        placeholder: selectedTeacherLookup ? "Search teacher's students" : "Search students",
+        filteredOptions: filteredStudentLookupOptions,
+        allOptions: teacherScopedStudentLookupOptions,
+        selectedStudentId: selectedStudentLookup?.id ?? null,
+        onToggle: () => toggleScopeDropdown("students_filters"),
+        onQueryChange: setStudentLookupQuery,
+        onClearQuery: () => setStudentLookupQuery(""),
+        onClearSelection: handleClearStudentLookup,
+        onSelectOption: handleSelectStudentLookup,
+      }}
+      teacherLookupSelectorProps={{
+        dropdownId: "teachers_filters",
+        isOpen: openScopeDropdownId === "teachers_filters",
+        rootClassName: "relative flex-1",
+        selectedLabel: selectedTeacherLabel,
+        isSyncing: isTeacherLookupSyncing,
+        query: teacherLookupQuery,
+        filteredOptions: filteredTeacherLookupOptions,
+        allOptions: teacherLookupOptions,
+        selectedTeacherId: selectedTeacherLookup?.id ?? null,
+        onToggle: () => toggleScopeDropdown("teachers_filters"),
+        onQueryChange: setTeacherLookupQuery,
+        onClearQuery: () => setTeacherLookupQuery(""),
+        onClearSelection: handleClearTeacherLookup,
+        onSelectOption: handleSelectTeacherLookup,
+      }}
+      showAdvancedAnalytics={showAdvancedAnalytics}
+      onToggleAdvancedAnalytics={() => setShowAdvancedAnalytics((current) => !current)}
+      activeFilterChips={activeFilterChips}
+      onClearAllFilters={clearAllFilters}
+      onClearFilterChip={clearFilterChip}
+    />
   );
-
   const desktopQuickJumpChips = (
     <MonitorQuickJumpChips
       items={quickJumpItems}
@@ -1294,215 +1140,33 @@ export function MonitorDashboard() {
           {showNavigatorManual && <MonitorManualScreen onClose={() => setShowNavigatorManual(false)} />}
 
           {!showNavigatorManual && (
-            <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">{activeScreenMeta.title}</h2>
-                  <p className="mt-1 text-xs text-slate-600">{activeScreenMeta.description}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handlePrimaryAction}
-                    disabled={isPrimaryActionDisabled}
-                    className="inline-flex items-center gap-1 rounded-sm border border-primary-300/70 bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    {activeScreenMeta.primaryLabel}
-                  </button>
-                  <button
-                    id="monitor-submission-filters-toggle"
-                    type="button"
-                    onClick={() => setShowAdvancedFilters((current) => !current)}
-                    aria-expanded={showAdvancedFilters}
-                    className={`inline-flex items-center gap-1 rounded-sm border px-3 py-2 text-xs font-semibold transition ${
-                      activeFilterChips.length > 0
-                        ? "border-primary-200 bg-primary-50 text-primary-800 hover:bg-primary-100"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                  <Filter className="h-3.5 w-3.5" />
-                    {showAdvancedFilters ? "Close Filters" : "Filters"}
-                    {activeFilterChips.length > 0 && (
-                      <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-white px-1 text-[10px] font-bold text-primary-700">
-                        {activeFilterChips.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </section>
+            <MonitorDashboardToolbar
+              activeScreenMeta={activeScreenMeta}
+              isPrimaryActionDisabled={isPrimaryActionDisabled}
+              onPrimaryAction={handlePrimaryAction}
+              showAdvancedFilters={showAdvancedFilters}
+              activeFilterCount={activeFilterChips.length}
+              onToggleFilters={() => setShowAdvancedFilters((current) => !current)}
+              search={search}
+              onSearchChange={setSearch}
+              globalSearchInputRef={globalSearchInputRef}
+              schoolQuickPreset={schoolQuickPreset}
+              onSelectSchoolQuickPreset={setSchoolQuickPreset}
+              stickySummaryStats={stickySummaryStats}
+              schoolPresetCounts={schoolPresetCounts}
+              onRefresh={() => void handleRefreshDashboard()}
+              isDashboardSyncing={isDashboardSyncing}
+              dashboardLastSyncedAt={dashboardLastSyncedAt}
+            />
           )}
 
-          {!showNavigatorManual && (
-            <section className="dashboard-shell dashboard-shell-visible mb-5 rounded-sm">
-              <div className="dashboard-nav-shell border-b border-slate-200 bg-white/95 p-2 backdrop-blur">
-                <div className="flex flex-col gap-2">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                  <label className="relative w-full lg:max-w-lg">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      ref={globalSearchInputRef}
-                      type="text"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Search school code, school name, or school head"
-                      className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-10 pr-20 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                    />
-                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-sm border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                      /
-                    </span>
-                  </label>
-                  <p className="hidden text-[11px] font-medium text-slate-600 lg:block">
-                    <span className="font-semibold text-slate-800">/</span> Search ·{" "}
-                    <span className="font-semibold text-slate-800">J/K</span> Navigate ·{" "}
-                    <span className="font-semibold text-slate-800">R</span> Review
-                  </p>
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <button
-                    type="button"
-                    title="Schools in the current scope."
-                    onClick={() => setSchoolQuickPreset("all")}
-                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                      schoolQuickPreset === "all"
-                        ? "border-slate-300 bg-slate-100 text-slate-900"
-                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    Schools: {stickySummaryStats.totalSchools}
-                  </button>
-                  <button
-                    type="button"
-                    title="Submitted packages waiting for monitor review."
-                    onClick={() => setSchoolQuickPreset("pending")}
-                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                      schoolQuickPreset === "pending"
-                        ? "border-primary-300 bg-primary-100 text-primary-800"
-                        : "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
-                    }`}
-                  >
-                    Pending: {stickySummaryStats.pending}
-                  </button>
-                  <button
-                    type="button"
-                    title="Schools missing a compliance record or indicator submission."
-                    onClick={() => setSchoolQuickPreset("missing")}
-                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                      schoolQuickPreset === "missing"
-                        ? "border-indigo-300 bg-indigo-100 text-indigo-800"
-                        : "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                    }`}
-                  >
-                    Missing: {stickySummaryStats.missing}
-                  </button>
-                  <button
-                    type="button"
-                    title="Packages returned to school heads for correction."
-                    onClick={() => setSchoolQuickPreset("returned")}
-                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                      schoolQuickPreset === "returned"
-                        ? "border-amber-300 bg-amber-100 text-amber-800"
-                        : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                    }`}
-                  >
-                    Returned: {stickySummaryStats.returned}
-                  </button>
-                  <button
-                    type="button"
-                    title="Schools with missing or returned requirements."
-                    onClick={() => setSchoolQuickPreset("high_risk")}
-                    className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                      schoolQuickPreset === "high_risk"
-                        ? "border-rose-300 bg-rose-100 text-rose-800"
-                        : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                    }`}
-                  >
-                    High Risk: {stickySummaryStats.atRisk}
-                  </button>
-                  <button
-                    type="button"
-                    title="Refresh dashboard data."
-                    onClick={() => void handleRefreshDashboard()}
-                    disabled={isDashboardSyncing}
-                    className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isDashboardSyncing ? "animate-spin" : ""}`} />
-                    {isDashboardSyncing
-                      ? "Syncing..."
-                      : dashboardLastSyncedAt
-                        ? `Sync: ${new Date(dashboardLastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                        : "Sync: N/A"}
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Presets</span>
-                  {SCHOOL_QUICK_PRESET_OPTIONS.map((preset) => {
-                    const isActive = schoolQuickPreset === preset.id;
-                    const count = schoolPresetCounts[preset.id];
-
-                    return (
-                      <button
-                        key={`sticky-preset-${preset.id}`}
-                        type="button"
-                        title={preset.hint}
-                        onClick={() => setSchoolQuickPreset(preset.id)}
-                        className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                          isActive
-                            ? "border-primary-300 bg-primary-100 text-primary-800"
-                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <span>{preset.label}</span>
-                        <span className="rounded-sm bg-slate-100 px-1 text-[10px] font-bold text-slate-700">
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {!showNavigatorManual && showSubmissionFilters && (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowAdvancedFilters(false)}
-                className="fixed inset-0 z-[72] bg-slate-900/40"
-                aria-label="Close filters"
-              />
-              <section
-                id="monitor-submission-filters"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Filters"
-                className={`fixed z-[73] border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
-                  isMobileViewport
-                    ? "inset-x-0 bottom-0 max-h-[84vh] overflow-y-auto rounded-t-sm"
-                    : "left-1/2 top-24 w-[min(56rem,calc(100vw-2rem))] -translate-x-1/2 rounded-sm"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">Filters</h2>
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvancedFilters(false)}
-                    className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                    aria-label="Close filters"
-                    title="Close"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                {quickFiltersPanelContent}
-              </section>
-            </>
-          )}
+          <MonitorFiltersPanel
+            isOpen={!showNavigatorManual && showSubmissionFilters}
+            isMobileViewport={isMobileViewport}
+            onClose={() => setShowAdvancedFilters(false)}
+          >
+            {quickFiltersContent}
+          </MonitorFiltersPanel>
 
       {!showNavigatorManual && activeTopNavigator === "overview" && (
         <MonitorOverviewSection
@@ -1631,6 +1295,7 @@ export function MonitorDashboard() {
     </Shell>
   );
 }
+
 
 
 
