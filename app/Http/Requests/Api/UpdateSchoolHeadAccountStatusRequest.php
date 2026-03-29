@@ -23,7 +23,6 @@ class UpdateSchoolHeadAccountStatusRequest extends FormRequest
                 'sometimes',
                 'string',
                 Rule::in([
-                    AccountStatus::ACTIVE->value,
                     AccountStatus::SUSPENDED->value,
                     AccountStatus::LOCKED->value,
                     AccountStatus::ARCHIVED->value,
