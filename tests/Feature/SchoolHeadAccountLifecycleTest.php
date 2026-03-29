@@ -163,7 +163,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         ]);
     }
 
-    public function test_generic_status_update_cannot_set_account_to_active(): void
+    public function test_generic_status_update_cannot_activate_pending_verification_account(): void
     {
         $this->seed();
 
@@ -171,16 +171,28 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead->forceFill([
+            'account_status' => AccountStatus::PENDING_VERIFICATION->value,
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'email_verified_at' => now(),
+        ])->save();
 
+        // The controller blocks pending_verification → active via the generic route.
+        // Activation must go through /school-head-account/activate instead.
         $response = $this->actingAs($monitor, 'sanctum')->patchJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account/status',
             [
                 'accountStatus' => AccountStatus::ACTIVE->value,
-                'reason' => 'Trying to force active via generic route.',
+                'reason' => 'Trying to activate via generic route.',
             ],
         );
 
         $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
+        $response->assertJsonFragment(['message' => 'Use the Activate Account action after reviewing this setup.']);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::PENDING_VERIFICATION, $schoolHead->accountStatus());
     }
 }
