@@ -64,6 +64,7 @@ import { useMonitorReviewFlow } from "@/pages/monitor/useMonitorReviewFlow";
 import { useMonitorSchoolActionRouter } from "@/pages/monitor/useMonitorSchoolActionRouter";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
 import { useMonitorDashboardBindings } from "@/pages/monitor/useMonitorDashboardBindings";
+import { useMonitorDashboardCommands } from "@/pages/monitor/useMonitorDashboardCommands";
 import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
 import { useSchoolDrawer } from "@/pages/monitor/useSchoolDrawer";
 import {
@@ -627,62 +628,31 @@ export function MonitorDashboard() {
       setIsNavigatorVisible(false);
     }
   }, [focusAndScrollTo, isMobileViewport, setActiveTopNavigator, setIsNavigatorVisible, setShowNavigatorManual]);
-
-  const focusGlobalSearch = useCallback(() => {
-    const input = globalSearchInputRef.current;
-    if (!input) return;
-    input.focus();
-    input.select();
-  }, []);
-
-  const cycleSchoolFocus = useCallback(
-    (direction: 1 | -1) => {
-      if (compactSchoolRows.length === 0) {
-        pushToast("No school available in the current scope.", "warning");
-        return;
-      }
-
-      const activeSchoolKey =
-        schoolDrawerKey ?? (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
-      const activeIndex = activeSchoolKey
-        ? compactSchoolRows.findIndex((entry) => entry.summary.schoolKey === activeSchoolKey)
-        : -1;
-
-      let nextIndex = direction > 0 ? 0 : compactSchoolRows.length - 1;
-      if (activeIndex >= 0) {
-        nextIndex = activeIndex + direction;
-        if (nextIndex < 0) nextIndex = compactSchoolRows.length - 1;
-        if (nextIndex >= compactSchoolRows.length) nextIndex = 0;
-      }
-
-      const nextSummary = compactSchoolRows[nextIndex]?.summary;
-      if (!nextSummary) return;
-
-      setShowNavigatorManual(false);
-      setActiveTopNavigator("schools");
-      openSchoolDrawer(nextSummary.schoolKey);
-      window.setTimeout(() => {
-        focusAndScrollTo("monitor-school-records");
-      }, 60);
-    },
-    [compactSchoolRows, focusAndScrollTo, openSchoolDrawer, pushToast, schoolDrawerKey, selectedSchoolScopeKey],
-  );
-
-  const triggerKeyboardReview = useCallback(() => {
-    const activeSummary =
-      (schoolDrawerKey ? schoolRequirementByKey.get(schoolDrawerKey) ?? null : null) ??
-      laneFilteredQueueRows[0] ??
-      actionQueueRows[0] ??
-      compactSchoolRows[0]?.summary ??
-      null;
-
-    if (!activeSummary) {
-      pushToast("No school is ready for review right now.", "warning");
-      return;
-    }
-
-    handleReviewSchool(activeSummary);
-  }, [actionQueueRows, compactSchoolRows, handleReviewSchool, laneFilteredQueueRows, pushToast, schoolDrawerKey, schoolRequirementByKey]);
+  const {
+    activeScreenMeta,
+    isPrimaryActionDisabled,
+    focusGlobalSearch,
+    cycleSchoolFocus,
+    triggerKeyboardReview,
+    handlePrimaryAction,
+  } = useMonitorDashboardCommands({
+    activeTopNavigator,
+    filteredRequirementRows,
+    compactSchoolRows,
+    laneFilteredQueueRows,
+    actionQueueRows,
+    schoolRequirementByKey,
+    selectedSchoolScopeKey,
+    schoolDrawerKey,
+    globalSearchInputRef,
+    onToast: pushToast,
+    setShowNavigatorManual,
+    setActiveTopNavigator,
+    openSchoolDrawer,
+    onReviewSchool: handleReviewSchool,
+    onOpenSchool: handleOpenSchool,
+    focusAndScrollTo,
+  });
 
   useMonitorDashboardHotkeys({
     topNavigatorIds: MONITOR_TOP_NAVIGATOR_IDS,
@@ -695,103 +665,6 @@ export function MonitorDashboard() {
     onCycleSchoolFocus: cycleSchoolFocus,
     onTriggerKeyboardReview: triggerKeyboardReview,
   });
-
-  const activeScreenMeta = useMemo(() => {
-    switch (activeTopNavigator) {
-      case "overview":
-        return {
-          title: "Overview",
-          description: "Division-wide status and trend snapshot.",
-          primaryLabel: "Export",
-        };
-      case "schools":
-        return {
-          title: "Schools",
-          description: "Open school-level records and synchronized totals.",
-          primaryLabel: "Open School",
-        };
-      case "reviews":
-      default:
-        return {
-          title: "Reviews",
-          description: "Review pending submissions and complete monitor actions.",
-          primaryLabel: "Review",
-        };
-    }
-  }, [activeTopNavigator]);
-
-  const isPrimaryActionDisabled =
-    activeTopNavigator === "overview"
-      ? filteredRequirementRows.length === 0
-      : activeTopNavigator === "schools"
-        ? compactSchoolRows.length === 0
-        : laneFilteredQueueRows.length === 0 && actionQueueRows.length === 0;
-
-  const handlePrimaryAction = () => {
-    if (activeTopNavigator === "overview") {
-      if (filteredRequirementRows.length === 0) {
-        pushToast("No rows available to export with current filters.", "warning");
-        return;
-      }
-
-      const rows = filteredRequirementRows.map((row) => [
-        row.schoolCode,
-        row.schoolName,
-        row.region,
-        row.schoolStatus ?? "N/A",
-        workflowLabel(row.indicatorStatus),
-        row.missingCount,
-        row.awaitingReviewCount,
-        row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A",
-      ]);
-      const fileDate = new Date().toISOString().slice(0, 10);
-      downloadCsvFile(
-        `monitor-overview-${fileDate}.csv`,
-        [
-          "school_code",
-          "school_name",
-          "region",
-          "school_status",
-          "indicator_status",
-          "missing_count",
-          "for_review_count",
-          "last_activity",
-        ],
-        rows,
-      );
-      pushToast(`Exported ${rows.length} school rows.`, "success");
-      return;
-    }
-
-    if (activeTopNavigator === "schools") {
-      const preferredSchoolKey =
-        schoolDrawerKey ?? (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
-      if (preferredSchoolKey) {
-        const preferredSummary =
-          compactSchoolRows.find((entry) => entry.summary.schoolKey === preferredSchoolKey)?.summary ??
-          schoolRequirementByKey.get(preferredSchoolKey);
-        if (preferredSummary) {
-          handleOpenSchool(preferredSummary);
-          return;
-        }
-      }
-
-      if (compactSchoolRows.length > 0) {
-        handleOpenSchool(compactSchoolRows[0].summary);
-        return;
-      }
-
-      pushToast("No school available to open in the current scope.", "warning");
-      return;
-    }
-
-    const nextReview = laneFilteredQueueRows[0] ?? actionQueueRows[0] ?? null;
-    if (!nextReview) {
-      pushToast("No school is queued for review right now.", "warning");
-      return;
-    }
-    handleReviewSchool(nextReview);
-  };
 
   const {
     quickJumpBindings,
