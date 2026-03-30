@@ -95,6 +95,13 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // NeonDB / PgBouncer pooler compatibility: emulate prepared statements
+            // so Laravel does not use server-side prepared statements that PgBouncer
+            // in transaction mode cannot handle. Set DB_PGBOUNCER=true when connecting
+            // through NeonDB's pooled endpoint (port 6432).
+            'options' => env('DB_PGBOUNCER', false)
+                ? [PDO::ATTR_EMULATE_PREPARES => true]
+                : [],
         ],
 
         'sqlsrv' => [
