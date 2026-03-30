@@ -959,8 +959,8 @@ export function SchoolAdminDashboard() {
     }
 
     const payload: SchoolRecordPayload = {
-      studentCount: summaryStudentCount,
-      teacherCount: summaryTeacherCount,
+      studentCount: Number(form.studentCount || 0),
+      teacherCount: Number(form.teacherCount || 0),
       status: form.status,
     };
 
