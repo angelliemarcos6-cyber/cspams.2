@@ -1013,9 +1013,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     [token, syncStudents, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
-  useEffect(() => {
-    void syncStudents(false);
-  }, [syncStudents]);
+  // Do not eager-sync on provider mount.
+  // Student history is large and should load only when a records/history view requests it.
 
   useEffect(() => {
     const clearRealtimeSyncTimer = () => {

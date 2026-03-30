@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -2481,7 +2482,13 @@ class AuthController extends Controller
         $this->storeMonitorMfaChallenge($challengeId, $challenge);
 
         try {
-            $user->notify(new MonitorMfaCodeNotification($code, $expiresAt->toDateTimeString()));
+            $notification = new MonitorMfaCodeNotification($code, $expiresAt->toDateTimeString());
+
+            if (app()->environment(['local', 'testing'])) {
+                Notification::sendNow($user, $notification);
+            } else {
+                $user->notify($notification);
+            }
         } catch (\Throwable $exception) {
             Cache::forget($this->monitorMfaCacheKey($challengeId));
             throw $exception;

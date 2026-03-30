@@ -696,9 +696,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
-  useEffect(() => {
-    void syncTeachers(false);
-  }, [syncTeachers]);
+  // Do not eager-sync on provider mount.
+  // Teacher history is large and should load only when a records/history view requests it.
 
   useEffect(() => {
     if (!token) return;

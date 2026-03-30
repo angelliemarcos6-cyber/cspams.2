@@ -137,6 +137,10 @@ export function StudentRecordsPanel({
   const { academicYears } = useIndicatorData();
   const { listTeachers } = useTeacherData();
 
+  useEffect(() => {
+    void refreshStudents();
+  }, [refreshStudents]);
+
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [teacherSearch, setTeacherSearch] = useState("");

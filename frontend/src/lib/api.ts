@@ -25,6 +25,11 @@ function resolveApiBaseUrl(): string {
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
+
+if (import.meta.env.DEV) {
+  console.info("[CSPAMS] API base URL:", API_BASE_URL);
+}
+
 export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
