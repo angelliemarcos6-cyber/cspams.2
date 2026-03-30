@@ -137,10 +137,6 @@ export function StudentRecordsPanel({
   const { academicYears } = useIndicatorData();
   const { listTeachers } = useTeacherData();
 
-  useEffect(() => {
-    void refreshStudents();
-  }, [refreshStudents]);
-
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [teacherSearch, setTeacherSearch] = useState("");
@@ -164,7 +160,6 @@ export function StudentRecordsPanel({
   const [teacherResults, setTeacherResults] = useState<TeacherRecord[]>([]);
   const [isTeacherResultsLoading, setIsTeacherResultsLoading] = useState(false);
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
-  const studentDataVersionRef = useRef(0);
   const pageRequestIdRef = useRef(0);
   const historyRequestIdRef = useRef(0);
   const historyRefreshedVersionRef = useRef(0);
@@ -467,19 +462,6 @@ export function StudentRecordsPanel({
   useEffect(() => {
     void loadStudentsPage(page, false);
   }, [page, loadStudentsPage]);
-
-  useEffect(() => {
-    if (dataVersion <= 0) {
-      return;
-    }
-
-    if (studentDataVersionRef.current === dataVersion) {
-      return;
-    }
-
-    studentDataVersionRef.current = dataVersion;
-    void loadStudentsPage(page, true);
-  }, [dataVersion, loadStudentsPage, page]);
 
   useEffect(() => () => {
     pageAbortRef.current?.abort();

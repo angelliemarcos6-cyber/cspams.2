@@ -80,10 +80,6 @@ export function TeacherRecordsPanel({
     deleteTeacher,
   } = useTeacherData();
 
-  useEffect(() => {
-    void refreshTeachers();
-  }, [refreshTeachers]);
-
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [sexFilter, setSexFilter] = useState<"all" | "male" | "female">("all");

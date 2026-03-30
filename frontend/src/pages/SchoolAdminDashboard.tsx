@@ -928,12 +928,12 @@ export function SchoolAdminDashboard() {
   const validateForm = () => {
     const errors: Partial<Record<keyof FormState, string>> = {};
 
-    const students = summaryStudentCount;
+    const students = Number(form.studentCount || 0);
     if (!Number.isFinite(students) || students < 0 || !Number.isInteger(students)) {
       errors.studentCount = "Use a valid non-negative whole number.";
     }
 
-    const teachers = summaryTeacherCount;
+    const teachers = Number(form.teacherCount || 0);
     if (!Number.isFinite(teachers) || teachers < 0 || !Number.isInteger(teachers)) {
       errors.teacherCount = "Use a valid non-negative whole number.";
     }
