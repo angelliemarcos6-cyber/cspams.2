@@ -1160,9 +1160,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, syncRecords, handleApiError],
   );
 
-  useEffect(() => {
-    void syncRecords(false);
-  }, [syncRecords]);
+  // Eager startup sync removed — pages request data when they mount.
 
   useEffect(() => {
     if (!token) return;

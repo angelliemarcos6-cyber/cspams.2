@@ -52,7 +52,6 @@ class StudentRecordController extends Controller
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
-        $this->syncRollingAcademicYears();
         [$academicYearFilterMode, $academicYearFilterId] = $this->resolveAcademicYearFilter($request);
         $academicYearScope = $academicYearFilterMode === 'all'
             ? 'academic-year:all'
@@ -222,7 +221,6 @@ class StudentRecordController extends Controller
     {
         $user = $this->requireSchoolHead($request);
 
-        $this->syncRollingAcademicYears();
         $academicYearId = $this->resolveAcademicYearId();
         if (! $academicYearId) {
             return response()->json(

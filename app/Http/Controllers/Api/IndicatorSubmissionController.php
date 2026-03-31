@@ -37,7 +37,7 @@ class IndicatorSubmissionController extends Controller
     public function academicYears(Request $request): JsonResponse
     {
         $this->requireUser($request);
-        $this->syncRollingIndicatorYears();
+        // Rolling-year sync moved to deploy/scheduled task.
 
         $years = AcademicYear::query()
             ->orderByDesc('is_current')
@@ -56,7 +56,7 @@ class IndicatorSubmissionController extends Controller
     public function metrics(Request $request): JsonResponse
     {
         $this->requireUser($request);
-        $this->syncRollingIndicatorYears();
+        // Rolling-year sync moved to deploy/scheduled task.
         $autoMetricCodes = array_flip(app(TargetsMetAutoCalculator::class)->supportedCodes());
 
         $metrics = PerformanceMetric::query()
@@ -165,7 +165,7 @@ class IndicatorSubmissionController extends Controller
         $user = $this->requireUser($request);
         $this->assertSchoolHead($user);
         abort_if(! $user->school_id, Response::HTTP_FORBIDDEN, 'School Head account is missing school assignment.');
-        $this->syncRollingIndicatorYears();
+        // Rolling-year sync moved to deploy/scheduled task.
 
         $schoolId = (int) $user->school_id;
         $academicYearId = $request->integer('academic_year_id');
@@ -245,7 +245,7 @@ class IndicatorSubmissionController extends Controller
     {
         $user = $this->requireUser($request);
         $this->assertCanSubmit($user, $submission->school_id);
-        $this->syncRollingIndicatorYears();
+        // Rolling-year sync moved to deploy/scheduled task.
 
         $currentStatus = $this->statusValue($submission->status);
         if (! in_array($currentStatus, [

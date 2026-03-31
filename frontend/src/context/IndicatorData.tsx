@@ -98,7 +98,7 @@ export interface IndicatorDataContextType {
 }
 
 const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 15_000;
+const AUTO_SYNC_INTERVAL_MS = 60_000;
 const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
 const SUBMISSION_SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_LIST_PER_PAGE = 25;
@@ -562,7 +562,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           setLastSyncedAt(submissionsResponse.headers.get("X-Synced-At") || new Date().toISOString());
         }
         if (submissionsChanged) {
-          await syncAllSubmissionsIfNeeded();
+          allSubmissionsCacheRef.current = null;
+          setAllSubmissions([]);
         }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
@@ -749,9 +750,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
-  useEffect(() => {
-    void syncSubmissions(false);
-  }, [syncSubmissions]);
+  // Eager startup sync removed — pages request data when they mount.
 
   useEffect(() => {
     if (!token) return;

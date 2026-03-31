@@ -38,7 +38,7 @@ interface NotificationContextType {
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 20_000;
+const AUTO_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_PER_PAGE = 40;
 
 function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications: AppNotification[]): AppNotificationListMeta {
@@ -166,14 +166,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, [token, handleApiError]);
 
-  useEffect(() => {
-    void syncNotifications(false);
-  }, [syncNotifications]);
+  // Eager startup sync removed — pages request data when they mount.
 
   useEffect(() => {
     if (!token) return;
 
     const interval = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       void syncNotifications(true);
     }, AUTO_SYNC_INTERVAL_MS);
 

@@ -29,6 +29,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -994,24 +995,37 @@ class SchoolRecordController extends Controller
     {
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
-        $baseQuery = School::query();
 
-        if ($isSchoolHead) {
-            if ($user->school_id) {
-                $baseQuery->whereKey($user->school_id);
-            } else {
-                $baseQuery->whereRaw('1 = 0');
-            }
-        } elseif (! $isMonitor) {
+        if (! $isSchoolHead && ! $isMonitor) {
             abort(Response::HTTP_FORBIDDEN, 'Forbidden.');
         }
 
-        $targetsMet = $this->buildTargetsMetSummary($baseQuery);
+        $scopeKey = $isSchoolHead
+            ? 'school:' . ($user->school_id ?? 'unassigned')
+            : 'division:all';
 
-        return [
-            'targetsMet' => $targetsMet,
-            'alerts' => $this->buildSyncAlerts($targetsMet),
-        ];
+        return Cache::remember(
+            "cspams.dashboard.targets-met.{$scopeKey}",
+            now()->addSeconds(30),
+            function () use ($isSchoolHead, $user): array {
+                $baseQuery = School::query();
+
+                if ($isSchoolHead) {
+                    if ($user->school_id) {
+                        $baseQuery->whereKey($user->school_id);
+                    } else {
+                        $baseQuery->whereRaw('1 = 0');
+                    }
+                }
+
+                $targetsMet = $this->buildTargetsMetSummary($baseQuery);
+
+                return [
+                    'targetsMet' => $targetsMet,
+                    'alerts' => $this->buildSyncAlerts($targetsMet),
+                ];
+            }
+        );
     }
 
     /**
