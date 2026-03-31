@@ -160,7 +160,7 @@ export function StudentRecordsPanel({
   const [teacherResults, setTeacherResults] = useState<TeacherRecord[]>([]);
   const [isTeacherResultsLoading, setIsTeacherResultsLoading] = useState(false);
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
-  const studentDataVersionRef = useRef(0);
+
   const pageRequestIdRef = useRef(0);
   const historyRequestIdRef = useRef(0);
   const historyRefreshedVersionRef = useRef(0);
@@ -464,18 +464,8 @@ export function StudentRecordsPanel({
     void loadStudentsPage(page, false);
   }, [page, loadStudentsPage]);
 
-  useEffect(() => {
-    if (dataVersion <= 0) {
-      return;
-    }
-
-    if (studentDataVersionRef.current === dataVersion) {
-      return;
-    }
-
-    studentDataVersionRef.current = dataVersion;
-    void loadStudentsPage(page, true);
-  }, [dataVersion, loadStudentsPage, page]);
+  // Duplicate list reload via dataVersion removed — panel handlers
+  // already call loadStudentsPage after CRUD operations.
 
   useEffect(() => () => {
     pageAbortRef.current?.abort();

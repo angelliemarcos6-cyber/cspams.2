@@ -608,7 +608,6 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
           schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
         });
-        await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -616,7 +615,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
+    [token, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const updateTeacher = useCallback(
@@ -649,7 +648,6 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
           schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
         });
-        await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -657,7 +655,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
+    [token, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const deleteTeacher = useCallback(
@@ -685,7 +683,6 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           schoolId: response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
           schoolCode: response.data?.data?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
         });
-        await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -693,12 +690,11 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
+    [token, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
-  useEffect(() => {
-    void syncTeachers(false);
-  }, [syncTeachers]);
+  // Eager startup sync removed — TeacherRecordsPanel drives its own
+  // first fetch via loadTeachersPage when it mounts.
 
   useEffect(() => {
     if (!token) return;

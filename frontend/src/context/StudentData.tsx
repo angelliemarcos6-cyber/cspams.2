@@ -1013,9 +1013,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     [token, syncStudents, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
-  useEffect(() => {
-    void syncStudents(false);
-  }, [syncStudents]);
+  // Eager startup sync removed — StudentRecordsPanel drives its own
+  // first fetch via loadStudentsPage when it mounts.
 
   useEffect(() => {
     const clearRealtimeSyncTimer = () => {

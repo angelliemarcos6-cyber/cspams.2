@@ -377,8 +377,8 @@ export function SchoolAdminDashboard() {
     academicYears,
     refreshSubmissions,
   } = useIndicatorData();
-  const { queryStudents, totalCount: syncedStudentCount, refreshStudents } = useStudentData();
-  const { listTeachers, totalCount: syncedTeacherCount, refreshTeachers } = useTeacherData();
+  const { queryStudents, refreshStudents } = useStudentData();
+  const { listTeachers, refreshTeachers } = useTeacherData();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -411,6 +411,8 @@ export function SchoolAdminDashboard() {
   );
 
   const assignedRecord = records[0] ?? null;
+  const summaryStudentCount = assignedRecord?.studentCount ?? 0;
+  const summaryTeacherCount = assignedRecord?.teacherCount ?? 0;
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
@@ -732,8 +734,8 @@ export function SchoolAdminDashboard() {
   ]);
 
   useEffect(() => {
-    const nextStudentCount = syncedStudentCount.toString();
-    const nextTeacherCount = syncedTeacherCount.toString();
+    const nextStudentCount = summaryStudentCount.toString();
+    const nextTeacherCount = summaryTeacherCount.toString();
 
     setForm((current) => {
       if (current.studentCount === nextStudentCount && current.teacherCount === nextTeacherCount) {
@@ -758,7 +760,7 @@ export function SchoolAdminDashboard() {
         teacherCount: undefined,
       };
     });
-  }, [syncedStudentCount, syncedTeacherCount]);
+  }, [summaryStudentCount, summaryTeacherCount]);
 
   useEffect(() => {
     setSubmitError("");
@@ -926,12 +928,12 @@ export function SchoolAdminDashboard() {
   const validateForm = () => {
     const errors: Partial<Record<keyof FormState, string>> = {};
 
-    const students = syncedStudentCount;
+    const students = Number(form.studentCount);
     if (!Number.isFinite(students) || students < 0 || !Number.isInteger(students)) {
       errors.studentCount = "Use a valid non-negative whole number.";
     }
 
-    const teachers = syncedTeacherCount;
+    const teachers = Number(form.teacherCount);
     if (!Number.isFinite(teachers) || teachers < 0 || !Number.isInteger(teachers)) {
       errors.teacherCount = "Use a valid non-negative whole number.";
     }
@@ -957,8 +959,8 @@ export function SchoolAdminDashboard() {
     }
 
     const payload: SchoolRecordPayload = {
-      studentCount: syncedStudentCount,
-      teacherCount: syncedTeacherCount,
+      studentCount: Number(form.studentCount || 0),
+      teacherCount: Number(form.teacherCount || 0),
       status: form.status,
     };
 
@@ -998,16 +1000,27 @@ export function SchoolAdminDashboard() {
 
     setIsRefreshingAll(true);
     try {
-      await Promise.allSettled([
+      const tasks: Promise<unknown>[] = [
         refreshRecords(),
         refreshSubmissions(),
-        refreshStudents(),
-        refreshTeachers(),
-      ]);
+      ];
+
+      if (activeTopNavigator === "records") {
+        tasks.push(refreshStudents(), refreshTeachers());
+      }
+
+      await Promise.allSettled(tasks);
     } finally {
       setIsRefreshingAll(false);
     }
-  }, [isRefreshingAll, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
+  }, [
+    isRefreshingAll,
+    activeTopNavigator,
+    refreshRecords,
+    refreshSubmissions,
+    refreshStudents,
+    refreshTeachers,
+  ]);
 
   const clearTopContext = () => {
     setContextAcademicYearId("all");
@@ -1673,10 +1686,10 @@ export function SchoolAdminDashboard() {
                   </div>
                 )}
                 <span className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">
-                  Students: {Number(syncedStudentCount ?? 0).toLocaleString()}
+                  Students: {summaryStudentCount.toLocaleString()}
                 </span>
                 <span className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">
-                  Teachers: {Number(syncedTeacherCount ?? 0).toLocaleString()}
+                  Teachers: {summaryTeacherCount.toLocaleString()}
                 </span>
                 <div className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-1">
                   <span className="text-[11px] font-semibold text-slate-600">Progress</span>
