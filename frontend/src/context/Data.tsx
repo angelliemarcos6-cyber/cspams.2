@@ -1160,9 +1160,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, syncRecords, handleApiError],
   );
 
-  useEffect(() => {
-    void syncRecords(false);
-  }, [syncRecords]);
+  // Sync is triggered on-demand from dashboard views, not eagerly on mount.
 
   useEffect(() => {
     if (!token) return;

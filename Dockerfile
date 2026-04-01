@@ -1,22 +1,22 @@
-FROM php:8.4-cli
+FROM php:8.4-fpm-alpine
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
+    nginx \
+    supervisor \
+    curl \
     git \
     unzip \
-    curl \
-    libicu-dev \
-    libzip-dev \
-    libxml2-dev \
-    libonig-dev \
     libpng-dev \
-    libjpeg62-turbo-dev \
-    libfreetype6-dev \
-    libsqlite3-dev \
-    sqlite3 \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    libzip-dev \
+    icu-dev \
+    oniguruma-dev \
     libpq-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j1 intl zip mbstring gd pdo_sqlite pdo_pgsql \
-    && rm -rf /var/lib/apt/lists/*
+    gettext
+
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) intl zip mbstring gd pdo_pgsql
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
@@ -26,9 +26,13 @@ COPY . .
 
 RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-progress
 
-RUN chmod +x docker/render-start.sh
+RUN mkdir -p /run/nginx /var/lib/nginx/tmp /var/log/supervisor storage/logs bootstrap/cache \
+    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-RUN mkdir -p storage/logs bootstrap/cache \
-    && chown -R www-data:www-data storage bootstrap/cache
+COPY docker/nginx/default.conf.template /etc/nginx/http.d/default.conf.template
+COPY docker/supervisord.conf /etc/supervisord.conf
+COPY docker/render-start.sh /usr/local/bin/render-start.sh
 
-CMD ["./docker/render-start.sh"]
+RUN chmod +x /usr/local/bin/render-start.sh
+
+CMD ["/usr/local/bin/render-start.sh"]

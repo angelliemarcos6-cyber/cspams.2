@@ -239,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const payload = await apiRequest<MeResponse>("/api/auth/me", {
           token: COOKIE_SESSION_TOKEN,
           signal: controller.signal,
+          timeoutMs: 30_000,
         });
 
         if (!active) return;
@@ -292,6 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const payload = await apiRequest<LoginResponse>("/api/auth/login", {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
+        timeoutMs: 30_000,
         body: {
           role,
           login: loginValue,

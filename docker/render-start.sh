@@ -1,14 +1,13 @@
 #!/usr/bin/env sh
-set -e
+set -eu
+
+echo "CSPAMS web container starting..."
 
 trim() {
-  # trims leading/trailing whitespace
-  # shellcheck disable=SC2001
   printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 
 strip_wrapping_quotes() {
-  # removes one layer of wrapping single/double quotes (if present)
   value="$(trim "$1")"
 
   case "$value" in
@@ -20,7 +19,6 @@ strip_wrapping_quotes() {
 }
 
 sanitize_kv_value() {
-  # if value looks like "KEY=actual", strip "KEY="
   value="$(strip_wrapping_quotes "$1")"
   key="$2"
 
@@ -32,7 +30,6 @@ sanitize_kv_value() {
 }
 
 sanitize_url_value() {
-  # if value looks like "SOME_KEY=postgresql://...", strip everything up to first "="
   value="$(strip_wrapping_quotes "$1")"
 
   case "$value" in
@@ -41,8 +38,6 @@ sanitize_url_value() {
 
   printf '%s' "$value"
 }
-
-echo "CSPAMS backend starting..."
 
 # --- Environment sanitization (common mis-pastes in Render UI) ---
 # 1) Accept DATABASE_URL as an alias for DB_URL.
@@ -101,27 +96,23 @@ if [ -z "${DB_URL:-}" ] && [ -n "${DB_DATABASE:-}" ]; then
 fi
 
 # 4) APP_KEY must be persistent in production-like environments.
-if [ -z "${APP_KEY:-}" ] || [ "$(trim "$APP_KEY")" = "php artisan key:generate --show" ]; then
+if [ -z "${APP_KEY:-}" ] || [ "$(trim "${APP_KEY:-}")" = "php artisan key:generate --show" ]; then
   echo "APP_KEY is missing or invalid. Set a persistent APP_KEY in the environment."
   exit 1
 fi
 
-if [ "${CSPAMS_AUTO_MIGRATE:-true}" != "false" ]; then
-  echo "Running migrations..."
-  php artisan migrate --force
-fi
+# --- Prepare runtime directories ---
+mkdir -p /run/nginx /var/lib/nginx/tmp /var/log/supervisor
 
-echo "Starting HTTP server..."
-php artisan serve --host=0.0.0.0 --port="${PORT:-10000}" &
-server_pid=$!
+# --- Nginx: substitute $PORT into config ---
+envsubst '${PORT}' \
+  < /etc/nginx/http.d/default.conf.template \
+  > /etc/nginx/http.d/default.conf
 
-trap 'echo "Stopping HTTP server..."; kill -TERM "$server_pid" 2>/dev/null || true' INT TERM
+# --- Laravel optimization ---
+php artisan optimize:clear
+php artisan config:cache
+php artisan route:cache
 
-if [ "${CSPAMS_AUTO_SEED:-false}" = "true" ]; then
-  echo "Seeding database..."
-  if ! php artisan db:seed --force; then
-    echo "Seeding failed; server will continue running."
-  fi
-fi
-
-wait "$server_pid"
+echo "Starting PHP-FPM + Nginx via Supervisor..."
+exec /usr/bin/supervisord -c /etc/supervisord.conf

@@ -19,7 +19,6 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
-use App\Support\Indicators\RollingIndicatorYearWindow;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -37,7 +36,7 @@ class IndicatorSubmissionController extends Controller
     public function academicYears(Request $request): JsonResponse
     {
         $this->requireUser($request);
-        $this->syncRollingIndicatorYears();
+
 
         $years = AcademicYear::query()
             ->orderByDesc('is_current')
@@ -56,7 +55,7 @@ class IndicatorSubmissionController extends Controller
     public function metrics(Request $request): JsonResponse
     {
         $this->requireUser($request);
-        $this->syncRollingIndicatorYears();
+
         $autoMetricCodes = array_flip(app(TargetsMetAutoCalculator::class)->supportedCodes());
 
         $metrics = PerformanceMetric::query()
@@ -165,7 +164,7 @@ class IndicatorSubmissionController extends Controller
         $user = $this->requireUser($request);
         $this->assertSchoolHead($user);
         abort_if(! $user->school_id, Response::HTTP_FORBIDDEN, 'School Head account is missing school assignment.');
-        $this->syncRollingIndicatorYears();
+
 
         $schoolId = (int) $user->school_id;
         $academicYearId = $request->integer('academic_year_id');
@@ -245,7 +244,7 @@ class IndicatorSubmissionController extends Controller
     {
         $user = $this->requireUser($request);
         $this->assertCanSubmit($user, $submission->school_id);
-        $this->syncRollingIndicatorYears();
+
 
         $currentStatus = $this->statusValue($submission->status);
         if (! in_array($currentStatus, [
@@ -492,10 +491,6 @@ class IndicatorSubmissionController extends Controller
         return $user;
     }
 
-    private function syncRollingIndicatorYears(): void
-    {
-        app(RollingIndicatorYearWindow::class)->sync();
-    }
 
     private function applyVisibilityScope(Builder $query, User $user): void
     {
