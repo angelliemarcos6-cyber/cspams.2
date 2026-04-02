@@ -49,6 +49,10 @@ function numberFromEnv(value: string | undefined, fallback: number): number {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
 }
 
+function realtimeEnabled(): boolean {
+  return boolFromEnv(import.meta.env.VITE_REALTIME_ENABLED, false);
+}
+
 function dispatchRealtimePayload(payload: CspamsRealtimePayload) {
   window.dispatchEvent(new CustomEvent<CspamsRealtimePayload>("cspams:update", { detail: payload }));
 }
@@ -104,6 +108,10 @@ function resolveChannelName(scope: RealtimeBridgeScope): string | null {
 
 export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
   if (typeof window === "undefined") return;
+  if (!realtimeEnabled()) {
+    stopRealtimeBridge();
+    return;
+  }
 
   const normalizedToken = token.trim();
   if (!normalizedToken) {

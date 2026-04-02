@@ -26,10 +26,10 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         /** @var School $school */
-        $school = School::query()->where('school_code', '900002')->firstOrFail();
+        $school = School::query()->where('school_code', '103811')->firstOrFail();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
 
         $this->assertSame(AccountStatus::PENDING_SETUP, $schoolHead->accountStatus());
 
@@ -62,13 +62,19 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $this->seed();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
         $schoolHead->forceFill([
             'account_status' => AccountStatus::PENDING_VERIFICATION->value,
         ])->save();
         $schoolHead->loadMissing('school');
 
         $schoolCode = (string) $schoolHead->school?->school_code;
+        $schoolHead->forceFill([
+            'password' => Hash::make($this->demoPasswordForLogin('school_head', $schoolCode)),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'email_verified_at' => now(),
+        ])->save();
 
         $response = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -91,7 +97,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
         $schoolHead->forceFill([
             'account_status' => AccountStatus::PENDING_VERIFICATION->value,
             'must_reset_password' => false,
@@ -147,7 +153,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
         $schoolHead->forceFill([
             'account_status' => AccountStatus::PENDING_VERIFICATION->value,
         ])->save();
@@ -206,7 +212,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
         $schoolHead->forceFill([
             'account_status' => AccountStatus::PENDING_VERIFICATION->value,
             'must_reset_password' => false,
@@ -310,7 +316,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $this->seed();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
         $schoolHead->forceFill([
             'account_status' => AccountStatus::PENDING_VERIFICATION->value,
             'must_reset_password' => false,
@@ -341,7 +347,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         $this->seed();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
         // Ensure still at pending_setup (seeded state)
         $this->assertSame(AccountStatus::PENDING_SETUP, $schoolHead->accountStatus());
 

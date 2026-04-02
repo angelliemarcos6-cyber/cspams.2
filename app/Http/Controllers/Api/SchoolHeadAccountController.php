@@ -541,19 +541,23 @@ class SchoolHeadAccountController extends Controller
         // password change at next login" — not that the account lacks a password.
         // Allowing reactivation in that case is safe: canAuthenticate() returns true
         // for active accounts, and the forced reset is enforced at login.
-        if (
-            $nextStatus === AccountStatus::ACTIVE->value &&
-            $account->password_changed_at === null
-        ) {
+        if ($statusChanged && $previousStatus === AccountStatus::PENDING_VERIFICATION && $nextStatus === AccountStatus::ACTIVE->value) {
             return response()->json(
-                ['message' => 'This account has not completed setup yet. Reissue the setup link instead.'],
+                ['message' => 'Use the Activate Account action after reviewing this setup.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
 
-        if ($statusChanged && $previousStatus === AccountStatus::PENDING_VERIFICATION && $nextStatus === AccountStatus::ACTIVE->value) {
+        if (
+            $nextStatus === AccountStatus::ACTIVE->value &&
+            $account->password_changed_at === null
+        ) {
+            $message = $previousStatus === AccountStatus::PENDING_SETUP
+                ? 'This account has not completed setup yet. Reissue the setup link instead.'
+                : 'Password reset is required before activation. Issue a password reset link first.';
+
             return response()->json(
-                ['message' => 'Use the Activate Account action after reviewing this setup.'],
+                ['message' => $message],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -962,7 +966,7 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
-        if ($status !== AccountStatus::ACTIVE) {
+        if (! in_array($status, [AccountStatus::ACTIVE, AccountStatus::LOCKED], true)) {
             return response()->json(
                 ['message' => 'Password reset links can only be issued for active School Head accounts.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,

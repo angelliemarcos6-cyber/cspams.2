@@ -1,4 +1,5 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 
 type DashboardToastTone = "success" | "info" | "warning";
@@ -40,11 +41,10 @@ export function useMonitorDashboardGlobalCommands({
   setIsNavigatorVisible,
 }: UseMonitorDashboardGlobalCommandsArgs): UseMonitorDashboardGlobalCommandsResult {
   const handleRefreshDashboard = useCallback(async () => {
-    const results = await Promise.allSettled([
-      refreshRecords(),
-      refreshSubmissions(),
-      refreshStudents(),
-      refreshTeachers(),
+    const results = await runRefreshBatches([
+      [refreshRecords],
+      [refreshSubmissions],
+      [refreshStudents, refreshTeachers],
     ]);
 
     if (results.some((result) => result.status === "rejected")) {

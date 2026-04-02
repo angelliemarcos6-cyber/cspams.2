@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -32,6 +32,7 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
+import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import type { IndicatorSubmission, SchoolRecord, SchoolRecordPayload, SchoolStatus, StudentRecord, TeacherRecord } from "@/types";
 import {
   formatDateTime,
@@ -404,6 +405,7 @@ export function SchoolAdminDashboard() {
   const [recordsExportError, setRecordsExportError] = useState("");
   const [isExportingRecords, setIsExportingRecords] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
+  const initialLoadStartedRef = useRef(false);
 
   const indicatorSubmissions = useMemo(
     () => (allSubmissions.length > 0 || indicatorSubmissionSnapshot.length === 0 ? allSubmissions : indicatorSubmissionSnapshot),
@@ -419,6 +421,15 @@ export function SchoolAdminDashboard() {
     [schoolCode, schoolName],
   );
   const latestIndicators = useMemo(() => latestSubmission(indicatorSubmissions), [indicatorSubmissions]);
+  const runDashboardRefresh = useCallback(
+    async () =>
+      runRefreshBatches([
+        [refreshRecords],
+        [refreshSubmissions],
+        [refreshStudents, refreshTeachers],
+      ]),
+    [refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers],
+  );
 
   const requirements = useMemo<RequirementItem[]>(
     () => [
@@ -998,16 +1009,31 @@ export function SchoolAdminDashboard() {
 
     setIsRefreshingAll(true);
     try {
-      await Promise.allSettled([
-        refreshRecords(),
-        refreshSubmissions(),
-        refreshStudents(),
-        refreshTeachers(),
-      ]);
+      await runDashboardRefresh();
     } finally {
       setIsRefreshingAll(false);
     }
-  }, [isRefreshingAll, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
+  }, [isRefreshingAll, runDashboardRefresh]);
+
+  useEffect(() => {
+    if (initialLoadStartedRef.current) {
+      return;
+    }
+
+    initialLoadStartedRef.current = true;
+    let active = true;
+    setIsRefreshingAll(true);
+
+    void runDashboardRefresh().finally(() => {
+      if (active) {
+        setIsRefreshingAll(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [runDashboardRefresh]);
 
   const clearTopContext = () => {
     setContextAcademicYearId("all");

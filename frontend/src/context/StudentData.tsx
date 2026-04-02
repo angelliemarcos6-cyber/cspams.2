@@ -1014,10 +1014,6 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    void syncStudents(false);
-  }, [syncStudents]);
-
-  useEffect(() => {
     const clearRealtimeSyncTimer = () => {
       if (realtimeSyncTimerRef.current !== null) {
         window.clearTimeout(realtimeSyncTimerRef.current);

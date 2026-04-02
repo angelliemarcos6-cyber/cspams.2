@@ -81,7 +81,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRole="school_head">
             <AuthenticatedAppProviders>
-              <SchoolAdminDashboard />
+              <DashboardDataProviders>
+                <SchoolAdminDashboard />
+              </DashboardDataProviders>
             </AuthenticatedAppProviders>
           </ProtectedRoute>
         }
@@ -92,7 +94,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRole="monitor">
             <AuthenticatedAppProviders>
-              <MonitorDashboard />
+              <DashboardDataProviders>
+                <MonitorDashboard />
+              </DashboardDataProviders>
             </AuthenticatedAppProviders>
           </ProtectedRoute>
         }
@@ -130,18 +134,20 @@ function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
   return (
     <>
       <RealtimeBridge />
-      <NotificationProvider>
-        <DataProvider>
-          <IndicatorDataProvider>
-            <TeacherDataProvider>
-              <StudentDataProvider>
-                {children}
-              </StudentDataProvider>
-            </TeacherDataProvider>
-          </IndicatorDataProvider>
-        </DataProvider>
-      </NotificationProvider>
+      <NotificationProvider>{children}</NotificationProvider>
     </>
+  );
+}
+
+function DashboardDataProviders({ children }: { children: ReactNode }) {
+  return (
+    <DataProvider>
+      <IndicatorDataProvider>
+        <TeacherDataProvider>
+          <StudentDataProvider>{children}</StudentDataProvider>
+        </TeacherDataProvider>
+      </IndicatorDataProvider>
+    </DataProvider>
   );
 }
 

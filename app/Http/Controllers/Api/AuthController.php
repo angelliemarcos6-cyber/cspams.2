@@ -481,8 +481,19 @@ class AuthController extends Controller
             );
         }
 
+        $status = null;
+
         if (! $user->canAuthenticate()) {
             $status = $user->accountStatus();
+            $canCompleteForcedResetWhileInactive = $user->must_reset_password
+                && in_array($status, [AccountStatus::SUSPENDED, AccountStatus::LOCKED], true);
+
+            if ($canCompleteForcedResetWhileInactive) {
+                $status = null;
+            }
+        }
+
+        if ($status instanceof AccountStatus) {
 
             $resetMessage = match ($status) {
                 AccountStatus::PENDING_SETUP => 'This account has not completed setup yet. Use the setup link sent by your Division Monitor.',

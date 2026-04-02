@@ -697,10 +697,6 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    void syncTeachers(false);
-  }, [syncTeachers]);
-
-  useEffect(() => {
     if (!token) return;
 
     const scheduleSync = (delayMs: number) => {

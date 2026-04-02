@@ -1161,10 +1161,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    void syncRecords(false);
-  }, [syncRecords]);
-
-  useEffect(() => {
     if (!token) return;
 
     const scheduleSync = (delayMs: number) => {

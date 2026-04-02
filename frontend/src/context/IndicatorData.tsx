@@ -98,7 +98,7 @@ export interface IndicatorDataContextType {
 }
 
 const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 15_000;
+const AUTO_SYNC_INTERVAL_MS = 60_000;
 const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
 const SUBMISSION_SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_LIST_PER_PAGE = 25;
@@ -470,18 +470,6 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [buildAllSubmissionsVersionKey, loadAllSubmissions],
   );
 
-  const syncAllSubmissionsIfNeeded = useCallback(async () => {
-    const versionKey = buildAllSubmissionsVersionKey();
-    const cached = allSubmissionsCacheRef.current;
-
-    if (cached && cached.versionKey === versionKey) {
-      setAllSubmissions(cached.rows);
-      return;
-    }
-
-    await refreshAllSubmissions();
-  }, [buildAllSubmissionsVersionKey, refreshAllSubmissions]);
-
   const syncSubmissions = useCallback(
     async (silent = false) => {
       if (syncInFlightRef.current) {
@@ -551,6 +539,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         if (submissionsChanged) {
           schoolSubmissionsCacheRef.current.clear();
           allSubmissionsCacheRef.current = null;
+          allSubmissionsInFlightRef.current = null;
+          setAllSubmissions([]);
           setSubmissions(readSubmissionRows(submissionsResponse.data));
         }
         if (shouldRefreshReferenceData) {
@@ -560,9 +550,6 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
         if (!silent || submissionsChanged || shouldRefreshReferenceData) {
           setLastSyncedAt(submissionsResponse.headers.get("X-Synced-At") || new Date().toISOString());
-        }
-        if (submissionsChanged) {
-          await syncAllSubmissionsIfNeeded();
         }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
@@ -583,7 +570,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [academicYears.length, handleApiError, metrics.length, syncAllSubmissionsIfNeeded, token],
+    [academicYears.length, handleApiError, metrics.length, token],
   );
 
   const refreshSubmissions = useCallback(async () => {
@@ -748,10 +735,6 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     },
     [token, handleApiError],
   );
-
-  useEffect(() => {
-    void syncSubmissions(false);
-  }, [syncSubmissions]);
 
   useEffect(() => {
     if (!token) return;

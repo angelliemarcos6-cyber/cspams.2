@@ -118,29 +118,17 @@ class DemoDataSeeder extends Seeder
             // School 900001 is kept active as a quick demo shortcut.
             // All other School Head accounts start at pending_setup and must complete
             // the full lifecycle: pending_setup → pending_verification → active.
-            $isQuickDemoHead = (string) $school->school_code === '900001';
-            $head->account_status = $isQuickDemoHead
-                ? AccountStatus::ACTIVE->value
-                : AccountStatus::PENDING_SETUP->value;
+            $head->account_status = AccountStatus::ACTIVE->value;
 
             if ($headWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
                 $head->password = Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code)));
 
-                if ($isQuickDemoHead) {
-                    $head->must_reset_password = false;
-                    $head->password_changed_at = now();
-                    $head->email_verified_at = now();
-                    $head->verified_by_user_id = $monitor->id;
-                    $head->verified_at = now();
-                    $head->verification_notes = 'Seeded quick demo account approved by Division Monitor.';
-                } else {
-                    $head->must_reset_password = true;
-                    $head->password_changed_at = null;
-                    $head->email_verified_at = null;
-                    $head->verified_by_user_id = null;
-                    $head->verified_at = null;
-                    $head->verification_notes = null;
-                }
+                $head->must_reset_password = false;
+                $head->password_changed_at = now();
+                $head->email_verified_at = now();
+                $head->verified_by_user_id = $monitor->id;
+                $head->verified_at = now();
+                $head->verification_notes = 'Seeded demo account approved by Division Monitor.';
             }
 
             $head->save();

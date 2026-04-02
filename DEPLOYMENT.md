@@ -67,10 +67,22 @@ php artisan queue:work
 **Production (long-lived process):**
 
 ```bash
-php artisan queue:work --verbose --tries=3 --timeout=90
+php artisan queue:work --verbose --queue=mail,default --tries=3 --timeout=90
 ```
 
-On Render, Railway, Fly.io, or similar PaaS platforms, run this as a separate worker service so it restarts automatically on failure. Make sure the worker's environment variables match the API server's (same `APP_KEY`, same `QUEUE_CONNECTION`, same DB connection).
+On Render, Railway, Fly.io, or similar PaaS platforms, run this as a separate worker service so it restarts automatically on failure. This repo now includes `docker/worker-start.sh` for that purpose. Make sure the worker's environment variables match the API server's (same `APP_KEY`, same `QUEUE_CONNECTION`, same DB connection).
+
+### 8) Only enable realtime when Reverb is actually deployed
+
+The frontend now treats realtime as opt-in. Leave `VITE_REALTIME_ENABLED=false` unless you have a separate Reverb service running.
+
+**Dedicated Reverb process:**
+
+```bash
+php artisan reverb:start --host=0.0.0.0 --port=8080
+```
+
+This repo includes `docker/reverb-start.sh` so the websocket service can be deployed separately from the web service.
 
 ## Deploy sequence
 
@@ -78,11 +90,25 @@ Run these in order on every deploy:
 
 ```bash
 php artisan migrate --force
+php artisan cspams:sync-rolling-years
 php artisan app:check-production-config   # exits non-zero if config is unsafe
 php artisan optimize
 ```
 
 The config-check command exits with a non-zero code and prints the list of failing checks if the environment is misconfigured, making it safe to gate deploys on it.
+
+## Runtime layout
+
+The production web container should only boot the HTTP stack. It must not run migrations or seeds as part of startup.
+
+- Web service: root `Dockerfile` default command, which runs `docker/render-start.sh` and starts `php-fpm` + `nginx`
+- Worker service: `docker/worker-start.sh`
+- Reverb service: `docker/reverb-start.sh` when realtime is enabled
+
+Use your platform's pre-deploy or release phase for:
+
+- `php artisan migrate --force`
+- `php artisan cspams:sync-rolling-years`
 
 ## Production/Staging boot guard
 

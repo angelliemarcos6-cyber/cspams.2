@@ -281,10 +281,12 @@ class ApiSyncTest extends TestCase
             ->where('status', '!=', StudentStatus::DROPPED_OUT->value)
             ->firstOrFail();
 
+        $this->travel(2)->seconds();
         $student->forceFill([
             'status' => StudentStatus::DROPPED_OUT->value,
             'last_status_at' => now(),
         ])->save();
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $initialEtag])
@@ -391,10 +393,15 @@ class ApiSyncTest extends TestCase
 
         /** @var Student $student */
         $student = Student::query()->firstOrFail();
+        $nextStatus = $student->status === StudentStatus::AT_RISK->value
+            ? StudentStatus::ENROLLED->value
+            : StudentStatus::AT_RISK->value;
+        $this->travel(2)->seconds();
         $student->forceFill([
-            'status' => StudentStatus::AT_RISK->value,
+            'status' => $nextStatus,
             'last_status_at' => now(),
         ])->save();
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $etag])
@@ -479,6 +486,7 @@ class ApiSyncTest extends TestCase
             ? StudentStatus::ENROLLED->value
             : StudentStatus::AT_RISK->value;
 
+        $this->travel(2)->seconds();
         StudentStatusLog::query()->create([
             'student_id' => $student->id,
             'from_status' => $fromStatus,
@@ -487,6 +495,7 @@ class ApiSyncTest extends TestCase
             'notes' => 'ETag sync probe history entry.',
             'changed_at' => now(),
         ]);
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $etag])
@@ -589,7 +598,9 @@ class ApiSyncTest extends TestCase
             ]);
         }
 
+        $this->travel(2)->seconds();
         $teacher->forceFill(['name' => $teacher->name . ' Updated'])->save();
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $etag])

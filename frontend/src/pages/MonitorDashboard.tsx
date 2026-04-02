@@ -1,5 +1,6 @@
 ﻿import { useCallback, useMemo, useRef, useState } from "react";
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
+import { useEffect } from "react";
 import { MonitorMfaResetApprovalsDialog } from "@/components/MonitorMfaResetApprovalsDialog";
 import { Shell } from "@/components/Shell";
 import { useAuth } from "@/context/Auth";
@@ -7,6 +8,7 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
+import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 import { MonitorDashboardToolbar } from "@/pages/monitor/MonitorDashboardToolbar";
 import { MonitorFiltersPanel } from "@/pages/monitor/MonitorFiltersPanel";
@@ -185,6 +187,7 @@ export function MonitorDashboard() {
   const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
+  const initialLoadStartedRef = useRef(false);
   const openStudentRecordsFromCard = () => {
     setShowSchoolLearnerRecords(true);
     setShowNavigatorManual(false);
@@ -281,6 +284,19 @@ export function MonitorDashboard() {
     isMobileViewport,
     setIsNavigatorVisible,
   });
+
+  useEffect(() => {
+    if (initialLoadStartedRef.current) {
+      return;
+    }
+
+    initialLoadStartedRef.current = true;
+    void runRefreshBatches([
+      [refreshRecords],
+      [refreshSubmissions],
+      [refreshStudents, refreshTeachers],
+    ]);
+  }, [refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
 
   const scopedRecords = useMemo(() => {
     if (!scopedSchoolKeys) {
