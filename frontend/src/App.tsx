@@ -1,6 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import { useEffect, type ReactNode } from "react";
-import { LoaderCircle } from "lucide-react";
+import { Component, memo, useEffect, type ReactNode } from "react";
+import { LoaderCircle, AlertTriangle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
 import { IndicatorDataProvider } from "@/context/IndicatorData";
@@ -18,6 +18,47 @@ import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 import { SetupAccount } from "@/pages/SetupAccount";
 import { COOKIE_SESSION_TOKEN } from "@/lib/api";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-page-bg px-4">
+          <div className="surface-panel flex w-full max-w-md flex-col items-center gap-4 border p-6 text-center">
+            <AlertTriangle className="h-10 w-10 text-amber-500" />
+            <h1 className="text-lg font-bold text-slate-800">Something went wrong</h1>
+            <p className="text-sm text-slate-600">
+              An unexpected error occurred. Please refresh the page to try again.
+            </p>
+            <button
+              type="button"
+              className="rounded bg-primary-700 px-4 py-2 text-sm font-medium text-white hover:bg-primary-800"
+              onClick={() => window.location.reload()}
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function FullscreenLoader() {
   return (
@@ -126,7 +167,7 @@ function RealtimeBridge() {
   return null;
 }
 
-function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
+const AuthenticatedAppProviders = memo(function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
   return (
     <>
       <RealtimeBridge />
@@ -143,14 +184,16 @@ function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
       </NotificationProvider>
     </>
   );
-}
+});
 
 export function App() {
   return (
-    <AuthProvider>
-      <HashRouter>
-        <AppRoutes />
-      </HashRouter>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <HashRouter>
+          <AppRoutes />
+        </HashRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

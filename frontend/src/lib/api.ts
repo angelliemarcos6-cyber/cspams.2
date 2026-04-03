@@ -21,14 +21,19 @@ function resolveApiBaseUrl(): string {
     throw new Error("Missing VITE_API_BASE_URL. Set it in your deployed frontend environment.");
   }
 
-  return sanitizeBaseUrl(defaultApiBaseUrl());
+  const fallback = sanitizeBaseUrl(defaultApiBaseUrl());
+  console.warn(
+    `[CSPAMS] VITE_API_BASE_URL not set — falling back to ${fallback}. ` +
+    "Set VITE_API_BASE_URL in your .env.local if the backend runs on a different port.",
+  );
+  return fallback;
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
 export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
-const CSRF_BOOTSTRAP_TIMEOUT_MS = 10_000;
+const CSRF_BOOTSTRAP_TIMEOUT_MS = 20_000;
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;

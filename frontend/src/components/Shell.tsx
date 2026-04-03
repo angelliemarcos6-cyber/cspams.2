@@ -67,8 +67,8 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
 
   const shellStyle: CSSProperties | undefined = shellCssVars
     ? ({
-        ["--shell-header-height" as any]: `${shellCssVars.headerHeight}px`,
-        ["--shell-sticky-top" as any]: `${shellCssVars.stickyTop}px`,
+        "--shell-header-height": `${shellCssVars.headerHeight}px`,
+        "--shell-sticky-top": `${shellCssVars.stickyTop}px`,
       } as CSSProperties)
     : undefined;
 

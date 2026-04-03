@@ -217,6 +217,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
+  const syncAbortControllerRef = useRef<AbortController | null>(null);
 
   const clearRealtimeSyncTimer = () => {
     if (typeof window === "undefined") {
@@ -237,6 +238,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     previousSessionKeyRef.current = sessionKey;
     syncGenerationRef.current += 1;
+    if (syncAbortControllerRef.current) {
+      syncAbortControllerRef.current.abort();
+      syncAbortControllerRef.current = null;
+    }
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
     etagRef.current = "";
@@ -303,6 +308,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       syncQueuedRef.current = false;
       const requestGeneration = syncGenerationRef.current;
 
+      if (syncAbortControllerRef.current) {
+        syncAbortControllerRef.current.abort();
+      }
+      const abortController = new AbortController();
+      syncAbortControllerRef.current = abortController;
+
       if (!silent) {
         setIsLoading(true);
       }
@@ -311,6 +322,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         const response = await apiRequestRaw<SchoolRecordsResponse>("/api/dashboard/records", {
           token,
+          signal: abortController.signal,
           extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         });
 
@@ -368,6 +380,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncStatus("updated");
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
+          return;
+        }
+        if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
         await handleApiError(err);
@@ -732,7 +747,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
-        await syncRecords(true);
+        void syncRecords(true).catch(() => {});
 
         return result;
       } catch (err) {
@@ -822,7 +837,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
-        await syncRecords(true);
+        void syncRecords(true).catch(() => {});
 
         return result;
       } catch (err) {
@@ -874,7 +889,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
-        await syncRecords(true);
+        void syncRecords(true).catch(() => {});
 
         return result;
       } catch (err) {
@@ -947,7 +962,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
-        await syncRecords(true);
+        void syncRecords(true).catch(() => {});
 
         return result;
       } catch (err) {
@@ -1012,7 +1027,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
-        await syncRecords(true);
+        void syncRecords(true).catch(() => {});
 
         return result;
       } catch (err) {
@@ -1081,7 +1096,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
-        await syncRecords(true);
+        void syncRecords(true).catch(() => {});
 
         return result;
       } catch (err) {
@@ -1143,7 +1158,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncStatus("updated");
 
         etagRef.current = "";
-        await syncRecords(true);
+        void syncRecords(true).catch(() => {});
 
         if (!response.data?.data) {
           throw new Error("Bulk import response is empty.");

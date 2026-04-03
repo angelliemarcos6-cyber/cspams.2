@@ -110,6 +110,7 @@ export function Login() {
 
   useEffect(() => {
     if (!authError) {
+      setError("");
       return;
     }
 

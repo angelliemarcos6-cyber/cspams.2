@@ -401,7 +401,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, [clearAuthError]);
+  }, []);
 
   const resetMonitorPassword = useCallback(
     async ({ role, email, token, password, confirmPassword }: ResetMonitorPasswordInput) => {

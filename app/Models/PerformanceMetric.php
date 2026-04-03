@@ -51,6 +51,6 @@ class PerformanceMetric extends Model
 
     public function indicatorSubmissionItems(): HasMany
     {
-        return $this->hasMany(IndicatorSubmissionItem::class);
+        return $this->hasMany(IndicatorSubmissionItem::class, 'performance_metric_id');
     }
 }

@@ -1,6 +1,9 @@
 export const CLIENT_SESSION_STORAGE_KEYS = [
   "cspams.monitor.filters.v1",
   "cspams.monitor.nav.v1",
+  "cspams.monitor.review.assignments.v1",
+  "cspams.schoolhead.nav.v1",
+  "cspams.schoolhead.indicator.autosave.v1",
 ] as const;
 
 export function clearClientSessionArtifacts(): void {

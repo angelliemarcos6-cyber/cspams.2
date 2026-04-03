@@ -738,14 +738,26 @@ class SchoolHeadAccountController extends Controller
         $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
         $revocationSummaries = [];
 
-        DB::transaction(function () use ($accounts, $setupTokenStorageAvailable, &$removedCount, &$revocationSummaries): void {
+        DB::transaction(function () use ($accounts, $accountIds, $setupTokenStorageAvailable, &$removedCount, &$revocationSummaries): void {
+            $revokedTokens = DB::table('personal_access_tokens')
+                ->where('tokenable_type', (new User())->getMorphClass())
+                ->whereIn('tokenable_id', $accountIds)
+                ->delete();
+
+            $revokedWebSessions = 0;
+            if (Schema::hasTable('sessions')) {
+                $revokedWebSessions = DB::table('sessions')
+                    ->whereIn('user_id', $accountIds)
+                    ->delete();
+            }
+
+            if ($setupTokenStorageAvailable) {
+                DB::table('account_setup_tokens')
+                    ->whereIn('user_id', $accountIds)
+                    ->delete();
+            }
+
             foreach ($accounts as $account) {
-                $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
-
-                if ($setupTokenStorageAvailable) {
-                    $account->accountSetupTokens()->delete();
-                }
-
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
 
@@ -763,8 +775,8 @@ class SchoolHeadAccountController extends Controller
 
                 $revocationSummaries[] = [
                     'user_id' => (int) $account->id,
-                    'revoked_tokens' => $revocationSummary['revokedTokens'],
-                    'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+                    'revoked_tokens' => $revokedTokens,
+                    'revoked_web_sessions' => $revokedWebSessions,
                 ];
 
                 $removedCount += 1;
