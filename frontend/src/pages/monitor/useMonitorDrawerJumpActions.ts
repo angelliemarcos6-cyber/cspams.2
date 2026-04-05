@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { SchoolIndicatorMatrix } from "@/pages/monitor/monitorDrawerTypes";
 import { sanitizeAnchorToken } from "@/pages/monitor/monitorDashboardUiUtils";
 import type { SchoolDrawerTab } from "@/pages/monitor/useSchoolDrawer";
@@ -27,6 +27,15 @@ export function useMonitorDrawerJumpActions({
   setHighlightedDrawerIndicatorKey,
   pushToast,
 }: UseMonitorDrawerJumpActionsArgs): UseMonitorDrawerJumpActionsResult {
+  const timerIdsRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      timerIdsRef.current.forEach((id) => window.clearTimeout(id));
+      timerIdsRef.current.clear();
+    };
+  }, []);
+
   const jumpToDrawerIndicator = useCallback(
     (targetKey: string, emptyMessage: string) => {
       if (!targetKey) {
@@ -41,7 +50,8 @@ export function useMonitorDrawerJumpActions({
         return;
       }
 
-      window.setTimeout(() => {
+      const outerId = window.setTimeout(() => {
+        timerIdsRef.current.delete(outerId);
         const row = document.getElementById(targetId);
         if (!row) {
           pushToast("Indicator row was not found in this package.", "warning");
@@ -50,10 +60,13 @@ export function useMonitorDrawerJumpActions({
 
         row.scrollIntoView({ behavior: "smooth", block: "center" });
         setHighlightedDrawerIndicatorKey(targetKey);
-        window.setTimeout(() => {
+        const innerId = window.setTimeout(() => {
+          timerIdsRef.current.delete(innerId);
           setHighlightedDrawerIndicatorKey((current) => (current === targetKey ? null : current));
         }, 2200);
+        timerIdsRef.current.add(innerId);
       }, 120);
+      timerIdsRef.current.add(outerId);
     },
     [pushToast, setActiveSchoolDrawerTab, setHighlightedDrawerIndicatorKey],
   );

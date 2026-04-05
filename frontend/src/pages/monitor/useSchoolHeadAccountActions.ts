@@ -261,6 +261,7 @@ export function useSchoolHeadAccountActions({
   const accountRowMenuRef = useRef<HTMLDivElement | null>(null);
   const pendingAccountReasonRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingAccountVerificationCodeRef = useRef<HTMLInputElement | null>(null);
+  const verificationFocusTimerRef = useRef<number | null>(null);
 
   const closePendingAccountAction = useCallback(() => {
     setPendingAccountAction(null);
@@ -278,6 +279,12 @@ export function useSchoolHeadAccountActions({
     setOpenAccountRowMenuSchoolId(null);
     closePendingAccountAction();
   }, [closePendingAccountAction]);
+
+  useEffect(() => {
+    return () => {
+      if (verificationFocusTimerRef.current !== null) window.clearTimeout(verificationFocusTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (isPanelOpen) {
@@ -324,7 +331,7 @@ export function useSchoolHeadAccountActions({
       return;
     }
 
-    window.setTimeout(() => {
+    const focusTimerId = window.setTimeout(() => {
       pendingAccountReasonRef.current?.focus();
     }, 0);
 
@@ -336,6 +343,7 @@ export function useSchoolHeadAccountActions({
 
     window.addEventListener("keydown", onKeyDown);
     return () => {
+      window.clearTimeout(focusTimerId);
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [closePendingAccountAction, pendingAccountAction]);
@@ -406,7 +414,9 @@ export function useSchoolHeadAccountActions({
       pushToast(result.deliveryMessage || "Confirmation code sent.", "info");
 
       if (typeof window !== "undefined") {
-        window.setTimeout(() => {
+        if (verificationFocusTimerRef.current !== null) window.clearTimeout(verificationFocusTimerRef.current);
+        verificationFocusTimerRef.current = window.setTimeout(() => {
+          verificationFocusTimerRef.current = null;
           pendingAccountVerificationCodeRef.current?.focus();
         }, 0);
       }

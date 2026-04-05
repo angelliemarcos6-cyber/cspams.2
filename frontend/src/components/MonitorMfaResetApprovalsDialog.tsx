@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClipboardList, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 
@@ -58,6 +58,13 @@ export function MonitorMfaResetApprovalsDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   const canCallApi = isAuthenticated;
 
@@ -143,7 +150,11 @@ export function MonitorMfaResetApprovalsDialog({
     try {
       await navigator.clipboard.writeText(approvalToken);
       setCopiedToken(approvalToken);
-      window.setTimeout(() => setCopiedToken(null), 1500);
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null;
+        setCopiedToken(null);
+      }, 1500);
     } catch {
       setCopiedToken(null);
     }

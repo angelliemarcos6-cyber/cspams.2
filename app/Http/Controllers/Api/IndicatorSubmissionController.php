@@ -853,7 +853,12 @@ class IndicatorSubmissionController extends Controller
                 ->map(static fn (mixed $year): string => trim((string) $year))
                 ->filter(static fn (string $year): bool => $year !== '')
                 ->values();
-            $defaultYear = $seedYears->first() ?? 'value';
+            $defaultYear = $seedYears->first();
+            if ($defaultYear === null) {
+                throw ValidationException::withMessages([
+                    $errorPath => 'Cannot submit a yearly matrix value because no target years are configured for this indicator.',
+                ]);
+            }
             $values = [$defaultYear => $raw];
         }
 

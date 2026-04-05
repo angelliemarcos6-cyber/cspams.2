@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 const MONITOR_NAV_STORAGE_KEY = "cspams.monitor.nav.v1";
 const ADVANCED_ANALYTICS_HIDE_MS = 240;
@@ -59,6 +59,14 @@ export function useMonitorDashboardShell(): UseMonitorDashboardShellResult {
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [toasts, setToasts] = useState<DashboardToast[]>([]);
+  const timerIdsRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      timerIdsRef.current.forEach((id) => window.clearTimeout(id));
+      timerIdsRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -132,9 +140,11 @@ export function useMonitorDashboardShell(): UseMonitorDashboardShellResult {
 
   const clearFocusAfterDelay = (targetId: string) => {
     if (typeof window === "undefined") return;
-    window.setTimeout(() => {
+    const id = window.setTimeout(() => {
+      timerIdsRef.current.delete(id);
       setFocusedSectionId((current) => (current === targetId ? null : current));
     }, 3000);
+    timerIdsRef.current.add(id);
   };
 
   const focusAndScrollTo = (targetId: string) => {
@@ -151,9 +161,11 @@ export function useMonitorDashboardShell(): UseMonitorDashboardShellResult {
   const pushToast = (message: string, tone: ToastTone = "info") => {
     const toastId = Date.now() + Math.floor(Math.random() * 1000);
     setToasts((current) => [...current, { id: toastId, message, tone }]);
-    window.setTimeout(() => {
+    const id = window.setTimeout(() => {
+      timerIdsRef.current.delete(id);
       setToasts((current) => current.filter((item) => item.id !== toastId));
     }, 3200);
+    timerIdsRef.current.add(id);
   };
 
   const dismissToast = (id: number) => {

@@ -1,4 +1,4 @@
-import { useCallback, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { isApiError } from "@/lib/api";
 import type {
   MonitorSchoolRecordFormField,
@@ -78,6 +78,13 @@ export function useMonitorSchoolRecordForm({
   const [recordFormErrors, setRecordFormErrors] = useState<Partial<Record<MonitorSchoolRecordFormField, string>>>({});
   const [recordFormError, setRecordFormError] = useState("");
   const [recordFormMessage, setRecordFormMessage] = useState("");
+  const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   const resetRecordForm = useCallback(() => {
     setEditingRecordId(null);
@@ -189,7 +196,8 @@ export function useMonitorSchoolRecordForm({
           );
         }
 
-        window.setTimeout(() => {
+        closeTimerRef.current = window.setTimeout(() => {
+          closeTimerRef.current = null;
           closeRecordForm();
         }, 800);
       } catch (err) {

@@ -42,28 +42,33 @@ class StudentPerformanceRecordResource extends Resource
 
                 Forms\Components\Select::make('student_id')
                     ->label('Learner')
-                    ->options(function (Forms\Get $get): array {
-                        $schoolId = $get('school_id');
-
+                    ->searchable()
+                    ->getSearchResultsUsing(function (string $search, Forms\Get $get): array {
                         $query = Student::query()->orderBy('last_name')->orderBy('first_name');
 
                         if (static::isSchoolHead()) {
                             $query->where('school_id', auth()->user()?->school_id);
                         }
 
+                        $schoolId = $get('school_id');
                         if (static::isMonitor() && $schoolId) {
                             $query->where('school_id', $schoolId);
                         }
 
                         return $query
-                            ->limit(300)
+                            ->where(function ($q) use ($search): void {
+                                $q->where('lrn', 'like', "%{$search}%")
+                                    ->orWhere('first_name', 'like', "%{$search}%")
+                                    ->orWhere('last_name', 'like', "%{$search}%");
+                            })
+                            ->limit(50)
                             ->get()
                             ->mapWithKeys(fn (Student $student): array => [
                                 $student->id => $student->lrn . ' - ' . $student->full_name,
                             ])
                             ->all();
                     })
-                    ->searchable()
+                    ->getOptionLabelUsing(fn ($value): string => Student::find($value)?->full_name ?? 'Unknown')
                     ->required(),
 
                 Forms\Components\Select::make('performance_metric_id')

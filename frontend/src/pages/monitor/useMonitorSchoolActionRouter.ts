@@ -1,4 +1,4 @@
-import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import { sanitizeAnchorToken } from "@/pages/monitor/monitorDashboardUiUtils";
@@ -47,12 +47,12 @@ function scheduleFocus(
   focusAndScrollTo: (targetId: string) => void,
   targetId: string,
   afterFocus?: () => void,
-) {
+): number | null {
   if (typeof window === "undefined") {
-    return;
+    return null;
   }
 
-  window.setTimeout(() => {
+  return window.setTimeout(() => {
     focusAndScrollTo(targetId);
     afterFocus?.();
   }, 80);
@@ -68,6 +68,14 @@ export function useMonitorSchoolActionRouter({
   pushToast,
   sendReminder,
 }: UseMonitorSchoolActionRouterArgs): UseMonitorSchoolActionRouterResult {
+  const focusTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+    };
+  }, []);
+
   const [remindingSchoolKey, setRemindingSchoolKey] = useState<string | null>(null);
 
   const sendReminderForSchool = useCallback(
@@ -97,7 +105,8 @@ export function useMonitorSchoolActionRouter({
     (summary: SchoolActionSummary) => {
       openSchoolDrawer(summary.schoolKey);
       setActiveTopNavigator("reviews");
-      scheduleFocus(focusAndScrollTo, "monitor-queue-workspace", () => {
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = scheduleFocus(focusAndScrollTo, "monitor-queue-workspace", () => {
         scrollQueueRowIntoView(summary.schoolKey);
       });
       pushToast(`Review workspace opened for ${summary.schoolName}.`, "info");
@@ -109,7 +118,8 @@ export function useMonitorSchoolActionRouter({
     (summary: SchoolActionSummary) => {
       setActiveTopNavigator("schools");
       openSchoolDrawer(summary.schoolKey);
-      scheduleFocus(focusAndScrollTo, "monitor-school-records");
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = scheduleFocus(focusAndScrollTo, "monitor-school-records");
       pushToast(`Opened school details for ${summary.schoolName}.`, "info");
     },
     [focusAndScrollTo, openSchoolDrawer, pushToast, setActiveTopNavigator],
@@ -138,7 +148,8 @@ export function useMonitorSchoolActionRouter({
 
       openSchoolDrawer(schoolKey);
       setActiveTopNavigator("reviews");
-      scheduleFocus(focusAndScrollTo, "monitor-queue-workspace");
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = scheduleFocus(focusAndScrollTo, "monitor-queue-workspace");
       pushToast(`Review workspace opened for ${record.schoolName}.`, "info");
     },
     [focusAndScrollTo, handleReviewSchool, openSchoolDrawer, pushToast, schoolRequirementByKey, setActiveTopNavigator],
@@ -154,7 +165,8 @@ export function useMonitorSchoolActionRouter({
 
       setActiveTopNavigator("schools");
       openSchoolDrawer(schoolKey);
-      scheduleFocus(focusAndScrollTo, "monitor-school-records");
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+      focusTimerRef.current = scheduleFocus(focusAndScrollTo, "monitor-school-records");
       pushToast(`Opened school details for ${record.schoolName}.`, "info");
     },
     [focusAndScrollTo, openSchoolDrawer, pushToast, setActiveTopNavigator],

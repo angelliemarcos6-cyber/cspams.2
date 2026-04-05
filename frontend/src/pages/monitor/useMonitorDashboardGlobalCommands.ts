@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 
 type DashboardToastTone = "success" | "info" | "warning";
@@ -39,6 +39,14 @@ export function useMonitorDashboardGlobalCommands({
   isMobileViewport,
   setIsNavigatorVisible,
 }: UseMonitorDashboardGlobalCommandsArgs): UseMonitorDashboardGlobalCommandsResult {
+  const navTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (navTimerRef.current !== null) window.clearTimeout(navTimerRef.current);
+    };
+  }, []);
+
   const handleRefreshDashboard = useCallback(async () => {
     const results = await Promise.allSettled([
       refreshRecords(),
@@ -60,7 +68,9 @@ export function useMonitorDashboardGlobalCommands({
       if (typeof window !== "undefined") {
         const targetId = TOP_NAV_TARGET_BY_ID[id];
         if (targetId) {
-          window.setTimeout(() => {
+          if (navTimerRef.current !== null) window.clearTimeout(navTimerRef.current);
+          navTimerRef.current = window.setTimeout(() => {
+            navTimerRef.current = null;
             focusAndScrollTo(targetId);
           }, 70);
         }

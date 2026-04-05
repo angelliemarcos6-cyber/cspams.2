@@ -739,14 +739,27 @@ class SchoolHeadAccountController extends Controller
         $revocationSummaries = [];
 
         DB::transaction(function () use ($accounts, $accountIds, $setupTokenStorageAvailable, &$removedCount, &$revocationSummaries): void {
-            $revokedTokens = DB::table('personal_access_tokens')
+            $tokenCountsByUser = DB::table('personal_access_tokens')
+                ->where('tokenable_type', (new User())->getMorphClass())
+                ->whereIn('tokenable_id', $accountIds)
+                ->selectRaw('tokenable_id, COUNT(*) as cnt')
+                ->groupBy('tokenable_id')
+                ->pluck('cnt', 'tokenable_id');
+
+            DB::table('personal_access_tokens')
                 ->where('tokenable_type', (new User())->getMorphClass())
                 ->whereIn('tokenable_id', $accountIds)
                 ->delete();
 
-            $revokedWebSessions = 0;
+            $sessionCountsByUser = collect();
             if (Schema::hasTable('sessions')) {
-                $revokedWebSessions = DB::table('sessions')
+                $sessionCountsByUser = DB::table('sessions')
+                    ->whereIn('user_id', $accountIds)
+                    ->selectRaw('user_id, COUNT(*) as cnt')
+                    ->groupBy('user_id')
+                    ->pluck('cnt', 'user_id');
+
+                DB::table('sessions')
                     ->whereIn('user_id', $accountIds)
                     ->delete();
             }
@@ -775,8 +788,8 @@ class SchoolHeadAccountController extends Controller
 
                 $revocationSummaries[] = [
                     'user_id' => (int) $account->id,
-                    'revoked_tokens' => $revokedTokens,
-                    'revoked_web_sessions' => $revokedWebSessions,
+                    'revoked_tokens' => (int) ($tokenCountsByUser[$account->id] ?? 0),
+                    'revoked_web_sessions' => (int) ($sessionCountsByUser[$account->id] ?? 0),
                 ];
 
                 $removedCount += 1;

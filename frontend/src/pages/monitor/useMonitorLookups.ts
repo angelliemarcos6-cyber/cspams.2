@@ -283,13 +283,14 @@ export function useMonitorLookups({
   useEffect(() => {
     if (!openScopeDropdownId || typeof window === "undefined") return;
 
-    window.setTimeout(() => {
+    const id = window.setTimeout(() => {
       const root = document.querySelector(`[data-scope-dropdown-id="${openScopeDropdownId}"]`);
       const input = root?.querySelector("input");
       if (input instanceof HTMLInputElement) {
         input.focus();
       }
     }, 0);
+    return () => window.clearTimeout(id);
   }, [openScopeDropdownId]);
 
   useEffect(() => {

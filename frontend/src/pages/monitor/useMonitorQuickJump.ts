@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { QuickJumpItem } from "@/pages/monitor/monitorDashboardConfig";
 
@@ -26,13 +26,13 @@ export interface UseMonitorQuickJumpResult {
   getQuickJumpMeta: (item: QuickJumpItem) => MonitorQuickJumpMeta;
 }
 
-function scheduleFocus(focusAndScrollTo: (targetId: string) => void, targetId: string) {
+function scheduleFocus(focusAndScrollTo: (targetId: string) => void, targetId: string): number | null {
   if (typeof window === "undefined") {
     focusAndScrollTo(targetId);
-    return;
+    return null;
   }
 
-  window.setTimeout(() => {
+  return window.setTimeout(() => {
     focusAndScrollTo(targetId);
   }, 80);
 }
@@ -46,6 +46,14 @@ export function useMonitorQuickJump({
   setShowAdvancedAnalytics,
   focusAndScrollTo,
 }: UseMonitorQuickJumpArgs): UseMonitorQuickJumpResult {
+  const focusTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+    };
+  }, []);
+
   const shouldShowQuickJump = quickJumpItems.length > 0;
 
   const resolveQuickJumpTargetId = useCallback((targetId: string): string => {
@@ -83,13 +91,15 @@ export function useMonitorQuickJump({
 
       if (resolvedTargetId === "monitor-submission-filters" && !showAdvancedFilters) {
         setShowAdvancedFilters(true);
-        scheduleFocus(focusAndScrollTo, resolvedTargetId);
+        if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+        focusTimerRef.current = scheduleFocus(focusAndScrollTo, resolvedTargetId);
         return;
       }
 
       if (resolvedTargetId === "monitor-targets-snapshot" && !showAdvancedAnalytics) {
         setShowAdvancedAnalytics(true);
-        scheduleFocus(focusAndScrollTo, resolvedTargetId);
+        if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current);
+        focusTimerRef.current = scheduleFocus(focusAndScrollTo, resolvedTargetId);
         return;
       }
 
