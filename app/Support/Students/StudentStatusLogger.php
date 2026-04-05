@@ -7,7 +7,7 @@ use App\Models\StudentStatusLog;
 
 class StudentStatusLogger
 {
-    public function logTransition(Student $student, ?string $fromStatus, ?string $toStatus, string $notes): void
+    public function logTransition(Student $student, ?string $fromStatus, ?string $toStatus, string $notes, ?int $actorId = null): void
     {
         if (! $toStatus || $fromStatus === $toStatus) {
             return;
@@ -17,7 +17,7 @@ class StudentStatusLogger
             'student_id' => $student->id,
             'from_status' => $fromStatus,
             'to_status' => $toStatus,
-            'changed_by' => auth()->id(),
+            'changed_by' => $actorId ?? auth()->id(),
             'notes' => $notes,
             'changed_at' => now(),
         ]);

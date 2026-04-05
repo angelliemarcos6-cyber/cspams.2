@@ -163,10 +163,27 @@ class DetectSqlInjectionPayload
             return null;
         }
 
-        $decoded = rawurldecode($candidate);
+        $decoded = $candidate;
+        for ($pass = 0; $pass < 3; $pass++) {
+            $next = rawurldecode($decoded);
+            if ($next === $decoded) {
+                break;
+            }
+            $decoded = $next;
+        }
+
         foreach ($this->patterns() as $pattern) {
             $matched = @preg_match($pattern, $decoded);
-            if ($matched === false || $matched === 0) {
+
+            if ($matched === false) {
+                Log::critical('SQL injection guard: invalid regex pattern, skipping.', [
+                    'pattern' => $pattern,
+                    'preg_error' => preg_last_error_msg(),
+                ]);
+                continue;
+            }
+
+            if ($matched === 0) {
                 continue;
             }
 

@@ -82,8 +82,10 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboa
         ->middleware(InstrumentStudentCrudTiming::class);
     Route::delete('/students', [StudentRecordController::class, 'batchDestroy']);
     Route::get('/students/{student}/history', [StudentRecordController::class, 'history']);
-    Route::put('/students/{student}', [StudentRecordController::class, 'update']);
-    Route::patch('/students/{student}', [StudentRecordController::class, 'update']);
+    Route::put('/students/{student}', [StudentRecordController::class, 'update'])
+        ->middleware(InstrumentStudentCrudTiming::class);
+    Route::patch('/students/{student}', [StudentRecordController::class, 'update'])
+        ->middleware(InstrumentStudentCrudTiming::class);
     Route::delete('/students/{student}', [StudentRecordController::class, 'destroy'])
         ->middleware(InstrumentStudentCrudTiming::class);
 

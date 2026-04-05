@@ -331,10 +331,15 @@ class StudentRecordController extends Controller
         }
 
         if ($deletedCount <= 0) {
-            return response()->json(
-                ['message' => 'Student record was already removed.'],
-                Response::HTTP_NOT_FOUND,
-            );
+            return response()->json([
+                'data' => [
+                    'id' => (string) $studentId,
+                    'schoolId' => (string) $schoolId,
+                    'deleted' => false,
+                    'deletedCount' => 0,
+                ],
+                'message' => 'Student record was already removed.',
+            ]);
         }
 
         $this->decrementSchoolStudentCount($schoolId, $deletedCount);

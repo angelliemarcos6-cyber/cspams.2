@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/Auth";
@@ -17,6 +17,13 @@ export function SetupAccount() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -38,6 +45,10 @@ export function SetupAccount() {
       return;
     }
 
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsSubmitting(true);
     try {
       const message = await completeAccountSetup({
@@ -45,17 +56,21 @@ export function SetupAccount() {
         password,
         confirmPassword,
       });
+      if (controller.signal.aborted) return;
       setSuccessMessage(message);
       setPassword("");
       setConfirmPassword("");
     } catch (err) {
+      if (controller.signal.aborted) return;
       if (isApiError(err)) {
         setError(err.message);
       } else {
         setError("Unable to complete account setup. Please try again.");
       }
     } finally {
-      setIsSubmitting(false);
+      if (!controller.signal.aborted) {
+        setIsSubmitting(false);
+      }
     }
   };
 

@@ -481,6 +481,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
+  const syncStudentsRef = useRef<(silent?: boolean) => Promise<void>>(async () => {});
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -1013,6 +1014,8 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     [token, syncStudents, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
+  syncStudentsRef.current = syncStudents;
+
   useEffect(() => {
     void syncStudents(false);
   }, [syncStudents]);
@@ -1034,7 +1037,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       clearRealtimeSyncTimer();
       realtimeSyncTimerRef.current = window.setTimeout(() => {
         realtimeSyncTimerRef.current = null;
-        void syncStudents(true);
+        void syncStudentsRef.current(true);
       }, delayMs);
     };
 
@@ -1072,7 +1075,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncStudents, role, user?.schoolId, user?.schoolCode]);
+  }, [token, role, user?.schoolId, user?.schoolCode]);
 
   const value = useMemo<StudentDataContextType>(
     () => ({

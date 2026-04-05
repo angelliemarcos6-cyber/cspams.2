@@ -246,7 +246,7 @@ class TargetsMetAutoCalculator
     /**
      * @param array<string, float|null> $series
      *
-     * @return array<string, float>
+     * @return array<string, float|null>
      */
     private function backfillSeries(array $years, array $series): array
     {
@@ -283,16 +283,18 @@ class TargetsMetAutoCalculator
 
         $filled = [];
         foreach ($years as $index => $year) {
-            $filled[$year] = round((float) ($values[$index] ?? 0.0), 2);
+            $filled[$year] = $values[$index] !== null
+                ? round($values[$index], 2)
+                : null;
         }
 
         return $filled;
     }
 
     /**
-     * @param array<string, float> $actualValues
+     * @param array<string, float|null> $actualValues
      *
-     * @return array<string, float>
+     * @return array<string, float|null>
      */
     private function deriveTargetSeries(array $years, array $actualValues): array
     {
@@ -300,10 +302,16 @@ class TargetsMetAutoCalculator
         $previousActual = null;
 
         foreach ($years as $year) {
-            $actual = (float) ($actualValues[$year] ?? 0.0);
+            $actual = $actualValues[$year] ?? null;
 
-            $targets[$year] = round($previousActual ?? $actual, 2);
-            $previousActual = $actual;
+            if ($actual === null && $previousActual === null) {
+                $targets[$year] = null;
+                continue;
+            }
+
+            $actualFloat = (float) ($actual ?? 0.0);
+            $targets[$year] = round($previousActual ?? $actualFloat, 2);
+            $previousActual = $actualFloat;
         }
 
         return $targets;

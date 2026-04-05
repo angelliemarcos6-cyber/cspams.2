@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, ClipboardList, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/Auth";
@@ -31,6 +31,17 @@ export function MfaResetComplete() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+    };
+  }, []);
 
   const formInputClass =
     "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.45)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
@@ -62,6 +73,10 @@ export function MfaResetComplete() {
       return;
     }
 
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsSubmitting(true);
     setError("");
     setSuccess(null);
@@ -75,16 +90,20 @@ export function MfaResetComplete() {
         requestId: parsedRequestId,
         approvalToken: normalizedApproval,
       });
+      if (controller.signal.aborted) return;
       setSuccess(result.message);
       setBackupCodes(result.backupCodes);
     } catch (err) {
+      if (controller.signal.aborted) return;
       if (isApiError(err)) {
         setError(err.message);
       } else {
         setError("Unable to complete MFA reset. Check your network and try again.");
       }
     } finally {
-      setIsSubmitting(false);
+      if (!controller.signal.aborted) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -95,7 +114,13 @@ export function MfaResetComplete() {
     try {
       await navigator.clipboard.writeText(backupCodes.join("\n"));
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
     } catch {
       setCopied(false);
     }

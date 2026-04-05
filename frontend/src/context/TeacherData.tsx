@@ -337,6 +337,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
+  const syncTeachersRef = useRef<(silent?: boolean) => Promise<void>>(async () => {});
 
   const clearRealtimeSyncTimer = () => {
     if (typeof window === "undefined") {
@@ -696,6 +697,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
+  syncTeachersRef.current = syncTeachers;
+
   useEffect(() => {
     void syncTeachers(false);
   }, [syncTeachers]);
@@ -711,7 +714,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       clearRealtimeSyncTimer();
       realtimeSyncTimerRef.current = window.setTimeout(() => {
         realtimeSyncTimerRef.current = null;
-        void syncTeachers(true);
+        void syncTeachersRef.current(true);
       }, delayMs);
     };
 
@@ -751,7 +754,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncTeachers, role, user?.schoolId, user?.schoolCode]);
+  }, [token, role, user?.schoolId, user?.schoolCode]);
 
   const value = useMemo<TeacherDataContextType>(
     () => ({

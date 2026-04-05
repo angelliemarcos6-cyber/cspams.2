@@ -53,7 +53,7 @@ class NotificationController extends Controller
         }
 
         return response()->json([
-            'data' => $this->serializeNotification($row->fresh()),
+            'data' => $this->serializeNotification($row->fresh() ?? $row),
         ]);
     }
 

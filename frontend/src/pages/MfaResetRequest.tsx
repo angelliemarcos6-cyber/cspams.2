@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/Auth";
@@ -23,6 +23,13 @@ export function MfaResetRequest() {
   const [requestId, setRequestId] = useState<number | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const formInputClass =
     "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.45)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
@@ -46,6 +53,10 @@ export function MfaResetRequest() {
       return;
     }
 
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsSubmitting(true);
     setError("");
     setSuccess(null);
@@ -58,17 +69,21 @@ export function MfaResetRequest() {
         password,
         reason: reason.trim() ? reason : undefined,
       });
+      if (controller.signal.aborted) return;
       setSuccess(payload.message?.trim() || "MFA reset request submitted. Await approval before completion.");
       setRequestId(Number(payload.requestId));
       setExpiresAt(payload.expiresAt ?? null);
     } catch (err) {
+      if (controller.signal.aborted) return;
       if (isApiError(err)) {
         setError(err.message);
       } else {
         setError("Unable to submit the MFA reset request. Check your network and try again.");
       }
     } finally {
-      setIsSubmitting(false);
+      if (!controller.signal.aborted) {
+        setIsSubmitting(false);
+      }
     }
   };
 

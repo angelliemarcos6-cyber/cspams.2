@@ -216,6 +216,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
   const submissionsEtagRef = useRef<string>("");
+  const syncSubmissionsRef = useRef<(silent?: boolean) => Promise<void>>(async () => {});
   const schoolSubmissionsCacheRef = useRef<Map<string, { versionKey: string; rows: IndicatorSubmission[] }>>(new Map());
   const allSubmissionsCacheRef = useRef<{ versionKey: string; rows: IndicatorSubmission[] } | null>(null);
   const allSubmissionsInFlightRef = useRef<{ versionKey: string; promise: Promise<IndicatorSubmission[]> } | null>(null);
@@ -749,6 +750,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
+  syncSubmissionsRef.current = syncSubmissions;
+
   useEffect(() => {
     void syncSubmissions(false);
   }, [syncSubmissions]);
@@ -760,11 +763,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return;
       }
-      void syncSubmissions(true);
+      void syncSubmissionsRef.current(true);
     }, AUTO_SYNC_INTERVAL_MS);
 
     const syncOnFocus = () => {
-      void syncSubmissions(true);
+      void syncSubmissionsRef.current(true);
     };
     const syncOnRealtime = (event: Event) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
@@ -773,7 +776,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       const payload = (event as CustomEvent<{ entity?: string }>).detail;
       if (!payload?.entity) return;
       if (payload.entity === "indicators") {
-        void syncSubmissions(true);
+        void syncSubmissionsRef.current(true);
       }
     };
 
@@ -787,7 +790,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", syncOnFocus);
       window.removeEventListener("cspams:update", syncOnRealtime);
     };
-  }, [token, syncSubmissions]);
+  }, [token]);
 
   const value = useMemo<IndicatorDataContextType>(
     () => ({
