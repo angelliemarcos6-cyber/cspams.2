@@ -7,13 +7,10 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureActiveAccount
 {
-    private ?bool $sessionsTableExists = null;
-
     /**
      * @param  Closure(Request): Response  $next
      */
@@ -31,14 +28,16 @@ class EnsureActiveAccount
 
         try {
             $user->tokens()->delete();
-
-            if ($this->hasSessionsTable()) {
-                DB::table('sessions')
-                    ->where('user_id', $user->id)
-                    ->delete();
-            }
         } catch (\Throwable) {
-            // Ignore token and session cleanup failures.
+            // Ignore token cleanup failures.
+        }
+
+        try {
+            DB::table('sessions')
+                ->where('user_id', $user->id)
+                ->delete();
+        } catch (\Throwable) {
+            // Ignore session cleanup failures.
         }
 
         Auth::guard('web')->logout();
@@ -52,14 +51,5 @@ class EnsureActiveAccount
             'message' => 'This account is not active.',
             'accountStatus' => $user->accountStatus()->value,
         ], Response::HTTP_FORBIDDEN);
-    }
-
-    private function hasSessionsTable(): bool
-    {
-        if ($this->sessionsTableExists !== null) {
-            return $this->sessionsTableExists;
-        }
-
-        return $this->sessionsTableExists = Schema::hasTable('sessions');
     }
 }
