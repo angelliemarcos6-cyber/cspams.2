@@ -467,7 +467,6 @@ class SchoolRecordController extends Controller
                             continue;
                         }
 
-                        $school->restore();
                         $restored++;
                         $action = 'restored';
                     } elseif (! $updateExisting) {

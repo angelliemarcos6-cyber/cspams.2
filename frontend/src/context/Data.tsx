@@ -173,6 +173,7 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 const SCHOOL_BULK_IMPORT_TIMEOUT_MS = 120_000;
+const SCHOOL_SEND_REMINDER_TIMEOUT_MS = 45_000;
 
 function normalizeScope(value: string | undefined): SyncScope {
   if (value === "division" || value === "school") return value;
@@ -673,6 +674,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequestRaw<SchoolReminderResponse>(`/api/dashboard/records/${id}/send-reminder`, {
           method: "POST",
           token,
+          timeoutMs: SCHOOL_SEND_REMINDER_TIMEOUT_MS,
           body: {
             notes: notes?.trim() || undefined,
           },

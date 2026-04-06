@@ -19,6 +19,7 @@ services:
       APP_URL: ${APP_URL:-http://127.0.0.1:8000}
       FRONTEND_URL: ${FRONTEND_URL:-http://127.0.0.1:5173}
       DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+      CACHE_STORE: ${CACHE_STORE:-database}
       PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS:-4}
     healthcheck:
       test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 8000) ? 0 : 1);'"]
@@ -57,6 +58,7 @@ services:
       APP_URL: ${APP_URL:-http://127.0.0.1:8000}
       FRONTEND_URL: ${FRONTEND_URL:-http://127.0.0.1:5173}
       DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+      CACHE_STORE: ${CACHE_STORE:-database}
     command: >
       sh -lc "
       if [ ! -f .env ]; then cp .env.example .env; fi &&
