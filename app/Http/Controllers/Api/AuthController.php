@@ -46,6 +46,10 @@ class AuthController extends Controller
 {
     private static ?bool $usersHasAccountTypeColumn = null;
 
+    private static ?bool $sessionsTableExistsCache = null;
+
+    private static ?bool $mfaResetTicketsTableExistsCache = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
     ) {
@@ -1772,7 +1776,7 @@ class AuthController extends Controller
         }
 
         if (str_starts_with($identifier, 'web_')) {
-            if (! Schema::hasTable('sessions')) {
+            if (! $this->sessionsTableExists()) {
                 return response()->json(
                     ['message' => 'Session storage is not configured for device revocation.'],
                     Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -2101,7 +2105,7 @@ class AuthController extends Controller
 
     private function revokeUserWebSessions(User $user, ?string $exceptSessionId = null): int
     {
-        if (! Schema::hasTable('sessions')) {
+        if (! $this->sessionsTableExists()) {
             return 0;
         }
 
@@ -2131,7 +2135,7 @@ class AuthController extends Controller
         $entries = [];
         $includedCurrent = false;
 
-        if (Schema::hasTable('sessions')) {
+        if ($this->sessionsTableExists()) {
             $rows = DB::table('sessions')
                 ->where('user_id', $user->id)
                 ->orderByDesc('last_activity')
@@ -2714,7 +2718,7 @@ class AuthController extends Controller
 
     private function monitorMfaResetStorageAvailable(): bool
     {
-        return Schema::hasTable('monitor_mfa_reset_tickets');
+        return $this->mfaResetTicketsTableExists();
     }
 
     private function monitorMfaResetStorageUnavailableResponse(
@@ -2775,6 +2779,24 @@ class AuthController extends Controller
         }
 
         return self::$usersHasAccountTypeColumn;
+    }
+
+    private function sessionsTableExists(): bool
+    {
+        if (self::$sessionsTableExistsCache === null) {
+            self::$sessionsTableExistsCache = Schema::hasTable('sessions');
+        }
+
+        return self::$sessionsTableExistsCache;
+    }
+
+    private function mfaResetTicketsTableExists(): bool
+    {
+        if (self::$mfaResetTicketsTableExistsCache === null) {
+            self::$mfaResetTicketsTableExistsCache = Schema::hasTable('monitor_mfa_reset_tickets');
+        }
+
+        return self::$mfaResetTicketsTableExistsCache;
     }
 
     private function resolvePasswordResetRoleForUser(?User $user, ?string $roleHint = null): ?string
