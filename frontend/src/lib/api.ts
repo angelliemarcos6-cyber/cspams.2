@@ -27,7 +27,7 @@ function resolveApiBaseUrl(): string {
 const API_BASE_URL = resolveApiBaseUrl();
 export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
-const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const CSRF_BOOTSTRAP_TIMEOUT_MS = 10_000;
 
 export function getApiBaseUrl(): string {
