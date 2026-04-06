@@ -430,7 +430,7 @@ class SchoolRecordController extends Controller
         $skipped = 0;
         $failed = 0;
         $results = [];
-        $affectedSchoolIds = [];
+        $upsertRows = [];
 
         $normalizedSchoolCodes = [];
         foreach ($rows as $row) {
@@ -488,14 +488,16 @@ class SchoolRecordController extends Controller
                     $created++;
                 }
 
-                $this->applyArrayPayload($school, $row, $user, false);
-                $existingSchoolsByCode->put((string) $school->school_code_normalized, $school);
-                $affectedSchoolIds[(int) $school->id] = true;
+                $upsertRows[$schoolCode] = $this->schoolAttributesFromArrayPayload(
+                    $row,
+                    $user,
+                    $school?->getRawOriginal('created_at'),
+                );
 
                 $results[] = [
                     'row' => $index + 1,
                     'schoolId' => $schoolCode,
-                    'schoolName' => (string) $school->name,
+                    'schoolName' => (string) ($upsertRows[$schoolCode]['name'] ?? ''),
                     'action' => $action,
                 ];
             } catch (\Throwable $exception) {
@@ -509,7 +511,38 @@ class SchoolRecordController extends Controller
             }
         }
 
-        $this->syncSchoolStudentCounts(array_keys($affectedSchoolIds));
+        if ($upsertRows !== []) {
+            School::query()->upsert(
+                array_values($upsertRows),
+                ['school_code_normalized'],
+                [
+                    'school_code',
+                    'name',
+                    'level',
+                    'type',
+                    'address',
+                    'district',
+                    'region',
+                    'status',
+                    'reported_student_count',
+                    'reported_teacher_count',
+                    'submitted_by',
+                    'submitted_at',
+                    'deleted_at',
+                    'updated_at',
+                ],
+            );
+
+            $affectedSchoolIds = School::query()
+                ->whereIn(
+                    'school_code_normalized',
+                    array_map(static fn (string $code): string => strtolower($code), array_keys($upsertRows)),
+                )
+                ->pluck('id')
+                ->all();
+
+            $this->syncSchoolStudentCounts($affectedSchoolIds);
+        }
 
         $syncMeta = $this->buildSyncMetadataForUser($user);
         $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);
@@ -707,6 +740,38 @@ class SchoolRecordController extends Controller
         $school->reported_teacher_count = (int) ($payload['teacherCount'] ?? 0);
         $school->submitted_by = $user->id;
         $school->submitted_at = now();
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private function schoolAttributesFromArrayPayload(array $payload, User $user, mixed $createdAt = null): array
+    {
+        $school = new School();
+        $this->fillSchoolFromArrayPayload($school, $payload, $user);
+        $timestamp = now();
+        $schoolCode = (string) $school->school_code;
+
+        return [
+            'school_code' => $schoolCode,
+            'school_code_normalized' => strtolower($schoolCode),
+            'name' => (string) $school->name,
+            'level' => (string) $school->level,
+            'type' => (string) $school->type,
+            'address' => (string) $school->address,
+            'district' => (string) $school->district,
+            'region' => (string) $school->region,
+            'status' => (string) $school->status,
+            'reported_student_count' => 0,
+            'reported_teacher_count' => (int) $school->reported_teacher_count,
+            'submitted_by' => $user->id,
+            'submitted_at' => $school->submitted_at,
+            'deleted_at' => null,
+            'created_at' => $createdAt ?? $timestamp,
+            'updated_at' => $timestamp,
+        ];
     }
 
     private function createSchoolHeadAccountIfRequested(School $school, UpsertSchoolRecordRequest $request): ?array
