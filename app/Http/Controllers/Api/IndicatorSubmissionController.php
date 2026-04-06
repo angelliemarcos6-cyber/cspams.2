@@ -45,6 +45,8 @@ class IndicatorSubmissionController extends Controller
 
     private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
 
+    private static ?bool $usersHasAccountTypeColumn = null;
+
     public function academicYears(Request $request): JsonResponse
     {
         $this->requireUser($request);
@@ -436,7 +438,7 @@ class IndicatorSubmissionController extends Controller
             ->with('roles')
             ->where('school_id', $submission->school_id);
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $schoolHeadsQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -553,6 +555,15 @@ class IndicatorSubmissionController extends Controller
             now()->toISOString(),
             now()->addMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES),
         );
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
     }
 
     private function applyVisibilityScope(Builder $query, User $user): void

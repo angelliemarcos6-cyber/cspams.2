@@ -628,21 +628,23 @@ class StudentRecordController extends Controller
                 throw $exception;
             }
 
-            // Legacy soft-deleted rows can still hold the unique LRN. Release the LRN without deleting history.
-            $releasedArchivedRows = $this->releaseArchivedStudentLrn($lrn, $schoolId);
-            if ($releasedArchivedRows > 0) {
-                try {
-                    $this->applyPayload($student, $request, $user);
+            return DB::transaction(function () use ($lrn, $schoolId, $student, $request, $user): ?JsonResponse {
+                // Legacy soft-deleted rows can still hold the unique LRN. Release the LRN without deleting history.
+                $releasedArchivedRows = $this->releaseArchivedStudentLrn($lrn, $schoolId);
+                if ($releasedArchivedRows > 0) {
+                    try {
+                        $this->applyPayload($student, $request, $user);
 
-                    return null;
-                } catch (QueryException $retryException) {
-                    if (! $this->isSchoolScopedLrnConstraintViolation($retryException)) {
-                        throw $retryException;
+                        return null;
+                    } catch (QueryException $retryException) {
+                        if (! $this->isSchoolScopedLrnConstraintViolation($retryException)) {
+                            throw $retryException;
+                        }
                     }
                 }
-            }
 
-            return $this->buildLrnConflictResponse();
+                return $this->buildLrnConflictResponse();
+            });
         }
     }
 

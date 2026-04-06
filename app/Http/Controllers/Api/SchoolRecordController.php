@@ -39,6 +39,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SchoolRecordController extends Controller
 {
+    private static ?bool $usersHaveDeleteRecordFlagsCache = null;
+
+    private static ?bool $usersHaveAccountTypeColumnCache = null;
+
+    private static ?bool $accountSetupTokensTableExistsCache = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
     ) {
@@ -109,14 +115,14 @@ class SchoolRecordController extends Controller
                     'flagged_reason',
                 ];
 
-                if (Schema::hasColumn('users', 'delete_record_flagged_at')) {
+                if ($this->usersHaveDeleteRecordFlags()) {
                     $columns[] = 'delete_record_flagged_at';
                     $columns[] = 'delete_record_flag_reason';
                 }
 
                 $query->select($columns);
 
-                if (Schema::hasTable('account_setup_tokens')) {
+                if ($this->accountSetupTokensTableExists()) {
                     $query->with('latestAccountSetupToken');
                 }
             }])
@@ -308,7 +314,7 @@ class SchoolRecordController extends Controller
                     'flagged_reason',
                 ]);
 
-                if (Schema::hasTable('account_setup_tokens')) {
+                if ($this->accountSetupTokensTableExists()) {
                     $query->with('latestAccountSetupToken');
                 }
             }])
@@ -810,7 +816,7 @@ class SchoolRecordController extends Controller
         }
 
         $duplicateQuery = User::query()->where('school_id', $school->id);
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -833,7 +839,7 @@ class SchoolRecordController extends Controller
         $account->password_changed_at = null;
         $account->account_status = AccountStatus::PENDING_SETUP->value;
         $account->school_id = $school->id;
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
         $account->save();
@@ -981,7 +987,7 @@ class SchoolRecordController extends Controller
                         'flagged_reason',
                     ]);
 
-                    if (Schema::hasTable('account_setup_tokens')) {
+                    if ($this->accountSetupTokensTableExists()) {
                         $query->with('latestAccountSetupToken');
                     }
                 },
@@ -1498,6 +1504,33 @@ class SchoolRecordController extends Controller
         }
 
         return min($perPage, $max);
+    }
+
+    private function usersHaveDeleteRecordFlags(): bool
+    {
+        if (self::$usersHaveDeleteRecordFlagsCache === null) {
+            self::$usersHaveDeleteRecordFlagsCache = Schema::hasColumn('users', 'delete_record_flagged_at');
+        }
+
+        return self::$usersHaveDeleteRecordFlagsCache;
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (self::$usersHaveAccountTypeColumnCache === null) {
+            self::$usersHaveAccountTypeColumnCache = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHaveAccountTypeColumnCache;
+    }
+
+    private function accountSetupTokensTableExists(): bool
+    {
+        if (self::$accountSetupTokensTableExistsCache === null) {
+            self::$accountSetupTokensTableExistsCache = Schema::hasTable('account_setup_tokens');
+        }
+
+        return self::$accountSetupTokensTableExistsCache;
     }
 
     private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon
