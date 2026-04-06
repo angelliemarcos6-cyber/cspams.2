@@ -29,7 +29,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -363,15 +365,14 @@ class SchoolRecordController extends Controller
             );
         }
 
-        foreach ($schoolHeads as $schoolHead) {
-            $schoolHead->notify(
-                new SchoolSubmissionReminderNotification(
-                    $school,
-                    $monitor,
-                    $notes !== '' ? $notes : null,
-                ),
-            );
-        }
+        Notification::send(
+            $schoolHeads,
+            new SchoolSubmissionReminderNotification(
+                $school,
+                $monitor,
+                $notes !== '' ? $notes : null,
+            ),
+        );
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -429,13 +430,28 @@ class SchoolRecordController extends Controller
         $skipped = 0;
         $failed = 0;
         $results = [];
+        $affectedSchoolIds = [];
+
+        $normalizedSchoolCodes = [];
+        foreach ($rows as $row) {
+            $candidate = trim((string) ($row['schoolId'] ?? ''));
+            if (preg_match('/^\d{6}$/', $candidate) === 1) {
+                $normalizedSchoolCodes[strtolower($candidate)] = true;
+            }
+        }
+
+        $existingSchoolsByCode = collect();
+        if ($normalizedSchoolCodes !== []) {
+            $existingSchoolsByCode = School::withTrashed()
+                ->whereIn('school_code_normalized', array_keys($normalizedSchoolCodes))
+                ->get()
+                ->keyBy(static fn (School $school): string => (string) $school->school_code_normalized);
+        }
 
         foreach ($rows as $index => $row) {
             try {
                 $schoolCode = $this->normalizeSchoolCode((string) ($row['schoolId'] ?? ''));
-                $school = School::withTrashed()
-                    ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
-                    ->first();
+                $school = $existingSchoolsByCode->get(strtolower($schoolCode));
 
                 $action = 'created';
                 if ($school) {
@@ -472,7 +488,9 @@ class SchoolRecordController extends Controller
                     $created++;
                 }
 
-                $this->applyArrayPayload($school, $row, $user);
+                $this->applyArrayPayload($school, $row, $user, false);
+                $existingSchoolsByCode->put((string) $school->school_code_normalized, $school);
+                $affectedSchoolIds[(int) $school->id] = true;
 
                 $results[] = [
                     'row' => $index + 1,
@@ -490,6 +508,8 @@ class SchoolRecordController extends Controller
                 ];
             }
         }
+
+        $this->syncSchoolStudentCounts(array_keys($affectedSchoolIds));
 
         $syncMeta = $this->buildSyncMetadataForUser($user);
         $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);
@@ -559,7 +579,7 @@ class SchoolRecordController extends Controller
     {
         $schoolCode = $this->normalizeSchoolCode($request->string('schoolId')->toString());
         $existing = School::withTrashed()
-            ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
+            ->where('school_code_normalized', strtolower($schoolCode))
             ->first();
 
         if ($existing && ! $existing->trashed()) {
@@ -652,7 +672,20 @@ class SchoolRecordController extends Controller
     /**
      * @param array<string, mixed> $payload
      */
-    private function applyArrayPayload(School $school, array $payload, User $user): void
+    private function applyArrayPayload(School $school, array $payload, User $user, bool $syncStudentCount = true): void
+    {
+        $this->fillSchoolFromArrayPayload($school, $payload, $user);
+        $school->save();
+
+        if ($syncStudentCount) {
+            $this->syncSchoolStudentCount($school);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function fillSchoolFromArrayPayload(School $school, array $payload, User $user): void
     {
         $schoolCode = $this->normalizeSchoolCode((string) ($payload['schoolId'] ?? ''));
         $schoolName = trim((string) ($payload['schoolName'] ?? ''));
@@ -674,8 +707,6 @@ class SchoolRecordController extends Controller
         $school->reported_teacher_count = (int) ($payload['teacherCount'] ?? 0);
         $school->submitted_by = $user->id;
         $school->submitted_at = now();
-        $school->save();
-        $this->syncSchoolStudentCount($school);
     }
 
     private function createSchoolHeadAccountIfRequested(School $school, UpsertSchoolRecordRequest $request): ?array
@@ -1097,6 +1128,52 @@ class SchoolRecordController extends Controller
 
         $school->reported_student_count = $studentCount;
         $school->saveQuietly();
+    }
+
+    /**
+     * @param array<int, int|string> $schoolIds
+     */
+    private function syncSchoolStudentCounts(array $schoolIds): void
+    {
+        $normalizedIds = collect($schoolIds)
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($normalizedIds->isEmpty()) {
+            return;
+        }
+
+        $countsBySchoolId = Student::query()
+            ->selectRaw('school_id, COUNT(*) as aggregate_count')
+            ->whereIn('school_id', $normalizedIds->all())
+            ->groupBy('school_id')
+            ->pluck('aggregate_count', 'school_id');
+
+        $normalizedIds->chunk(100)->each(function ($chunk) use ($countsBySchoolId): void {
+            $cases = [];
+            $bindings = [];
+            $chunkIds = $chunk->all();
+
+            foreach ($chunkIds as $schoolId) {
+                $cases[] = 'WHEN ? THEN ?';
+                $bindings[] = $schoolId;
+                $bindings[] = (int) $countsBySchoolId->get($schoolId, 0);
+            }
+
+            $placeholders = implode(', ', array_fill(0, count($chunkIds), '?'));
+            foreach ($chunkIds as $schoolId) {
+                $bindings[] = $schoolId;
+            }
+
+            DB::update(
+                'UPDATE schools SET reported_student_count = CASE id '
+                . implode(' ', $cases)
+                . ' END WHERE id IN (' . $placeholders . ')',
+                $bindings,
+            );
+        });
     }
 
     /**

@@ -35,6 +35,7 @@ let realtimeEcho: Echo<"reverb"> | null = null;
 let isStarted = false;
 let activeToken = "";
 let activeScopeKey = "";
+const BROADCAST_AUTH_TIMEOUT_MS = 10_000;
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (!value) return fallback;
@@ -154,22 +155,37 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
         ensureCsrfCookie()
           .then(async () => {
             const xsrfToken = readXsrfToken();
-            const response = await fetch(`${getApiBaseUrl()}/api/broadcasting/auth`, {
-              method: "POST",
-              credentials: "include",
-              headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-                ...(normalizedToken && normalizedToken !== COOKIE_SESSION_TOKEN
-                  ? { Authorization: `Bearer ${normalizedToken}` }
-                  : {}),
-                ...(xsrfToken ? { "X-XSRF-TOKEN": xsrfToken } : {}),
-              },
-              body: JSON.stringify({
-                socket_id: socketId,
-                channel_name: channel.name,
-              }),
-            });
+            const controller = new AbortController();
+            const timeoutId = window.setTimeout(() => controller.abort(), BROADCAST_AUTH_TIMEOUT_MS);
+
+            let response: Response;
+            try {
+              response = await fetch(`${getApiBaseUrl()}/api/broadcasting/auth`, {
+                method: "POST",
+                credentials: "include",
+                signal: controller.signal,
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                  ...(normalizedToken && normalizedToken !== COOKIE_SESSION_TOKEN
+                    ? { Authorization: `Bearer ${normalizedToken}` }
+                    : {}),
+                  ...(xsrfToken ? { "X-XSRF-TOKEN": xsrfToken } : {}),
+                },
+                body: JSON.stringify({
+                  socket_id: socketId,
+                  channel_name: channel.name,
+                }),
+              });
+            } catch (error) {
+              if (error instanceof DOMException && error.name === "AbortError") {
+                throw new Error("Realtime authorization timed out.");
+              }
+
+              throw error;
+            } finally {
+              window.clearTimeout(timeoutId);
+            }
 
             const payload = await response.json().catch(() => null);
 

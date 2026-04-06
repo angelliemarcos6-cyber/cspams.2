@@ -316,10 +316,13 @@ class StudentRecordController extends Controller
                     return 0;
                 }
 
-                $this->prepareStudentForArchive($studentToDelete);
-                $studentToDelete->delete();
+                $this->prepareStudentsForArchive(collect([$studentToDelete]));
 
-                return 1;
+                return Student::query()
+                    ->whereKey($studentId)
+                    ->where('school_id', $schoolId)
+                    ->delete();
+
             });
         } catch (QueryException $exception) {
             report($exception);
@@ -517,10 +520,14 @@ class StudentRecordController extends Controller
                     ->lockForUpdate()
                     ->get();
 
-                foreach ($students as $student) {
-                    $this->prepareStudentForArchive($student);
-                    $student->delete();
+                if ($students->isEmpty()) {
+                    return collect();
                 }
+
+                $this->prepareStudentsForArchive($students);
+                Student::query()
+                    ->whereIn('id', $students->pluck('id')->all())
+                    ->delete();
 
                 return $students
                     ->pluck('id')
@@ -599,9 +606,7 @@ class StudentRecordController extends Controller
             ->lockForUpdate()
             ->get();
 
-        foreach ($archivedStudents as $archivedStudent) {
-            $this->prepareStudentForArchive($archivedStudent);
-        }
+        $this->prepareStudentsForArchive($archivedStudents);
 
         return $archivedStudents->count();
     }
@@ -885,24 +890,90 @@ class StudentRecordController extends Controller
 
     private function prepareStudentForArchive(Student $student): void
     {
-        $originalLrn = trim((string) ($student->archived_original_lrn ?? $student->lrn));
-        if ($originalLrn === '') {
+        $this->prepareStudentsForArchive(collect([$student]));
+    }
+
+    /**
+     * @param Collection<int, Student> $students
+     */
+    private function prepareStudentsForArchive(Collection $students): void
+    {
+        if ($students->isEmpty()) {
             return;
         }
 
-        $student->forceFill([
-            'archived_original_lrn' => $originalLrn,
-            'lrn' => $this->archivedStudentLrnPlaceholder($student, $originalLrn),
-        ])->saveQuietly();
+        $archivedAt = now();
+        $archivedAtKey = $archivedAt->format('U.u');
+        $archivedAtTimestamp = $archivedAt->toDateTimeString();
+
+        $students->chunk(200)->each(function (Collection $chunk) use ($archivedAtKey, $archivedAtTimestamp): void {
+            $archivedOriginalCases = [];
+            $placeholderCases = [];
+            $archivedOriginalBindings = [];
+            $placeholderBindings = [];
+            $ids = [];
+
+            foreach ($chunk as $student) {
+                $studentId = (int) $student->id;
+                $originalLrn = trim((string) ($student->archived_original_lrn ?? $student->lrn));
+
+                if ($studentId <= 0 || $originalLrn === '') {
+                    continue;
+                }
+
+                $ids[] = $studentId;
+                $archivedOriginalCases[] = 'WHEN ? THEN ?';
+                $archivedOriginalBindings[] = $studentId;
+                $archivedOriginalBindings[] = $originalLrn;
+
+                $placeholderCases[] = 'WHEN ? THEN ?';
+                $placeholderBindings[] = $studentId;
+                $placeholderBindings[] = $this->archivedStudentLrnPlaceholderForId(
+                    $studentId,
+                    $originalLrn,
+                    $archivedAtKey,
+                );
+            }
+
+            if ($ids === []) {
+                return;
+            }
+
+            $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+            $bindings = array_merge(
+                $archivedOriginalBindings,
+                $placeholderBindings,
+                [$archivedAtTimestamp],
+                $ids,
+            );
+
+            DB::update(
+                'UPDATE students SET archived_original_lrn = CASE id '
+                . implode(' ', $archivedOriginalCases)
+                . ' END, lrn = CASE id '
+                . implode(' ', $placeholderCases)
+                . ' END, updated_at = ? WHERE id IN (' . $placeholders . ')',
+                $bindings,
+            );
+        });
     }
 
     private function archivedStudentLrnPlaceholder(Student $student, string $originalLrn): string
     {
+        return $this->archivedStudentLrnPlaceholderForId(
+            (int) $student->id,
+            $originalLrn,
+            $student->deleted_at?->format('U.u') ?? now()->format('U.u'),
+        );
+    }
+
+    private function archivedStudentLrnPlaceholderForId(int $studentId, string $originalLrn, string $archivedAtKey): string
+    {
         return 'AR' . strtoupper(substr(
             sha1(implode('|', [
-                (string) $student->id,
-                $originalLrn,
-                $student->deleted_at?->format('U.u') ?? now()->format('U.u'),
+                (string) $studentId,
+                trim($originalLrn),
+                $archivedAtKey,
             ])),
             0,
             18,

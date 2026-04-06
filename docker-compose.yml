@@ -19,6 +19,7 @@ services:
       APP_URL: ${APP_URL:-http://127.0.0.1:8000}
       FRONTEND_URL: ${FRONTEND_URL:-http://127.0.0.1:5173}
       DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+      PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS:-4}
     healthcheck:
       test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 8000) ? 0 : 1);'"]
       interval: 10s
@@ -32,7 +33,37 @@ services:
       if ! grep -q '^APP_KEY=base64:' .env; then php artisan key:generate --force; fi &&
       if [ \"${DB_CONNECTION:-sqlite}\" = \"sqlite\" ]; then mkdir -p database && touch database/database.sqlite; fi &&
       php artisan migrate --force &&
-      php artisan serve --host=0.0.0.0 --port=8000
+      PHP_CLI_SERVER_WORKERS=${PHP_CLI_SERVER_WORKERS:-4} php artisan serve --host=0.0.0.0 --port=8000
+      "
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: cspams-queue
+    init: true
+    restart: unless-stopped
+    working_dir: /var/www/html
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./:/var/www/html
+      - composer-cache:/tmp/composer-cache
+    environment:
+      COMPOSER_HOME: /tmp/composer-cache
+      COMPOSER_CACHE_DIR: /tmp/composer-cache
+      APP_ENV: ${APP_ENV:-local}
+      APP_URL: ${APP_URL:-http://127.0.0.1:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://127.0.0.1:5173}
+      DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+    command: >
+      sh -lc "
+      if [ ! -f .env ]; then cp .env.example .env; fi &&
+      if [ ! -f vendor/autoload.php ]; then composer install --no-interaction --prefer-dist --no-progress; fi &&
+      if ! grep -q '^APP_KEY=base64:' .env; then php artisan key:generate --force; fi &&
+      if [ \"${DB_CONNECTION:-sqlite}\" = \"sqlite\" ]; then mkdir -p database && touch database/database.sqlite; fi &&
+      php artisan queue:work --sleep=3 --tries=3 --max-time=3600
       "
 
   frontend:

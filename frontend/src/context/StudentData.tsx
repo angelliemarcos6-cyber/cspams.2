@@ -167,6 +167,7 @@ const MAX_PER_PAGE = 200;
 const DEFAULT_HISTORY_PER_PAGE = 12;
 const MAX_HISTORY_PER_PAGE = 50;
 const LIST_CACHE_MAX_ENTRIES = 64;
+const STUDENT_BATCH_DELETE_TIMEOUT_MS = 60_000;
 
 const EMPTY_META: StudentListMeta = {
   syncedAt: null,
@@ -957,6 +958,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequestRaw<StudentBatchDeleteResponse>("/api/dashboard/students", {
           method: "DELETE",
           token,
+          timeoutMs: STUDENT_BATCH_DELETE_TIMEOUT_MS,
           body: { ids: uniqueIds },
         });
 
