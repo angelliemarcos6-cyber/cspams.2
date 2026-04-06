@@ -559,6 +559,10 @@ class IndicatorSubmissionController extends Controller
 
     private function usersHaveAccountTypeColumn(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
         if (self::$usersHasAccountTypeColumn === null) {
             self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
         }

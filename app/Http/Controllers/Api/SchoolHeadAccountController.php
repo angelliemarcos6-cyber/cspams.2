@@ -23,6 +23,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -177,9 +178,11 @@ class SchoolHeadAccountController extends Controller
                 );
             }
 
+            $normalizedEmail = strtolower(trim($email));
             $updates = [
                 'name' => $name,
-                'email' => $email,
+                'email' => $normalizedEmail,
+                'email_normalized' => $normalizedEmail,
             ];
 
             if ($emailChanged) {
@@ -336,7 +339,18 @@ class SchoolHeadAccountController extends Controller
         if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
-        $account->save();
+        try {
+            $account->save();
+        } catch (QueryException $exception) {
+            if ($this->isUniqueConstraintViolation($exception)) {
+                return response()->json(
+                    ['message' => 'A School Head account is already linked to this school. Update it instead of creating a new one.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                );
+            }
+
+            throw $exception;
+        }
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
 
         $issuedSetup = $this->schoolHeadAccountSetupService->issue(
@@ -788,8 +802,11 @@ class SchoolHeadAccountController extends Controller
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
 
+                $archivedEmail = 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid';
+
                 $account->forceFill([
-                    'email' => 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid',
+                    'email' => $archivedEmail,
+                    'email_normalized' => $archivedEmail,
                     'account_status' => AccountStatus::ARCHIVED->value,
                     'must_reset_password' => true,
                     'password_changed_at' => null,
@@ -1213,6 +1230,10 @@ class SchoolHeadAccountController extends Controller
 
     private function accountSetupTokensAvailable(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('account_setup_tokens');
+        }
+
         if (self::$accountSetupTokensTableExists === null) {
             self::$accountSetupTokensTableExists = Schema::hasTable('account_setup_tokens');
         }
@@ -1222,6 +1243,10 @@ class SchoolHeadAccountController extends Controller
 
     private function usersHaveAccountTypeColumn(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
         if (self::$usersHasAccountTypeColumn === null) {
             self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
         }
@@ -1231,6 +1256,12 @@ class SchoolHeadAccountController extends Controller
 
     private function usersHaveDeleteRecordFlags(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'delete_record_flagged_at')
+                && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
+                && Schema::hasColumn('users', 'delete_record_flag_reason');
+        }
+
         if (self::$usersHasDeleteRecordFlags === null) {
             self::$usersHasDeleteRecordFlags = Schema::hasColumn('users', 'delete_record_flagged_at')
                 && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
@@ -1242,11 +1273,24 @@ class SchoolHeadAccountController extends Controller
 
     private function sessionsTableExists(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('sessions');
+        }
+
         if (self::$sessionsTableExists === null) {
             self::$sessionsTableExists = Schema::hasTable('sessions');
         }
 
         return self::$sessionsTableExists;
+    }
+
+    private function isUniqueConstraintViolation(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'unique constraint failed')
+            || str_contains($message, 'duplicate entry')
+            || str_contains($message, 'integrity constraint violation');
     }
 
     private function loadLatestAccountSetupToken(User $account): void

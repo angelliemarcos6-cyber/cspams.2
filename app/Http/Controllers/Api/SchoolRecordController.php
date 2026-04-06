@@ -1508,6 +1508,10 @@ class SchoolRecordController extends Controller
 
     private function usersHaveDeleteRecordFlags(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'delete_record_flagged_at');
+        }
+
         if (self::$usersHaveDeleteRecordFlagsCache === null) {
             self::$usersHaveDeleteRecordFlagsCache = Schema::hasColumn('users', 'delete_record_flagged_at');
         }
@@ -1517,6 +1521,10 @@ class SchoolRecordController extends Controller
 
     private function usersHaveAccountTypeColumn(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
         if (self::$usersHaveAccountTypeColumnCache === null) {
             self::$usersHaveAccountTypeColumnCache = Schema::hasColumn('users', 'account_type');
         }
@@ -1526,6 +1534,10 @@ class SchoolRecordController extends Controller
 
     private function accountSetupTokensTableExists(): bool
     {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('account_setup_tokens');
+        }
+
         if (self::$accountSetupTokensTableExistsCache === null) {
             self::$accountSetupTokensTableExistsCache = Schema::hasTable('account_setup_tokens');
         }
