@@ -1286,10 +1286,19 @@ class SchoolHeadAccountController extends Controller
 
     private function isUniqueConstraintViolation(QueryException $exception): bool
     {
+        // PostgreSQL SQLSTATE 23505 = unique_violation (most reliable check).
+        if ((string) $exception->getCode() === '23505') {
+            return true;
+        }
+
         $message = strtolower($exception->getMessage());
 
+        // SQLite: "UNIQUE constraint failed: users.email"
+        // MySQL:  "Duplicate entry 'value' for key 'index_name'"
+        // PostgreSQL (message fallback): "duplicate key value violates unique constraint"
         return str_contains($message, 'unique constraint failed')
             || str_contains($message, 'duplicate entry')
+            || str_contains($message, 'duplicate key value')
             || str_contains($message, 'integrity constraint violation');
     }
 
