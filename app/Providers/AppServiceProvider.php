@@ -483,6 +483,10 @@ class AppServiceProvider extends ServiceProvider
             $issues[] = "MAIL_MAILER must not be '{$mailer}'.";
         }
 
+        if (\App\Support\Mail\MailDelivery::isLikelyMisconfigured()) {
+            $issues[] = "Mail appears misconfigured (MAIL_MAILER='{$mailer}'). Check SMTP credentials, RESEND_KEY, or MAIL_FROM_ADDRESS.";
+        }
+
         $sanctumExpiration = config('sanctum.expiration');
         $expirationMinutes = is_numeric($sanctumExpiration) ? (int) $sanctumExpiration : null;
         if ($expirationMinutes === null || $expirationMinutes <= 0) {

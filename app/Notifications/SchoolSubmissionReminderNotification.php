@@ -45,8 +45,10 @@ class SchoolSubmissionReminderNotification extends Notification implements Shoul
             $mail->line('Reminder note: ' . $this->notes);
         }
 
+        $frontendUrl = config('app.frontend_url') ?: config('app.url');
+
         return $mail
-            ->action('Open CSPAMS', url('/'))
+            ->action('Open CSPAMS', $frontendUrl)
             ->line('Please review your pending requirements and submit as soon as possible.');
     }
 

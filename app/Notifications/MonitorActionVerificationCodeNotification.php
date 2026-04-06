@@ -3,10 +3,11 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class MonitorActionVerificationCodeNotification extends Notification
+class MonitorActionVerificationCodeNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -23,7 +24,7 @@ class MonitorActionVerificationCodeNotification extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -36,6 +37,22 @@ class MonitorActionVerificationCodeNotification extends Notification
             ->line('Confirmation code: ' . $this->code)
             ->line('This code expires at: ' . $this->expiresAt)
             ->line('If you did not initiate this request, sign out and contact your administrator.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(object $notifiable): array
+    {
+        return [
+            'eventType' => 'action_verification',
+            'title' => 'Action verification code sent',
+            'message' => "A verification code was sent for: {$this->actionLabel} ({$this->schoolName}).",
+            'schoolName' => $this->schoolName,
+            'actionLabel' => $this->actionLabel,
+            'expiresAt' => $this->expiresAt,
+            'createdAt' => now()->toISOString(),
+        ];
     }
 }
 

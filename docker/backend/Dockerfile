@@ -29,6 +29,6 @@ RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoload
 RUN mkdir -p storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
-RUN chmod +x docker/render-start.sh
+RUN chmod +x docker/render-start.sh docker/render-queue.sh
 
 CMD ["./docker/render-start.sh"]

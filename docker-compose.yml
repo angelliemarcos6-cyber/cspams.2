@@ -21,6 +21,14 @@ services:
       DB_CONNECTION: ${DB_CONNECTION:-sqlite}
       CACHE_STORE: ${CACHE_STORE:-database}
       PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS:-4}
+      MAIL_MAILER: ${MAIL_MAILER:-log}
+      MAIL_HOST: ${MAIL_HOST:-127.0.0.1}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-hello@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-CSPAMS}
+      RESEND_KEY: ${RESEND_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 8000) ? 0 : 1);'"]
       interval: 10s
@@ -59,6 +67,14 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://127.0.0.1:5173}
       DB_CONNECTION: ${DB_CONNECTION:-sqlite}
       CACHE_STORE: ${CACHE_STORE:-database}
+      MAIL_MAILER: ${MAIL_MAILER:-log}
+      MAIL_HOST: ${MAIL_HOST:-127.0.0.1}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-hello@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-CSPAMS}
+      RESEND_KEY: ${RESEND_KEY:-}
     command: >
       sh -lc "
       if [ ! -f .env ]; then cp .env.example .env; fi &&
