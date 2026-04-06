@@ -353,35 +353,37 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
-        $submission->forceFill([
-            'status' => FormSubmissionStatus::SUBMITTED->value,
-            'submitted_by' => $user->id,
-            'submitted_at' => now(),
-            'reviewed_by' => null,
-            'reviewed_at' => null,
-            'review_notes' => null,
-        ])->save();
+        DB::transaction(function () use ($submission, $user, $fromStatus): void {
+            $submission->forceFill([
+                'status' => FormSubmissionStatus::SUBMITTED->value,
+                'submitted_by' => $user->id,
+                'submitted_at' => now(),
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+                'review_notes' => null,
+            ])->save();
 
-        app(FormSubmissionHistoryLogger::class)->log(
-            formType: IndicatorSubmission::FORM_TYPE,
-            submissionId: $submission->id,
-            schoolId: $submission->school_id,
-            academicYearId: $submission->academic_year_id,
-            action: 'submitted',
-            fromStatus: $fromStatus,
-            toStatus: FormSubmissionStatus::SUBMITTED,
-            actorId: $user->id,
-            notes: 'Indicator package submitted to monitor.',
-        );
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $submission->id,
+                schoolId: $submission->school_id,
+                academicYearId: $submission->academic_year_id,
+                action: 'submitted',
+                fromStatus: $fromStatus,
+                toStatus: FormSubmissionStatus::SUBMITTED,
+                actorId: $user->id,
+                notes: 'Indicator package submitted to monitor.',
+            );
 
-        event(new CspamsUpdateBroadcast([
-            'entity' => 'indicators',
-            'eventType' => 'indicators.submitted',
-            'submissionId' => (string) $submission->id,
-            'schoolId' => (string) $submission->school_id,
-            'academicYearId' => (string) $submission->academic_year_id,
-            'status' => FormSubmissionStatus::SUBMITTED->value,
-        ]));
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'indicators',
+                'eventType' => 'indicators.submitted',
+                'submissionId' => (string) $submission->id,
+                'schoolId' => (string) $submission->school_id,
+                'academicYearId' => (string) $submission->academic_year_id,
+                'status' => FormSubmissionStatus::SUBMITTED->value,
+            ]));
+        });
 
         $submission->load([
             'school:id,school_code,name',
@@ -415,24 +417,26 @@ class IndicatorSubmissionController extends Controller
             ? trim($request->string('notes')->toString())
             : null;
 
-        $submission->forceFill([
-            'status' => $decision,
-            'reviewed_by' => $user->id,
-            'reviewed_at' => now(),
-            'review_notes' => $notes,
-        ])->save();
+        DB::transaction(function () use ($submission, $user, $fromStatus, $decision, $notes): void {
+            $submission->forceFill([
+                'status' => $decision,
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now(),
+                'review_notes' => $notes,
+            ])->save();
 
-        app(FormSubmissionHistoryLogger::class)->log(
-            formType: IndicatorSubmission::FORM_TYPE,
-            submissionId: $submission->id,
-            schoolId: $submission->school_id,
-            academicYearId: $submission->academic_year_id,
-            action: $decision === FormSubmissionStatus::VALIDATED->value ? 'validated' : 'returned',
-            fromStatus: $fromStatus,
-            toStatus: $decision,
-            actorId: $user->id,
-            notes: $notes,
-        );
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $submission->id,
+                schoolId: $submission->school_id,
+                academicYearId: $submission->academic_year_id,
+                action: $decision === FormSubmissionStatus::VALIDATED->value ? 'validated' : 'returned',
+                fromStatus: $fromStatus,
+                toStatus: $decision,
+                actorId: $user->id,
+                notes: $notes,
+            );
+        });
 
         $schoolHeadsQuery = User::query()
             ->with('roles')
