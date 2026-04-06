@@ -172,6 +172,7 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+const SCHOOL_BULK_IMPORT_TIMEOUT_MS = 120_000;
 
 function normalizeScope(value: string | undefined): SyncScope {
   if (value === "division" || value === "school") return value;
@@ -1113,6 +1114,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequestRaw<SchoolRecordBulkImportResponse>("/api/dashboard/records/bulk-import", {
           method: "POST",
           token,
+          timeoutMs: SCHOOL_BULK_IMPORT_TIMEOUT_MS,
           body: {
             rows,
             options: {

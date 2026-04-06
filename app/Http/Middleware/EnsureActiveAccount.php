@@ -12,6 +12,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureActiveAccount
 {
+    private ?bool $sessionsTableExists = null;
+
     /**
      * @param  Closure(Request): Response  $next
      */
@@ -28,25 +30,15 @@ class EnsureActiveAccount
         }
 
         try {
-            $user->currentAccessToken()?->delete();
-        } catch (\Throwable) {
-            // Ignore token revocation failures.
-        }
-
-        try {
             $user->tokens()->delete();
-        } catch (\Throwable) {
-            // Ignore token revocation failures.
-        }
 
-        if (Schema::hasTable('sessions')) {
-            try {
+            if ($this->hasSessionsTable()) {
                 DB::table('sessions')
                     ->where('user_id', $user->id)
                     ->delete();
-            } catch (\Throwable) {
-                // Ignore session cleanup failures.
             }
+        } catch (\Throwable) {
+            // Ignore token and session cleanup failures.
         }
 
         Auth::guard('web')->logout();
@@ -61,5 +53,13 @@ class EnsureActiveAccount
             'accountStatus' => $user->accountStatus()->value,
         ], Response::HTTP_FORBIDDEN);
     }
-}
 
+    private function hasSessionsTable(): bool
+    {
+        if ($this->sessionsTableExists !== null) {
+            return $this->sessionsTableExists;
+        }
+
+        return $this->sessionsTableExists = Schema::hasTable('sessions');
+    }
+}

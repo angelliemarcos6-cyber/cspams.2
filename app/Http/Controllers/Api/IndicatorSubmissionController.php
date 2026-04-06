@@ -27,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -431,14 +432,12 @@ class IndicatorSubmissionController extends Controller
 
         $schoolHeads = $schoolHeadsQuery->get();
 
-        foreach ($schoolHeads as $schoolHead) {
-            $schoolHead->notify(new IndicatorReviewOutcomeNotification(
-                $submission,
-                $user,
-                $decision,
-                $notes,
-            ));
-        }
+        Notification::send($schoolHeads, new IndicatorReviewOutcomeNotification(
+            $submission,
+            $user,
+            $decision,
+            $notes,
+        ));
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'indicators',
