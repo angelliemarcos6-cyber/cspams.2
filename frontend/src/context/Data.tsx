@@ -174,6 +174,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 const SCHOOL_BULK_IMPORT_TIMEOUT_MS = 120_000;
 const SCHOOL_SEND_REMINDER_TIMEOUT_MS = 45_000;
+const SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS = 45_000;
 
 function normalizeScope(value: string | undefined): SyncScope {
   if (value === "division" || value === "school") return value;
@@ -713,6 +714,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "PATCH",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: payload,
           },
         );
@@ -763,6 +765,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "POST",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               targetStatus,
             },
@@ -801,6 +804,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "POST",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason: payload?.reason?.trim() || undefined,
             },
@@ -853,6 +857,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "POST",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason: reason?.trim() || undefined,
             },
@@ -924,6 +929,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "POST",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason: trimmedReason,
               verificationChallengeId,
@@ -987,6 +993,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "PUT",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               name,
               email,
@@ -1058,6 +1065,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "DELETE",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason,
               verificationChallengeId,

@@ -30,10 +30,19 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolHeadAccountController extends Controller
 {
+    private static ?bool $usersHasAccountTypeColumn = null;
+
+    private static ?bool $usersHasDeleteRecordFlags = null;
+
+    private static ?bool $sessionsTableExists = null;
+
+    private static ?bool $accountSetupTokensTableExists = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
         private readonly MonitorActionVerificationService $monitorActionVerificationService,
@@ -297,7 +306,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $duplicateQuery = User::query()->where('school_id', $school->id);
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -324,7 +333,7 @@ class SchoolHeadAccountController extends Controller
         $account->verified_at = null;
         $account->verification_notes = null;
         $account->school_id = $school->id;
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
         $account->save();
@@ -502,9 +511,7 @@ class SchoolHeadAccountController extends Controller
         $previousStatus = $account->accountStatus();
         $previousFlagged = $account->flagged_at !== null;
         $deleteRecordFlagRequested = $request->has('deleteRecordFlagged');
-        $deleteRecordFlagAvailable = Schema::hasColumn('users', 'delete_record_flagged_at')
-            && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
-            && Schema::hasColumn('users', 'delete_record_flag_reason');
+        $deleteRecordFlagAvailable = $this->usersHaveDeleteRecordFlags();
 
         if ($deleteRecordFlagRequested && ! $deleteRecordFlagAvailable) {
             return response()->json(
@@ -737,15 +744,47 @@ class SchoolHeadAccountController extends Controller
         $removedCount = 0;
         $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
         $revocationSummaries = [];
+        $accountIdInts = $accounts
+            ->map(static fn (User $account): int => (int) $account->id)
+            ->values()
+            ->all();
 
-        DB::transaction(function () use ($accounts, $setupTokenStorageAvailable, &$removedCount, &$revocationSummaries): void {
+        $tokenRevocationsByUserId = collect();
+        if ($accountIdInts !== []) {
+            $tokenRevocationsByUserId = PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->selectRaw('tokenable_id, COUNT(*) as aggregate_count')
+                ->groupBy('tokenable_id')
+                ->pluck('aggregate_count', 'tokenable_id');
+
+            PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->delete();
+        }
+
+        $sessionRevocationsByUserId = collect();
+        if ($this->sessionsTableExists() && $accountIdInts !== []) {
+            $sessionRevocationsByUserId = DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->selectRaw('user_id, COUNT(*) as aggregate_count')
+                ->groupBy('user_id')
+                ->pluck('aggregate_count', 'user_id');
+
+            DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        if ($setupTokenStorageAvailable && $accountIdInts !== []) {
+            DB::table('account_setup_tokens')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        DB::transaction(function () use ($accounts, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
             foreach ($accounts as $account) {
-                $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
-
-                if ($setupTokenStorageAvailable) {
-                    $account->accountSetupTokens()->delete();
-                }
-
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
 
@@ -763,8 +802,8 @@ class SchoolHeadAccountController extends Controller
 
                 $revocationSummaries[] = [
                     'user_id' => (int) $account->id,
-                    'revoked_tokens' => $revocationSummary['revokedTokens'],
-                    'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+                    'revoked_tokens' => (int) ($tokenRevocationsByUserId->get((int) $account->id, 0)),
+                    'revoked_web_sessions' => (int) ($sessionRevocationsByUserId->get((int) $account->id, 0)),
                 ];
 
                 $removedCount += 1;
@@ -1095,7 +1134,7 @@ class SchoolHeadAccountController extends Controller
             $query->with('latestAccountSetupToken');
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             return $query
                 ->with(['roles', 'verifiedBy'])
                 ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
@@ -1160,7 +1199,7 @@ class SchoolHeadAccountController extends Controller
         $revokedTokens = $account->tokens()->delete();
 
         $revokedWebSessions = 0;
-        if (Schema::hasTable('sessions')) {
+        if ($this->sessionsTableExists()) {
             $revokedWebSessions = DB::table('sessions')
                 ->where('user_id', $account->id)
                 ->delete();
@@ -1174,7 +1213,40 @@ class SchoolHeadAccountController extends Controller
 
     private function accountSetupTokensAvailable(): bool
     {
-        return Schema::hasTable('account_setup_tokens');
+        if (self::$accountSetupTokensTableExists === null) {
+            self::$accountSetupTokensTableExists = Schema::hasTable('account_setup_tokens');
+        }
+
+        return self::$accountSetupTokensTableExists;
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
+
+    private function usersHaveDeleteRecordFlags(): bool
+    {
+        if (self::$usersHasDeleteRecordFlags === null) {
+            self::$usersHasDeleteRecordFlags = Schema::hasColumn('users', 'delete_record_flagged_at')
+                && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
+                && Schema::hasColumn('users', 'delete_record_flag_reason');
+        }
+
+        return self::$usersHasDeleteRecordFlags;
+    }
+
+    private function sessionsTableExists(): bool
+    {
+        if (self::$sessionsTableExists === null) {
+            self::$sessionsTableExists = Schema::hasTable('sessions');
+        }
+
+        return self::$sessionsTableExists;
     }
 
     private function loadLatestAccountSetupToken(User $account): void

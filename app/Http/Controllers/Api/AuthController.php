@@ -44,6 +44,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    private static ?bool $usersHasAccountTypeColumn = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
     ) {
@@ -836,7 +838,7 @@ class AuthController extends Controller
         $user = $setupToken->user()->with('school')->first();
         $supportsAccountSetup = false;
         if ($user) {
-            if (Schema::hasColumn('users', 'account_type')) {
+            if ($this->usersHaveAccountTypeColumn()) {
                 $supportsAccountSetup = $user->account_type === $role;
             } else {
                 $supportsAccountSetup = UserRoleResolver::has($user, $role);
@@ -1934,7 +1936,7 @@ class AuthController extends Controller
                 })
                 ->orderByDesc('id');
 
-            if (Schema::hasColumn('users', 'account_type')) {
+            if ($this->usersHaveAccountTypeColumn()) {
                 return $baseQuery
                     ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
                     ->first();
@@ -2766,13 +2768,22 @@ class AuthController extends Controller
         return $frontend . '/#/reset-password?' . $query;
     }
 
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
+
     private function resolvePasswordResetRoleForUser(?User $user, ?string $roleHint = null): ?string
     {
         if (! $user) {
             return null;
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $accountType = is_string($user->account_type)
                 ? trim($user->account_type)
                 : null;
@@ -2820,7 +2831,7 @@ class AuthController extends Controller
             }
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $accountType = is_string($user->account_type)
                 ? trim($user->account_type)
                 : null;
