@@ -247,16 +247,6 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanSubmit($user, $submission->school_id);
         $this->syncRollingIndicatorYears();
 
-        $currentStatus = $this->statusValue($submission->status);
-        if (! in_array($currentStatus, [
-            FormSubmissionStatus::DRAFT->value,
-            FormSubmissionStatus::RETURNED->value,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'submission' => 'Only draft or returned indicator submissions can be updated.',
-            ]);
-        }
-
         $academicYearId = $request->integer('academic_year_id');
         $reportingPeriod = $request->filled('reporting_period')
             ? $request->string('reporting_period')->toString()
@@ -273,22 +263,35 @@ class IndicatorSubmissionController extends Controller
             $reportingPeriod,
             $notes,
             $indicatorRows,
-            $currentStatus,
         ): void {
-            $submission->forceFill([
+            $locked = IndicatorSubmission::query()
+                ->lockForUpdate()
+                ->find($submission->id);
+
+            $currentStatus = $this->statusValue($locked->status);
+            if (! in_array($currentStatus, [
+                FormSubmissionStatus::DRAFT->value,
+                FormSubmissionStatus::RETURNED->value,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'submission' => 'Only draft or returned indicator submissions can be updated.',
+                ]);
+            }
+
+            $locked->forceFill([
                 'academic_year_id' => $academicYearId,
                 'reporting_period' => $reportingPeriod,
                 'notes' => $notes,
             ])->save();
 
-            $submission->items()->delete();
-            $submission->items()->createMany($indicatorRows->all());
+            $locked->items()->delete();
+            $locked->items()->createMany($indicatorRows->all());
 
             app(FormSubmissionHistoryLogger::class)->log(
                 formType: IndicatorSubmission::FORM_TYPE,
-                submissionId: $submission->id,
-                schoolId: $submission->school_id,
-                academicYearId: $submission->academic_year_id,
+                submissionId: $locked->id,
+                schoolId: $locked->school_id,
+                academicYearId: $locked->academic_year_id,
                 action: 'updated',
                 fromStatus: $currentStatus,
                 toStatus: $currentStatus,
@@ -304,9 +307,9 @@ class IndicatorSubmissionController extends Controller
             event(new CspamsUpdateBroadcast([
                 'entity' => 'indicators',
                 'eventType' => 'indicators.updated',
-                'submissionId' => (string) $submission->id,
-                'schoolId' => (string) $submission->school_id,
-                'academicYearId' => (string) $submission->academic_year_id,
+                'submissionId' => (string) $locked->id,
+                'schoolId' => (string) $locked->school_id,
+                'academicYearId' => (string) $locked->academic_year_id,
                 'status' => $currentStatus,
             ]));
         });
@@ -330,46 +333,53 @@ class IndicatorSubmissionController extends Controller
         $user = $this->requireUser($request);
         $this->assertCanSubmit($user, $submission->school_id);
 
-        $fromStatus = $this->statusValue($submission->status);
-        if (! in_array($fromStatus, [
-            FormSubmissionStatus::DRAFT->value,
-            FormSubmissionStatus::RETURNED->value,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'submission' => 'Only draft or returned indicator submissions can be submitted.',
-            ]);
-        }
+        DB::transaction(function () use ($submission, $user): void {
+            $locked = IndicatorSubmission::query()
+                ->lockForUpdate()
+                ->find($submission->id);
 
-        $submission->forceFill([
-            'status' => FormSubmissionStatus::SUBMITTED->value,
-            'submitted_by' => $user->id,
-            'submitted_at' => now(),
-            'reviewed_by' => null,
-            'reviewed_at' => null,
-            'review_notes' => null,
-        ])->save();
+            $fromStatus = $this->statusValue($locked->status);
+            if (! in_array($fromStatus, [
+                FormSubmissionStatus::DRAFT->value,
+                FormSubmissionStatus::RETURNED->value,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'submission' => 'Only draft or returned indicator submissions can be submitted.',
+                ]);
+            }
 
-        app(FormSubmissionHistoryLogger::class)->log(
-            formType: IndicatorSubmission::FORM_TYPE,
-            submissionId: $submission->id,
-            schoolId: $submission->school_id,
-            academicYearId: $submission->academic_year_id,
-            action: 'submitted',
-            fromStatus: $fromStatus,
-            toStatus: FormSubmissionStatus::SUBMITTED,
-            actorId: $user->id,
-            notes: 'Indicator package submitted to monitor.',
-        );
+            $locked->forceFill([
+                'status' => FormSubmissionStatus::SUBMITTED->value,
+                'submitted_by' => $user->id,
+                'submitted_at' => now(),
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+                'review_notes' => null,
+            ])->save();
 
-        event(new CspamsUpdateBroadcast([
-            'entity' => 'indicators',
-            'eventType' => 'indicators.submitted',
-            'submissionId' => (string) $submission->id,
-            'schoolId' => (string) $submission->school_id,
-            'academicYearId' => (string) $submission->academic_year_id,
-            'status' => FormSubmissionStatus::SUBMITTED->value,
-        ]));
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $locked->id,
+                schoolId: $locked->school_id,
+                academicYearId: $locked->academic_year_id,
+                action: 'submitted',
+                fromStatus: $fromStatus,
+                toStatus: FormSubmissionStatus::SUBMITTED,
+                actorId: $user->id,
+                notes: 'Indicator package submitted to monitor.',
+            );
 
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'indicators',
+                'eventType' => 'indicators.submitted',
+                'submissionId' => (string) $locked->id,
+                'schoolId' => (string) $locked->school_id,
+                'academicYearId' => (string) $locked->academic_year_id,
+                'status' => FormSubmissionStatus::SUBMITTED->value,
+            ]));
+        });
+
+        $submission->refresh();
         $submission->load([
             'school:id,school_code,name',
             'academicYear:id,name',
@@ -390,36 +400,54 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanReview($user);
         $this->assertCanView($user, $submission->school_id);
 
-        $fromStatus = $this->statusValue($submission->status);
-        if ($fromStatus !== FormSubmissionStatus::SUBMITTED->value) {
-            throw ValidationException::withMessages([
-                'submission' => 'Only submitted indicator packages can be validated or returned.',
-            ]);
-        }
-
         $decision = $request->string('decision')->toString();
         $notes = $request->filled('notes')
             ? trim($request->string('notes')->toString())
             : null;
 
-        $submission->forceFill([
-            'status' => $decision,
-            'reviewed_by' => $user->id,
-            'reviewed_at' => now(),
-            'review_notes' => $notes,
-        ])->save();
+        DB::transaction(function () use ($submission, $user, $decision, $notes): void {
+            $locked = IndicatorSubmission::query()
+                ->lockForUpdate()
+                ->find($submission->id);
 
-        app(FormSubmissionHistoryLogger::class)->log(
-            formType: IndicatorSubmission::FORM_TYPE,
-            submissionId: $submission->id,
-            schoolId: $submission->school_id,
-            academicYearId: $submission->academic_year_id,
-            action: $decision === FormSubmissionStatus::VALIDATED->value ? 'validated' : 'returned',
-            fromStatus: $fromStatus,
-            toStatus: $decision,
-            actorId: $user->id,
-            notes: $notes,
-        );
+            $fromStatus = $this->statusValue($locked->status);
+            if ($fromStatus !== FormSubmissionStatus::SUBMITTED->value) {
+                throw ValidationException::withMessages([
+                    'submission' => 'Only submitted indicator packages can be validated or returned.',
+                ]);
+            }
+
+            $locked->forceFill([
+                'status' => $decision,
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now(),
+                'review_notes' => $notes,
+            ])->save();
+
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $locked->id,
+                schoolId: $locked->school_id,
+                academicYearId: $locked->academic_year_id,
+                action: $decision === FormSubmissionStatus::VALIDATED->value ? 'validated' : 'returned',
+                fromStatus: $fromStatus,
+                toStatus: $decision,
+                actorId: $user->id,
+                notes: $notes,
+            );
+
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'indicators',
+                'eventType' => $decision === FormSubmissionStatus::VALIDATED->value ? 'indicators.validated' : 'indicators.returned',
+                'submissionId' => (string) $locked->id,
+                'schoolId' => (string) $locked->school_id,
+                'academicYearId' => (string) $locked->academic_year_id,
+                'status' => $decision,
+                'notes' => $notes,
+            ]));
+        });
+
+        $submission->refresh();
 
         $schoolHeadsQuery = User::query()
             ->with('roles')
@@ -444,16 +472,6 @@ class IndicatorSubmissionController extends Controller
                 $notes,
             ));
         }
-
-        event(new CspamsUpdateBroadcast([
-            'entity' => 'indicators',
-            'eventType' => $decision === FormSubmissionStatus::VALIDATED->value ? 'indicators.validated' : 'indicators.returned',
-            'submissionId' => (string) $submission->id,
-            'schoolId' => (string) $submission->school_id,
-            'academicYearId' => (string) $submission->academic_year_id,
-            'status' => $decision,
-            'notes' => $notes,
-        ]));
 
         $submission->load([
             'school:id,school_code,name',

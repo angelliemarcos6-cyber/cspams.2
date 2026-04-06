@@ -1157,12 +1157,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncAlerts(Array.isArray(response.data?.meta?.alerts) ? response.data.meta.alerts : []);
         setSyncStatus("updated");
 
-        etagRef.current = "";
-        void syncRecords(true).catch(() => {});
-
         if (!response.data?.data) {
           throw new Error("Bulk import response is empty.");
         }
+
+        etagRef.current = "";
+        void syncRecords(true).catch(() => {});
 
         return response.data.data;
       } catch (err) {

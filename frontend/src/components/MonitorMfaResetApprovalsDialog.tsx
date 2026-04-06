@@ -250,7 +250,7 @@ export function MonitorMfaResetApprovalsDialog({
                           {item.requesterEmail} • Request #{item.requestId}
                         </p>
                         <p className="mt-1 text-xs text-slate-600">
-                          Token expires: {new Date(item.expiresAt).toLocaleString()}
+                          Token expires: {Number.isNaN(new Date(item.expiresAt).getTime()) ? "unknown" : new Date(item.expiresAt).toLocaleString()}
                           {isFresh ? " • just approved" : ""}
                         </p>
                         {item.deliveryMessage && (
