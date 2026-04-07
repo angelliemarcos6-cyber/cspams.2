@@ -607,7 +607,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
             academic_year_id: payload.academicYearId,
             reporting_period: payload.reportingPeriod ?? null,
             notes: payload.notes ?? null,
-            indicators: payload.indicators.map((entry) => ({
+            indicators: (payload.indicators ?? []).map((entry) => ({
               metric_id: entry.metricId,
               target_value: entry.targetValue ?? null,
               actual_value: entry.actualValue ?? null,
@@ -676,7 +676,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
             academic_year_id: payload.academicYearId,
             reporting_period: payload.reportingPeriod ?? null,
             notes: payload.notes ?? null,
-            indicators: payload.indicators.map((entry) => ({
+            indicators: (payload.indicators ?? []).map((entry) => ({
               metric_id: entry.metricId,
               target_value: entry.targetValue ?? null,
               actual_value: entry.actualValue ?? null,

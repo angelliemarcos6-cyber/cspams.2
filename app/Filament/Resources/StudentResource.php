@@ -37,7 +37,15 @@ class StudentResource extends Resource
             ->schema([
                 Forms\Components\Select::make('school_id')
                     ->label('School')
-                    ->options(fn (): array => School::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->searchable()
+                    ->getSearchResultsUsing(fn (string $search): array => School::query()
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('school_code', 'like', "%{$search}%")
+                        ->orderBy('name')
+                        ->limit(50)
+                        ->pluck('name', 'id')
+                        ->all())
+                    ->getOptionLabelUsing(fn ($value): ?string => School::query()->whereKey($value)->value('name'))
                     ->required(fn (): bool => static::isMonitor())
                     ->visible(fn (): bool => static::isMonitor())
                     ->live(),
@@ -48,7 +56,14 @@ class StudentResource extends Resource
 
                 Forms\Components\Select::make('academic_year_id')
                     ->label('Academic Year')
-                    ->options(fn (): array => AcademicYear::query()->orderByDesc('name')->pluck('name', 'id')->all())
+                    ->searchable()
+                    ->getSearchResultsUsing(fn (string $search): array => AcademicYear::query()
+                        ->where('name', 'like', "%{$search}%")
+                        ->orderByDesc('name')
+                        ->limit(50)
+                        ->pluck('name', 'id')
+                        ->all())
+                    ->getOptionLabelUsing(fn ($value): ?string => AcademicYear::query()->whereKey($value)->value('name'))
                     ->default(fn (): ?int => AcademicYear::query()->where('is_current', true)->value('id'))
                     ->required()
                     ->live(),

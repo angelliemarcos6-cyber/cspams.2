@@ -301,7 +301,10 @@ class SchoolRecordController extends Controller
     {
         $this->requireMonitor($request);
 
-        $records = School::onlyTrashed()
+        $perPage = (int) $request->integer('per_page', 25);
+        $perPage = max(1, min($perPage, 100));
+
+        $paginator = School::onlyTrashed()
             ->with('submittedBy:id,name')
             ->with(['schoolHeadAccounts' => function ($query): void {
                 $query->select([
@@ -326,12 +329,15 @@ class SchoolRecordController extends Controller
             }])
             ->withCount('students')
             ->orderByDesc('deleted_at')
-            ->get();
+            ->paginate($perPage);
 
         return response()->json([
-            'data' => SchoolRecordResource::collection($records)->resolve(),
+            'data' => SchoolRecordResource::collection($paginator->getCollection())->resolve(),
             'meta' => [
-                'count' => $records->count(),
+                'count' => $paginator->total(),
+                'currentPage' => $paginator->currentPage(),
+                'lastPage' => $paginator->lastPage(),
+                'perPage' => $paginator->perPage(),
             ],
         ]);
     }
@@ -1129,29 +1135,35 @@ class SchoolRecordController extends Controller
      */
     private function buildTargetsMetSummary(Builder $baseQuery): array
     {
-        $schools = (clone $baseQuery)
-            ->select(['id', 'status', 'reported_student_count', 'reported_teacher_count'])
-            ->get();
+        $aggregate = (clone $baseQuery)
+            ->selectRaw(
+                'COUNT(*) as total_schools, '
+                ."SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_schools, "
+                ."SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_schools, "
+                ."SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) as inactive_schools, "
+                .'COALESCE(SUM(reported_teacher_count), 0) as reported_teachers'
+            )
+            ->first();
 
-        $schoolIds = $schools->pluck('id');
-        $totalSchools = (int) $schools->count();
-        $activeSchools = (int) $schools->where('status', 'active')->count();
-        $pendingSchools = (int) $schools->where('status', 'pending')->count();
-        $inactiveSchools = (int) $schools->where('status', 'inactive')->count();
+        $totalSchools = (int) ($aggregate->total_schools ?? 0);
+        $activeSchools = (int) ($aggregate->active_schools ?? 0);
+        $pendingSchools = (int) ($aggregate->pending_schools ?? 0);
+        $inactiveSchools = (int) ($aggregate->inactive_schools ?? 0);
+        $reportedTeachers = (int) ($aggregate->reported_teachers ?? 0);
 
-        $reportedTeachers = (int) $schools->sum('reported_teacher_count');
+        $schoolIdSubquery = (clone $baseQuery)->select('id');
 
         $sectionCount = 0;
         $statusCounts = collect();
 
-        if ($schoolIds->isNotEmpty()) {
+        if ($totalSchools > 0) {
             $sectionCount = (int) Section::query()
-                ->whereIn('school_id', $schoolIds)
+                ->whereIn('school_id', (clone $schoolIdSubquery))
                 ->count();
 
             $statusCounts = Student::query()
                 ->selectRaw('status, COUNT(*) as aggregate_count')
-                ->whereIn('school_id', $schoolIds)
+                ->whereIn('school_id', (clone $schoolIdSubquery))
                 ->groupBy('status')
                 ->pluck('aggregate_count', 'status')
                 ->map(static fn ($value): int => (int) $value);
