@@ -343,18 +343,22 @@ class IndicatorSubmissionController extends Controller
         $user = $this->requireUser($request);
         $this->assertCanSubmit($user, $submission->school_id);
 
-        $fromStatus = $this->statusValue($submission->status);
-        if (! in_array($fromStatus, [
-            FormSubmissionStatus::DRAFT->value,
-            FormSubmissionStatus::RETURNED->value,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'submission' => 'Only draft or returned indicator submissions can be submitted.',
-            ]);
-        }
+        DB::transaction(function () use ($submission, $user): void {
+            /** @var IndicatorSubmission $locked */
+            $locked = IndicatorSubmission::query()->lockForUpdate()->find($submission->id);
+            abort_if(! $locked, Response::HTTP_NOT_FOUND, 'Submission not found.');
 
-        DB::transaction(function () use ($submission, $user, $fromStatus): void {
-            $submission->forceFill([
+            $fromStatus = $this->statusValue($locked->status);
+            if (! in_array($fromStatus, [
+                FormSubmissionStatus::DRAFT->value,
+                FormSubmissionStatus::RETURNED->value,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'submission' => 'Only draft or returned indicator submissions can be submitted.',
+                ]);
+            }
+
+            $locked->forceFill([
                 'status' => FormSubmissionStatus::SUBMITTED->value,
                 'submitted_by' => $user->id,
                 'submitted_at' => now(),
@@ -363,11 +367,13 @@ class IndicatorSubmissionController extends Controller
                 'review_notes' => null,
             ])->save();
 
+            $submission->refresh();
+
             app(FormSubmissionHistoryLogger::class)->log(
                 formType: IndicatorSubmission::FORM_TYPE,
-                submissionId: $submission->id,
-                schoolId: $submission->school_id,
-                academicYearId: $submission->academic_year_id,
+                submissionId: $locked->id,
+                schoolId: $locked->school_id,
+                academicYearId: $locked->academic_year_id,
                 action: 'submitted',
                 fromStatus: $fromStatus,
                 toStatus: FormSubmissionStatus::SUBMITTED,
@@ -378,9 +384,9 @@ class IndicatorSubmissionController extends Controller
             event(new CspamsUpdateBroadcast([
                 'entity' => 'indicators',
                 'eventType' => 'indicators.submitted',
-                'submissionId' => (string) $submission->id,
-                'schoolId' => (string) $submission->school_id,
-                'academicYearId' => (string) $submission->academic_year_id,
+                'submissionId' => (string) $locked->id,
+                'schoolId' => (string) $locked->school_id,
+                'academicYearId' => (string) $locked->academic_year_id,
                 'status' => FormSubmissionStatus::SUBMITTED->value,
             ]));
         });
@@ -405,31 +411,37 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanReview($user);
         $this->assertCanView($user, $submission->school_id);
 
-        $fromStatus = $this->statusValue($submission->status);
-        if ($fromStatus !== FormSubmissionStatus::SUBMITTED->value) {
-            throw ValidationException::withMessages([
-                'submission' => 'Only submitted indicator packages can be validated or returned.',
-            ]);
-        }
-
         $decision = $request->string('decision')->toString();
         $notes = $request->filled('notes')
             ? trim($request->string('notes')->toString())
             : null;
 
-        DB::transaction(function () use ($submission, $user, $fromStatus, $decision, $notes): void {
-            $submission->forceFill([
+        DB::transaction(function () use ($submission, $user, $decision, $notes): void {
+            /** @var IndicatorSubmission $locked */
+            $locked = IndicatorSubmission::query()->lockForUpdate()->find($submission->id);
+            abort_if(! $locked, Response::HTTP_NOT_FOUND, 'Submission not found.');
+
+            $fromStatus = $this->statusValue($locked->status);
+            if ($fromStatus !== FormSubmissionStatus::SUBMITTED->value) {
+                throw ValidationException::withMessages([
+                    'submission' => 'Only submitted indicator packages can be validated or returned.',
+                ]);
+            }
+
+            $locked->forceFill([
                 'status' => $decision,
                 'reviewed_by' => $user->id,
                 'reviewed_at' => now(),
                 'review_notes' => $notes,
             ])->save();
 
+            $submission->refresh();
+
             app(FormSubmissionHistoryLogger::class)->log(
                 formType: IndicatorSubmission::FORM_TYPE,
-                submissionId: $submission->id,
-                schoolId: $submission->school_id,
-                academicYearId: $submission->academic_year_id,
+                submissionId: $locked->id,
+                schoolId: $locked->school_id,
+                academicYearId: $locked->academic_year_id,
                 action: $decision === FormSubmissionStatus::VALIDATED->value ? 'validated' : 'returned',
                 fromStatus: $fromStatus,
                 toStatus: $decision,
@@ -1157,6 +1169,11 @@ class IndicatorSubmissionController extends Controller
         };
     }
 
+    /**
+     * Must be called inside a DB::transaction() to guarantee atomicity.
+     * Uses lockForUpdate() to prevent concurrent requests from reading
+     * the same MAX(version) before either has committed.
+     */
     private function nextVersion(int $schoolId, int $academicYearId, ?string $reportingPeriod): int
     {
         $query = IndicatorSubmission::query()
@@ -1168,6 +1185,8 @@ class IndicatorSubmissionController extends Controller
         } else {
             $query->where('reporting_period', $reportingPeriod);
         }
+
+        $query->lockForUpdate();
 
         return ((int) $query->max('version')) + 1;
     }

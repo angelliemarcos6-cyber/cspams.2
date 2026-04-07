@@ -31,12 +31,17 @@ class LifecycleStatusChart extends ChartWidget
             $query->where('school_id', auth()->user()?->school_id);
         }
 
+        $counts = $query
+            ->selectRaw('status, COUNT(*) as cnt')
+            ->groupBy('status')
+            ->pluck('cnt', 'status');
+
         $labels = [];
         $values = [];
 
         foreach (StudentStatus::options() as $status => $label) {
             $labels[] = $label;
-            $values[] = (clone $query)->where('status', $status)->count();
+            $values[] = (int) ($counts[$status] ?? 0);
         }
 
         return [

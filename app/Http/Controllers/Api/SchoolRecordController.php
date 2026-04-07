@@ -113,6 +113,9 @@ class SchoolRecordController extends Controller
                     'school_id',
                     'flagged_at',
                     'flagged_reason',
+                    'verified_by_user_id',
+                    'verified_at',
+                    'verification_notes',
                 ];
 
                 if ($this->usersHaveDeleteRecordFlags()) {
@@ -120,7 +123,7 @@ class SchoolRecordController extends Controller
                     $columns[] = 'delete_record_flag_reason';
                 }
 
-                $query->select($columns);
+                $query->select($columns)->with('verifiedBy:id,name');
 
                 if ($this->accountSetupTokensTableExists()) {
                     $query->with('latestAccountSetupToken');
@@ -312,7 +315,10 @@ class SchoolRecordController extends Controller
                     'school_id',
                     'flagged_at',
                     'flagged_reason',
-                ]);
+                    'verified_by_user_id',
+                    'verified_at',
+                    'verification_notes',
+                ])->with('verifiedBy:id,name');
 
                 if ($this->accountSetupTokensTableExists()) {
                     $query->with('latestAccountSetupToken');
@@ -985,7 +991,10 @@ class SchoolRecordController extends Controller
                         'school_id',
                         'flagged_at',
                         'flagged_reason',
-                    ]);
+                        'verified_by_user_id',
+                        'verified_at',
+                        'verification_notes',
+                    ])->with('verifiedBy:id,name');
 
                     if ($this->accountSetupTokensTableExists()) {
                         $query->with('latestAccountSetupToken');

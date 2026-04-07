@@ -24,7 +24,7 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -36,6 +36,20 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
             ->line('Verification code: ' . $this->code)
             ->line('This code expires at: ' . $this->expiresAt)
             ->line('If you did not initiate this request, reset your password immediately.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(object $notifiable): array
+    {
+        return [
+            'eventType' => 'mfa_verification',
+            'title' => 'MFA verification code sent',
+            'message' => 'A sign-in verification code was sent to your email.',
+            'expiresAt' => $this->expiresAt,
+            'createdAt' => now()->toISOString(),
+        ];
     }
 
     public function verificationCode(): string

@@ -28,6 +28,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
@@ -439,33 +440,42 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
-        $status = $account->accountStatus();
-        if ($status !== AccountStatus::PENDING_VERIFICATION) {
-            return response()->json(
-                ['message' => 'Only accounts awaiting monitor verification can be activated.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
-        if (
-            $account->must_reset_password
-            || $account->password_changed_at === null
-            || $account->email_verified_at === null
-        ) {
-            return response()->json(
-                ['message' => 'Account setup is not complete yet.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
         $reason = trim($request->string('reason')->toString());
 
-        $account->forceFill([
-            'account_status' => AccountStatus::ACTIVE->value,
-            'verified_by_user_id' => $monitor->id,
-            'verified_at' => now(),
-            'verification_notes' => $reason !== '' ? $reason : null,
-        ])->save();
+        /** @var string $previousStatus */
+        $previousStatus = DB::transaction(function () use ($account, $monitor, $reason): string {
+            /** @var User $locked */
+            $locked = User::query()->lockForUpdate()->find($account->id);
+            abort_if(! $locked, Response::HTTP_NOT_FOUND, 'Account not found.');
+
+            $status = $locked->accountStatus();
+            if ($status !== AccountStatus::PENDING_VERIFICATION) {
+                throw ValidationException::withMessages([
+                    'account' => 'Only accounts awaiting monitor verification can be activated.',
+                ]);
+            }
+
+            if (
+                $locked->must_reset_password
+                || $locked->password_changed_at === null
+                || $locked->email_verified_at === null
+            ) {
+                throw ValidationException::withMessages([
+                    'account' => 'Account setup is not complete yet.',
+                ]);
+            }
+
+            $locked->forceFill([
+                'account_status' => AccountStatus::ACTIVE->value,
+                'verified_by_user_id' => $monitor->id,
+                'verified_at' => now(),
+                'verification_notes' => $reason !== '' ? $reason : null,
+            ])->save();
+
+            $account->refresh();
+
+            return $status->value;
+        });
 
         $this->loadLatestAccountSetupToken($account);
 
@@ -483,7 +493,7 @@ class SchoolHeadAccountController extends Controller
                 'target_role' => UserRoleResolver::SCHOOL_HEAD,
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
-                'previous_status' => $status->value,
+                'previous_status' => $previousStatus,
                 'new_status' => $account->accountStatus()->value,
                 'reason' => $reason !== '' ? $reason : null,
                 'verified_at' => $account->verified_at?->toISOString(),

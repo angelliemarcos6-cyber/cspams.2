@@ -7,6 +7,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\StudentStatus;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\DB;
 
 class StatusTransitionTrendChart extends ChartWidget
 {
@@ -30,7 +31,11 @@ class StatusTransitionTrendChart extends ChartWidget
         $end = now()->endOfMonth();
 
         $query = StudentStatusLog::query()
-            ->whereBetween('changed_at', [$start, $end]);
+            ->whereBetween('changed_at', [$start, $end])
+            ->whereIn('to_status', [
+                StudentStatus::AT_RISK->value,
+                StudentStatus::DROPPED_OUT->value,
+            ]);
 
         if (UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD)) {
             $query->whereHas('student', function ($studentQuery): void {
@@ -38,7 +43,21 @@ class StatusTransitionTrendChart extends ChartWidget
             });
         }
 
-        $logs = $query->get(['to_status', 'changed_at']);
+        $driver = DB::getDriverName();
+        $monthExpr = $driver === 'sqlite'
+            ? "STRFTIME('%Y-%m', changed_at)"
+            : "TO_CHAR(changed_at, 'YYYY-MM')";
+
+        $rows = $query
+            ->select([
+                'to_status',
+                DB::raw("{$monthExpr} as month_key"),
+                DB::raw('COUNT(*) as cnt'),
+            ])
+            ->groupBy('to_status', DB::raw($monthExpr))
+            ->get();
+
+        $grouped = $rows->groupBy('to_status');
 
         $labels = [];
         $atRiskSeries = [];
@@ -48,15 +67,8 @@ class StatusTransitionTrendChart extends ChartWidget
             $monthKey = $cursor->format('Y-m');
             $labels[] = $cursor->format('M Y');
 
-            $atRiskSeries[] = $logs
-                ->filter(fn (StudentStatusLog $log): bool => Carbon::parse($log->changed_at)->format('Y-m') === $monthKey)
-                ->where('to_status', StudentStatus::AT_RISK->value)
-                ->count();
-
-            $droppedOutSeries[] = $logs
-                ->filter(fn (StudentStatusLog $log): bool => Carbon::parse($log->changed_at)->format('Y-m') === $monthKey)
-                ->where('to_status', StudentStatus::DROPPED_OUT->value)
-                ->count();
+            $atRiskSeries[] = (int) ($grouped->get(StudentStatus::AT_RISK->value)?->firstWhere('month_key', $monthKey)?->cnt ?? 0);
+            $droppedOutSeries[] = (int) ($grouped->get(StudentStatus::DROPPED_OUT->value)?->firstWhere('month_key', $monthKey)?->cnt ?? 0);
         }
 
         return [

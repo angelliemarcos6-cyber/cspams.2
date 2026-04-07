@@ -7,7 +7,6 @@ use App\Models\User;
 use App\Support\Domain\FormSubmissionStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Schema;
 
 /** @mixin School */
 class SchoolRecordResource extends JsonResource
@@ -90,14 +89,9 @@ class SchoolRecordResource extends JsonResource
         }
 
         $status = $account->accountStatus();
-        $setupToken = null;
-
-        if (Schema::hasTable('account_setup_tokens')) {
-            $account->loadMissing(['latestAccountSetupToken', 'verifiedBy']);
-            $setupToken = $account->latestAccountSetupToken;
-        } else {
-            $account->loadMissing('verifiedBy');
-        }
+        $setupToken = $account->relationLoaded('latestAccountSetupToken')
+            ? $account->latestAccountSetupToken
+            : null;
         $setupLinkExpiresAt = null;
 
         if ($setupToken && $setupToken->used_at === null && $setupToken->expires_at !== null && $setupToken->expires_at->isFuture()) {
