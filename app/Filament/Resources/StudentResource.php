@@ -20,6 +20,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class StudentResource extends Resource
 {
@@ -38,13 +39,17 @@ class StudentResource extends Resource
                 Forms\Components\Select::make('school_id')
                     ->label('School')
                     ->searchable()
-                    ->getSearchResultsUsing(fn (string $search): array => School::query()
-                        ->where('name', 'like', "%{$search}%")
-                        ->orWhere('school_code', 'like', "%{$search}%")
-                        ->orderBy('name')
-                        ->limit(50)
-                        ->pluck('name', 'id')
-                        ->all())
+                    ->getSearchResultsUsing(function (string $search): array {
+                        $op = static::caseInsensitiveLikeOperator();
+
+                        return School::query()
+                            ->where('name', $op, "%{$search}%")
+                            ->orWhere('school_code', $op, "%{$search}%")
+                            ->orderBy('name')
+                            ->limit(50)
+                            ->pluck('name', 'id')
+                            ->all();
+                    })
                     ->getOptionLabelUsing(fn ($value): ?string => School::query()->whereKey($value)->value('name'))
                     ->required(fn (): bool => static::isMonitor())
                     ->visible(fn (): bool => static::isMonitor())
@@ -57,12 +62,16 @@ class StudentResource extends Resource
                 Forms\Components\Select::make('academic_year_id')
                     ->label('Academic Year')
                     ->searchable()
-                    ->getSearchResultsUsing(fn (string $search): array => AcademicYear::query()
-                        ->where('name', 'like', "%{$search}%")
-                        ->orderByDesc('name')
-                        ->limit(50)
-                        ->pluck('name', 'id')
-                        ->all())
+                    ->getSearchResultsUsing(function (string $search): array {
+                        $op = static::caseInsensitiveLikeOperator();
+
+                        return AcademicYear::query()
+                            ->where('name', $op, "%{$search}%")
+                            ->orderByDesc('name')
+                            ->limit(50)
+                            ->pluck('name', 'id')
+                            ->all();
+                    })
                     ->getOptionLabelUsing(fn ($value): ?string => AcademicYear::query()->whereKey($value)->value('name'))
                     ->default(fn (): ?int => AcademicYear::query()->where('is_current', true)->value('id'))
                     ->required()
@@ -304,5 +313,10 @@ class StudentResource extends Resource
     protected static function isSchoolHead(): bool
     {
         return UserRoleResolver::has(auth()->user(), UserRoleResolver::SCHOOL_HEAD);
+    }
+
+    protected static function caseInsensitiveLikeOperator(): string
+    {
+        return DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
     }
 }

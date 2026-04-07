@@ -872,12 +872,13 @@ class SchoolRecordController extends Controller
             $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
         }
         try {
-            $account->notify(
-                new SchoolHeadAccountSetupNotification(
+            Notification::send(
+                [$account],
+                (new SchoolHeadAccountSetupNotification(
                     $school,
                     $issuedSetup['setupUrl'],
                     CarbonImmutable::parse($issuedSetup['expiresAt']),
-                ),
+                ))->onQueue('notifications'),
             );
         } catch (\Throwable $exception) {
             report($exception);

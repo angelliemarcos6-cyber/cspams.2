@@ -6,8 +6,10 @@ use App\Models\User;
 use App\Support\Audit\AuthAuditLogger;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,7 +28,16 @@ class AppServiceProvider extends ServiceProvider
     {
         if (! $this->shouldSkipProductionConfigurationAudit()) {
             $this->assertSafeProductionRuntimeConfiguration();
+            $this->assertSafeNeonEndpoint();
         }
+
+        RateLimiter::for('indicators-submit', static function (Request $request): Limit {
+            $key = $request->user()?->id
+                ? 'indicators-submit-user:' . $request->user()->id
+                : 'indicators-submit-ip:' . $request->ip();
+
+            return Limit::perMinute(6)->by($key);
+        });
 
         RateLimiter::for('api', function (Request $request): Limit {
             $key = $request->user()?->id
@@ -427,6 +438,47 @@ class AppServiceProvider extends ServiceProvider
     private function assertSafeProductionRuntimeConfiguration(): void
     {
         $this->throwIfUnsafeProductionConfiguration($this->productionRuntimeConfigurationIssues());
+    }
+
+    /**
+     * Refuse to boot the web/queue process against a Neon pooled (pgBouncer)
+     * endpoint in production. Transaction-mode pooling silently breaks
+     * lockForUpdate() and other session-scoped state used by the indicator
+     * submission and account activation flows.
+     */
+    private function assertSafeNeonEndpoint(): void
+    {
+        if (! app()->environment(['production', 'staging'])) {
+            return;
+        }
+
+        if (strtolower(trim((string) config('database.default'))) !== 'pgsql') {
+            return;
+        }
+
+        $host = strtolower(trim((string) config('database.connections.pgsql.host')));
+        if ($host === '' || ! str_contains($host, '-pooler.')) {
+            return;
+        }
+
+        Log::critical(
+            'Refusing to boot against a Neon pooled endpoint. lockForUpdate() and other session-scoped locks are unreliable under pgBouncer transaction mode. Point DB_HOST at the direct Neon endpoint.',
+            ['host' => $host],
+        );
+
+        $allowOverride = filter_var(
+            env('CSPAMS_ALLOW_NEON_POOLED_ENDPOINT', false),
+            FILTER_VALIDATE_BOOLEAN,
+        );
+
+        if ($allowOverride) {
+            return;
+        }
+
+        throw new RuntimeException(
+            "Unsafe production database configuration: Neon pooled endpoint detected ('{$host}'). "
+            .'Set DB_HOST to the direct endpoint, or explicitly set CSPAMS_ALLOW_NEON_POOLED_ENDPOINT=true.',
+        );
     }
 
     private function shouldSkipProductionConfigurationAudit(): bool

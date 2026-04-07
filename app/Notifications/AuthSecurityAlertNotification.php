@@ -3,9 +3,10 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class AuthSecurityAlertNotification extends Notification
+class AuthSecurityAlertNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -20,6 +21,7 @@ class AuthSecurityAlertNotification extends Notification
         private readonly string $message,
         private readonly array $context = [],
     ) {
+        $this->onQueue('notifications');
     }
 
     /**
