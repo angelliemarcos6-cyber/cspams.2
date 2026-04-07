@@ -14,6 +14,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Database\BuildsEscapedLikePatterns;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -245,7 +246,16 @@ class TeacherRecordController extends Controller
             );
         }
 
-        $teacher->delete();
+        try {
+            $teacher->delete();
+        } catch (QueryException $exception) {
+            report($exception);
+
+            return response()->json(
+                ['message' => 'Unable to delete this teacher because related records still reference them.'],
+                Response::HTTP_CONFLICT,
+            );
+        }
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'teachers',

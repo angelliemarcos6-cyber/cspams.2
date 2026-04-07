@@ -26,6 +26,7 @@ use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -243,7 +244,19 @@ class SchoolRecordController extends Controller
             'dependencies' => $deletePreview,
         ];
 
-        $school->delete();
+        try {
+            $school->delete();
+        } catch (QueryException $exception) {
+            report($exception);
+
+            return response()->json(
+                [
+                    'message' => 'Unable to delete this school because related records still reference it.',
+                    'dependencies' => $deletePreview,
+                ],
+                Response::HTTP_CONFLICT,
+            );
+        }
 
         $syncMeta = $this->buildSyncMetadataForUser($user);
         $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);

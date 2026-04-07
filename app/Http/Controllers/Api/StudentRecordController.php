@@ -9,6 +9,7 @@ use App\Http\Resources\StudentRecordResource;
 use App\Http\Resources\StudentStatusHistoryResource;
 use App\Models\AcademicYear;
 use App\Models\School;
+use App\Models\Section;
 use App\Models\Student;
 use App\Models\StudentStatusLog;
 use App\Models\User;
@@ -835,10 +836,21 @@ class StudentRecordController extends Controller
                     : StudentRiskLevel::LOW->value));
 
         $sectionName = $request->input('section', $student->section_name);
-        $currentLevel = $request->input('currentLevel', $student->current_level);
-        if (! $currentLevel && is_string($sectionName) && trim($sectionName) !== '') {
-            $currentLevel = $sectionName;
+        $normalizedSectionName = is_string($sectionName) ? trim($sectionName) : null;
+        if ($normalizedSectionName === '') {
+            $normalizedSectionName = null;
         }
+
+        $currentLevel = $request->input('currentLevel', $student->current_level);
+        if (! $currentLevel && $normalizedSectionName !== null) {
+            $currentLevel = $normalizedSectionName;
+        }
+
+        $resolvedSectionId = $this->resolveSectionIdForStudent(
+            $student,
+            $normalizedSectionName,
+            $currentLevel,
+        );
 
         $student->fill([
             'lrn' => trim($request->string('lrn')->toString()),
@@ -851,7 +863,8 @@ class StudentRecordController extends Controller
             'risk_level' => $riskLevelValue,
             'tracked_from_level' => $request->input('trackedFromLevel', $student->tracked_from_level ?? 'Kindergarten'),
             'current_level' => $currentLevel,
-            'section_name' => $sectionName,
+            'section_id' => $resolvedSectionId,
+            'section_name' => $normalizedSectionName,
             'teacher_name' => $request->input('teacher', $student->teacher_name),
         ]);
 
@@ -877,6 +890,41 @@ class StudentRecordController extends Controller
                 'changed_at' => now(),
             ]);
         });
+    }
+
+    /**
+     * Resolve the matching Section row for a student so the foreign key stays
+     * in sync with the denormalized section_name. Returns null when no
+     * suitable row exists for the school + academic year scope.
+     */
+    private function resolveSectionIdForStudent(
+        Student $student,
+        ?string $sectionName,
+        ?string $currentLevel,
+    ): ?int {
+        if ($sectionName === null || $sectionName === '') {
+            return null;
+        }
+
+        $schoolId = (int) $student->school_id;
+        $academicYearId = (int) $student->academic_year_id;
+
+        if ($schoolId <= 0 || $academicYearId <= 0) {
+            return null;
+        }
+
+        $query = Section::query()
+            ->where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($sectionName)]);
+
+        if (is_string($currentLevel) && trim($currentLevel) !== '') {
+            $query->where('grade_level', trim($currentLevel));
+        }
+
+        $sectionId = $query->orderBy('id')->value('id');
+
+        return $sectionId ? (int) $sectionId : null;
     }
 
     private function resolvePerPage(Request $request, int $default = 25, int $max = 200): int
