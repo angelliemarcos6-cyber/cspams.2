@@ -154,6 +154,7 @@ class StudentRecordController extends Controller
         $perPage = $this->resolvePerPage($request);
         $page = max(1, $request->integer('page', 1));
         $syncFingerprint = $this->buildSyncFingerprint(clone $query);
+        $filterSignature = $this->buildIndexFilterScopeFragment($request, $isMonitor);
         $etag = $this->buildSyncEtag(
             $scope,
             $scopeKey,
@@ -161,6 +162,7 @@ class StudentRecordController extends Controller
             $perPage,
             $syncFingerprint['recordCount'],
             $syncFingerprint['latestAt'],
+            $filterSignature,
         );
 
         $incomingEtag = trim((string) $request->header('If-None-Match'));
@@ -893,6 +895,38 @@ class StudentRecordController extends Controller
     }
 
     /**
+     * Build a deterministic fragment of the sync scope key from the index
+     * filter inputs. This guarantees that two requests with different filters
+     * (status, search, teacherName, schoolCode(s)) never collide on the same
+     * etag, even when their record counts and latest-updated timestamps
+     * happen to match.
+     */
+    private function buildIndexFilterScopeFragment(Request $request, bool $isMonitor): string
+    {
+        $status = trim((string) $request->query('status', ''));
+        $search = trim((string) $request->query('search', ''));
+        $teacherName = trim((string) $request->query('teacherName', ''));
+
+        $schoolCode = '';
+        $schoolCodesFragment = '';
+        if ($isMonitor) {
+            $schoolCode = trim((string) $request->query('schoolCode', ''));
+            $schoolCodesFragment = $this->parseSchoolCodes($request)
+                ->sort()
+                ->values()
+                ->implode(',');
+        }
+
+        return implode('|', [
+            'status:' . strtolower($status),
+            'search:' . strtolower($search),
+            'teacher:' . strtolower($teacherName),
+            'schoolCode:' . strtolower($schoolCode),
+            'schoolCodes:' . $schoolCodesFragment,
+        ]);
+    }
+
+    /**
      * Resolve the matching Section row for a student so the foreign key stays
      * in sync with the denormalized section_name. Returns null when no
      * suitable row exists for the school + academic year scope.
@@ -1076,6 +1110,7 @@ class StudentRecordController extends Controller
         int $perPage,
         int $recordCount,
         ?Carbon $latestAt,
+        string $filterSignature = '',
     ): string {
         return sha1(implode('|', [
             $scope,
@@ -1084,6 +1119,7 @@ class StudentRecordController extends Controller
             (string) $perPage,
             (string) $recordCount,
             $latestAt?->format('U.u') ?? '0',
+            $filterSignature,
         ]));
     }
 

@@ -136,8 +136,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const next = response.data?.data;
 
         if (next) {
-          setNotifications((current) => current.map((entry) => (entry.id === id ? next : entry)));
-          setUnreadCount((current) => Math.max(0, current - 1));
+          let wasUnread = false;
+          setNotifications((current) => {
+            const previous = current.find((entry) => entry.id === id);
+            wasUnread = previous ? !previous.readAt : false;
+            return current.map((entry) => (entry.id === id ? next : entry));
+          });
+          if (wasUnread) {
+            setUnreadCount((current) => Math.max(0, current - 1));
+          }
         } else {
           await syncNotifications(true);
         }

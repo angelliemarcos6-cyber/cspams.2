@@ -4,11 +4,12 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Schema;
 
-class CspamsUpdateBroadcast implements ShouldBroadcast
+class CspamsUpdateBroadcast implements ShouldBroadcast, ShouldDispatchAfterCommit
 {
     use Dispatchable;
     use SerializesModels;
