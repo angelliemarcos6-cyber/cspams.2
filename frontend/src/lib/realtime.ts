@@ -1,6 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
-import { buildApiUrl, COOKIE_SESSION_TOKEN, ensureCsrfCookie, readXsrfToken } from "@/lib/api";
+import { buildApiUrl, ensureCsrfCookie, readXsrfToken, type ApiRequestAuth } from "@/lib/api";
 
 declare global {
   interface Window {
@@ -33,7 +33,7 @@ export interface RealtimeBridgeScope {
 
 let realtimeEcho: Echo<"reverb"> | null = null;
 let isStarted = false;
-let activeToken = "";
+let activeAuthKey = "";
 let activeScopeKey = "";
 const BROADCAST_AUTH_TIMEOUT_MS = 10_000;
 
@@ -103,11 +103,19 @@ function resolveChannelName(scope: RealtimeBridgeScope): string | null {
   return schoolId ? `cspams-updates.school.${schoolId}` : null;
 }
 
-export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
+function buildAuthKey(auth: ApiRequestAuth): string {
+  if (auth.authMode === "cookie") {
+    return "cookie";
+  }
+
+  return `token:${auth.token.trim()}`;
+}
+
+export function startRealtimeBridge(auth: ApiRequestAuth, scope: RealtimeBridgeScope) {
   if (typeof window === "undefined") return;
 
-  const normalizedToken = token.trim();
-  if (!normalizedToken) {
+  const normalizedToken = auth.authMode === "token" ? auth.token.trim() : "";
+  if (auth.authMode === "token" && !normalizedToken) {
     stopRealtimeBridge();
     return;
   }
@@ -119,7 +127,8 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
   }
 
   const scopeKey = buildScopeKey(scope);
-  if (isStarted && activeToken === normalizedToken && activeScopeKey === scopeKey) {
+  const authKey = buildAuthKey(auth);
+  if (isStarted && activeAuthKey === authKey && activeScopeKey === scopeKey) {
     return;
   }
 
@@ -152,7 +161,7 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
     enabledTransports: ["ws", "wss"],
     authorizer: (channel) => ({
       authorize: (socketId, callback) => {
-        const useCookieSession = normalizedToken === COOKIE_SESSION_TOKEN;
+        const useCookieSession = auth.authMode === "cookie";
 
         (useCookieSession ? ensureCsrfCookie() : Promise.resolve())
           .then(async () => {
@@ -169,7 +178,7 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
                 headers: {
                   Accept: "application/json",
                   "Content-Type": "application/json",
-                  "X-CSPAMS-Auth-Transport": useCookieSession ? "cookie" : "token",
+                  "X-CSPAMS-Auth-Transport": auth.authMode,
                   ...(!useCookieSession
                     ? { Authorization: `Bearer ${normalizedToken}` }
                     : {}),
@@ -222,7 +231,7 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
     });
 
   isStarted = true;
-  activeToken = normalizedToken;
+  activeAuthKey = authKey;
   activeScopeKey = scopeKey;
 }
 
@@ -232,6 +241,6 @@ export function stopRealtimeBridge() {
   }
   realtimeEcho = null;
   isStarted = false;
-  activeToken = "";
+  activeAuthKey = "";
   activeScopeKey = "";
 }

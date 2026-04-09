@@ -7,11 +7,6 @@ return [
         'attempt_lockout_minutes' => max(1, (int) env('CSPAMS_AUTH_LOGIN_FAILURE_LOCKOUT_MINUTES', 15)),
     ],
 
-    'transport' => [
-        // Allow explicit bearer fallback for deployments where browser cookies cannot persist reliably.
-        'issue_token_fallback' => (bool) env('CSPAMS_AUTH_TOKEN_FALLBACK', true),
-    ],
-
     'diagnostics' => [
         // Temporary visibility into cookie-vs-bearer resolution. Keep disabled by default.
         'log_auth_mode' => (bool) env('CSPAMS_AUTH_DEBUG_LOG_MODE', false),

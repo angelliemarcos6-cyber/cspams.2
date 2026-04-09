@@ -182,16 +182,8 @@ class AuthController extends Controller
             'auth.login.suspicious_detected',
         );
 
-        $issueBearerToken = $this->shouldIssueBearerToken($request);
-
-        if ($this->shouldUseSessionLogin($request)) {
-            Auth::guard('web')->login($user);
-            $request->session()->regenerate();
-        }
-
-        $tokenPayload = $issueBearerToken
-            ? $this->issueDashboardToken($user, $role, $request, false)
-            : null;
+        $authentication = $this->authenticateForResolvedMode($user, $role, $request);
+        $tokenPayload = $authentication['tokenPayload'];
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -204,14 +196,14 @@ class AuthController extends Controller
                 [
                     'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                     'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
-                    'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
+                    'auth_mode' => $authentication['authMode'],
                     'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
                     'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
                     'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
                 ],
         );
 
-        return $this->authenticatedUserResponse($user, $role, $tokenPayload);
+        return $this->authenticatedUserResponse($user, $role, $authentication['authMode'], $tokenPayload);
     }
 
     public function resetRequiredPassword(ResetRequiredPasswordRequest $request): JsonResponse
@@ -294,14 +286,8 @@ class AuthController extends Controller
         ])->save();
 
         $revocationSummary = $this->revokeUserSessionsAndTokens($user);
-        $issueBearerToken = $this->shouldIssueBearerToken($request);
-        if ($this->shouldUseSessionLogin($request)) {
-            Auth::guard('web')->login($user);
-            $request->session()->regenerate();
-        }
-        $tokenPayload = $issueBearerToken
-            ? $this->issueDashboardToken($user, $role, $request, false)
-            : null;
+        $authentication = $this->authenticateForResolvedMode($user, $role, $request);
+        $tokenPayload = $authentication['tokenPayload'];
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -314,13 +300,13 @@ class AuthController extends Controller
             [
                 'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                 'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
-                'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
+                'auth_mode' => $authentication['authMode'],
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
 
-        return $this->authenticatedUserResponse($user->fresh('school'), $role, $tokenPayload);
+        return $this->authenticatedUserResponse($user->fresh('school'), $role, $authentication['authMode'], $tokenPayload);
     }
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
@@ -731,16 +717,8 @@ class AuthController extends Controller
             'auth.mfa_verify.suspicious_detected',
         );
 
-        $issueBearerToken = $this->shouldIssueBearerToken($request);
-
-        if ($this->shouldUseSessionLogin($request)) {
-            Auth::guard('web')->login($user);
-            $request->session()->regenerate();
-        }
-
-        $tokenPayload = $issueBearerToken
-            ? $this->issueDashboardToken($user, $role, $request, false)
-            : null;
+        $authentication = $this->authenticateForResolvedMode($user, $role, $request);
+        $tokenPayload = $authentication['tokenPayload'];
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -754,7 +732,7 @@ class AuthController extends Controller
                 'mfa_challenge_id' => $challengeId,
                 'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                 'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
-                'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
+                'auth_mode' => $authentication['authMode'],
                 'mfa_method' => $usedBackupCode ? 'backup_code' : 'email_code',
                 'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
                 'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
@@ -762,7 +740,7 @@ class AuthController extends Controller
             ],
         );
 
-        return $this->authenticatedUserResponse($user->fresh('school'), $role, $tokenPayload);
+        return $this->authenticatedUserResponse($user->fresh('school'), $role, $authentication['authMode'], $tokenPayload);
     }
 
     public function completeAccountSetup(CompleteAccountSetupRequest $request): JsonResponse
@@ -1482,16 +1460,8 @@ class AuthController extends Controller
             'approval_token_expires_at' => null,
         ])->save();
 
-        $issueBearerToken = $this->shouldIssueBearerToken($request);
-
-        if ($this->shouldUseSessionLogin($request)) {
-            Auth::guard('web')->login($user);
-            $request->session()->regenerate();
-        }
-
-        $tokenPayload = $issueBearerToken
-            ? $this->issueDashboardToken($user, $role, $request, false)
-            : null;
+        $authentication = $this->authenticateForResolvedMode($user, $role, $request);
+        $tokenPayload = $authentication['tokenPayload'];
         $this->recordSuccessfulLoginTelemetry($user, $request);
 
         AuthAuditLogger::record(
@@ -1506,14 +1476,14 @@ class AuthController extends Controller
                 'backup_codes_generated' => count($backupCodes),
                 'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                 'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
-                'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
+                'auth_mode' => $authentication['authMode'],
                 'suspicious_login_detected' => $suspiciousLoginDetected,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
 
-        return $this->authenticatedUserResponse($user->fresh('school'), $role, $tokenPayload, [
+        return $this->authenticatedUserResponse($user->fresh('school'), $role, $authentication['authMode'], $tokenPayload, [
             'backupCodes' => $backupCodes,
             'message' => 'MFA reset completed. Store your backup codes securely.',
         ]);
@@ -1625,12 +1595,12 @@ class AuthController extends Controller
             [
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
-                'auth_mode' => 'token',
+                'auth_mode' => RequestAuthModeResolver::TOKEN,
             ],
         );
 
         return response()->json([
-            'authMode' => $this->authModeForTokenPayload($tokenPayload),
+            'authMode' => RequestAuthModeResolver::TOKEN,
             'token' => $tokenPayload['token'],
             'tokenType' => 'Bearer',
             'expiresAt' => $tokenPayload['expiresAt'],
@@ -1654,7 +1624,7 @@ class AuthController extends Controller
             : UserRoleResolver::SCHOOL_HEAD;
 
         return response()->json([
-            'authMode' => $this->authModeForRequest($request),
+            'authMode' => RequestAuthModeResolver::resolve($request),
             'user' => $this->serializeUser($user, $role),
         ]);
     }
@@ -1669,8 +1639,11 @@ class AuthController extends Controller
 
         $this->purgeExpiredTokens($user);
 
+        $authMode = RequestAuthModeResolver::resolve($request);
         $currentTokenId = $user->currentAccessToken()?->id;
-        $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
+        $currentSessionId = $authMode === RequestAuthModeResolver::COOKIE && $request->hasSession()
+            ? $request->session()->getId()
+            : null;
 
         $tokenEntries = $user->tokens()
             ->orderByDesc('last_used_at')
@@ -1726,6 +1699,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
         }
 
+        $authMode = RequestAuthModeResolver::resolve($request);
         $identifier = trim($session);
         if (str_starts_with($identifier, 'pat_')) {
             $tokenId = (int) substr($identifier, 4);
@@ -1742,7 +1716,7 @@ class AuthController extends Controller
             $isCurrentToken = (int) ($user->currentAccessToken()?->id ?? 0) === (int) $token->id;
             $token->delete();
 
-            if ($isCurrentToken && ! $this->isBearerAuthenticatedRequest($request)) {
+            if ($isCurrentToken && $authMode === RequestAuthModeResolver::COOKIE) {
                 Auth::guard('web')->logout();
                 if ($request->hasSession()) {
                     $request->session()->invalidate();
@@ -1789,7 +1763,9 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Session/device not found.'], Response::HTTP_NOT_FOUND);
             }
 
-            $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
+            $currentSessionId = $authMode === RequestAuthModeResolver::COOKIE && $request->hasSession()
+                ? $request->session()->getId()
+                : null;
             $isCurrentSession = is_string($currentSessionId) && $currentSessionId === $sessionId;
             if ($isCurrentSession) {
                 Auth::guard('web')->logout();
@@ -1826,8 +1802,11 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
         }
 
+        $authMode = RequestAuthModeResolver::resolve($request);
         $currentTokenId = $user->currentAccessToken()?->id;
-        $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
+        $currentSessionId = $authMode === RequestAuthModeResolver::COOKIE && $request->hasSession()
+            ? $request->session()->getId()
+            : null;
         $summary = $this->revokeUserSessionsAndTokens($user, $currentTokenId, $currentSessionId);
 
         AuthAuditLogger::record(
@@ -1858,6 +1837,7 @@ class AuthController extends Controller
     {
         $role = null;
         $identifier = null;
+        $authMode = RequestAuthModeResolver::resolve($request);
         $user = ApiUserResolver::fromRequest($request);
         if ($user) {
             $role = $this->resolveRoleForUser($user);
@@ -1869,7 +1849,7 @@ class AuthController extends Controller
         }
 
         $invalidatedWebSession = false;
-        if (! $this->isBearerAuthenticatedRequest($request)) {
+        if ($authMode === RequestAuthModeResolver::COOKIE) {
             Auth::guard('web')->logout();
             if ($request->hasSession()) {
                 $request->session()->invalidate();
@@ -1887,41 +1867,11 @@ class AuthController extends Controller
             $identifier,
             [
                 'session_invalidated' => $invalidatedWebSession,
-                'auth_mode' => $this->authModeForRequest($request),
+                'auth_mode' => $authMode,
             ],
         );
 
         return response()->json([], Response::HTTP_NO_CONTENT);
-    }
-
-    private function isBearerAuthenticatedRequest(Request $request): bool
-    {
-        return RequestAuthModeResolver::isBearer($request);
-    }
-
-    private function shouldIssueBearerToken(Request $request): bool
-    {
-        return $this->tokenFallbackEnabled() && RequestAuthModeResolver::isBearer($request);
-    }
-
-    private function tokenFallbackEnabled(): bool
-    {
-        return (bool) config('auth_security.transport.issue_token_fallback', true);
-    }
-
-    private function shouldUseSessionLogin(Request $request): bool
-    {
-        return RequestAuthModeResolver::allowsSession($request) && $request->hasSession();
-    }
-
-    private function authModeForTokenPayload(?array $tokenPayload): string
-    {
-        return $tokenPayload === null ? 'cookie_session' : 'token';
-    }
-
-    private function authModeForRequest(Request $request): string
-    {
-        return RequestAuthModeResolver::responseMode($request);
     }
 
     private function invalidCredentialsMessage(): string
@@ -2059,17 +2009,18 @@ class AuthController extends Controller
     private function authenticatedUserResponse(
         User $user,
         string $role,
+        string $authMode,
         ?array $tokenPayload,
         array $extra = [],
     ): JsonResponse {
         $payload = [
-            'authMode' => $this->authModeForTokenPayload($tokenPayload),
+            'authMode' => $authMode,
             'user' => $this->serializeUser($user, $role),
         ];
 
-        if ($tokenPayload !== null) {
+        if ($authMode === RequestAuthModeResolver::TOKEN && $tokenPayload !== null) {
             $payload = array_merge([
-                'authMode' => 'token',
+                'authMode' => RequestAuthModeResolver::TOKEN,
                 'token' => $tokenPayload['token'],
                 'tokenType' => 'Bearer',
                 'expiresAt' => $tokenPayload['expiresAt'],
@@ -2081,6 +2032,29 @@ class AuthController extends Controller
         }
 
         return response()->json(array_merge($payload, $extra));
+    }
+
+    /**
+     * @return array{authMode: string, tokenPayload: array<string, string|null>|null}
+     */
+    private function authenticateForResolvedMode(User $user, string $role, Request $request): array
+    {
+        $authMode = RequestAuthModeResolver::resolve($request);
+
+        if ($authMode === RequestAuthModeResolver::COOKIE) {
+            Auth::guard('web')->login($user);
+            $request->session()->regenerate();
+
+            return [
+                'authMode' => $authMode,
+                'tokenPayload' => null,
+            ];
+        }
+
+        return [
+            'authMode' => $authMode,
+            'tokenPayload' => $this->issueDashboardToken($user, $role, $request, false),
+        ];
     }
 
     private function resolveUserForLogin(string $role, string $login): ?User

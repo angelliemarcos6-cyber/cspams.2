@@ -8,47 +8,41 @@ class RequestAuthModeResolver
 {
     public const COOKIE = 'cookie';
 
-    public const BEARER = 'bearer';
+    public const TOKEN = 'token';
 
-    public const COOKIE_SESSION_RESPONSE = 'cookie_session';
-
-    public const TOKEN_RESPONSE = 'token';
+    private const ATTRIBUTE = 'cspams.auth_mode';
 
     public static function resolve(Request $request): string
     {
-        return self::isBearer($request) ? self::BEARER : self::COOKIE;
-    }
+        $resolved = $request->attributes->get(self::ATTRIBUTE);
 
-    public static function isBearer(Request $request): bool
-    {
-        if (trim((string) $request->bearerToken()) !== '') {
-            return true;
+        if (is_string($resolved) && in_array($resolved, [self::COOKIE, self::TOKEN], true)) {
+            return $resolved;
         }
 
-        return in_array(self::transportHeader($request), ['token', self::BEARER], true);
+        $mode = trim((string) $request->bearerToken()) !== '' || self::transportHeader($request) === self::TOKEN
+            ? self::TOKEN
+            : self::COOKIE;
+
+        $request->attributes->set(self::ATTRIBUTE, $mode);
+
+        return $mode;
+    }
+
+    public static function isToken(Request $request): bool
+    {
+        return self::resolve($request) === self::TOKEN;
     }
 
     public static function isCookie(Request $request): bool
     {
-        return ! self::isBearer($request);
-    }
-
-    public static function responseMode(Request $request): string
-    {
-        return self::isBearer($request)
-            ? self::TOKEN_RESPONSE
-            : self::COOKIE_SESSION_RESPONSE;
-    }
-
-    public static function allowsSession(Request $request): bool
-    {
-        return self::isCookie($request);
+        return self::resolve($request) === self::COOKIE;
     }
 
     public static function transportHeader(Request $request): ?string
     {
         $transport = strtolower(trim((string) $request->header('X-CSPAMS-Auth-Transport', '')));
 
-        return $transport !== '' ? $transport : null;
+        return in_array($transport, [self::COOKIE, self::TOKEN], true) ? $transport : null;
     }
 }

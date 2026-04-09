@@ -21,6 +21,7 @@ class EnsureAccountIsActive
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
+        $authMode = RequestAuthModeResolver::resolve($request);
 
         if (! $user instanceof User) {
             return response()->json([
@@ -53,17 +54,18 @@ class EnsureAccountIsActive
             [
                 'reason' => 'account_not_active',
                 'account_status' => $user->accountStatus()->value,
-                'auth_mode' => RequestAuthModeResolver::responseMode($request),
+                'auth_mode' => $authMode,
             ],
         );
 
         Log::warning('auth.blocked', [
             'user_id' => $user->id,
+            'email' => $user->email,
             'reason' => 'account_not_active',
             'account_status' => $user->accountStatus()->value,
-            'auth_mode' => RequestAuthModeResolver::resolve($request),
-            'path' => $request->path(),
-            'method' => $request->method(),
+            'auth_mode' => $authMode,
+            'route' => $request->route()?->uri() ?? $request->path(),
+            'ip' => $request->ip(),
         ]);
 
         try {
@@ -82,7 +84,7 @@ class EnsureAccountIsActive
 
         Auth::guard('web')->logout();
 
-        if ($request->hasSession()) {
+        if ($authMode === RequestAuthModeResolver::COOKIE && $request->hasSession()) {
             $request->session()->invalidate();
             $request->session()->regenerateToken();
         }

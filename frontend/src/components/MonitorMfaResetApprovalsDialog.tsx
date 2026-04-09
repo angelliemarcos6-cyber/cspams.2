@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ClipboardList, RefreshCw, ShieldCheck, X } from "lucide-react";
-import { apiRequest, isApiError } from "@/lib/api";
+import { apiRequest, isApiError, type ApiRequestAuth } from "@/lib/api";
 
 interface MonitorMfaResetRequester {
   id: number | null;
@@ -43,14 +43,14 @@ interface RecentApproval {
 interface MonitorMfaResetApprovalsDialogProps {
   open: boolean;
   isAuthenticated: boolean;
-  authToken: string;
+  requestAuth: ApiRequestAuth | null;
   onClose: () => void;
 }
 
 export function MonitorMfaResetApprovalsDialog({
   open,
   isAuthenticated,
-  authToken,
+  requestAuth,
   onClose,
 }: MonitorMfaResetApprovalsDialogProps) {
   const [items, setItems] = useState<MonitorMfaResetTicket[]>([]);
@@ -61,7 +61,7 @@ export function MonitorMfaResetApprovalsDialog({
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
-  const canCallApi = isAuthenticated;
+  const canCallApi = isAuthenticated && requestAuth !== null;
 
   const loadRequests = async () => {
     if (!canCallApi) {
@@ -74,7 +74,7 @@ export function MonitorMfaResetApprovalsDialog({
 
     try {
       const payload = await apiRequest<MonitorMfaResetRequestsResponse>("/api/auth/mfa/reset/requests", {
-        token: authToken,
+        auth: requestAuth ?? undefined,
       });
       setItems(Array.isArray(payload.data) ? payload.data : []);
     } catch (err) {
@@ -102,7 +102,7 @@ export function MonitorMfaResetApprovalsDialog({
         `/api/auth/mfa/reset/requests/${encodeURIComponent(String(ticket.id))}/approve`,
         {
           method: "POST",
-          token: authToken,
+          auth: requestAuth ?? undefined,
           body: {
             notes: notesById[ticket.id]?.trim() || undefined,
           },

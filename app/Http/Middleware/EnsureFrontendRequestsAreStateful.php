@@ -17,7 +17,7 @@ class EnsureFrontendRequestsAreStateful
      */
     public function handle($request, $next)
     {
-        if (RequestAuthModeResolver::isBearer($request)) {
+        if (RequestAuthModeResolver::isToken($request)) {
             $response = $next($request);
             $this->logResolvedAuthMode($request, false);
 
@@ -57,20 +57,6 @@ class EnsureFrontendRequestsAreStateful
         });
 
         return $middleware;
-    }
-
-    /**
-     * Determine if the given request is from the first-party application frontend.
-     *
-     * Sanctum's stock detector only trusts Origin / Referer headers. Browsers can
-     * legitimately omit those on same-origin requests, so we also treat existing
-     * session / XSRF cookies as first-party evidence.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     */
-    public static function fromFrontend($request): bool
-    {
-        return RequestAuthModeResolver::isCookie($request);
     }
 
     protected function logResolvedAuthMode($request, bool $stateful): void

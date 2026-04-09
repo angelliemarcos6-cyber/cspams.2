@@ -102,17 +102,17 @@ function AppRoutes() {
 }
 
 function RealtimeBridge() {
-  const { role, user, requestToken } = useAuth();
-  const hasAuthenticatedSession = Boolean(user && role && requestToken);
+  const { role, user, requestAuth } = useAuth();
+  const hasAuthenticatedSession = Boolean(user && role && requestAuth);
   const schoolId = user?.schoolId ?? null;
 
   useEffect(() => {
-    if (!hasAuthenticatedSession || !role) {
+    if (!hasAuthenticatedSession || !role || !requestAuth) {
       stopRealtimeBridge();
       return;
     }
 
-    startRealtimeBridge(requestToken, {
+    startRealtimeBridge(requestAuth, {
       role,
       schoolId,
     });
@@ -120,7 +120,7 @@ function RealtimeBridge() {
     return () => {
       stopRealtimeBridge();
     };
-  }, [hasAuthenticatedSession, requestToken, role, schoolId]);
+  }, [hasAuthenticatedSession, requestAuth, role, schoolId]);
 
   return null;
 }

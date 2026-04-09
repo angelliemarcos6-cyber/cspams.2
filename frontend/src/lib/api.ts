@@ -40,7 +40,6 @@ function resolveApiBaseUrl(): string {
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
-export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const CSRF_BOOTSTRAP_TIMEOUT_MS = 10_000;
@@ -49,9 +48,15 @@ export function getApiBaseUrl(): string {
   return API_BASE_URL;
 }
 
+export type AuthMode = "cookie" | "token";
+
+export type ApiRequestAuth =
+  | { authMode: "cookie" }
+  | { authMode: "token"; token: string };
+
 interface ApiRequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  token?: string;
+  auth?: ApiRequestAuth;
   body?: unknown;
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -151,12 +156,16 @@ export function readXsrfToken(): string | null {
   }
 }
 
-function resolveAuthTransportHeader(token?: string): "cookie" | "token" {
-  if (token && token !== COOKIE_SESSION_TOKEN) {
-    return "token";
+function isCookieAuth(auth?: ApiRequestAuth): auth is { authMode: "cookie" } {
+  return auth?.authMode === "cookie";
+}
+
+function bearerTokenFromAuth(auth?: ApiRequestAuth): string {
+  if (auth?.authMode !== "token") {
+    return "";
   }
 
-  return "cookie";
+  return auth.token.trim();
 }
 
 function isMutatingMethod(method: string): boolean {
@@ -272,11 +281,16 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
 }
 
 export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiRawResponse<T>> {
-  const { method = "GET", token, body, signal, timeoutMs, extraHeaders } = options;
+  const { method = "GET", auth, body, signal, timeoutMs, extraHeaders } = options;
   const mutating = isMutatingMethod(method);
-  const useCookieSession = token === COOKIE_SESSION_TOKEN;
+  const useCookieSession = isCookieAuth(auth);
+  const bearerToken = bearerTokenFromAuth(auth);
   const requestTimeoutMs =
     typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : DEFAULT_REQUEST_TIMEOUT_MS;
+
+  if (auth?.authMode === "token" && !bearerToken) {
+    throw new Error("Token-mode requests require a bearer token.");
+  }
 
   if (mutating && useCookieSession) {
     await ensureCsrfCookie();
@@ -287,19 +301,21 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   if (body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
-  headers.set("X-CSPAMS-Auth-Transport", resolveAuthTransportHeader(token));
-  if (token && token !== COOKIE_SESSION_TOKEN) {
-    headers.set("Authorization", `Bearer ${token}`);
+  if (extraHeaders) {
+    for (const [key, value] of Object.entries(extraHeaders)) {
+      headers.set(key, value);
+    }
+  }
+  if (auth) {
+    headers.set("X-CSPAMS-Auth-Transport", auth.authMode);
+  }
+  if (auth?.authMode === "token") {
+    headers.set("Authorization", `Bearer ${bearerToken}`);
   }
   if (mutating && useCookieSession) {
     const xsrfToken = readXsrfToken();
     if (xsrfToken) {
       headers.set("X-XSRF-TOKEN", xsrfToken);
-    }
-  }
-  if (extraHeaders) {
-    for (const [key, value] of Object.entries(extraHeaders)) {
-      headers.set(key, value);
     }
   }
 
@@ -315,7 +331,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
 
   // Session-bound CSRF tokens can become stale after long idle periods.
   // Retry once with a fresh csrf-cookie before surfacing a 419 to the UI.
-  if (mutating && response.status === 419) {
+  if (mutating && useCookieSession && response.status === 419) {
     await ensureCsrfCookie(true);
     response = await fetchRequest();
   }
