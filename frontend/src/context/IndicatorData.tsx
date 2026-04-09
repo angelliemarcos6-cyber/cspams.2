@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestRaw, isApiError } from "@/lib/api";
 import type {
   AcademicYearOption,
   IndicatorMetric,
@@ -199,8 +199,8 @@ function toSubmissionSortTime(submission: IndicatorSubmission): number {
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const { user, requestToken } = useAuth();
+  const token = user ? requestToken : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
   const [submissions, setSubmissions] = useState<IndicatorSubmission[]>([]);

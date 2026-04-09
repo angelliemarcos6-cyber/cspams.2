@@ -61,7 +61,10 @@ class AppServiceProvider extends ServiceProvider
                 ],
             );
 
-            return response()->json(['message' => 'Too Many Attempts.'], 429, $headers);
+            return response()->json([
+                'message' => 'Too many attempts. Please try again later.',
+                'retryAfterSeconds' => $retryAfterSeconds,
+            ], 429, $headers);
         };
 
         RateLimiter::for('auth-login', function (Request $request) use ($lockoutResponse): array {

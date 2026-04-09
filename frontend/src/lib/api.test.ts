@@ -7,9 +7,23 @@ describe("api request helpers", () => {
     vi.unstubAllGlobals();
   });
 
-  it("treats 204 No Content as success for void requests", async () => {
+  it("treats standardized JSON success responses as success for void requests", async () => {
     document.cookie = "XSRF-TOKEN=test-xsrf-token; path=/";
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          message: "Logout successful",
+          data: null,
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(

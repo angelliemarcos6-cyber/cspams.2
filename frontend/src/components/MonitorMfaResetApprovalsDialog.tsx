@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ClipboardList, RefreshCw, ShieldCheck, X } from "lucide-react";
-import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, isApiError } from "@/lib/api";
 
 interface MonitorMfaResetRequester {
   id: number | null;
@@ -43,12 +43,14 @@ interface RecentApproval {
 interface MonitorMfaResetApprovalsDialogProps {
   open: boolean;
   isAuthenticated: boolean;
+  authToken: string;
   onClose: () => void;
 }
 
 export function MonitorMfaResetApprovalsDialog({
   open,
   isAuthenticated,
+  authToken,
   onClose,
 }: MonitorMfaResetApprovalsDialogProps) {
   const [items, setItems] = useState<MonitorMfaResetTicket[]>([]);
@@ -72,7 +74,7 @@ export function MonitorMfaResetApprovalsDialog({
 
     try {
       const payload = await apiRequest<MonitorMfaResetRequestsResponse>("/api/auth/mfa/reset/requests", {
-        token: COOKIE_SESSION_TOKEN,
+        token: authToken,
       });
       setItems(Array.isArray(payload.data) ? payload.data : []);
     } catch (err) {
@@ -100,7 +102,7 @@ export function MonitorMfaResetApprovalsDialog({
         `/api/auth/mfa/reset/requests/${encodeURIComponent(String(ticket.id))}/approve`,
         {
           method: "POST",
-          token: COOKIE_SESSION_TOKEN,
+          token: authToken,
           body: {
             notes: notesById[ticket.id]?.trim() || undefined,
           },

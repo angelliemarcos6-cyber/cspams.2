@@ -114,6 +114,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
         schoolCode: null,
         schoolName: null,
       },
+      requestToken: "__cookie_session__",
+      authMode: "cookie_session",
       authError: "",
       authErrorCode: null,
       accountStatus: null,

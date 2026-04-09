@@ -198,7 +198,9 @@ class AuthSessionSecurityTest extends TestCase
 
         $response = $this->postJson('/api/auth/logout');
 
-        $response->assertStatus(Response::HTTP_NO_CONTENT);
+        $response->assertStatus(Response::HTTP_OK)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Logout successful.');
     }
 
     public function test_active_sessions_endpoint_supports_stateful_sanctum_session_without_personal_access_token(): void
@@ -213,6 +215,8 @@ class AuthSessionSecurityTest extends TestCase
         $response = $this->getJson('/api/auth/sessions');
 
         $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Active sessions retrieved.')
             ->assertJsonStructure([
                 'data',
                 'meta' => [
@@ -246,6 +250,9 @@ class AuthSessionSecurityTest extends TestCase
             ]);
 
         $login->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Login successful.')
+            ->assertJsonPath('authMode', 'cookie_session')
             ->assertJsonMissingPath('token')
             ->assertJsonPath('user.role', 'school_head');
 
@@ -254,6 +261,8 @@ class AuthSessionSecurityTest extends TestCase
         $me = $this->getJson('/api/auth/me');
 
         $me->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('authMode', 'cookie_session')
             ->assertJsonPath('user.email', (string) $schoolHead->email)
             ->assertJsonPath('user.role', 'school_head');
     }
@@ -356,6 +365,52 @@ class AuthSessionSecurityTest extends TestCase
             'action' => 'auth.login.suspicious_detected',
             'user_id' => $schoolHead->id,
         ]);
+    }
+
+    public function test_login_identifier_tracker_locks_authentication_across_rate_limit_windows(): void
+    {
+        $this->seed();
+
+        config()->set('auth_security.login.attempt_lockout_threshold', 3);
+        config()->set('auth_security.login.attempt_lockout_minutes', 15);
+
+        $payload = [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => 'wrong-password',
+        ];
+
+        $this->postJson('/api/auth/login', $payload)
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid credentials.');
+
+        $this->travel(61)->seconds();
+
+        $this->postJson('/api/auth/login', $payload)
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid credentials.');
+
+        $this->travel(61)->seconds();
+
+        $lockedOut = $this->postJson('/api/auth/login', $payload);
+        $lockedOut->assertStatus(Response::HTTP_TOO_MANY_REQUESTS)
+            ->assertJsonPath('message', 'Too many login attempts. Please try again later.')
+            ->assertJsonPath('success', false);
+
+        $this->travel(61)->seconds();
+
+        $stillLockedOut = $this->postJson('/api/auth/login', $payload);
+        $stillLockedOut->assertStatus(Response::HTTP_TOO_MANY_REQUESTS)
+            ->assertJsonPath('message', 'Too many login attempts. Please try again later.');
+
+        /** @var AuditLog $lockoutAudit */
+        $lockoutAudit = AuditLog::query()
+            ->where('action', 'auth.login.locked_out')
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame('credential_tracker', data_get($lockoutAudit->metadata, 'throttle_scope'));
+        $this->assertSame('credential_tracker', data_get($lockoutAudit->metadata, 'lockout_source'));
     }
 
 }

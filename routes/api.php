@@ -9,11 +9,12 @@ use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
 use App\Http\Middleware\EnsureActiveAccount;
 use App\Http\Middleware\InstrumentStudentCrudTiming;
+use App\Http\Middleware\StandardizeAuthApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('auth')->group(function (): void {
+Route::middleware(StandardizeAuthApiResponse::class)->prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:auth-forgot-password');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:auth-reset-password');

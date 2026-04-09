@@ -1,6 +1,17 @@
 <?php
 
 return [
+    'login' => [
+        // Layer a longer-lived identifier lockout on top of the per-minute throttle.
+        'attempt_lockout_threshold' => max(3, (int) env('CSPAMS_AUTH_LOGIN_FAILURE_LOCKOUT_THRESHOLD', 8)),
+        'attempt_lockout_minutes' => max(1, (int) env('CSPAMS_AUTH_LOGIN_FAILURE_LOCKOUT_MINUTES', 15)),
+    ],
+
+    'transport' => [
+        // Allow explicit bearer fallback for deployments where browser cookies cannot persist reliably.
+        'issue_token_fallback' => (bool) env('CSPAMS_AUTH_TOKEN_FALLBACK', true),
+    ],
+
     'alerting' => [
         'enabled' => (bool) env('CSPAMS_AUTH_SECURITY_ALERTS_ENABLED', true),
 

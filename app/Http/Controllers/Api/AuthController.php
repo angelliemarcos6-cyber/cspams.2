@@ -64,6 +64,10 @@ class AuthController extends Controller
             : $rawLogin;
         $password = $request->string('password')->toString();
 
+        if (($lockoutResponse = $this->ensureLoginAttemptNotLockedOut($role, $login)) instanceof JsonResponse) {
+            return $lockoutResponse;
+        }
+
         $user = $this->resolveUserForLogin($role, $login);
 
         if (! $user || ! Hash::check($password, $user->password)) {
@@ -77,15 +81,10 @@ class AuthController extends Controller
                 ['reason' => 'invalid_credentials'],
             );
 
-            $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid school code or password.'
-                : 'Invalid credentials for the selected role.';
-
-            return response()->json(
-                ['message' => $message],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
+            return $this->recordTrackedLoginFailure($request, $user, $role, $login);
         }
+
+        $this->clearTrackedLoginFailures($role, $login);
 
         if (($inactiveResponse = $this->rejectInactiveAccount(
             $request,
@@ -209,19 +208,7 @@ class AuthController extends Controller
                 ],
         );
 
-        if ($tokenPayload === null) {
-            return response()->json([
-                'user' => $this->serializeUser($user, $role),
-            ]);
-        }
-
-        return response()->json([
-            'token' => $tokenPayload['token'],
-            'tokenType' => 'Bearer',
-            'expiresAt' => $tokenPayload['expiresAt'],
-            'refreshAfter' => $tokenPayload['refreshAfter'],
-            'user' => $this->serializeUser($user, $role),
-        ]);
+        return $this->authenticatedUserResponse($user, $role, $tokenPayload);
     }
 
     public function resetRequiredPassword(ResetRequiredPasswordRequest $request): JsonResponse
@@ -247,12 +234,8 @@ class AuthController extends Controller
                 ['reason' => 'invalid_credentials'],
             );
 
-            $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid school code or password.'
-                : 'Invalid credentials for the selected role.';
-
             return response()->json(
-                ['message' => $message],
+                ['message' => $this->invalidCredentialsMessage()],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -332,19 +315,7 @@ class AuthController extends Controller
             ],
         );
 
-        if ($tokenPayload === null) {
-            return response()->json([
-                'user' => $this->serializeUser($user->fresh('school'), $role),
-            ]);
-        }
-
-        return response()->json([
-            'token' => $tokenPayload['token'],
-            'tokenType' => 'Bearer',
-            'expiresAt' => $tokenPayload['expiresAt'],
-            'refreshAfter' => $tokenPayload['refreshAfter'],
-            'user' => $this->serializeUser($user->fresh('school'), $role),
-        ]);
+        return $this->authenticatedUserResponse($user->fresh('school'), $role, $tokenPayload);
     }
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
@@ -613,7 +584,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Invalid credentials for the selected role.'],
+                ['message' => $this->invalidCredentialsMessage()],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -783,19 +754,7 @@ class AuthController extends Controller
             ],
         );
 
-        if ($tokenPayload === null) {
-            return response()->json([
-                'user' => $this->serializeUser($user->fresh('school'), $role),
-            ]);
-        }
-
-        return response()->json([
-            'token' => $tokenPayload['token'],
-            'tokenType' => 'Bearer',
-            'expiresAt' => $tokenPayload['expiresAt'],
-            'refreshAfter' => $tokenPayload['refreshAfter'],
-            'user' => $this->serializeUser($user->fresh('school'), $role),
-        ]);
+        return $this->authenticatedUserResponse($user->fresh('school'), $role, $tokenPayload);
     }
 
     public function completeAccountSetup(CompleteAccountSetupRequest $request): JsonResponse
@@ -1027,7 +986,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Invalid credentials for the selected role.'],
+                ['message' => $this->invalidCredentialsMessage()],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1089,7 +1048,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Invalid credentials for the selected role.'],
+                ['message' => $this->invalidCredentialsMessage()],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1383,7 +1342,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Invalid credentials for the selected role.'],
+                ['message' => $this->invalidCredentialsMessage()],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1543,20 +1502,7 @@ class AuthController extends Controller
             ],
         );
 
-        if ($tokenPayload === null) {
-            return response()->json([
-                'user' => $this->serializeUser($user->fresh('school'), $role),
-                'backupCodes' => $backupCodes,
-                'message' => 'MFA reset completed. Store your backup codes securely.',
-            ]);
-        }
-
-        return response()->json([
-            'token' => $tokenPayload['token'],
-            'tokenType' => 'Bearer',
-            'expiresAt' => $tokenPayload['expiresAt'],
-            'refreshAfter' => $tokenPayload['refreshAfter'],
-            'user' => $this->serializeUser($user->fresh('school'), $role),
+        return $this->authenticatedUserResponse($user->fresh('school'), $role, $tokenPayload, [
             'backupCodes' => $backupCodes,
             'message' => 'MFA reset completed. Store your backup codes securely.',
         ]);
@@ -1672,6 +1618,7 @@ class AuthController extends Controller
         );
 
         return response()->json([
+            'authMode' => $this->authModeForTokenPayload($tokenPayload),
             'token' => $tokenPayload['token'],
             'tokenType' => 'Bearer',
             'expiresAt' => $tokenPayload['expiresAt'],
@@ -1695,6 +1642,7 @@ class AuthController extends Controller
             : UserRoleResolver::SCHOOL_HEAD;
 
         return response()->json([
+            'authMode' => $this->authModeForRequest($request),
             'user' => $this->serializeUser($user, $role),
         ]);
     }
@@ -1938,7 +1886,194 @@ class AuthController extends Controller
 
     private function shouldIssueBearerToken(Request $request): bool
     {
+        if (! $this->tokenFallbackEnabled()) {
+            return false;
+        }
+
+        if ($this->wantsExplicitTokenTransport($request)) {
+            return true;
+        }
+
         return ! EnsureFrontendRequestsAreStateful::fromFrontend($request);
+    }
+
+    private function tokenFallbackEnabled(): bool
+    {
+        return (bool) config('auth_security.transport.issue_token_fallback', true);
+    }
+
+    private function wantsExplicitTokenTransport(Request $request): bool
+    {
+        return strtolower(trim((string) $request->header('X-CSPAMS-Auth-Transport', ''))) === 'token';
+    }
+
+    private function authModeForTokenPayload(?array $tokenPayload): string
+    {
+        return $tokenPayload === null ? 'cookie_session' : 'token';
+    }
+
+    private function authModeForRequest(Request $request): string
+    {
+        return $this->isBearerAuthenticatedRequest($request) ? 'token' : 'cookie_session';
+    }
+
+    private function invalidCredentialsMessage(): string
+    {
+        return 'Invalid credentials.';
+    }
+
+    private function trackedLoginFailureThreshold(): int
+    {
+        return max(3, (int) config('auth_security.login.attempt_lockout_threshold', 8));
+    }
+
+    private function trackedLoginFailureLockoutMinutes(): int
+    {
+        return max(1, (int) config('auth_security.login.attempt_lockout_minutes', 15));
+    }
+
+    private function trackedLoginFailureCacheKey(string $role, string $identifier): string
+    {
+        return 'auth:login-failures:' . sha1(strtolower(trim($role) . '|' . trim($identifier)));
+    }
+
+    /**
+     * @return array{failures: int, locked_until: CarbonImmutable|null}
+     */
+    private function readTrackedLoginFailureState(string $role, string $identifier): array
+    {
+        $cached = Cache::get($this->trackedLoginFailureCacheKey($role, $identifier));
+        if (! is_array($cached)) {
+            return [
+                'failures' => 0,
+                'locked_until' => null,
+            ];
+        }
+
+        $lockedUntil = null;
+        $lockedUntilRaw = $cached['locked_until'] ?? null;
+        if (is_string($lockedUntilRaw) && trim($lockedUntilRaw) !== '') {
+            try {
+                $lockedUntil = CarbonImmutable::parse($lockedUntilRaw);
+            } catch (\Throwable) {
+                $lockedUntil = null;
+            }
+        }
+
+        return [
+            'failures' => max(0, (int) ($cached['failures'] ?? 0)),
+            'locked_until' => $lockedUntil,
+        ];
+    }
+
+    private function clearTrackedLoginFailures(string $role, string $identifier): void
+    {
+        Cache::forget($this->trackedLoginFailureCacheKey($role, $identifier));
+    }
+
+    private function ensureLoginAttemptNotLockedOut(
+        string $role,
+        string $identifier,
+    ): ?JsonResponse {
+        $state = $this->readTrackedLoginFailureState($role, $identifier);
+        $lockedUntil = $state['locked_until'];
+
+        if (! $lockedUntil instanceof CarbonImmutable) {
+            return null;
+        }
+
+        if ($lockedUntil->isPast()) {
+            $this->clearTrackedLoginFailures($role, $identifier);
+
+            return null;
+        }
+
+        return $this->loginLockoutResponse($state['failures'], $lockedUntil);
+    }
+
+    private function recordTrackedLoginFailure(
+        Request $request,
+        ?User $user,
+        string $role,
+        string $identifier,
+    ): JsonResponse {
+        $state = $this->readTrackedLoginFailureState($role, $identifier);
+        $failures = $state['failures'] + 1;
+        $threshold = $this->trackedLoginFailureThreshold();
+        $lockoutMinutes = $this->trackedLoginFailureLockoutMinutes();
+        $cacheTtl = CarbonImmutable::now()->addMinutes($lockoutMinutes);
+        $lockedUntil = $failures >= $threshold ? $cacheTtl : null;
+
+        Cache::put($this->trackedLoginFailureCacheKey($role, $identifier), [
+            'failures' => $failures,
+            'locked_until' => $lockedUntil?->toISOString(),
+        ], $cacheTtl);
+
+        if ($lockedUntil instanceof CarbonImmutable) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.login.locked_out',
+                'lockout',
+                $user,
+                $role,
+                $identifier,
+                [
+                    'throttle_scope' => 'credential_tracker',
+                    'lockout_source' => 'credential_tracker',
+                    'failed_attempts' => $failures,
+                    'retry_after_seconds' => CarbonImmutable::now()->diffInSeconds($lockedUntil),
+                    'locked_until' => $lockedUntil->toISOString(),
+                ],
+            );
+
+            return $this->loginLockoutResponse($failures, $lockedUntil);
+        }
+
+        return response()->json([
+            'message' => $this->invalidCredentialsMessage(),
+        ], Response::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    private function loginLockoutResponse(int $failures, CarbonImmutable $lockedUntil): JsonResponse
+    {
+        $retryAfterSeconds = max(1, CarbonImmutable::now()->diffInSeconds($lockedUntil));
+
+        return response()->json([
+            'message' => 'Too many login attempts. Please try again later.',
+            'retryAfterSeconds' => $retryAfterSeconds,
+            'lockedUntil' => $lockedUntil->toISOString(),
+            'failedAttempts' => $failures,
+        ], Response::HTTP_TOO_MANY_REQUESTS);
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     */
+    private function authenticatedUserResponse(
+        User $user,
+        string $role,
+        ?array $tokenPayload,
+        array $extra = [],
+    ): JsonResponse {
+        $payload = [
+            'authMode' => $this->authModeForTokenPayload($tokenPayload),
+            'user' => $this->serializeUser($user, $role),
+        ];
+
+        if ($tokenPayload !== null) {
+            $payload = array_merge([
+                'authMode' => 'token',
+                'token' => $tokenPayload['token'],
+                'tokenType' => 'Bearer',
+                'expiresAt' => $tokenPayload['expiresAt'],
+                'refreshAfter' => $tokenPayload['refreshAfter'],
+                'user' => $this->serializeUser($user, $role),
+            ], $extra);
+
+            return response()->json($payload);
+        }
+
+        return response()->json(array_merge($payload, $extra));
     }
 
     private function resolveUserForLogin(string $role, string $login): ?User

@@ -77,7 +77,7 @@ import {
 } from "@/utils/analytics";
 
 export function MonitorDashboard() {
-  const { user } = useAuth();
+  const { user, requestToken } = useAuth();
   const isAuthenticated = Boolean(user);
   const authSessionKey = user ? `${user.role}:${user.id}` : "";
   const {
@@ -824,6 +824,7 @@ export function MonitorDashboard() {
       <MonitorMfaResetApprovalsDialog
         open={showMfaResetApprovalsDialog}
         isAuthenticated={isAuthenticated}
+        authToken={requestToken}
         onClose={() => setShowMfaResetApprovalsDialog(false)}
       />
 

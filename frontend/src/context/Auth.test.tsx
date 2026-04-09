@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { getApiBaseUrl } from "@/lib/api";
 import * as realtime from "@/lib/realtime";
+import { AUTH_TOKEN_STORAGE_KEY } from "@/lib/sessionCleanup";
 
 describe("AuthProvider logout", () => {
   beforeEach(() => {
@@ -17,12 +18,13 @@ describe("AuthProvider logout", () => {
     vi.unstubAllGlobals();
   });
 
-  it("clears the current user and client session artifacts after a successful 204 logout response", async () => {
+  it("clears the current user and client session artifacts after a successful logout response", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            authMode: "cookie_session",
             user: {
               id: 1,
               name: "Monitor User",
@@ -41,7 +43,21 @@ describe("AuthProvider logout", () => {
           },
         ),
       )
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: true,
+            message: "Logout successful",
+            data: null,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      );
 
     vi.stubGlobal("fetch", fetchMock);
     const stopRealtimeBridgeSpy = vi.spyOn(realtime, "stopRealtimeBridge").mockImplementation(() => {});
@@ -105,7 +121,7 @@ describe("AuthProvider logout", () => {
     expect(result.current.accountStatus).toBe("suspended");
   });
 
-  it("rejects login when the backend falls back to bearer-token auth", async () => {
+  it("retries with bearer fallback when cookie-session auth does not persist", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -124,6 +140,42 @@ describe("AuthProvider logout", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            authMode: "cookie_session",
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Unauthenticated.",
+          }),
+          {
+            status: 401,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            authMode: "token",
             token: "temporary-bearer-token",
             tokenType: "Bearer",
             user: {
@@ -154,20 +206,28 @@ describe("AuthProvider logout", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
+    let loginResult: Awaited<ReturnType<typeof result.current.login>> | null = null;
     await act(async () => {
-      await expect(
-        result.current.login({
-          role: "monitor",
-          login: "monitor@cspams.local",
-          password: "Password123!",
-        }),
-      ).rejects.toThrow(
-        "Backend returned bearer-token auth during login. This frontend expects Sanctum cookie-session auth. Check VITE_API_BASE_URL, SANCTUM_STATEFUL_DOMAINS, CORS_ALLOWED_ORIGINS, and session cookie settings.",
-      );
+      loginResult = await result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      });
     });
 
-    expect(result.current.user).toBeNull();
+    expect(loginResult).toMatchObject({
+      status: "authenticated",
+      user: {
+        email: "monitor@cspams.local",
+      },
+    });
+    expect(result.current.user?.email).toBe("monitor@cspams.local");
+    expect(result.current.authMode).toBe("token");
+    expect(result.current.requestToken).toBe("temporary-bearer-token");
+    expect(window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe("temporary-bearer-token");
     expect(result.current.isAuthenticating).toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    const fallbackRequestHeaders = fetchMock.mock.calls[3]?.[1]?.headers as Headers;
+    expect(fallbackRequestHeaders.get("X-CSPAMS-Auth-Transport")).toBe("token");
   });
 });

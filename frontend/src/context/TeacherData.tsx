@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequestRaw, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type { TeacherRecord, TeacherRecordPayload } from "@/types";
 
@@ -312,8 +312,8 @@ function emitTeacherUpdateEvent(detailInput: { schoolId?: unknown; schoolCode?: 
 }
 
 export function TeacherDataProvider({ children }: { children: ReactNode }) {
-  const { user, role } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const { user, role, requestToken } = useAuth();
+  const token = user ? requestToken : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
   const [teachers, setTeachers] = useState<TeacherRecord[]>([]);

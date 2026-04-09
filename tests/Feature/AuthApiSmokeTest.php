@@ -36,6 +36,9 @@ class AuthApiSmokeTest extends TestCase
         ]);
 
         $login->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Login successful.')
+            ->assertJsonPath('authMode', 'token')
             ->assertJsonPath('user.role', 'school_head')
             ->assertJsonPath('user.schoolCode', $schoolCode)
             ->assertJsonStructure(['token', 'user']);
@@ -45,10 +48,14 @@ class AuthApiSmokeTest extends TestCase
 
         $me = $this->withToken($token)->getJson('/api/auth/me');
         $me->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('authMode', 'token')
             ->assertJsonPath('user.role', 'school_head');
 
         $logout = $this->withToken($token)->postJson('/api/auth/logout');
-        $logout->assertStatus(Response::HTTP_NO_CONTENT);
+        $logout->assertStatus(Response::HTTP_OK)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Logout successful.');
 
         $afterLogout = $this->withToken($token)->getJson('/api/auth/me');
         $afterLogout->assertStatus(Response::HTTP_UNAUTHORIZED);
@@ -65,6 +72,7 @@ class AuthApiSmokeTest extends TestCase
         ]);
 
         $login->assertStatus(Response::HTTP_ACCEPTED)
+            ->assertJsonPath('success', true)
             ->assertJsonPath('requiresMfa', true)
             ->assertJsonPath('mfa.challengeId', fn ($value) => is_string($value) && $value !== '');
 
@@ -78,6 +86,9 @@ class AuthApiSmokeTest extends TestCase
         ]);
 
         $verify->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Request successful.')
+            ->assertJsonPath('authMode', 'token')
             ->assertJsonPath('user.role', 'monitor')
             ->assertJsonStructure(['token', 'user']);
 
@@ -86,13 +97,35 @@ class AuthApiSmokeTest extends TestCase
 
         $me = $this->withToken($token)->getJson('/api/auth/me');
         $me->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('authMode', 'token')
             ->assertJsonPath('user.role', 'monitor');
 
         $logout = $this->withToken($token)->postJson('/api/auth/logout');
-        $logout->assertStatus(Response::HTTP_NO_CONTENT);
+        $logout->assertStatus(Response::HTTP_OK)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Logout successful.');
 
         $afterLogout = $this->withToken($token)->getJson('/api/auth/me');
         $afterLogout->assertStatus(Response::HTTP_UNAUTHORIZED);
+    }
+
+    public function test_auth_validation_errors_use_standardized_error_envelope(): void
+    {
+        $response = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+        ]);
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('data', null)
+            ->assertJsonStructure([
+                'message',
+                'errors' => [
+                    'login',
+                    'password',
+                ],
+            ]);
     }
 }
 
