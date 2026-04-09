@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\Auth\SchoolHeadAccountSetupService;
+use Illuminate\Http\Request;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -265,6 +267,56 @@ class AuthSessionSecurityTest extends TestCase
             ->assertJsonPath('authMode', 'cookie_session')
             ->assertJsonPath('user.email', (string) $schoolHead->email)
             ->assertJsonPath('user.role', 'school_head');
+    }
+
+    public function test_explicit_token_transport_header_forces_stateless_login_even_when_csrf_state_exists(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $this->assertNotSame('', $schoolCode);
+
+        $csrfToken = 'explicit-token-transport-csrf-token';
+
+        $login = $this
+            ->withSession(['_token' => $csrfToken])
+            ->withHeader('Origin', (string) config('app.frontend_url'))
+            ->withHeader('X-XSRF-TOKEN', $csrfToken)
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/login', [
+                'role' => 'school_head',
+                'login' => $schoolCode,
+                'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
+            ]);
+
+        $login->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('authMode', 'token')
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('tokenType', 'Bearer');
+
+        $this->assertGuest('web');
+    }
+
+    public function test_bearer_requests_are_not_classified_as_stateful_even_when_origin_and_csrf_headers_exist(): void
+    {
+        config()->set('sanctum.stateful', ['spa.cspams.test']);
+        config()->set('session.cookie', 'cspams_session');
+
+        $request = Request::create('/api/auth/me', 'GET', [], [
+            'cspams_session' => 'session-cookie',
+            'XSRF-TOKEN' => 'xsrf-cookie',
+        ], [], [
+            'HTTP_ORIGIN' => 'https://spa.cspams.test',
+            'HTTP_AUTHORIZATION' => 'Bearer test-token',
+            'HTTP_X_XSRF_TOKEN' => 'xsrf-header',
+        ]);
+
+        $this->assertFalse(EnsureFrontendRequestsAreStateful::fromFrontend($request));
     }
 
     public function test_user_agent_version_change_alone_does_not_trigger_suspicious_login_containment(): void

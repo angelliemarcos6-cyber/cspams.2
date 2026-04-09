@@ -182,12 +182,14 @@ class AuthController extends Controller
             'auth.login.suspicious_detected',
         );
 
-        if ($request->hasSession()) {
+        $issueBearerToken = $this->shouldIssueBearerToken($request);
+
+        if (! $issueBearerToken && $request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->shouldIssueBearerToken($request)
+        $tokenPayload = $issueBearerToken
             ? $this->issueDashboardToken($user, $role, $request, false)
             : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
@@ -202,6 +204,7 @@ class AuthController extends Controller
                 [
                     'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                     'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
+                    'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
                     'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
                     'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
                     'revoked_web_sessions' => $suspiciousLoginContainment['revokedWebSessions'],
@@ -291,11 +294,12 @@ class AuthController extends Controller
         ])->save();
 
         $revocationSummary = $this->revokeUserSessionsAndTokens($user);
-        if ($request->hasSession()) {
+        $issueBearerToken = $this->shouldIssueBearerToken($request);
+        if (! $issueBearerToken && $request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
-        $tokenPayload = $this->shouldIssueBearerToken($request)
+        $tokenPayload = $issueBearerToken
             ? $this->issueDashboardToken($user, $role, $request, false)
             : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
@@ -310,6 +314,7 @@ class AuthController extends Controller
             [
                 'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                 'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
+                'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
@@ -726,12 +731,14 @@ class AuthController extends Controller
             'auth.mfa_verify.suspicious_detected',
         );
 
-        if ($request->hasSession()) {
+        $issueBearerToken = $this->shouldIssueBearerToken($request);
+
+        if (! $issueBearerToken && $request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->shouldIssueBearerToken($request)
+        $tokenPayload = $issueBearerToken
             ? $this->issueDashboardToken($user, $role, $request, false)
             : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
@@ -747,6 +754,7 @@ class AuthController extends Controller
                 'mfa_challenge_id' => $challengeId,
                 'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                 'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
+                'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
                 'mfa_method' => $usedBackupCode ? 'backup_code' : 'email_code',
                 'suspicious_login_contained' => $suspiciousLoginContainment['suspicious'],
                 'revoked_tokens' => $suspiciousLoginContainment['revokedTokens'],
@@ -1474,12 +1482,14 @@ class AuthController extends Controller
             'approval_token_expires_at' => null,
         ])->save();
 
-        if ($request->hasSession()) {
+        $issueBearerToken = $this->shouldIssueBearerToken($request);
+
+        if (! $issueBearerToken && $request->hasSession()) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
 
-        $tokenPayload = $this->shouldIssueBearerToken($request)
+        $tokenPayload = $issueBearerToken
             ? $this->issueDashboardToken($user, $role, $request, false)
             : null;
         $this->recordSuccessfulLoginTelemetry($user, $request);
@@ -1496,6 +1506,7 @@ class AuthController extends Controller
                 'backup_codes_generated' => count($backupCodes),
                 'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
                 'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
+                'auth_mode' => $this->authModeForTokenPayload($tokenPayload),
                 'suspicious_login_detected' => $suspiciousLoginDetected,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
@@ -1614,6 +1625,7 @@ class AuthController extends Controller
             [
                 'token_expires_at' => $tokenPayload['expiresAt'],
                 'token_refresh_after' => $tokenPayload['refreshAfter'],
+                'auth_mode' => 'token',
             ],
         );
 
@@ -1873,7 +1885,10 @@ class AuthController extends Controller
             $user,
             $role,
             $identifier,
-            ['session_invalidated' => $invalidatedWebSession],
+            [
+                'session_invalidated' => $invalidatedWebSession,
+                'auth_mode' => $this->authModeForRequest($request),
+            ],
         );
 
         return response()->json([], Response::HTTP_NO_CONTENT);

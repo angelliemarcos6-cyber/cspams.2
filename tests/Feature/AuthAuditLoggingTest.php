@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -67,6 +68,7 @@ class AuthAuditLoggingTest extends TestCase
         $this->assertSame('cspamsmonitor@gmail.com', data_get($successAudit->metadata, 'identifier'));
         $this->assertSame('auth.login.success', data_get($successAudit->metadata, 'event'));
         $this->assertSame('login', data_get($successAudit->metadata, 'event_group'));
+        $this->assertSame('token', data_get($successAudit->metadata, 'auth_mode'));
         $this->assertNotNull(data_get($successAudit->metadata, 'ip_address'));
         $this->assertNotNull(data_get($successAudit->metadata, 'user_agent'));
     }
@@ -179,9 +181,39 @@ class AuthAuditLoggingTest extends TestCase
         $this->assertSame('mfa', data_get($successAudit->metadata, 'event_group'));
         $this->assertSame('monitor', data_get($successAudit->metadata, 'role'));
         $this->assertSame('cspamsmonitor@gmail.com', data_get($successAudit->metadata, 'identifier'));
+        $this->assertSame('token', data_get($successAudit->metadata, 'auth_mode'));
         $this->assertSame('email_code', data_get($successAudit->metadata, 'mfa_method'));
         $this->assertNotNull(data_get($successAudit->metadata, 'ip_address'));
         $this->assertNotNull(data_get($successAudit->metadata, 'user_agent'));
+    }
+
+    public function test_inactive_account_access_block_is_audited_with_auth_mode_context(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitor->forceFill([
+            'account_status' => AccountStatus::SUSPENDED->value,
+        ])->save();
+
+        $token = $monitor->createToken('inactive-audit-token')->plainTextToken;
+
+        $response = $this->withToken($token)->getJson('/api/auth/me');
+        $response->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This account is not active.')
+            ->assertJsonPath('accountStatus', AccountStatus::SUSPENDED->value);
+
+        /** @var AuditLog $audit */
+        $audit = AuditLog::query()
+            ->where('action', 'auth.account_access.blocked')
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame('failure', data_get($audit->metadata, 'outcome'));
+        $this->assertSame('token', data_get($audit->metadata, 'auth_mode'));
+        $this->assertSame(AccountStatus::SUSPENDED->value, data_get($audit->metadata, 'account_status'));
     }
 }
 

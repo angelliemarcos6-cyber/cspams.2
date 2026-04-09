@@ -32,9 +32,16 @@ class EnsureFrontendRequestsAreStateful
      */
     protected function configureSecureCookieSessions(): void
     {
+        $sameSite = config('session.same_site', 'lax');
+        if (! is_string($sameSite) || trim($sameSite) === '') {
+            $sameSite = 'lax';
+        }
+
         config([
             'session.http_only' => true,
-            'session.same_site' => 'lax',
+            'session.same_site' => strtolower(trim($sameSite)),
+            'session.secure' => (bool) config('session.secure', false),
+            'session.partitioned' => (bool) config('session.partitioned', false),
         ]);
     }
 
@@ -73,6 +80,10 @@ class EnsureFrontendRequestsAreStateful
      */
     public static function fromFrontend($request): bool
     {
+        if (static::prefersTokenTransport($request)) {
+            return false;
+        }
+
         if (static::matchesStatefulOrigin($request)) {
             return true;
         }
@@ -82,6 +93,20 @@ class EnsureFrontendRequestsAreStateful
         }
 
         return static::hasCsrfHandshakeHeaders($request);
+    }
+
+    /**
+     * Determine if the request explicitly prefers stateless bearer-token auth.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     */
+    protected static function prefersTokenTransport($request): bool
+    {
+        if (trim((string) $request->bearerToken()) !== '') {
+            return true;
+        }
+
+        return strtolower(trim((string) $request->headers->get('X-CSPAMS-Auth-Transport', ''))) === 'token';
     }
 
     /**
