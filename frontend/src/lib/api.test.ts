@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import { apiRequest, apiRequestVoid, buildApiUrl, COOKIE_SESSION_TOKEN, getApiBaseUrl, normalizeApiBaseUrl } from "@/lib/api";
 
 describe("api request helpers", () => {
   afterEach(() => {
@@ -30,5 +30,14 @@ describe("api request helpers", () => {
         message: "No payload was returned for this request.",
         status: 204,
     });
+  });
+
+  it("normalizes configured base URLs that already include /api", () => {
+    expect(normalizeApiBaseUrl("https://cspams.example.com/api")).toBe("https://cspams.example.com");
+    expect(normalizeApiBaseUrl("/api")).toBe("");
+    expect(buildApiUrl("/api/auth/login", "https://cspams.example.com/api")).toBe(
+      "https://cspams.example.com/api/auth/login",
+    );
+    expect(buildApiUrl("/sanctum/csrf-cookie", "/api")).toBe("/sanctum/csrf-cookie");
   });
 });

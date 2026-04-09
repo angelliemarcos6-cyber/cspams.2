@@ -1,6 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
-import { COOKIE_SESSION_TOKEN, ensureCsrfCookie, getApiBaseUrl, readXsrfToken } from "@/lib/api";
+import { buildApiUrl, COOKIE_SESSION_TOKEN, ensureCsrfCookie, readXsrfToken } from "@/lib/api";
 
 declare global {
   interface Window {
@@ -160,7 +160,7 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
 
             let response: Response;
             try {
-              response = await fetch(`${getApiBaseUrl()}/api/broadcasting/auth`, {
+              response = await fetch(buildApiUrl("/api/broadcasting/auth"), {
                 method: "POST",
                 credentials: "include",
                 signal: controller.signal,

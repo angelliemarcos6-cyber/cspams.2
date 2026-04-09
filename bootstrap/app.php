@@ -18,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
         $middleware->throttleApi('api');
+        $middleware->api(replace: [
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class
+                => \App\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
+        ]);
         $middleware->redirectGuestsTo(static function (Request $request): ?string {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return null;

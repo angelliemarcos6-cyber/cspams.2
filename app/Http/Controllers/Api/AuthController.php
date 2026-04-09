@@ -8,6 +8,7 @@ use App\Http\Requests\Api\CompleteMonitorMfaResetRequest;
 use App\Http\Requests\Api\CompleteAccountSetupRequest;
 use App\Http\Requests\Api\ForgotPasswordRequest;
 use App\Http\Requests\Api\LoginRequest;
+use App\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use App\Http\Requests\Api\RegenerateMonitorMfaBackupCodesRequest;
 use App\Http\Requests\Api\RequestMonitorMfaResetRequest;
 use App\Http\Requests\Api\ResetPasswordRequest;
@@ -38,7 +39,6 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\NewAccessToken;
-use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 

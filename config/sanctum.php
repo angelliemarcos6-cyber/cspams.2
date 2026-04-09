@@ -2,6 +2,50 @@
 
 use Laravel\Sanctum\Sanctum;
 
+$normalizeStatefulDomain = static function (?string $url): ?string {
+    $url = trim((string) $url);
+    if ($url === '') {
+        return null;
+    }
+
+    if (! str_contains($url, '://')) {
+        return strtolower(trim($url, '/'));
+    }
+
+    $parsed = parse_url($url);
+    if (! is_array($parsed) || ! isset($parsed['host'])) {
+        return null;
+    }
+
+    $host = strtolower(trim((string) $parsed['host']));
+    if ($host === '') {
+        return null;
+    }
+
+    $port = isset($parsed['port']) && is_numeric($parsed['port'])
+        ? (int) $parsed['port']
+        : null;
+
+    return $port === null ? $host : ($host . ':' . $port);
+};
+
+$defaultStatefulDomains = array_values(array_filter(array_unique([
+    'localhost',
+    'localhost:3000',
+    'localhost:4173',
+    'localhost:5173',
+    'localhost:8000',
+    '127.0.0.1',
+    '127.0.0.1:3000',
+    '127.0.0.1:4173',
+    '127.0.0.1:5173',
+    '127.0.0.1:8000',
+    '::1',
+    $normalizeStatefulDomain(env('APP_URL')),
+    $normalizeStatefulDomain(env('FRONTEND_URL')),
+    $normalizeStatefulDomain(Sanctum::currentApplicationUrlWithPort()),
+])));
+
 return [
 
     /*
@@ -15,18 +59,7 @@ return [
     |
     */
 
-    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', implode(',', [
-        'localhost',
-        'localhost:3000',
-        'localhost:5173',
-        'localhost:4173',
-        '127.0.0.1',
-        '127.0.0.1:8000',
-        '127.0.0.1:5173',
-        '127.0.0.1:4173',
-        '::1',
-        Sanctum::currentApplicationUrlWithPort(),
-    ]))),
+    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', implode(',', $defaultStatefulDomains))),
 
     /*
     |--------------------------------------------------------------------------

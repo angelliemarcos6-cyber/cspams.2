@@ -6,22 +6,37 @@ function defaultApiBaseUrl(): string {
   return `${window.location.protocol}//${window.location.hostname}:8000`;
 }
 
-function sanitizeBaseUrl(baseUrl: string): string {
+export function sanitizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
+}
+
+export function normalizeApiBaseUrl(baseUrl: string): string {
+  return sanitizeBaseUrl(baseUrl).replace(/\/api$/i, "");
+}
+
+export function buildApiUrl(path: string, baseUrl: string = API_BASE_URL): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const normalizedBaseUrl = normalizeApiBaseUrl(baseUrl);
+
+  if (!normalizedBaseUrl) {
+    return normalizedPath;
+  }
+
+  return `${normalizedBaseUrl}${normalizedPath}`;
 }
 
 function resolveApiBaseUrl(): string {
   const configured = String(import.meta.env.VITE_API_BASE_URL || "").trim();
 
   if (configured) {
-    return sanitizeBaseUrl(configured);
+    return normalizeApiBaseUrl(configured);
   }
 
   if (import.meta.env.PROD) {
     throw new Error("Missing VITE_API_BASE_URL. Set it in your deployed frontend environment.");
   }
 
-  return sanitizeBaseUrl(defaultApiBaseUrl());
+  return normalizeApiBaseUrl(defaultApiBaseUrl());
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
@@ -224,7 +239,7 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
 
   if (!csrfBootstrapPromise) {
     csrfBootstrapPromise = fetchWithTimeout(
-      `${API_BASE_URL}/sanctum/csrf-cookie`,
+      buildApiUrl("/sanctum/csrf-cookie"),
       {
         method: "GET",
         credentials: "include",
@@ -279,7 +294,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   }
 
   const fetchRequest = () =>
-    fetchWithTimeout(`${API_BASE_URL}${path}`, {
+    fetchWithTimeout(buildApiUrl(path), {
       method,
       credentials: useCookieSession ? "include" : "omit",
       headers,

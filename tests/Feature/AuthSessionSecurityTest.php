@@ -223,6 +223,41 @@ class AuthSessionSecurityTest extends TestCase
             ]);
     }
 
+    public function test_stateful_login_persists_without_origin_header_when_csrf_session_is_present(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $this->assertNotSame('', $schoolCode);
+
+        $csrfToken = 'stateful-session-csrf-token';
+
+        $login = $this
+            ->withSession(['_token' => $csrfToken])
+            ->withHeader('X-XSRF-TOKEN', $csrfToken)
+            ->postJson('/api/auth/login', [
+                'role' => 'school_head',
+                'login' => $schoolCode,
+                'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
+            ]);
+
+        $login->assertOk()
+            ->assertJsonMissingPath('token')
+            ->assertJsonPath('user.role', 'school_head');
+
+        $this->assertAuthenticated('web');
+
+        $me = $this->getJson('/api/auth/me');
+
+        $me->assertOk()
+            ->assertJsonPath('user.email', (string) $schoolHead->email)
+            ->assertJsonPath('user.role', 'school_head');
+    }
+
     public function test_user_agent_version_change_alone_does_not_trigger_suspicious_login_containment(): void
     {
         $this->seed();
