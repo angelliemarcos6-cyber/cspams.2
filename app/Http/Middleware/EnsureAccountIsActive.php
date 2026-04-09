@@ -3,12 +3,14 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use App\Support\Auth\RequestAuthModeResolver;
 use App\Support\Audit\AuthAuditLogger;
 use App\Support\Auth\UserRoleResolver;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureAccountIsActive
@@ -51,9 +53,18 @@ class EnsureAccountIsActive
             [
                 'reason' => 'account_not_active',
                 'account_status' => $user->accountStatus()->value,
-                'auth_mode' => trim((string) $request->bearerToken()) !== '' ? 'token' : 'cookie_session',
+                'auth_mode' => RequestAuthModeResolver::responseMode($request),
             ],
         );
+
+        Log::warning('auth.blocked', [
+            'user_id' => $user->id,
+            'reason' => 'account_not_active',
+            'account_status' => $user->accountStatus()->value,
+            'auth_mode' => RequestAuthModeResolver::resolve($request),
+            'path' => $request->path(),
+            'method' => $request->method(),
+        ]);
 
         try {
             $user->tokens()->delete();

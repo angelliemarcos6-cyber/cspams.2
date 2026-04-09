@@ -140,11 +140,13 @@ class AuthSessionSecurityTest extends TestCase
         $schoolCode = (string) $schoolHead->school?->school_code;
         $this->assertNotSame('', $schoolCode);
 
-        $login = $this->postJson('/api/auth/login', [
-            'role' => 'school_head',
-            'login' => $schoolCode,
-            'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
-        ]);
+        $login = $this
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/login', [
+                'role' => 'school_head',
+                'login' => $schoolCode,
+                'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
+            ]);
         $login->assertOk();
 
         $token = (string) $login->json('token');
@@ -317,6 +319,13 @@ class AuthSessionSecurityTest extends TestCase
         ]);
 
         $this->assertFalse(EnsureFrontendRequestsAreStateful::fromFrontend($request));
+    }
+
+    public function test_non_bearer_requests_default_to_cookie_mode_without_origin_or_cookie_heuristics(): void
+    {
+        $request = Request::create('/api/auth/login', 'POST');
+
+        $this->assertTrue(EnsureFrontendRequestsAreStateful::fromFrontend($request));
     }
 
     public function test_user_agent_version_change_alone_does_not_trigger_suspicious_login_containment(): void

@@ -12,6 +12,11 @@ return [
         'issue_token_fallback' => (bool) env('CSPAMS_AUTH_TOKEN_FALLBACK', true),
     ],
 
+    'diagnostics' => [
+        // Temporary visibility into cookie-vs-bearer resolution. Keep disabled by default.
+        'log_auth_mode' => (bool) env('CSPAMS_AUTH_DEBUG_LOG_MODE', false),
+    ],
+
     'alerting' => [
         'enabled' => (bool) env('CSPAMS_AUTH_SECURITY_ALERTS_ENABLED', true),
 

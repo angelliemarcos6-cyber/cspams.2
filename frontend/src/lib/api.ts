@@ -151,6 +151,14 @@ export function readXsrfToken(): string | null {
   }
 }
 
+function resolveAuthTransportHeader(token?: string): "cookie" | "token" {
+  if (token && token !== COOKIE_SESSION_TOKEN) {
+    return "token";
+  }
+
+  return "cookie";
+}
+
 function isMutatingMethod(method: string): boolean {
   const normalized = method.toUpperCase();
   return normalized === "POST" || normalized === "PUT" || normalized === "PATCH" || normalized === "DELETE";
@@ -245,6 +253,7 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
         credentials: "include",
         headers: {
           Accept: "application/json",
+          "X-CSPAMS-Auth-Transport": "cookie",
         },
       },
       CSRF_BOOTSTRAP_TIMEOUT_MS,
@@ -278,6 +287,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   if (body !== undefined) {
     headers.set("Content-Type", "application/json");
   }
+  headers.set("X-CSPAMS-Auth-Transport", resolveAuthTransportHeader(token));
   if (token && token !== COOKIE_SESSION_TOKEN) {
     headers.set("Authorization", `Bearer ${token}`);
   }

@@ -8,7 +8,6 @@ use App\Http\Requests\Api\CompleteMonitorMfaResetRequest;
 use App\Http\Requests\Api\CompleteAccountSetupRequest;
 use App\Http\Requests\Api\ForgotPasswordRequest;
 use App\Http\Requests\Api\LoginRequest;
-use App\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use App\Http\Requests\Api\RegenerateMonitorMfaBackupCodesRequest;
 use App\Http\Requests\Api\RequestMonitorMfaResetRequest;
 use App\Http\Requests\Api\ResetPasswordRequest;
@@ -22,6 +21,7 @@ use App\Notifications\MonitorMfaResetApprovedNotification;
 use App\Notifications\MonitorPasswordResetNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
+use App\Support\Auth\RequestAuthModeResolver;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Audit\AuthAuditLogger;
@@ -184,7 +184,7 @@ class AuthController extends Controller
 
         $issueBearerToken = $this->shouldIssueBearerToken($request);
 
-        if (! $issueBearerToken && $request->hasSession()) {
+        if ($this->shouldUseSessionLogin($request)) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
@@ -295,7 +295,7 @@ class AuthController extends Controller
 
         $revocationSummary = $this->revokeUserSessionsAndTokens($user);
         $issueBearerToken = $this->shouldIssueBearerToken($request);
-        if (! $issueBearerToken && $request->hasSession()) {
+        if ($this->shouldUseSessionLogin($request)) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
@@ -733,7 +733,7 @@ class AuthController extends Controller
 
         $issueBearerToken = $this->shouldIssueBearerToken($request);
 
-        if (! $issueBearerToken && $request->hasSession()) {
+        if ($this->shouldUseSessionLogin($request)) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
@@ -1484,7 +1484,7 @@ class AuthController extends Controller
 
         $issueBearerToken = $this->shouldIssueBearerToken($request);
 
-        if (! $issueBearerToken && $request->hasSession()) {
+        if ($this->shouldUseSessionLogin($request)) {
             Auth::guard('web')->login($user);
             $request->session()->regenerate();
         }
@@ -1896,20 +1896,12 @@ class AuthController extends Controller
 
     private function isBearerAuthenticatedRequest(Request $request): bool
     {
-        return trim((string) $request->bearerToken()) !== '';
+        return RequestAuthModeResolver::isBearer($request);
     }
 
     private function shouldIssueBearerToken(Request $request): bool
     {
-        if (! $this->tokenFallbackEnabled()) {
-            return false;
-        }
-
-        if ($this->wantsExplicitTokenTransport($request)) {
-            return true;
-        }
-
-        return ! EnsureFrontendRequestsAreStateful::fromFrontend($request);
+        return $this->tokenFallbackEnabled() && RequestAuthModeResolver::isBearer($request);
     }
 
     private function tokenFallbackEnabled(): bool
@@ -1917,9 +1909,9 @@ class AuthController extends Controller
         return (bool) config('auth_security.transport.issue_token_fallback', true);
     }
 
-    private function wantsExplicitTokenTransport(Request $request): bool
+    private function shouldUseSessionLogin(Request $request): bool
     {
-        return strtolower(trim((string) $request->header('X-CSPAMS-Auth-Transport', ''))) === 'token';
+        return RequestAuthModeResolver::allowsSession($request) && $request->hasSession();
     }
 
     private function authModeForTokenPayload(?array $tokenPayload): string
@@ -1929,7 +1921,7 @@ class AuthController extends Controller
 
     private function authModeForRequest(Request $request): string
     {
-        return $this->isBearerAuthenticatedRequest($request) ? 'token' : 'cookie_session';
+        return RequestAuthModeResolver::responseMode($request);
     }
 
     private function invalidCredentialsMessage(): string

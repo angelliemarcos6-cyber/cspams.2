@@ -35,6 +35,7 @@ describe("api request helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/logout`);
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("X-CSPAMS-Auth-Transport")).toBe("cookie");
   });
 
   it("keeps apiRequest strict for endpoints that should return JSON", async () => {
@@ -53,5 +54,31 @@ describe("api request helpers", () => {
       "https://cspams.example.com/api/auth/login",
     );
     expect(buildApiUrl("/sanctum/csrf-cookie", "/api")).toBe("/sanctum/csrf-cookie");
+  });
+
+  it("marks bearer requests with explicit token transport", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          authMode: "token",
+          user: { role: "monitor" },
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest("/api/auth/me", { token: "plain-text-token" })).resolves.toMatchObject({
+      authMode: "token",
+    });
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer plain-text-token");
+    expect(headers.get("X-CSPAMS-Auth-Transport")).toBe("token");
   });
 });

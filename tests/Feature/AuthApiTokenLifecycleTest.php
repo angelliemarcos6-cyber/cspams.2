@@ -18,11 +18,13 @@ class AuthApiTokenLifecycleTest extends TestCase
         config()->set('sanctum.expiration', 30);
         config()->set('sanctum.refresh_before', 5);
 
-        $login = $this->postJson('/api/auth/login', [
-            'role' => 'monitor',
-            'login' => 'cspamsmonitor@gmail.com',
-            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
-        ]);
+        $login = $this
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/login', [
+                'role' => 'monitor',
+                'login' => 'cspamsmonitor@gmail.com',
+                'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+            ]);
 
         $login->assertOk()
             ->assertJsonPath('user.role', 'monitor')
@@ -60,11 +62,13 @@ class AuthApiTokenLifecycleTest extends TestCase
         $this->seed();
         config()->set('sanctum.expiration', 1);
 
-        $login = $this->postJson('/api/auth/login', [
-            'role' => 'monitor',
-            'login' => 'cspamsmonitor@gmail.com',
-            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
-        ]);
+        $login = $this
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/login', [
+                'role' => 'monitor',
+                'login' => 'cspamsmonitor@gmail.com',
+                'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+            ]);
 
         $login->assertOk();
         $token = (string) $login->json('token');

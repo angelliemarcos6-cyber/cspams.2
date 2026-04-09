@@ -29,11 +29,13 @@ class AuthApiSmokeTest extends TestCase
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->with('school')->firstOrFail();
         $schoolCode = (string) $schoolHead->school?->school_code;
 
-        $login = $this->postJson('/api/auth/login', [
-            'role' => 'school_head',
-            'login' => $schoolCode,
-            'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
-        ]);
+        $login = $this
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/login', [
+                'role' => 'school_head',
+                'login' => $schoolCode,
+                'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
+            ]);
 
         $login->assertOk()
             ->assertJsonPath('success', true)
@@ -78,12 +80,14 @@ class AuthApiSmokeTest extends TestCase
 
         $challengeId = (string) $login->json('mfa.challengeId');
 
-        $verify = $this->postJson('/api/auth/verify-mfa', [
-            'role' => 'monitor',
-            'login' => 'cspamsmonitor@gmail.com',
-            'challenge_id' => $challengeId,
-            'code' => '123456',
-        ]);
+        $verify = $this
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/verify-mfa', [
+                'role' => 'monitor',
+                'login' => 'cspamsmonitor@gmail.com',
+                'challenge_id' => $challengeId,
+                'code' => '123456',
+            ]);
 
         $verify->assertOk()
             ->assertJsonPath('success', true)

@@ -30,11 +30,13 @@ class AuthAuditLoggingTest extends TestCase
 
         $failedLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
 
-        $successfulLogin = $this->postJson('/api/auth/login', [
-            'role' => 'monitor',
-            'login' => 'cspamsmonitor@gmail.com',
-            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
-        ]);
+        $successfulLogin = $this
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/login', [
+                'role' => 'monitor',
+                'login' => 'cspamsmonitor@gmail.com',
+                'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+            ]);
 
         $successfulLogin->assertOk();
 
@@ -140,12 +142,14 @@ class AuthAuditLoggingTest extends TestCase
             'code' => '000000',
         ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
 
-        $this->postJson('/api/auth/verify-mfa', [
-            'role' => 'monitor',
-            'login' => 'cspamsmonitor@gmail.com',
-            'challenge_id' => $challengeId,
-            'code' => '123456',
-        ])->assertOk();
+        $this
+            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->postJson('/api/auth/verify-mfa', [
+                'role' => 'monitor',
+                'login' => 'cspamsmonitor@gmail.com',
+                'challenge_id' => $challengeId,
+                'code' => '123456',
+            ])->assertOk();
 
         /** @var AuditLog $challengeAudit */
         $challengeAudit = AuditLog::query()
