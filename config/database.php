@@ -16,6 +16,7 @@ return [
     |
     */
 
+    // Keep sqlite as the safe local fallback; production should set DB_CONNECTION explicitly.
     'default' => env('DB_CONNECTION', 'sqlite'),
 
     /*

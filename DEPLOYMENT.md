@@ -1,6 +1,6 @@
-# Deployment (Cookie-Session SPA Auth)
+# Deployment (Vercel SPA Proxy + Sanctum/Bearer Auth)
 
-This project's SPA uses **Sanctum stateful cookie sessions** (httpOnly). Production correctness depends on a few environment values matching your deployed frontend/backend hosts.
+This project supports **Sanctum stateful cookie sessions** (httpOnly) and **bearer tokens**. Production correctness depends on a few environment values matching your deployed frontend/backend hosts.
 
 ## Checklist
 
@@ -9,7 +9,12 @@ This project's SPA uses **Sanctum stateful cookie sessions** (httpOnly). Product
 - `APP_URL` = backend base URL (e.g., `https://api.example.com`)
 - `FRONTEND_URL` = frontend base URL (e.g., `https://app.example.com`)
 - `VITE_API_BASE_URL` = backend base URL from the frontend's perspective (usually same as `APP_URL`)
-  - Required in production builds; the frontend throws on startup if missing.
+  - When Vercel rewrites `/api`, `/sanctum`, and `/broadcasting` to Render, keep this as `/` so the browser stays on the Vercel origin.
+
+Notes:
+
+- Even when the browser only talks to `https://your-app.vercel.app/...`, Render should still set `APP_URL`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, and `SANCTUM_STATEFUL_DOMAINS` to the real frontend/backend hosts so Laravel's production checks stay accurate.
+- `frontend/vercel.json` currently hardcodes `https://cspams-2.onrender.com`. Update that file if your Render service URL changes.
 
 ### 2) Configure Sanctum stateful domains (hosts, not full URLs)
 
@@ -32,27 +37,39 @@ Recommended production/staging values:
 - `SESSION_SECURE_COOKIE=true`
 - `SESSION_HTTP_ONLY=true`
 - `SESSION_LIFETIME=120` (or another short value you're comfortable with)
-- `SESSION_SAME_SITE=lax` for same-site subdomains (common case)
+- `SESSION_SAME_SITE=lax` for same-site subdomains or Vercel proxy rewrites (common case)
 - `SESSION_SAME_SITE=none` only when the frontend and API are on different "sites" and you truly need cross-site cookies (must be paired with `SESSION_SECURE_COOKIE=true`)
 
 Notes:
 
 - `SESSION_DOMAIN` can usually remain `null` (host-only cookie on the API domain). Only set it when you explicitly need a shared domain cookie.
 
-### 5) Clear cached config after env changes
+### 5) Use a direct or session-pooled Neon connection for row locks
+
+This app uses `SELECT ... FOR UPDATE` in a few transactional paths. On Neon, prefer the direct connection string or a session-pooled endpoint. Transaction-pooled pgBouncer connections can break row-level locks between statements.
+
+### 6) Configure frontend realtime envs
+
+If you use Reverb/WebSocket features on Vercel, set these in the Vercel dashboard to the Render backend host:
+
+- `VITE_REVERB_HOST=your-backend.onrender.com`
+- `VITE_REVERB_PORT=443`
+- `VITE_REVERB_SCHEME=https`
+
+### 7) Clear cached config after env changes
 
 After updating environment values on the server:
 
 - `php artisan optimize:clear`
 - `php artisan config:cache`
 
-### 6) Ensure sessions storage exists
+### 8) Ensure sessions storage exists
 
 If using `SESSION_DRIVER=database`, ensure migrations ran and the `sessions` table exists:
 
 - `php artisan migrate --force`
 
-### 7) Run the queue worker for MFA email
+### 9) Run the queue worker for MFA email
 
 `MonitorMfaCodeNotification` is queued (`ShouldQueue`). Without a running worker the MFA code email is never delivered and monitor sign-in stalls at the MFA step.
 

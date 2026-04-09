@@ -1286,11 +1286,23 @@ class SchoolHeadAccountController extends Controller
 
     private function isUniqueConstraintViolation(QueryException $exception): bool
     {
+        $sqlState = trim((string) ($exception->errorInfo[0] ?? $exception->getCode()));
+        if ($sqlState === '23505') {
+            return true;
+        }
+
+        $driverCode = $exception->errorInfo[1] ?? null;
+        if ((int) $driverCode === 1062) {
+            return true;
+        }
+
         $message = strtolower($exception->getMessage());
 
         return str_contains($message, 'unique constraint failed')
             || str_contains($message, 'duplicate entry')
-            || str_contains($message, 'integrity constraint violation');
+            || str_contains($message, 'duplicate key value violates unique constraint')
+            || str_contains($message, 'violates unique constraint')
+            || str_contains($message, 'unique violation');
     }
 
     private function loadLatestAccountSetupToken(User $account): void
