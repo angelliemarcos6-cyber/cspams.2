@@ -20,7 +20,7 @@ class RequestAuthModeResolver
             return $resolved;
         }
 
-        $mode = trim((string) $request->bearerToken()) !== ''
+        $mode = self::tokenCandidate($request) !== ''
             ? self::TOKEN
             : self::COOKIE;
 
@@ -42,5 +42,20 @@ class RequestAuthModeResolver
     public static function isCookie(Request $request): bool
     {
         return self::resolveAuthMode($request) === self::COOKIE;
+    }
+
+    private static function tokenCandidate(Request $request): string
+    {
+        $bearerToken = trim((string) $request->bearerToken());
+        if ($bearerToken !== '') {
+            return $bearerToken;
+        }
+
+        $logoutToken = trim((string) ($request->input('logout_token') ?? $request->header('X-CSPAMS-Logout-Token', '')));
+        if ($logoutToken !== '' && $request->is('api/auth/logout')) {
+            return $logoutToken;
+        }
+
+        return '';
     }
 }

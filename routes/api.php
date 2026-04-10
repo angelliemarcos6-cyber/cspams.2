@@ -9,11 +9,20 @@ use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
 use App\Http\Middleware\AuthenticateApiRequest;
 use App\Http\Middleware\EnsureAccountIsActive;
+use App\Http\Middleware\EnsurePasswordResetSatisfied;
 use App\Http\Middleware\InstrumentStudentCrudTiming;
+use App\Http\Middleware\RejectExpiredApiToken;
 use App\Http\Middleware\StandardizeAuthApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+
+$protectedApiMiddleware = [
+    RejectExpiredApiToken::class,
+    AuthenticateApiRequest::class,
+    EnsureAccountIsActive::class,
+    EnsurePasswordResetSatisfied::class,
+];
 
 Route::middleware(StandardizeAuthApiResponse::class)->prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
@@ -29,10 +38,12 @@ Route::middleware(StandardizeAuthApiResponse::class)->prefix('auth')->group(func
         ->middleware('throttle:auth-mfa-reset-request');
     Route::post('/mfa/reset/complete', [AuthController::class, 'completeMonitorMfaReset'])
         ->middleware('throttle:auth-mfa-reset-complete');
+    Route::post('/setup-link/recovery', [AuthController::class, 'requestSchoolHeadSetupLinkRecovery'])
+        ->middleware('throttle:auth-school-head-setup-recovery');
+    Route::post('/logout', [AuthController::class, 'logout']);
 
-    Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])->group(function (): void {
+    Route::middleware($protectedApiMiddleware)->group(function (): void {
         Route::get('/me', [AuthController::class, 'me']);
-        Route::post('/logout', [AuthController::class, 'logout']);
         Route::post('/refresh', [AuthController::class, 'refreshToken'])
             ->middleware('throttle:auth-token-refresh');
         Route::get('/sessions', [AuthController::class, 'activeSessions'])
@@ -44,16 +55,21 @@ Route::middleware(StandardizeAuthApiResponse::class)->prefix('auth')->group(func
         Route::post('/mfa/backup-codes/regenerate', [AuthController::class, 'regenerateMonitorMfaBackupCodes'])
             ->middleware('throttle:auth-mfa-backup-codes');
         Route::get('/mfa/reset/requests', [AuthController::class, 'monitorMfaResetRequests']);
+        Route::get('/mfa/reset/requests/{ticket}', [AuthController::class, 'monitorMfaResetRequestDetail']);
         Route::post('/mfa/reset/requests/{ticket}/approve', [AuthController::class, 'approveMonitorMfaReset'])
+            ->middleware('throttle:auth-mfa-reset-approve');
+        Route::post('/mfa/reset/requests/{ticket}/reveal', [AuthController::class, 'revealMonitorMfaResetApprovalToken'])
+            ->middleware('throttle:auth-mfa-reset-approve');
+        Route::post('/mfa/reset/requests/{ticket}/resend', [AuthController::class, 'resendMonitorMfaResetApprovalToken'])
             ->middleware('throttle:auth-mfa-reset-approve');
     });
 });
 
-Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])->post('/broadcasting/auth', static function (Request $request) {
+Route::middleware($protectedApiMiddleware)->post('/broadcasting/auth', static function (Request $request) {
     return Broadcast::auth($request);
 });
 
-Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])->prefix('dashboard')->group(function (): void {
+Route::middleware($protectedApiMiddleware)->prefix('dashboard')->group(function (): void {
     Route::get('/records', [SchoolRecordController::class, 'index']);
     Route::post('/records', [SchoolRecordController::class, 'store']);
     Route::post('/records/bulk-import', [SchoolRecordController::class, 'bulkImport']);
@@ -69,6 +85,12 @@ Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])
     Route::post('/records/{school}/school-head-account/verification-code', [SchoolHeadAccountController::class, 'issueActionVerificationCode'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])
+        ->middleware('throttle:auth-account-management');
+    Route::get('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'pendingSetupLink'])
+        ->middleware('throttle:auth-account-management');
+    Route::post('/records/{school}/school-head-account/setup-link/reveal', [SchoolHeadAccountController::class, 'revealPendingSetupLink'])
+        ->middleware('throttle:auth-account-management');
+    Route::post('/records/{school}/school-head-account/setup-link/resend', [SchoolHeadAccountController::class, 'resendPendingSetupLink'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/password-reset-link', [SchoolHeadAccountController::class, 'issuePasswordResetLink'])
         ->middleware('throttle:auth-account-management');
@@ -96,7 +118,7 @@ Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])
     Route::delete('/teachers/{teacher}', [TeacherRecordController::class, 'destroy']);
 });
 
-Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])->prefix('indicators')->group(function (): void {
+Route::middleware($protectedApiMiddleware)->prefix('indicators')->group(function (): void {
     Route::get('/academic-years', [IndicatorSubmissionController::class, 'academicYears']);
     Route::get('/metrics', [IndicatorSubmissionController::class, 'metrics']);
     Route::get('/submissions', [IndicatorSubmissionController::class, 'index']);
@@ -109,7 +131,7 @@ Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])
     Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
 });
 
-Route::middleware([AuthenticateApiRequest::class, EnsureAccountIsActive::class])->prefix('notifications')->group(function (): void {
+Route::middleware($protectedApiMiddleware)->prefix('notifications')->group(function (): void {
     Route::get('/', [NotificationController::class, 'index']);
     Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);

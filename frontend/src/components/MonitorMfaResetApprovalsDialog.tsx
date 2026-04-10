@@ -21,6 +21,21 @@ interface MonitorMfaResetRequestsResponse {
   data: MonitorMfaResetTicket[];
 }
 
+interface MonitorMfaResetTicketDetail {
+  id: number;
+  status: string;
+  expiresAt: string | null;
+  approvalTokenExpiresAt: string | null;
+  deliveryStatus: string | null;
+  deliveryMessage: string | null;
+  canResendApprovalToken: boolean;
+  canRevealApprovalToken: boolean;
+}
+
+interface MonitorMfaResetRequestDetailResponse {
+  data: MonitorMfaResetTicketDetail;
+}
+
 interface ApproveMonitorMfaResetResponse {
   status: string;
   requestId: number;
@@ -36,7 +51,10 @@ interface RecentApproval {
   requesterEmail: string;
   approvalToken: string | null;
   expiresAt: string;
+  deliveryStatus: string | null;
   deliveryMessage: string | null;
+  canResendApprovalToken: boolean;
+  canRevealApprovalToken: boolean;
   approvedAt: number;
 }
 
@@ -59,6 +77,7 @@ export function MonitorMfaResetApprovalsDialog({
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [actioningId, setActioningId] = useState<number | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const canCallApi = isAuthenticated && requestAuth !== null;
@@ -117,7 +136,10 @@ export function MonitorMfaResetApprovalsDialog({
           requesterEmail,
           approvalToken,
           expiresAt: payload.approvalTokenExpiresAt,
+          deliveryStatus: typeof payload.delivery === "string" ? payload.delivery : null,
           deliveryMessage: typeof payload.deliveryMessage === "string" ? payload.deliveryMessage : null,
+          canResendApprovalToken: true,
+          canRevealApprovalToken: ["failed", "bounced"].includes(String(payload.delivery ?? "").toLowerCase()),
           approvedAt: Date.now(),
         },
         ...current,
@@ -137,6 +159,154 @@ export function MonitorMfaResetApprovalsDialog({
       }
     } finally {
       setApprovingId(null);
+    }
+  };
+
+  const loadRequestDetail = async (requestId: number): Promise<MonitorMfaResetTicketDetail> => {
+    const payload = await apiRequest<MonitorMfaResetRequestDetailResponse>(
+      `/api/auth/mfa/reset/requests/${encodeURIComponent(String(requestId))}`,
+      {
+        auth: requestAuth ?? undefined,
+      },
+    );
+
+    if (!payload.data) {
+      throw new Error("Unable to load MFA reset request details.");
+    }
+
+    return payload.data;
+  };
+
+  const refreshRecentApproval = async (requestId: number): Promise<MonitorMfaResetTicketDetail> => {
+    const detail = await loadRequestDetail(requestId);
+    setRecentApprovals((current) =>
+      current.map((item) =>
+        item.requestId === requestId
+          ? {
+              ...item,
+              expiresAt: detail.approvalTokenExpiresAt || item.expiresAt,
+              deliveryStatus: detail.deliveryStatus,
+              deliveryMessage: detail.deliveryMessage,
+              canResendApprovalToken: detail.canResendApprovalToken,
+              canRevealApprovalToken: detail.canRevealApprovalToken,
+            }
+          : item,
+      ),
+    );
+
+    return detail;
+  };
+
+  const handleRevealApprovalToken = async (item: RecentApproval) => {
+    if (!canCallApi) {
+      setError("You are signed out. Please sign in again.");
+      return;
+    }
+
+    if (typeof window !== "undefined" && !window.confirm("Reveal the approval token for this request?")) {
+      return;
+    }
+
+    setActioningId(item.requestId);
+    setError("");
+
+    try {
+      const detail = await refreshRecentApproval(item.requestId);
+      if (!detail.canRevealApprovalToken) {
+        throw new Error(detail.deliveryMessage || "Approval token reveal is not available for this request.");
+      }
+
+      const payload = await apiRequest<{
+        data?: {
+          approvalToken?: string | null;
+          approvalTokenExpiresAt?: string | null;
+          deliveryStatus?: string | null;
+          deliveryMessage?: string | null;
+        };
+      }>(
+        `/api/auth/mfa/reset/requests/${encodeURIComponent(String(item.requestId))}/reveal`,
+        {
+          method: "POST",
+          auth: requestAuth ?? undefined,
+        },
+      );
+
+      setRecentApprovals((current) =>
+        current.map((entry) =>
+          entry.requestId === item.requestId
+            ? {
+                ...entry,
+                approvalToken: typeof payload.data?.approvalToken === "string" ? payload.data.approvalToken : entry.approvalToken,
+                expiresAt: payload.data?.approvalTokenExpiresAt || entry.expiresAt,
+                deliveryStatus: typeof payload.data?.deliveryStatus === "string" ? payload.data.deliveryStatus : entry.deliveryStatus,
+                deliveryMessage: typeof payload.data?.deliveryMessage === "string" ? payload.data.deliveryMessage : entry.deliveryMessage,
+                canRevealApprovalToken: false,
+              }
+            : entry,
+        ),
+      );
+    } catch (err) {
+      if (isApiError(err)) {
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : "Unable to reveal the approval token.");
+      }
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const handleResendApprovalToken = async (item: RecentApproval) => {
+    if (!canCallApi) {
+      setError("You are signed out. Please sign in again.");
+      return;
+    }
+
+    setActioningId(item.requestId);
+    setError("");
+
+    try {
+      const detail = await refreshRecentApproval(item.requestId);
+      if (!detail.canResendApprovalToken) {
+        throw new Error(detail.deliveryMessage || "Approval token resend is not available for this request.");
+      }
+
+      const payload = await apiRequest<{
+        data?: {
+          delivery?: string | null;
+          deliveryMessage?: string | null;
+          approvalTokenExpiresAt?: string | null;
+          canRevealApprovalToken?: boolean;
+        };
+      }>(
+        `/api/auth/mfa/reset/requests/${encodeURIComponent(String(item.requestId))}/resend`,
+        {
+          method: "POST",
+          auth: requestAuth ?? undefined,
+        },
+      );
+
+      setRecentApprovals((current) =>
+        current.map((entry) =>
+          entry.requestId === item.requestId
+            ? {
+                ...entry,
+                expiresAt: payload.data?.approvalTokenExpiresAt || entry.expiresAt,
+                deliveryStatus: typeof payload.data?.delivery === "string" ? payload.data.delivery : entry.deliveryStatus,
+                deliveryMessage: typeof payload.data?.deliveryMessage === "string" ? payload.data.deliveryMessage : entry.deliveryMessage,
+                canRevealApprovalToken: Boolean(payload.data?.canRevealApprovalToken),
+              }
+            : entry,
+        ),
+      );
+    } catch (err) {
+      if (isApiError(err)) {
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : "Unable to resend the approval token.");
+      }
+    } finally {
+      setActioningId(null);
     }
   };
 
@@ -265,6 +435,26 @@ export function MonitorMfaResetApprovalsDialog({
                           </>
                         ) : (
                           <p className="text-xs font-semibold text-slate-600">Approval token sent via email.</p>
+                        )}
+                        {item.canResendApprovalToken && (
+                          <button
+                            type="button"
+                            onClick={() => void handleResendApprovalToken(item)}
+                            disabled={actioningId === item.requestId}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {actioningId === item.requestId ? "Working..." : "Resend email"}
+                          </button>
+                        )}
+                        {item.canRevealApprovalToken && (
+                          <button
+                            type="button"
+                            onClick={() => void handleRevealApprovalToken(item)}
+                            disabled={actioningId === item.requestId}
+                            className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {actioningId === item.requestId ? "Working..." : "View token"}
+                          </button>
                         )}
                       </div>
                     </div>

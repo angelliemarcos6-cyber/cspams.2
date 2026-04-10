@@ -7,6 +7,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 
 class SchoolHeadAccountSetupService
@@ -19,7 +20,7 @@ class SchoolHeadAccountSetupService
         ?User $issuedBy = null,
         ?string $issuedIp = null,
         ?string $issuedUserAgent = null,
-        int $ttlHours = 24,
+        ?int $ttlHours = null,
     ): array {
         if (! $this->storageAvailable()) {
             throw new \RuntimeException('Account setup token storage is unavailable. Run database migrations first.');
@@ -27,16 +28,19 @@ class SchoolHeadAccountSetupService
 
         $this->expireOpenTokens($user, $issuedIp, $issuedUserAgent);
 
-        $expiresAt = CarbonImmutable::now()->addHours(max(1, $ttlHours));
+        $resolvedTtlHours = max(1, $ttlHours ?? (int) config('auth_security.setup_links.ttl_hours', 72));
+        $expiresAt = CarbonImmutable::now()->addHours($resolvedTtlHours);
         $secret = Str::random(64);
 
         $token = AccountSetupToken::query()->create([
             'user_id' => $user->id,
             'issued_by_user_id' => $issuedBy?->id,
             'token_hash' => Hash::make($secret),
+            'token_secret_ciphertext' => Crypt::encryptString($secret),
             'expires_at' => $expiresAt,
             'issued_ip' => $this->normalizeIpAddress($issuedIp),
             'issued_user_agent' => $this->normalizeUserAgent($issuedUserAgent),
+            'delivery_status' => 'pending',
         ]);
 
         $plainToken = $token->id . '.' . $secret;
@@ -70,6 +74,12 @@ class SchoolHeadAccountSetupService
         }
 
         if (! $token->isUsable()) {
+            if ($token->used_at === null && $token->expired_at === null && $token->isExpired()) {
+                $token->forceFill([
+                    'expired_at' => CarbonImmutable::now(),
+                ])->save();
+            }
+
             return null;
         }
 
@@ -94,10 +104,9 @@ class SchoolHeadAccountSetupService
             ->where('user_id', $token->user_id)
             ->where('id', '!=', $token->id)
             ->whereNull('used_at')
+            ->whereNull('expired_at')
             ->update([
-                'used_at' => $now,
-                'used_ip' => $this->normalizeIpAddress($usedIp),
-                'used_user_agent' => $this->normalizeUserAgent($usedUserAgent),
+                'expired_at' => $now,
                 'updated_at' => $now,
             ]);
     }
@@ -119,6 +128,46 @@ class SchoolHeadAccountSetupService
         return Schema::hasTable('account_setup_tokens');
     }
 
+    public function latestForUser(User $user): ?AccountSetupToken
+    {
+        if (! $this->storageAvailable()) {
+            return null;
+        }
+
+        /** @var AccountSetupToken|null $token */
+        $token = AccountSetupToken::query()
+            ->where('user_id', $user->id)
+            ->latest('id')
+            ->first();
+
+        if ($token && $token->used_at === null && $token->expired_at === null && $token->isExpired()) {
+            $token->forceFill([
+                'expired_at' => CarbonImmutable::now(),
+            ])->save();
+        }
+
+        return $token;
+    }
+
+    public function revealSetupUrl(AccountSetupToken $token): ?string
+    {
+        $plainToken = $token->revealPlainToken();
+        if ($plainToken === null) {
+            return null;
+        }
+
+        return $this->buildSetupUrl($plainToken);
+    }
+
+    public function recordDeliveryOutcome(AccountSetupToken $token, string $status, ?string $message = null): void
+    {
+        $token->forceFill([
+            'delivery_status' => strtolower(trim($status)) ?: 'unknown',
+            'delivery_message' => $message !== null ? trim($message) : null,
+            'delivery_last_attempt_at' => now(),
+        ])->save();
+    }
+
     private function expireOpenTokens(User $user, ?string $usedIp = null, ?string $usedUserAgent = null): void
     {
         if (! $this->storageAvailable()) {
@@ -130,10 +179,9 @@ class SchoolHeadAccountSetupService
         AccountSetupToken::query()
             ->where('user_id', $user->id)
             ->whereNull('used_at')
+            ->whereNull('expired_at')
             ->update([
-                'used_at' => $now,
-                'used_ip' => $this->normalizeIpAddress($usedIp),
-                'used_user_agent' => $this->normalizeUserAgent($usedUserAgent),
+                'expired_at' => $now,
                 'updated_at' => $now,
             ]);
     }

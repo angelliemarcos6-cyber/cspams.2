@@ -43,6 +43,7 @@ const API_BASE_URL = resolveApiBaseUrl();
 let csrfBootstrapPromise: Promise<void> | null = null;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const CSRF_BOOTSTRAP_TIMEOUT_MS = 10_000;
+export const TOKEN_EXPIRED_EVENT_NAME = "cspams:auth:token-expired";
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;
@@ -390,6 +391,18 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
       const isGenericValidationMessage =
         !baseMessage || baseMessage.toLowerCase() === "the given data was invalid.";
       message = isGenericValidationMessage ? firstError : `${message} ${firstError}`;
+    }
+
+    const errorCode =
+      payload && typeof payload === "object" && "errorCode" in payload && typeof payload.errorCode === "string"
+        ? payload.errorCode
+        : null;
+    if (response.status === 401 && errorCode === "token_expired" && typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(TOKEN_EXPIRED_EVENT_NAME, {
+          detail: payload,
+        }),
+      );
     }
 
     throw new ApiError(message, response.status, payload, validationErrors);

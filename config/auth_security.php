@@ -1,10 +1,38 @@
 <?php
 
+$resetUiEnabled = static function (): bool {
+    $raw = strtolower(trim((string) env('CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET', 'true')));
+
+    return ! in_array($raw, ['0', 'false', 'off', 'no'], true);
+};
+
 return [
     'login' => [
-        // Layer a longer-lived identifier lockout on top of the per-minute throttle.
+        // Fallback threshold when no per-role override is configured.
         'attempt_lockout_threshold' => max(3, (int) env('CSPAMS_AUTH_LOGIN_FAILURE_LOCKOUT_THRESHOLD', 8)),
+
+        // Layer a longer-lived identifier lockout on top of the per-minute throttle.
         'attempt_lockout_minutes' => max(1, (int) env('CSPAMS_AUTH_LOGIN_FAILURE_LOCKOUT_MINUTES', 15)),
+
+        'roles' => [
+            'monitor' => [
+                'attempt_lockout_threshold' => max(3, (int) env('CSPAMS_AUTH_MONITOR_LOGIN_FAILURE_LOCKOUT_THRESHOLD', 8)),
+            ],
+            'school_head' => [
+                'attempt_lockout_threshold' => max(3, (int) env('CSPAMS_AUTH_SCHOOL_HEAD_LOGIN_FAILURE_LOCKOUT_THRESHOLD', 5)),
+            ],
+        ],
+    ],
+
+    'password_reset' => [
+        // Controls whether the SPA renders the in-app password reset prompt after login is blocked.
+        // Access is still blocked whenever must_reset_password is true.
+        'show_in_app_reset_ui' => $resetUiEnabled(),
+    ],
+
+    'setup_links' => [
+        // School Head setup links expire after 72 hours by default.
+        'ttl_hours' => max(1, (int) env('CSPAMS_SETUP_LINK_TTL_HOURS', 72)),
     ],
 
     'diagnostics' => [

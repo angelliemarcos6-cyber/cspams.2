@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Crypt;
 
 class MonitorMfaResetTicket extends Model
 {
@@ -26,12 +27,16 @@ class MonitorMfaResetTicket extends Model
         'status',
         'reason',
         'approval_token_hash',
+        'approval_token_ciphertext',
         'approval_token_expires_at',
         'approved_at',
         'completed_at',
         'expires_at',
         'requested_ip',
         'requested_user_agent',
+        'delivery_status',
+        'delivery_message',
+        'delivery_last_attempt_at',
     ];
 
     /**
@@ -44,6 +49,7 @@ class MonitorMfaResetTicket extends Model
             'approved_at' => 'datetime',
             'completed_at' => 'datetime',
             'expires_at' => 'datetime',
+            'delivery_last_attempt_at' => 'datetime',
         ];
     }
 
@@ -60,5 +66,26 @@ class MonitorMfaResetTicket extends Model
     public function approvedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by_user_id');
+    }
+
+    public function revealApprovalToken(): ?string
+    {
+        $ciphertext = trim((string) $this->approval_token_ciphertext);
+        if ($ciphertext === '') {
+            return null;
+        }
+
+        try {
+            $token = Crypt::decryptString($ciphertext);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return trim($token) !== '' ? $token : null;
+    }
+
+    public function deliveryFailed(): bool
+    {
+        return in_array(strtolower(trim((string) $this->delivery_status)), ['failed', 'bounced'], true);
     }
 }

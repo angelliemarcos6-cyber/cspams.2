@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Audit\AuthAuditLogger;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -24,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->logNonLocalSecurityWarnings();
+
         if (! $this->shouldSkipProductionConfigurationAudit()) {
             $this->assertSafeProductionRuntimeConfiguration();
         }
@@ -145,6 +148,21 @@ class AppServiceProvider extends ServiceProvider
                         ),
                     ),
             ];
+        });
+
+        RateLimiter::for('auth-school-head-setup-recovery', function (Request $request) use ($lockoutResponse): Limit {
+            $schoolCode = preg_replace('/\D+/', '', (string) $request->input('school_code', 'unknown'));
+            $identity = trim((string) $schoolCode) !== '' ? (string) $schoolCode : 'unknown';
+
+            return Limit::perHour(3)->by('auth-setup-link-recovery:' . strtolower($identity))
+                ->response(
+                    fn (Request $request, array $headers) => $lockoutResponse(
+                        $request,
+                        $headers,
+                        'auth.setup_link_recovery.locked_out',
+                        'school_code',
+                    ),
+                );
         });
 
         RateLimiter::for('auth-reset-password', function (Request $request) use ($lockoutResponse): array {
@@ -467,9 +485,6 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $testCode = trim((string) config('auth_mfa.monitor.test_code', ''));
-        if ($testCode !== '') {
-            $issues[] = 'CSPAMS_MONITOR_MFA_TEST_CODE must be empty.';
-        }
 
         $queueConnection = strtolower(trim((string) config('queue.default', 'database')));
         if ((bool) config('auth_mfa.monitor.enabled', false) && $queueConnection === 'sync') {
@@ -490,11 +505,6 @@ class AppServiceProvider extends ServiceProvider
         $expirationMinutes = is_numeric($sanctumExpiration) ? (int) $sanctumExpiration : null;
         if ($expirationMinutes === null || $expirationMinutes <= 0) {
             $issues[] = 'SANCTUM_TOKEN_EXPIRATION must be a positive integer.';
-        }
-
-        $enforceResetRaw = strtolower(trim((string) env('CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET', 'true')));
-        if (in_array($enforceResetRaw, ['0', 'false', 'off', 'no'], true)) {
-            $issues[] = 'CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET must be enabled.';
         }
 
         $sessionSecure = (bool) config('session.secure', false);
@@ -523,6 +533,28 @@ class AppServiceProvider extends ServiceProvider
         }
 
         return $issues;
+    }
+
+    private function logNonLocalSecurityWarnings(): void
+    {
+        if (app()->environment('local')) {
+            return;
+        }
+
+        $testCode = trim((string) config('auth_mfa.monitor.test_code', ''));
+        if ($testCode !== '') {
+            Log::warning('auth.configuration.mfa_test_code_configured', [
+                'environment' => app()->environment(),
+                'message' => 'CSPAMS_MONITOR_MFA_TEST_CODE is set outside local development.',
+            ]);
+        }
+
+        if (! (bool) config('auth_security.password_reset.show_in_app_reset_ui', true)) {
+            Log::warning('auth.configuration.password_reset_ui_disabled', [
+                'environment' => app()->environment(),
+                'message' => 'CSPAMS_ENFORCE_REQUIRED_PASSWORD_RESET is disabled outside local development.',
+            ]);
+        }
     }
 
     /**

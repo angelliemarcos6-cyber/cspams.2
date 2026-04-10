@@ -65,6 +65,7 @@ export function Login() {
     login,
     verifyMfa,
     resetRequiredPassword,
+    requestSchoolHeadSetupLinkRecovery,
     isAuthenticating,
     authError,
     authErrorCode,
@@ -83,6 +84,7 @@ export function Login() {
   const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
   const [showPasscode, setShowPasscode] = useState(false);
   const [error, setError] = useState("");
+  const [setupLinkRecoveryNotice, setSetupLinkRecoveryNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isMfaChallengeActive = pendingMfa !== null;
 
@@ -101,11 +103,40 @@ export function Login() {
     setRequiresPasswordReset(false);
     setNewPassword("");
     setConfirmPassword("");
+    setSetupLinkRecoveryNotice(null);
   };
 
   const clearMfaState = () => {
     setPendingMfa(null);
     setMfaCode("");
+  };
+
+  const handleSetupLinkRecovery = async () => {
+    const normalizedSchoolCode = loginId.replace(/\D/g, "").slice(0, 6);
+    if (normalizedSchoolCode.length !== 6) {
+      setError("Enter your 6-digit school code to request a new setup link.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+    setSetupLinkRecoveryNotice(null);
+
+    try {
+      const payload = await requestSchoolHeadSetupLinkRecovery(normalizedSchoolCode);
+      setSetupLinkRecoveryNotice(
+        payload.message?.trim()
+          || "If a matching School Head account is still pending setup, a new setup link will be sent to the registered email address.",
+      );
+    } catch (err) {
+      if (isApiError(err)) {
+        setError(err.message);
+      } else {
+        setError("Unable to request a new setup link right now. Check your network and try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -374,6 +405,7 @@ export function Login() {
                       setLoginId(nextValue);
                       clearAuthError();
                       setError("");
+                      setSetupLinkRecoveryNotice(null);
                       clearResetState();
                       clearMfaState();
                     }}
@@ -403,6 +435,7 @@ export function Login() {
                       setPassword(event.target.value);
                       clearAuthError();
                       setError("");
+                      setSetupLinkRecoveryNotice(null);
                       clearMfaState();
                     }}
                     placeholder="Enter passcode"
@@ -420,7 +453,19 @@ export function Login() {
                   </button>
                 </div>
                 {!pendingMfa && (
-                  <div className="mt-2 flex justify-end">
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    {activeRole === "school_head" ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleSetupLinkRecovery()}
+                        disabled={isBusy}
+                        className="text-xs font-semibold text-primary-700 hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        I didn't receive my setup link
+                      </button>
+                    ) : (
+                      <span />
+                    )}
                     <Link to={forgotPasswordHref} className="text-xs font-semibold text-primary-700 hover:text-primary-800">
                       {requiresPasswordReset ? "Can't access current passcode? Email reset" : "Forgot password?"}
                     </Link>
@@ -513,6 +558,12 @@ export function Login() {
               )}
 
               {error && <p className="rounded-xl border border-primary-200 bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">{error}</p>}
+
+              {setupLinkRecoveryNotice && (
+                <p className="rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm text-sky-800">
+                  {setupLinkRecoveryNotice}
+                </p>
+              )}
 
               <button
                 type="submit"

@@ -80,16 +80,31 @@ return [
     | Expiration Minutes
     |--------------------------------------------------------------------------
     |
-    | This value controls the number of minutes until an issued token will be
-    | considered expired. This will override any values set in the token's
-    | "expires_at" attribute, but first-party sessions are not affected.
+    | This legacy fallback remains set for non-role-aware clients, while CSPAMS
+    | issues role-specific token expirations below and stores them on expires_at.
     |
     */
 
     'expiration' => (static function (): ?int {
-        $minutes = (int) env('SANCTUM_TOKEN_EXPIRATION', 0);
+        $minutes = (int) env('SANCTUM_TOKEN_EXPIRATION', (int) env('SANCTUM_MONITOR_TOKEN_EXPIRATION', 1440));
+
         return $minutes > 0 ? $minutes : null;
     })(),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Role-Specific Expiration Minutes
+    |--------------------------------------------------------------------------
+    |
+    | Monitor and School Head dashboard tokens receive different TTL values.
+    | These values are applied when tokens are issued and when expiry is checked.
+    |
+    */
+
+    'expirations' => [
+        'monitor' => max(1, (int) env('SANCTUM_MONITOR_TOKEN_EXPIRATION', 1440)),
+        'school_head' => max(1, (int) env('SANCTUM_SCHOOL_HEAD_TOKEN_EXPIRATION', 480)),
+    ],
 
     /*
     |--------------------------------------------------------------------------

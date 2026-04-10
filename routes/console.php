@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\AccountSetupToken;
+use App\Models\AuditLog;
+use App\Models\User;
+use App\Notifications\SchoolHeadSetupLinkExpiredNotification;
 use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Indicators\RollingIndicatorYearWindow;
@@ -24,6 +28,80 @@ Artisan::command('indicators:sync-year-window', function (): void {
 
 Schedule::command('indicators:sync-year-window')
     ->dailyAt('00:05');
+
+Artisan::command('cspams:expire-setup-links', function (): int {
+    if (! Schema::hasTable('account_setup_tokens')) {
+        $this->error('Account setup token storage is unavailable. Run database migrations first.');
+
+        return self::FAILURE;
+    }
+
+    $now = now();
+    $expiredCount = 0;
+    $notifiedCount = 0;
+
+    AccountSetupToken::query()
+        ->with(['user.school:id,school_code,name', 'issuedBy:id,name,email'])
+        ->whereNull('used_at')
+        ->whereNull('expired_at')
+        ->whereNotNull('expires_at')
+        ->where('expires_at', '<=', $now)
+        ->orderBy('id')
+        ->chunkById(100, function ($tokens) use ($now, &$expiredCount, &$notifiedCount): void {
+            foreach ($tokens as $token) {
+                /** @var AccountSetupToken $token */
+                $token->forceFill([
+                    'expired_at' => $now,
+                ])->save();
+
+                $schoolName = (string) ($token->user?->school?->name ?? 'Unknown school');
+                $schoolCode = (string) ($token->user?->school?->school_code ?? '');
+                $schoolHeadEmail = (string) ($token->user?->email ?? '');
+
+                if ($token->issuedBy instanceof User) {
+                    $token->issuedBy->notify(
+                        new SchoolHeadSetupLinkExpiredNotification(
+                            $schoolName,
+                            $schoolCode,
+                            $schoolHeadEmail,
+                        ),
+                    );
+                    $notifiedCount++;
+                }
+
+                AuditLog::query()->create([
+                    'user_id' => $token->issued_by_user_id,
+                    'action' => 'account.setup_link_expired',
+                    'auditable_type' => User::class,
+                    'auditable_id' => $token->user_id,
+                    'metadata' => [
+                        'category' => 'account_management',
+                        'outcome' => 'success',
+                        'target_user_id' => $token->user_id,
+                        'target_email' => $schoolHeadEmail !== '' ? $schoolHeadEmail : null,
+                        'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                        'school_code' => $schoolCode !== '' ? $schoolCode : null,
+                        'school_name' => $schoolName,
+                        'setup_token_id' => $token->id,
+                        'expires_at' => $token->expires_at?->toISOString(),
+                        'expired_at' => $token->expired_at?->toISOString(),
+                        'monitor_notified' => $token->issuedBy instanceof User,
+                    ],
+                    'created_at' => $now,
+                ]);
+
+                $expiredCount++;
+            }
+        });
+
+    $this->info("Expired {$expiredCount} setup link(s).");
+    $this->line("Monitors notified: {$notifiedCount}");
+
+    return self::SUCCESS;
+})->purpose('Mark expired School Head setup links and notify monitors for reissue follow-up.');
+
+Schedule::command('cspams:expire-setup-links')
+    ->dailyAt('00:10');
 
 Artisan::command('accounts:sync-school-head-account-type', function (): void {
     if (! Schema::hasTable('users') || ! Schema::hasColumn('users', 'account_type')) {

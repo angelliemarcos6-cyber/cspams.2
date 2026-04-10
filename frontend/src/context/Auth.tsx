@@ -3,13 +3,33 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
+  useMemo,
+  useRef,
   type ReactNode,
 } from "react";
-import { apiRequest, apiRequestVoid, type ApiRequestAuth, type AuthMode, isApiError } from "@/lib/api";
+import {
+  apiRequest,
+  apiRequestVoid,
+  buildApiUrl,
+  TOKEN_EXPIRED_EVENT_NAME,
+  type ApiRequestAuth,
+  type AuthMode,
+  isApiError,
+} from "@/lib/api";
 import { stopRealtimeBridge } from "@/lib/realtime";
-import { clearClientSessionArtifacts, readClientAuthToken, writeClientAuthToken } from "@/lib/sessionCleanup";
+import {
+  AUTH_LOGOUT_EVENT_STORAGE_KEY,
+  AUTH_STATE_STORAGE_KEY,
+  clearClientSessionArtifacts,
+  broadcastLogoutEvent,
+  enqueuePendingLogoutRevoke,
+  readClientAuthState,
+  readPendingLogoutRevokes,
+  removePendingLogoutRevoke,
+  updatePendingLogoutRevoke,
+  writeClientAuthState,
+} from "@/lib/sessionCleanup";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -35,6 +55,10 @@ interface RequestMonitorPasswordResetResponse {
   message?: string;
   delivery?: string;
   deliveryMessage?: string;
+}
+
+interface RequestSchoolHeadSetupLinkRecoveryResponse {
+  message?: string;
 }
 
 interface ResetMonitorPasswordInput {
@@ -121,6 +145,7 @@ interface AuthContextType {
     email: string,
     role?: Exclude<UserRole, null>,
   ) => Promise<RequestMonitorPasswordResetResponse>;
+  requestSchoolHeadSetupLinkRecovery: (schoolCode: string) => Promise<RequestSchoolHeadSetupLinkRecoveryResponse>;
   resetMonitorPassword: (input: ResetMonitorPasswordInput) => Promise<ResetMonitorPasswordResponse>;
   requestMonitorMfaReset: (input: RequestMonitorMfaResetInput) => Promise<RequestMonitorMfaResetResponse>;
   completeMonitorMfaReset: (input: CompleteMonitorMfaResetInput) => Promise<CompleteMonitorMfaResetResult>;
@@ -180,6 +205,8 @@ interface AuthErrorPayload {
 }
 
 const COOKIE_AUTH: ApiRequestAuth = { authMode: "cookie" };
+const LOGOUT_REVOKE_MAX_ATTEMPTS = 3;
+const LOGOUT_REVOKE_BACKOFF_MS = [300, 1000, 2000] as const;
 
 function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequiredResponse {
   return (
@@ -232,16 +259,61 @@ function finalizeClientLogout(
   clearAuthError();
 }
 
+async function postLogoutRevoke(token: string): Promise<void> {
+  const response = await fetch(buildApiUrl("/api/auth/logout"), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      logout_token: token,
+    }),
+  });
+
+  if (response.ok || response.status === 401) {
+    return;
+  }
+
+  throw new Error(`Logout revoke failed with status ${response.status}.`);
+}
+
+function sendLogoutRevokeBeacon(token: string): boolean {
+  if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
+    return false;
+  }
+
+  try {
+    const body = new URLSearchParams({
+      logout_token: token,
+    });
+
+    return navigator.sendBeacon(buildApiUrl("/api/auth/logout"), body);
+  } catch {
+    return false;
+  }
+}
+
+async function waitForBackoff(attempt: number): Promise<void> {
+  const delay = LOGOUT_REVOKE_BACKOFF_MS[Math.min(attempt, LOGOUT_REVOKE_BACKOFF_MS.length - 1)] ?? 2000;
+
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, delay);
+  });
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [requestToken, setRequestToken] = useState<string>(() => readClientAuthToken() ?? "");
-  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const initialStoredAuth = readClientAuthState();
+  const [user, setUser] = useState<SessionUser | null>(initialStoredAuth?.user ?? null);
+  const [requestToken, setRequestToken] = useState<string>(initialStoredAuth?.token ?? "");
+  const [authMode, setAuthMode] = useState<AuthMode | null>(initialStoredAuth?.authMode ?? null);
   const [authError, setAuthError] = useState("");
   const [authErrorCode, setAuthErrorCode] = useState<number | null>(null);
   const [accountStatus, setAccountStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const logoutQueueFlushRef = useRef(false);
 
   const clearAuthError = useCallback(() => {
     setAuthError("");
@@ -262,6 +334,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return COOKIE_AUTH;
   }, [authMode, requestToken, user]);
 
+  const applyStoredAuthState = useCallback((state: ReturnType<typeof readClientAuthState>) => {
+    if (!state) {
+      finalizeClientLogout(setUser, setRequestToken, setAuthMode, clearAuthError);
+      return;
+    }
+
+    setUser(normalizeUser(state.user));
+    setAuthMode(state.authMode);
+    setRequestToken(state.authMode === "token" ? (state.token ?? "") : "");
+    clearAuthError();
+  }, [clearAuthError]);
+
+  const flushPendingLogoutRevokes = useCallback(async () => {
+    if (logoutQueueFlushRef.current) {
+      return;
+    }
+
+    logoutQueueFlushRef.current = true;
+
+    try {
+      const queuedItems = readPendingLogoutRevokes()
+        .sort((left, right) => left.createdAt - right.createdAt);
+
+      for (const item of queuedItems) {
+        let succeeded = false;
+        let lastError: unknown = null;
+
+        for (let attempt = item.attempts; attempt < LOGOUT_REVOKE_MAX_ATTEMPTS; attempt += 1) {
+          try {
+            await postLogoutRevoke(item.token);
+            removePendingLogoutRevoke(item.token);
+            succeeded = true;
+            break;
+          } catch (error) {
+            lastError = error;
+            const nextAttempt = attempt + 1;
+            updatePendingLogoutRevoke({
+              ...item,
+              attempts: nextAttempt,
+              nextRetryAt: Date.now() + (LOGOUT_REVOKE_BACKOFF_MS[Math.min(attempt, LOGOUT_REVOKE_BACKOFF_MS.length - 1)] ?? 2000),
+              lastError: error instanceof Error ? error.message : "Unknown revoke error.",
+            });
+
+            if (nextAttempt < LOGOUT_REVOKE_MAX_ATTEMPTS) {
+              await waitForBackoff(attempt);
+            }
+          }
+        }
+
+        if (!succeeded) {
+          console.error("Failed to revoke logout token after retries. It remains queued for the next app load.", lastError);
+        }
+      }
+    } finally {
+      logoutQueueFlushRef.current = false;
+    }
+  }, []);
+
   const commitAuthenticatedSession = useCallback((payload: AuthenticatedResponse): SessionUser => {
     const resolvedMode = resolveAuthMode(payload);
     const nextUser = normalizeUser(payload.user);
@@ -272,11 +402,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error("Bearer-token authentication completed without a token.");
       }
 
-      writeClientAuthToken(bearerToken);
+      writeClientAuthState({
+        user: nextUser,
+        authMode: "token",
+        token: bearerToken,
+      });
       setRequestToken(bearerToken);
       setAuthMode("token");
     } else {
-      writeClientAuthToken(null);
+      writeClientAuthState({
+        user: nextUser,
+        authMode: "cookie",
+        token: null,
+      });
       setRequestToken("");
       setAuthMode("cookie");
     }
@@ -311,11 +449,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             throw new Error("Token-mode session restore completed without a bearer token.");
           }
 
-          writeClientAuthToken(bearerToken);
+          writeClientAuthState({
+            user: nextUser,
+            authMode: "token",
+            token: bearerToken,
+          });
           setRequestToken(bearerToken);
           setAuthMode("token");
         } else {
-          writeClientAuthToken(null);
+          writeClientAuthState({
+            user: nextUser,
+            authMode: "cookie",
+            token: null,
+          });
           setRequestToken("");
           setAuthMode("cookie");
         }
@@ -327,7 +473,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         if (isApiError(err) && err.status === 401) {
           if (candidateAuth.authMode === "token") {
-            writeClientAuthToken(null);
+            writeClientAuthState(null);
           }
 
           return false;
@@ -339,7 +485,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const restore = async () => {
       try {
-        const storedToken = readClientAuthToken();
+        await flushPendingLogoutRevokes();
+        const storedToken = readClientAuthState()?.token ?? "";
 
         if (storedToken && await restoreWithAuth({ authMode: "token", token: storedToken })) {
           return;
@@ -356,6 +503,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthError("");
         setAuthErrorCode(401);
         setAccountStatus(null);
+        writeClientAuthState(null);
       } catch (err) {
         if (!active) return;
         if (isApiError(err)) {
@@ -366,6 +514,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAuthError("");
             setAuthErrorCode(401);
             setAccountStatus(null);
+            writeClientAuthState(null);
           } else if (err.status === 403) {
             setUser(null);
             setRequestToken("");
@@ -375,6 +524,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             const payload = err.payload as AuthErrorPayload | null;
             setAccountStatus(typeof payload?.accountStatus === "string" ? payload.accountStatus : null);
+            writeClientAuthState(null);
           } else {
             setUser(null);
             setRequestToken("");
@@ -382,6 +532,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAuthError(err.message || "Unable to restore your session.");
             setAuthErrorCode(err.status);
             setAccountStatus(null);
+            writeClientAuthState(null);
           }
         } else if (!(err instanceof DOMException && err.name === "AbortError")) {
           setUser(null);
@@ -390,6 +541,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setAuthError("Unable to restore your session.");
           setAuthErrorCode(null);
           setAccountStatus(null);
+          writeClientAuthState(null);
         }
       } finally {
         if (active) {
@@ -404,6 +556,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
       controller.abort();
     };
+  }, [clearAuthError, flushPendingLogoutRevokes]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage) {
+        return;
+      }
+
+      if (event.key === AUTH_LOGOUT_EVENT_STORAGE_KEY) {
+        finalizeClientLogout(setUser, setRequestToken, setAuthMode, clearAuthError);
+        return;
+      }
+
+      if (event.key === AUTH_STATE_STORAGE_KEY) {
+        applyStoredAuthState(readClientAuthState());
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [applyStoredAuthState, clearAuthError]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleTokenExpired = () => {
+      finalizeClientLogout(setUser, setRequestToken, setAuthMode, clearAuthError);
+      broadcastLogoutEvent("token_expired");
+    };
+
+    window.addEventListener(TOKEN_EXPIRED_EVENT_NAME, handleTokenExpired);
+    return () => window.removeEventListener(TOKEN_EXPIRED_EVENT_NAME, handleTokenExpired);
   }, [clearAuthError]);
 
   const login = useCallback(async ({ role, login: loginValue, password }: LoginInput): Promise<LoginResult> => {
@@ -517,6 +707,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticating(false);
     }
   }, [clearAuthError]);
+
+  const requestSchoolHeadSetupLinkRecovery = useCallback(async (schoolCode: string) => {
+    const normalizedSchoolCode = schoolCode.replace(/\D/g, "").slice(0, 6);
+    if (normalizedSchoolCode.length !== 6) {
+      throw new Error("School code must be exactly 6 digits.");
+    }
+
+    setIsAuthenticating(true);
+    try {
+      return await apiRequest<RequestSchoolHeadSetupLinkRecoveryResponse>("/api/auth/setup-link/recovery", {
+        method: "POST",
+        auth: COOKIE_AUTH,
+        body: {
+          school_code: normalizedSchoolCode,
+        },
+      });
+    } finally {
+      setIsAuthenticating(false);
+    }
+  }, []);
 
   const resetMonitorPassword = useCallback(
     async ({ role, email, token, password, confirmPassword }: ResetMonitorPasswordInput) => {
@@ -633,29 +843,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async (options?: { force?: boolean }) => {
+    const activeMode = authMode;
+    const bearerToken = activeMode === "token" ? requestToken.trim() : "";
+    const requestAuthSnapshot = requestAuth ?? COOKIE_AUTH;
+
     setIsLoggingOut(true);
+    if (bearerToken) {
+      enqueuePendingLogoutRevoke(bearerToken);
+      sendLogoutRevokeBeacon(bearerToken);
+    }
+
+    finalizeClientLogout(setUser, setRequestToken, setAuthMode, clearAuthError);
+    broadcastLogoutEvent("logout");
+
     try {
+      if (bearerToken) {
+        void flushPendingLogoutRevokes();
+        return;
+      }
+
       await apiRequestVoid("/api/auth/logout", {
         method: "POST",
-        auth: requestAuth ?? COOKIE_AUTH,
+        auth: requestAuthSnapshot,
       });
-      finalizeClientLogout(setUser, setRequestToken, setAuthMode, clearAuthError);
     } catch (err) {
       if (isApiError(err) && err.status === 401) {
-        finalizeClientLogout(setUser, setRequestToken, setAuthMode, clearAuthError);
         return;
       }
 
-      if (options?.force) {
-        finalizeClientLogout(setUser, setRequestToken, setAuthMode, clearAuthError);
-        return;
+      if (!options?.force) {
+        console.error("Logout request failed after local session cleanup.", err);
       }
-
-      throw err;
     } finally {
       setIsLoggingOut(false);
     }
-  }, [clearAuthError, requestAuth]);
+  }, [authMode, clearAuthError, flushPendingLogoutRevokes, requestAuth, requestToken]);
 
   const listActiveSessions = useCallback(async (): Promise<ActiveSessionDevice[]> => {
     if (!user) {
@@ -724,6 +946,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       verifyMfa,
       requestMonitorPasswordReset,
+      requestSchoolHeadSetupLinkRecovery,
       resetMonitorPassword,
       requestMonitorMfaReset,
       completeMonitorMfaReset,
@@ -749,6 +972,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       verifyMfa,
       requestMonitorPasswordReset,
+      requestSchoolHeadSetupLinkRecovery,
       resetMonitorPassword,
       requestMonitorMfaReset,
       completeMonitorMfaReset,

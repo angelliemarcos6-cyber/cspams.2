@@ -27,8 +27,19 @@ class ForgotPasswordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'role' => ['sometimes', 'nullable', 'string', Rule::in(UserRoleResolver::loginRoles())],
+            'role' => ['required', 'string', Rule::in(UserRoleResolver::loginRoles())],
             'email' => ['required', 'string', 'email', 'max:255'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'role.required' => 'The role field is required.',
+            'role.in' => 'The role field must be one of: monitor, school_head.',
         ];
     }
 }

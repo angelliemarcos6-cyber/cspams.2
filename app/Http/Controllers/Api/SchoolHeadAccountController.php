@@ -11,6 +11,7 @@ use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
 use App\Http\Requests\Api\RemoveSchoolHeadAccountRequest;
 use App\Http\Requests\Api\UpsertSchoolHeadAccountProfileRequest;
 use App\Http\Requests\Api\UpdateSchoolHeadAccountStatusRequest;
+use App\Models\AccountSetupToken;
 use App\Models\AuditLog;
 use App\Models\School;
 use App\Models\User;
@@ -27,9 +28,9 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
@@ -221,27 +222,12 @@ class SchoolHeadAccountController extends Controller
                 );
 
                 $setupLinkExpiresAt = $issuedSetup['expiresAt'];
-                $deliveryStatus = 'sent';
-                $deliveryMessage = 'Setup link sent to the School Head email.';
-
-                if (MailDelivery::isSimulated()) {
-                    $deliveryStatus = MailDelivery::simulatedStatus();
-                    $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
-                }
-
-                try {
-                    $account->notify(
-                        new SchoolHeadAccountSetupNotification(
-                            $school,
-                            $issuedSetup['setupUrl'],
-                            CarbonImmutable::parse($issuedSetup['expiresAt']),
-                        ),
-                    );
-                } catch (\Throwable $exception) {
-                    report($exception);
-                    $deliveryStatus = 'failed';
-                    $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
-                }
+                ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
+                    $account,
+                    $school,
+                    $issuedSetup['setupUrl'],
+                    CarbonImmutable::parse($issuedSetup['expiresAt']),
+                );
             }
 
             $this->loadLatestAccountSetupToken($account);
@@ -360,25 +346,12 @@ class SchoolHeadAccountController extends Controller
             $request->userAgent(),
         );
 
-        $deliveryStatus = 'sent';
-        $deliveryMessage = 'Setup link sent to the School Head email.';
-        if (MailDelivery::isSimulated()) {
-            $deliveryStatus = MailDelivery::simulatedStatus();
-            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
-        }
-        try {
-            $account->notify(
-                new SchoolHeadAccountSetupNotification(
-                    $school,
-                    $issuedSetup['setupUrl'],
-                    CarbonImmutable::parse($issuedSetup['expiresAt']),
-                ),
-            );
-        } catch (\Throwable $exception) {
-            report($exception);
-            $deliveryStatus = 'failed';
-            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
-        }
+        ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
+            $account,
+            $school,
+            $issuedSetup['setupUrl'],
+            CarbonImmutable::parse($issuedSetup['expiresAt']),
+        );
 
         $this->loadLatestAccountSetupToken($account);
 
@@ -920,25 +893,12 @@ class SchoolHeadAccountController extends Controller
             $request->userAgent(),
         );
 
-        $deliveryStatus = 'sent';
-        $deliveryMessage = 'Setup link sent to the School Head email.';
-        if (MailDelivery::isSimulated()) {
-            $deliveryStatus = MailDelivery::simulatedStatus();
-            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
-        }
-        try {
-            $account->notify(
-                new SchoolHeadAccountSetupNotification(
-                    $school,
-                    $issuedSetup['setupUrl'],
-                    CarbonImmutable::parse($issuedSetup['expiresAt']),
-                ),
-            );
-        } catch (\Throwable $exception) {
-            report($exception);
-            $deliveryStatus = 'failed';
-            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
-        }
+        ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
+            $account,
+            $school,
+            $issuedSetup['setupUrl'],
+            CarbonImmutable::parse($issuedSetup['expiresAt']),
+        );
 
         $this->loadLatestAccountSetupToken($account);
 
@@ -983,6 +943,178 @@ class SchoolHeadAccountController extends Controller
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
                 'expiresAt' => $issuedSetup['expiresAt'],
+                'delivery' => $deliveryStatus,
+                'deliveryMessage' => $deliveryMessage,
+            ],
+        ]);
+    }
+
+    public function pendingSetupLink(Request $request, School $school): JsonResponse
+    {
+        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
+            return response()->json(
+                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        $this->requireMonitor($request);
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $token = $this->schoolHeadAccountSetupService->latestForUser($account);
+        if (! $token instanceof AccountSetupToken) {
+            return response()->json(
+                ['message' => 'No setup link has been issued for this account.'],
+                Response::HTTP_NOT_FOUND,
+            );
+        }
+
+        return response()->json([
+            'data' => $this->serializePendingSetupLink($account, $school, $token),
+        ]);
+    }
+
+    public function revealPendingSetupLink(Request $request, School $school): JsonResponse
+    {
+        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
+            return response()->json(
+                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        $monitor = $this->requireMonitor($request);
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $token = $this->currentPendingSetupToken($account);
+        if (! $token instanceof AccountSetupToken) {
+            return response()->json(
+                ['message' => 'No active setup link is available. Reissue a new link instead.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $setupUrl = $this->schoolHeadAccountSetupService->revealSetupUrl($token);
+        if ($setupUrl === null) {
+            return response()->json(
+                ['message' => 'Unable to recover the setup link. Reissue a new link instead.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.setup_link_revealed',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'setup_token_id' => $token->id,
+                'expires_at' => $token->expires_at?->toISOString(),
+                'delivery_status' => $token->delivery_status,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        return response()->json([
+            'data' => [
+                ...$this->serializePendingSetupLink($account, $school, $token),
+                'setupUrl' => $setupUrl,
+            ],
+        ]);
+    }
+
+    public function resendPendingSetupLink(Request $request, School $school): JsonResponse
+    {
+        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
+            return response()->json(
+                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        $monitor = $this->requireMonitor($request);
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $token = $this->currentPendingSetupToken($account);
+        if (! $token instanceof AccountSetupToken) {
+            return response()->json(
+                ['message' => 'No active setup link is available. Reissue a new link instead.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $setupUrl = $this->schoolHeadAccountSetupService->revealSetupUrl($token);
+        if ($setupUrl === null) {
+            return response()->json(
+                ['message' => 'Unable to recover the setup link. Reissue a new link instead.'],
+                Response::HTTP_SERVICE_UNAVAILABLE,
+            );
+        }
+
+        ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
+            $account,
+            $school,
+            $setupUrl,
+            CarbonImmutable::parse($token->expires_at),
+        );
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.setup_link_resent',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => $deliveryStatus === 'failed' ? 'failure' : 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'setup_token_id' => $token->id,
+                'expires_at' => $token->expires_at?->toISOString(),
+                'delivery_status' => $deliveryStatus,
+                'delivery_message' => $deliveryMessage,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        $token->refresh();
+
+        return response()->json([
+            'data' => [
+                ...$this->serializePendingSetupLink($account, $school, $token),
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
             ],
@@ -1182,7 +1314,7 @@ class SchoolHeadAccountController extends Controller
         }
         $setupLinkExpiresAt = null;
 
-        if ($setupToken && $setupToken->used_at === null && $setupToken->expires_at !== null && $setupToken->expires_at->isFuture()) {
+        if ($setupToken && $setupToken->used_at === null && $setupToken->expires_at !== null) {
             $setupLinkExpiresAt = $setupToken->expires_at->toISOString();
         }
 
@@ -1205,6 +1337,9 @@ class SchoolHeadAccountController extends Controller
             'deleteRecordFlaggedAt' => $account->delete_record_flagged_at?->toISOString(),
             'deleteRecordReason' => $account->delete_record_flag_reason,
             'setupLinkExpiresAt' => $setupLinkExpiresAt,
+            'setupLinkExpiredAt' => $setupToken?->expired_at?->toISOString(),
+            'setupLinkDeliveryStatus' => $setupToken?->delivery_status,
+            'setupLinkDeliveryMessage' => $setupToken?->delivery_message,
         ];
     }
 
@@ -1310,6 +1445,82 @@ class SchoolHeadAccountController extends Controller
         if ($this->accountSetupTokensAvailable()) {
             $account->load('latestAccountSetupToken');
         }
+    }
+
+    /**
+     * @return array{deliveryStatus: string, deliveryMessage: string}
+     */
+    private function deliverSchoolHeadSetupLink(
+        User $account,
+        School $school,
+        string $setupUrl,
+        CarbonImmutable $expiresAt,
+    ): array {
+        $deliveryStatus = 'sent';
+        $deliveryMessage = 'Setup link sent to the School Head email.';
+
+        if (MailDelivery::isSimulated()) {
+            $deliveryStatus = MailDelivery::simulatedStatus();
+            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
+        }
+
+        try {
+            $account->notify(new SchoolHeadAccountSetupNotification($school, $setupUrl, $expiresAt));
+        } catch (\Throwable $exception) {
+            report($exception);
+            $deliveryStatus = 'failed';
+            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
+        }
+
+        $token = $this->schoolHeadAccountSetupService->latestForUser($account);
+        if ($token instanceof AccountSetupToken) {
+            $this->schoolHeadAccountSetupService->recordDeliveryOutcome($token, $deliveryStatus, $deliveryMessage);
+        }
+
+        return [
+            'deliveryStatus' => $deliveryStatus,
+            'deliveryMessage' => $deliveryMessage,
+        ];
+    }
+
+    private function currentPendingSetupToken(User $account): ?AccountSetupToken
+    {
+        $token = $this->schoolHeadAccountSetupService->latestForUser($account);
+
+        if (! $token instanceof AccountSetupToken || ! $token->isUsable()) {
+            return null;
+        }
+
+        return $token;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializePendingSetupLink(User $account, School $school, AccountSetupToken $token): array
+    {
+        $status = 'pending';
+        if ($token->used_at !== null) {
+            $status = 'used';
+        } elseif ($token->expired_at !== null || $token->isExpired()) {
+            $status = 'expired';
+        }
+
+        return [
+            'account' => $this->serializeSchoolHeadAccount($account),
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'tokenId' => $token->id,
+            'status' => $status,
+            'expiresAt' => $token->expires_at?->toISOString(),
+            'expiredAt' => $token->expired_at?->toISOString(),
+            'usedAt' => $token->used_at?->toISOString(),
+            'deliveryStatus' => $token->delivery_status,
+            'deliveryMessage' => $token->delivery_message,
+            'deliveryLastAttemptAt' => $token->delivery_last_attempt_at?->toISOString(),
+            'canReveal' => $token->isUsable(),
+            'canResend' => $token->isUsable(),
+        ];
     }
 
     private function buildPasswordResetUrl(string $email, string $token): string
