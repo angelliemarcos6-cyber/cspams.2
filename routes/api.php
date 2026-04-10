@@ -24,7 +24,7 @@ $protectedApiMiddleware = [
     EnsurePasswordResetSatisfied::class,
 ];
 
-Route::middleware(StandardizeAuthApiResponse::class)->prefix('auth')->group(function (): void {
+Route::middleware(StandardizeAuthApiResponse::class)->prefix('auth')->group(function () use ($protectedApiMiddleware): void {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:auth-forgot-password');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:auth-reset-password');
@@ -85,6 +85,8 @@ Route::middleware($protectedApiMiddleware)->prefix('dashboard')->group(function 
     Route::post('/records/{school}/school-head-account/verification-code', [SchoolHeadAccountController::class, 'issueActionVerificationCode'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'issueSetupLink'])
+        ->middleware('throttle:auth-account-management');
+    Route::post('/records/{school}/school-head-account/setup-link/recover', [SchoolHeadAccountController::class, 'recoverSetupLink'])
         ->middleware('throttle:auth-account-management');
     Route::get('/records/{school}/school-head-account/setup-link', [SchoolHeadAccountController::class, 'pendingSetupLink'])
         ->middleware('throttle:auth-account-management');

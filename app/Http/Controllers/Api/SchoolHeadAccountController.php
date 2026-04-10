@@ -5,13 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ActivateSchoolHeadAccountRequest;
+use App\Http\Requests\Api\RecoverSchoolHeadAccountRequest;
 use App\Http\Requests\Api\IssueSchoolHeadAccountActionVerificationCodeRequest;
 use App\Http\Requests\Api\IssueSchoolHeadPasswordResetLinkRequest;
 use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
 use App\Http\Requests\Api\RemoveSchoolHeadAccountRequest;
 use App\Http\Requests\Api\UpsertSchoolHeadAccountProfileRequest;
 use App\Http\Requests\Api\UpdateSchoolHeadAccountStatusRequest;
-use App\Models\AccountSetupToken;
 use App\Models\AuditLog;
 use App\Models\School;
 use App\Models\User;
@@ -19,7 +19,9 @@ use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\MonitorActionVerificationService;
+use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\SchoolHeadAccountSetupService;
+use App\Support\Auth\SetupTokens\SetupTokenRecord;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Mail\MailDelivery;
@@ -32,7 +34,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolHeadAccountController extends Controller
@@ -42,10 +43,8 @@ class SchoolHeadAccountController extends Controller
     private static ?bool $usersHasDeleteRecordFlags = null;
 
     private static ?bool $sessionsTableExists = null;
-
-    private static ?bool $accountSetupTokensTableExists = null;
-
     public function __construct(
+        private readonly SchoolHeadAccountLifecycleService $schoolHeadAccountLifecycleService,
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
         private readonly MonitorActionVerificationService $monitorActionVerificationService,
     ) {
@@ -172,11 +171,8 @@ class SchoolHeadAccountController extends Controller
                 }
             }
 
-            if ($reissueAllowed && ! $this->schoolHeadAccountSetupService->storageAvailable()) {
-                return response()->json(
-                    ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                    Response::HTTP_SERVICE_UNAVAILABLE,
-                );
+            if ($reissueAllowed && ! $this->schoolHeadAccountLifecycleService->storageAvailable()) {
+                return $this->setupTokenStorageUnavailableResponse('profile_reissue', $account, $school);
             }
 
             $normalizedEmail = strtolower(trim($email));
@@ -214,23 +210,25 @@ class SchoolHeadAccountController extends Controller
             $deliveryMessage = null;
 
             if ($reissueAllowed) {
-                $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+                $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
                     $account,
                     $monitor,
                     $request->ip(),
                     $request->userAgent(),
                 );
 
-                $setupLinkExpiresAt = $issuedSetup['expiresAt'];
+                if (($issuedSetup['status'] ?? null) !== 'issued') {
+                    return $this->setupTokenStorageUnavailableResponse('profile_reissue', $account, $school);
+                }
+
+                $setupLinkExpiresAt = $issuedSetup['setup']['expiresAt'];
                 ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
                     $account,
                     $school,
-                    $issuedSetup['setupUrl'],
-                    CarbonImmutable::parse($issuedSetup['expiresAt']),
+                    $issuedSetup['setup']['setupUrl'],
+                    CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
                 );
             }
-
-            $this->loadLatestAccountSetupToken($account);
 
             AuditLog::query()->create([
                 'user_id' => $monitor->id,
@@ -287,22 +285,13 @@ class SchoolHeadAccountController extends Controller
         ]);
         }
 
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
-            );
+        if (! $this->schoolHeadAccountLifecycleService->storageAvailable()) {
+            return $this->setupTokenStorageUnavailableResponse('account_create', null, $school);
         }
 
-        $duplicateQuery = User::query()->where('school_id', $school->id);
-        if ($this->usersHaveAccountTypeColumn()) {
-            $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
-        } else {
-            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
-            $duplicateQuery->whereHas('roles', static function ($builder) use ($aliases): void {
-                $builder->whereIn('name', $aliases);
-            });
-        }
+        $duplicateQuery = $this->schoolHeadAccountLifecycleService
+            ->schoolHeadCandidatesQuery()
+            ->where('school_id', $school->id);
 
         if ($duplicateQuery->exists()) {
             return response()->json(
@@ -338,22 +327,25 @@ class SchoolHeadAccountController extends Controller
             throw $exception;
         }
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
+        $this->schoolHeadAccountLifecycleService->synchronizeSchoolHeadIdentity($account);
 
-        $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+        $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
             $account,
             $monitor,
             $request->ip(),
             $request->userAgent(),
         );
 
+        if (($issuedSetup['status'] ?? null) !== 'issued') {
+            return $this->setupTokenStorageUnavailableResponse('account_create', $account, $school);
+        }
+
         ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
             $account,
             $school,
-            $issuedSetup['setupUrl'],
-            CarbonImmutable::parse($issuedSetup['expiresAt']),
+            $issuedSetup['setup']['setupUrl'],
+            CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
         );
-
-        $this->loadLatestAccountSetupToken($account);
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -370,7 +362,7 @@ class SchoolHeadAccountController extends Controller
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
                 'account_status' => $account->accountStatus()->value,
-                'setup_link_expires_at' => $issuedSetup['expiresAt'],
+                'setup_link_expires_at' => $issuedSetup['setup']['expiresAt'],
                 'delivery_status' => $deliveryStatus,
                 'delivery_message' => $deliveryMessage,
             ],
@@ -385,13 +377,13 @@ class SchoolHeadAccountController extends Controller
             'schoolId' => (string) $school->id,
             'schoolCode' => (string) $school->school_code,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
+            'setupLinkExpiresAt' => $issuedSetup['setup']['expiresAt'],
         ]));
 
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'expiresAt' => $issuedSetup['expiresAt'],
+                'expiresAt' => $issuedSetup['setup']['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
                 'message' => 'School Head account created.',
@@ -439,8 +431,6 @@ class SchoolHeadAccountController extends Controller
             'verified_at' => now(),
             'verification_notes' => $reason !== '' ? $reason : null,
         ])->save();
-
-        $this->loadLatestAccountSetupToken($account);
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -539,8 +529,19 @@ class SchoolHeadAccountController extends Controller
             $nextStatus === AccountStatus::ACTIVE->value &&
             $account->password_changed_at === null
         ) {
+            $reactivationNeedsPasswordReset = $account->must_reset_password
+                && in_array($previousStatus, [
+                    AccountStatus::SUSPENDED,
+                    AccountStatus::LOCKED,
+                    AccountStatus::ARCHIVED,
+                ], true);
+
             return response()->json(
-                ['message' => 'This account has not completed setup yet. Reissue the setup link instead.'],
+                [
+                    'message' => $reactivationNeedsPasswordReset
+                        ? 'Password reset is required before activation. Issue a password reset link first.'
+                        : 'This account has not completed setup yet. Reissue the setup link instead.',
+                ],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -615,8 +616,6 @@ class SchoolHeadAccountController extends Controller
         }
 
         $account->save();
-        $this->loadLatestAccountSetupToken($account);
-
         $revocationSummary = [
             'revokedTokens' => 0,
             'revokedWebSessions' => 0,
@@ -685,7 +684,11 @@ class SchoolHeadAccountController extends Controller
     ): JsonResponse {
         $monitor = $this->requireMonitor($request);
 
-        $accounts = $school->schoolHeadAccounts()->with('roles')->get();
+        $accounts = $this->schoolHeadAccountLifecycleService
+            ->schoolHeadCandidatesQuery()
+            ->where('school_id', $school->id)
+            ->with('roles')
+            ->get();
         if ($accounts->isEmpty()) {
             return response()->json(
                 ['message' => 'No School Head account is linked to this school.'],
@@ -693,9 +696,17 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
-        if ($accounts->contains(static fn (User $account): bool => UserRoleResolver::has($account, UserRoleResolver::MONITOR))) {
+        $forceCleanupMonitorAccess = $request->boolean('forceCleanupMonitorAccess');
+        $monitorAccessPresent = $accounts->contains(
+            static fn (User $account): bool => UserRoleResolver::has($account, UserRoleResolver::MONITOR)
+        );
+
+        if ($monitorAccessPresent && ! $forceCleanupMonitorAccess) {
             return response()->json(
-                ['message' => 'One of the linked accounts has monitor access and cannot be deleted here.'],
+                [
+                    'message' => 'One of the linked accounts still has monitor access. Run the delete again with force cleanup enabled to remove roles, permissions, and linked pivots before archiving the account.',
+                    'cleanupAvailable' => true,
+                ],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -727,78 +738,9 @@ class SchoolHeadAccountController extends Controller
             ->map(static fn (User $account): string => (string) $account->id)
             ->values()
             ->all();
-
-        $removedCount = 0;
-        $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
-        $revocationSummaries = [];
-        $accountIdInts = $accounts
-            ->map(static fn (User $account): int => (int) $account->id)
-            ->values()
-            ->all();
-
-        $tokenRevocationsByUserId = collect();
-        if ($accountIdInts !== []) {
-            $tokenRevocationsByUserId = PersonalAccessToken::query()
-                ->where('tokenable_type', User::class)
-                ->whereIn('tokenable_id', $accountIdInts)
-                ->selectRaw('tokenable_id, COUNT(*) as aggregate_count')
-                ->groupBy('tokenable_id')
-                ->pluck('aggregate_count', 'tokenable_id');
-
-            PersonalAccessToken::query()
-                ->where('tokenable_type', User::class)
-                ->whereIn('tokenable_id', $accountIdInts)
-                ->delete();
-        }
-
-        $sessionRevocationsByUserId = collect();
-        if ($this->sessionsTableExists() && $accountIdInts !== []) {
-            $sessionRevocationsByUserId = DB::table('sessions')
-                ->whereIn('user_id', $accountIdInts)
-                ->selectRaw('user_id, COUNT(*) as aggregate_count')
-                ->groupBy('user_id')
-                ->pluck('aggregate_count', 'user_id');
-
-            DB::table('sessions')
-                ->whereIn('user_id', $accountIdInts)
-                ->delete();
-        }
-
-        if ($setupTokenStorageAvailable && $accountIdInts !== []) {
-            DB::table('account_setup_tokens')
-                ->whereIn('user_id', $accountIdInts)
-                ->delete();
-        }
-
-        DB::transaction(function () use ($accounts, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
-            foreach ($accounts as $account) {
-                $account->syncPermissions([]);
-                $account->syncRoles([]);
-
-                $archivedEmail = 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid';
-
-                $account->forceFill([
-                    'email' => $archivedEmail,
-                    'email_normalized' => $archivedEmail,
-                    'account_status' => AccountStatus::ARCHIVED->value,
-                    'must_reset_password' => true,
-                    'password_changed_at' => null,
-                    'email_verified_at' => null,
-                    'verified_by_user_id' => null,
-                    'verified_at' => null,
-                    'verification_notes' => null,
-                    'school_id' => null,
-                ])->save();
-
-                $revocationSummaries[] = [
-                    'user_id' => (int) $account->id,
-                    'revoked_tokens' => (int) ($tokenRevocationsByUserId->get((int) $account->id, 0)),
-                    'revoked_web_sessions' => (int) ($sessionRevocationsByUserId->get((int) $account->id, 0)),
-                ];
-
-                $removedCount += 1;
-            }
-        });
+        $cleanup = $this->schoolHeadAccountLifecycleService->cleanupAndArchiveAccounts($accounts->all());
+        $removedCount = (int) ($cleanup['removedCount'] ?? 0);
+        $revocationSummaries = $cleanup['revocations'] ?? [];
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -814,6 +756,8 @@ class SchoolHeadAccountController extends Controller
                 'removed_user_ids' => $accountIds,
                 'removed_emails' => $accountEmails,
                 'reason' => $reason,
+                'force_cleanup_monitor_access' => $forceCleanupMonitorAccess,
+                'monitor_access_cleaned' => $monitorAccessPresent,
                 'revocations' => $revocationSummaries,
             ],
             'ip_address' => $request->ip(),
@@ -841,13 +785,6 @@ class SchoolHeadAccountController extends Controller
         IssueSchoolHeadSetupLinkRequest $request,
         School $school,
     ): JsonResponse {
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
-            );
-        }
-
         $monitor = $this->requireMonitor($request);
         $account = $this->resolveSchoolHeadAccount($school);
         if (! $account) {
@@ -859,48 +796,35 @@ class SchoolHeadAccountController extends Controller
 
         $reason = trim($request->string('reason')->toString());
         $previousStatus = $account->accountStatus();
+        $recovery = $this->schoolHeadAccountLifecycleService->determineRecoveryAction($account);
 
-        if ($previousStatus === AccountStatus::ARCHIVED) {
+        if (! ($recovery['allowed'] ?? false)) {
             return response()->json(
-                ['message' => 'Archived accounts cannot receive setup links. Activate the account first.'],
+                [
+                    'message' => $recovery['message'],
+                    'recoveryAction' => $recovery['action'],
+                ],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
 
-        if ($previousStatus !== AccountStatus::PENDING_SETUP) {
-            return response()->json(
-                ['message' => 'Setup links can only be issued for accounts that still need initial setup. Use password reset for active accounts.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
-        $account->forceFill([
-            'account_status' => AccountStatus::PENDING_SETUP->value,
-            'must_reset_password' => true,
-            'password_changed_at' => null,
-            'email_verified_at' => null,
-            'verified_by_user_id' => null,
-            'verified_at' => null,
-            'verification_notes' => null,
-        ])->save();
-
-        $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
-
-        $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+        $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
             $account,
             $monitor,
             $request->ip(),
             $request->userAgent(),
         );
 
+        if (($issuedSetup['status'] ?? null) !== 'issued') {
+            return $this->setupTokenStorageUnavailableResponse('issue_setup_link', $account, $school);
+        }
+
         ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
             $account,
             $school,
-            $issuedSetup['setupUrl'],
-            CarbonImmutable::parse($issuedSetup['expiresAt']),
+            $issuedSetup['setup']['setupUrl'],
+            CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
         );
-
-        $this->loadLatestAccountSetupToken($account);
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -919,11 +843,13 @@ class SchoolHeadAccountController extends Controller
                 'previous_status' => $previousStatus->value,
                 'new_status' => $account->accountStatus()->value,
                 'reason' => $reason !== '' ? $reason : 'setup_link_reissued',
-                'setup_link_expires_at' => $issuedSetup['expiresAt'],
+                'setup_link_expires_at' => $issuedSetup['setup']['expiresAt'],
                 'delivery_status' => $deliveryStatus,
                 'delivery_message' => $deliveryMessage,
-                'revoked_tokens' => $revocationSummary['revokedTokens'],
-                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+                'recovery_action' => $recovery['action'],
+                'admin_recovery' => false,
+                'revoked_tokens' => 0,
+                'revoked_web_sessions' => 0,
             ],
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
@@ -936,28 +862,133 @@ class SchoolHeadAccountController extends Controller
             'schoolId' => (string) $school->id,
             'schoolCode' => (string) $school->school_code,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
+            'setupLinkExpiresAt' => $issuedSetup['setup']['expiresAt'],
         ]));
 
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'expiresAt' => $issuedSetup['expiresAt'],
+                'expiresAt' => $issuedSetup['setup']['expiresAt'],
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
+                'recoveryAction' => $recovery['action'],
+            ],
+        ]);
+    }
+
+    public function recoverSetupLink(
+        RecoverSchoolHeadAccountRequest $request,
+        School $school,
+    ): JsonResponse {
+        $monitor = $this->requireMonitor($request);
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $previousStatus = $account->accountStatus();
+        if ($previousStatus !== AccountStatus::ARCHIVED) {
+            return response()->json(
+                ['message' => 'Archived account recovery is only available for archived School Head accounts.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $reason = trim($request->string('reason')->toString());
+        $challengeId = trim($request->string('verificationChallengeId')->toString());
+        $code = trim($request->string('verificationCode')->toString());
+
+        $verified = $this->monitorActionVerificationService->verify(
+            $monitor,
+            $school,
+            IssueSchoolHeadAccountActionVerificationCodeRequest::TARGET_SETUP_RECOVERY,
+            $challengeId,
+            $code,
+        );
+
+        if (! $verified) {
+            return response()->json(
+                ['message' => 'The confirmation code is invalid or expired. Send a new code and try again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $this->schoolHeadAccountLifecycleService->prepareForSetupLinkRecovery($account);
+        $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
+
+        $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
+            $account,
+            $monitor,
+            $request->ip(),
+            $request->userAgent(),
+        );
+
+        if (($issuedSetup['status'] ?? null) !== 'issued') {
+            return $this->setupTokenStorageUnavailableResponse('recover_setup_link', $account, $school);
+        }
+
+        ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLink(
+            $account,
+            $school,
+            $issuedSetup['setup']['setupUrl'],
+            CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
+        );
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.recovered',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'previous_status' => $previousStatus->value,
+                'new_status' => $account->accountStatus()->value,
+                'reason' => $reason,
+                'setup_link_expires_at' => $issuedSetup['setup']['expiresAt'],
+                'delivery_status' => $deliveryStatus,
+                'delivery_message' => $deliveryMessage,
+                'recovery_action' => 'admin_recovery_setup_link',
+                'revoked_tokens' => $revocationSummary['revokedTokens'],
+                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_head_account.recovered',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'accountStatus' => $account->accountStatus()->value,
+            'setupLinkExpiresAt' => $issuedSetup['setup']['expiresAt'],
+        ]));
+
+        return response()->json([
+            'data' => [
+                'account' => $this->serializeSchoolHeadAccount($account),
+                'expiresAt' => $issuedSetup['setup']['expiresAt'],
+                'delivery' => $deliveryStatus,
+                'deliveryMessage' => $deliveryMessage,
+                'recoveryAction' => 'admin_recovery_setup_link',
+                'message' => 'Archived School Head account recovered and setup link reissued.',
             ],
         ]);
     }
 
     public function pendingSetupLink(Request $request, School $school): JsonResponse
     {
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
-            );
-        }
-
         $this->requireMonitor($request);
         $account = $this->resolveSchoolHeadAccount($school);
         if (! $account) {
@@ -968,7 +999,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $token = $this->schoolHeadAccountSetupService->latestForUser($account);
-        if (! $token instanceof AccountSetupToken) {
+        if (! $token instanceof SetupTokenRecord) {
             return response()->json(
                 ['message' => 'No setup link has been issued for this account.'],
                 Response::HTTP_NOT_FOUND,
@@ -982,13 +1013,6 @@ class SchoolHeadAccountController extends Controller
 
     public function revealPendingSetupLink(Request $request, School $school): JsonResponse
     {
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
-            );
-        }
-
         $monitor = $this->requireMonitor($request);
         $account = $this->resolveSchoolHeadAccount($school);
         if (! $account) {
@@ -999,7 +1023,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $token = $this->currentPendingSetupToken($account);
-        if (! $token instanceof AccountSetupToken) {
+        if (! $token instanceof SetupTokenRecord) {
             return response()->json(
                 ['message' => 'No active setup link is available. Reissue a new link instead.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -1010,7 +1034,7 @@ class SchoolHeadAccountController extends Controller
         if ($setupUrl === null) {
             return response()->json(
                 ['message' => 'Unable to recover the setup link. Reissue a new link instead.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
+                Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
 
@@ -1047,13 +1071,6 @@ class SchoolHeadAccountController extends Controller
 
     public function resendPendingSetupLink(Request $request, School $school): JsonResponse
     {
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
-            );
-        }
-
         $monitor = $this->requireMonitor($request);
         $account = $this->resolveSchoolHeadAccount($school);
         if (! $account) {
@@ -1064,7 +1081,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $token = $this->currentPendingSetupToken($account);
-        if (! $token instanceof AccountSetupToken) {
+        if (! $token instanceof SetupTokenRecord) {
             return response()->json(
                 ['message' => 'No active setup link is available. Reissue a new link instead.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -1075,7 +1092,7 @@ class SchoolHeadAccountController extends Controller
         if ($setupUrl === null) {
             return response()->json(
                 ['message' => 'Unable to recover the setup link. Reissue a new link instead.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
+                Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
 
@@ -1109,8 +1126,7 @@ class SchoolHeadAccountController extends Controller
             'user_agent' => $request->userAgent(),
             'created_at' => now(),
         ]);
-
-        $token->refresh();
+        $token = $this->schoolHeadAccountSetupService->latestForUser($account) ?? $token;
 
         return response()->json([
             'data' => [
@@ -1150,7 +1166,9 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
-        if ($status !== AccountStatus::ACTIVE) {
+        $lockedResetRecovery = $status === AccountStatus::LOCKED && (bool) $account->must_reset_password;
+
+        if ($status !== AccountStatus::ACTIVE && ! $lockedResetRecovery) {
             return response()->json(
                 ['message' => 'Password reset links can only be issued for active School Head accounts.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -1275,29 +1293,8 @@ class SchoolHeadAccountController extends Controller
 
     private function resolveSchoolHeadAccount(School $school): ?User
     {
-        $query = User::query()
-            ->where('school_id', $school->id)
-            ->orderByDesc('id');
-
-        if ($this->accountSetupTokensAvailable()) {
-            $query->with('latestAccountSetupToken');
-        }
-
-        if ($this->usersHaveAccountTypeColumn()) {
-            return $query
-                ->with(['roles', 'verifiedBy'])
-                ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
-                ->first();
-        }
-
-        $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
-
-        return $query
-            ->with(['roles', 'verifiedBy'])
-            ->whereHas('roles', static function ($builder) use ($aliases): void {
-                $builder->whereIn('name', $aliases);
-            })
-            ->first();
+        return $this->schoolHeadAccountLifecycleService
+            ->resolveSchoolHeadAccountForSchool($school);
     }
 
     /**
@@ -1307,14 +1304,10 @@ class SchoolHeadAccountController extends Controller
     {
         $status = $account->accountStatus();
         $account->load('verifiedBy');
-        $setupToken = null;
-        if ($this->accountSetupTokensAvailable()) {
-            $this->loadLatestAccountSetupToken($account);
-            $setupToken = $account->latestAccountSetupToken;
-        }
+        $setupToken = $this->schoolHeadAccountSetupService->latestForUser($account);
         $setupLinkExpiresAt = null;
 
-        if ($setupToken && $setupToken->used_at === null && $setupToken->expires_at !== null) {
+        if ($setupToken instanceof SetupTokenRecord && $setupToken->used_at === null) {
             $setupLinkExpiresAt = $setupToken->expires_at->toISOString();
         }
 
@@ -1361,19 +1354,6 @@ class SchoolHeadAccountController extends Controller
             'revokedTokens' => $revokedTokens,
             'revokedWebSessions' => $revokedWebSessions,
         ];
-    }
-
-    private function accountSetupTokensAvailable(): bool
-    {
-        if (app()->runningUnitTests()) {
-            return Schema::hasTable('account_setup_tokens');
-        }
-
-        if (self::$accountSetupTokensTableExists === null) {
-            self::$accountSetupTokensTableExists = Schema::hasTable('account_setup_tokens');
-        }
-
-        return self::$accountSetupTokensTableExists;
     }
 
     private function usersHaveAccountTypeColumn(): bool
@@ -1440,13 +1420,6 @@ class SchoolHeadAccountController extends Controller
             || str_contains($message, 'unique violation');
     }
 
-    private function loadLatestAccountSetupToken(User $account): void
-    {
-        if ($this->accountSetupTokensAvailable()) {
-            $account->load('latestAccountSetupToken');
-        }
-    }
-
     /**
      * @return array{deliveryStatus: string, deliveryMessage: string}
      */
@@ -1473,7 +1446,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $token = $this->schoolHeadAccountSetupService->latestForUser($account);
-        if ($token instanceof AccountSetupToken) {
+        if ($token instanceof SetupTokenRecord) {
             $this->schoolHeadAccountSetupService->recordDeliveryOutcome($token, $deliveryStatus, $deliveryMessage);
         }
 
@@ -1483,21 +1456,37 @@ class SchoolHeadAccountController extends Controller
         ];
     }
 
-    private function currentPendingSetupToken(User $account): ?AccountSetupToken
+    private function currentPendingSetupToken(User $account): ?SetupTokenRecord
     {
         $token = $this->schoolHeadAccountSetupService->latestForUser($account);
 
-        if (! $token instanceof AccountSetupToken || ! $token->isUsable()) {
+        if (! $token instanceof SetupTokenRecord || ! $token->isUsable()) {
             return null;
         }
 
         return $token;
     }
 
+    private function setupTokenStorageUnavailableResponse(
+        string $operation,
+        ?User $account = null,
+        ?School $school = null,
+    ): JsonResponse {
+        $this->schoolHeadAccountLifecycleService->logStorageUnavailable($operation, [
+            'user_id' => $account?->id,
+            'school_id' => $school?->id,
+        ]);
+
+        return response()->json(
+            ['message' => 'Account setup link storage is unavailable. Check database migrations and cache configuration, then reissue the setup link.'],
+            Response::HTTP_UNPROCESSABLE_ENTITY,
+        );
+    }
+
     /**
      * @return array<string, mixed>
      */
-    private function serializePendingSetupLink(User $account, School $school, AccountSetupToken $token): array
+    private function serializePendingSetupLink(User $account, School $school, SetupTokenRecord $token): array
     {
         $status = 'pending';
         if ($token->used_at !== null) {

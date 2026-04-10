@@ -14,7 +14,6 @@ use App\Http\Requests\Api\RequestMonitorMfaResetRequest;
 use App\Http\Requests\Api\ResetPasswordRequest;
 use App\Http\Requests\Api\ResetRequiredPasswordRequest;
 use App\Http\Requests\Api\VerifyMonitorMfaRequest;
-use App\Models\AccountSetupToken;
 use App\Models\MonitorMfaResetTicket;
 use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
@@ -23,9 +22,12 @@ use App\Notifications\MonitorPasswordResetNotification;
 use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
+use App\Support\Auth\AuthLoginNormalizer;
 use App\Support\Auth\PersonalAccessTokenExpiry;
 use App\Support\Auth\RequestAuthModeResolver;
+use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\SchoolHeadAccountSetupService;
+use App\Support\Auth\SetupTokens\SetupTokenRecord;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Audit\AuthAuditLogger;
 use App\Support\Domain\AccountStatus;
@@ -55,6 +57,7 @@ class AuthController extends Controller
 
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
+        private readonly SchoolHeadAccountLifecycleService $schoolHeadAccountLifecycleService,
     ) {
     }
 
@@ -63,7 +66,7 @@ class AuthController extends Controller
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
         $rawLogin = trim($request->string('login')->toString());
         $login = $role === UserRoleResolver::SCHOOL_HEAD
-            ? (string) $this->normalizeSchoolCode($rawLogin)
+            ? (string) AuthLoginNormalizer::normalizeSchoolCode($rawLogin)
             : $rawLogin;
         $password = $request->string('password')->toString();
 
@@ -215,7 +218,7 @@ class AuthController extends Controller
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
         $rawLogin = trim($request->string('login')->toString());
         $login = $role === UserRoleResolver::SCHOOL_HEAD
-            ? (string) $this->normalizeSchoolCode($rawLogin)
+            ? (string) AuthLoginNormalizer::normalizeSchoolCode($rawLogin)
             : $rawLogin;
         $currentPassword = $request->string('current_password')->toString();
         $newPassword = $request->string('new_password')->toString();
@@ -414,7 +417,7 @@ class AuthController extends Controller
             'message' => 'If a matching School Head account is still pending setup, a new setup link will be sent to the registered email address.',
         ];
 
-        $user = $this->resolveUserForLogin(UserRoleResolver::SCHOOL_HEAD, $schoolCode);
+        $user = $this->schoolHeadAccountLifecycleService->resolveSchoolHeadAccountForSchoolCode($schoolCode);
         if (! $user instanceof User) {
             AuthAuditLogger::record(
                 $request,
@@ -451,34 +454,50 @@ class AuthController extends Controller
         }
 
         try {
-            $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+            $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
                 $user,
                 null,
                 $request->ip(),
                 $request->userAgent(),
             );
 
-            ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLinkRecovery(
-                $user,
-                $issuedSetup['setupUrl'],
-                CarbonImmutable::parse($issuedSetup['expiresAt']),
-            );
+            if (($issuedSetup['status'] ?? null) === 'issued') {
+                ['deliveryStatus' => $deliveryStatus, 'deliveryMessage' => $deliveryMessage] = $this->deliverSchoolHeadSetupLinkRecovery(
+                    $user,
+                    $issuedSetup['setup']['setupUrl'],
+                    CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
+                );
 
-            AuthAuditLogger::record(
-                $request,
-                'auth.setup_link_recovery.requested',
-                $deliveryStatus === 'failed' ? 'failure' : 'success',
-                $user,
-                UserRoleResolver::SCHOOL_HEAD,
-                $identifier,
-                [
-                    'result' => $deliveryStatus === 'failed' ? 'delivery_failed' : 'reissued',
-                    'account_status' => $status->value,
-                    'setup_link_expires_at' => $issuedSetup['expiresAt'],
-                    'delivery_status' => $deliveryStatus,
-                    'delivery_message' => $deliveryMessage,
-                ],
-            );
+                AuthAuditLogger::record(
+                    $request,
+                    'auth.setup_link_recovery.requested',
+                    $deliveryStatus === 'failed' ? 'failure' : 'success',
+                    $user,
+                    UserRoleResolver::SCHOOL_HEAD,
+                    $identifier,
+                    [
+                        'result' => $deliveryStatus === 'failed' ? 'delivery_failed' : 'reissued',
+                        'account_status' => $status->value,
+                        'setup_link_expires_at' => $issuedSetup['setup']['expiresAt'],
+                        'delivery_status' => $deliveryStatus,
+                        'delivery_message' => $deliveryMessage,
+                    ],
+                );
+            } else {
+                AuthAuditLogger::record(
+                    $request,
+                    'auth.setup_link_recovery.requested',
+                    'failure',
+                    $user,
+                    UserRoleResolver::SCHOOL_HEAD,
+                    $identifier,
+                    [
+                        'result' => $issuedSetup['status'] ?? 'issue_failed',
+                        'account_status' => $status->value,
+                        'error' => $issuedSetup['message'] ?? 'Unable to issue recovery link.',
+                    ],
+                );
+            }
         } catch (\Throwable $exception) {
             report($exception);
 
@@ -534,8 +553,12 @@ class AuthController extends Controller
             );
         }
 
-        if (! $user->canAuthenticate()) {
-            $status = $user->accountStatus();
+        $status = $user->accountStatus();
+        $allowsLockedRecoveryPasswordReset = $role === UserRoleResolver::SCHOOL_HEAD
+            && $status === AccountStatus::LOCKED
+            && (bool) $user->must_reset_password;
+
+        if (! $user->canAuthenticate() && ! $allowsLockedRecoveryPasswordReset) {
 
             $resetMessage = match ($status) {
                 AccountStatus::PENDING_SETUP => 'This account has not completed setup yet. Use the setup link sent by your Division Monitor.',
@@ -836,187 +859,128 @@ class AuthController extends Controller
         $newPassword = $request->string('password')->toString();
         $role = UserRoleResolver::SCHOOL_HEAD;
 
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            AuthAuditLogger::record(
-                $request,
-                'auth.account_setup.failed',
-                'failure',
-                null,
-                $role,
-                null,
-                ['reason' => 'setup_token_storage_unavailable'],
-            );
-
-            return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
-            );
-        }
-
-        $setupToken = $this->schoolHeadAccountSetupService->resolve($plainToken);
-        if (! $setupToken) {
-            AuthAuditLogger::record(
-                $request,
-                'auth.account_setup.failed',
-                'failure',
-                null,
-                $role,
-                null,
-                ['reason' => 'invalid_or_expired_setup_token'],
-            );
-
-            return response()->json(
-                ['message' => 'The setup link is invalid or expired. Request a new link from your Division Monitor.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
-        $user = $setupToken->user()->with('school')->first();
-        $supportsAccountSetup = false;
-        if ($user) {
-            if ($this->usersHaveAccountTypeColumn()) {
-                $supportsAccountSetup = $user->account_type === $role;
-            } else {
-                $supportsAccountSetup = UserRoleResolver::has($user, $role);
-            }
-        }
-
-        if (! $user || ! $supportsAccountSetup) {
-            AuthAuditLogger::record(
-                $request,
-                'auth.account_setup.failed',
-                'failure',
-                $user,
-                $role,
-                null,
-                ['reason' => 'account_not_supported'],
-            );
-
-            return response()->json(
-                ['message' => 'This setup link is no longer valid for account activation.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
-        $identifier = (string) ($user->school?->school_code ?? '');
-        $status = $user->accountStatus();
-        if (in_array($status, [AccountStatus::SUSPENDED, AccountStatus::LOCKED, AccountStatus::ARCHIVED], true)) {
-            AuthAuditLogger::record(
-                $request,
-                'auth.account_setup.failed',
-                'failure',
-                $user,
-                $role,
-                $identifier !== '' ? $identifier : null,
-                [
-                    'reason' => 'account_not_active',
-                    'account_status' => $status->value,
-                ],
-            );
-
-            return response()->json(
-                ['message' => $this->inactiveAccountMessage($status)],
-                Response::HTTP_FORBIDDEN,
-            );
-        }
-
-        if (Hash::check($newPassword, $user->password)) {
-            AuthAuditLogger::record(
-                $request,
-                'auth.account_setup.failed',
-                'failure',
-                $user,
-                $role,
-                $identifier !== '' ? $identifier : null,
-                ['reason' => 'password_reuse_blocked'],
-            );
-
-            return response()->json(
-                ['message' => 'New password must be different from the current password.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
-        $previousStatus = $status->value;
-
-        $tokenParts = explode('.', $plainToken, 2);
-        $tokenSecret = isset($tokenParts[1]) ? trim((string) $tokenParts[1]) : '';
-
-        $revocationSummary = DB::transaction(function () use (
-            $setupToken,
-            $tokenSecret,
-            $user,
+        $result = $this->schoolHeadAccountLifecycleService->completeAccountSetup(
+            $plainToken,
             $newPassword,
-            $request,
-        ): ?array {
-            /** @var AccountSetupToken|null $lockedToken */
-            $lockedToken = AccountSetupToken::query()
-                ->whereKey($setupToken->id)
-                ->lockForUpdate()
-                ->first();
-
-            if (
-                ! $lockedToken ||
-                ! is_string($lockedToken->token_hash) ||
-                $lockedToken->token_hash === '' ||
-                $tokenSecret === '' ||
-                ! Hash::check($tokenSecret, $lockedToken->token_hash) ||
-                ! $lockedToken->isUsable()
-            ) {
-                return null;
-            }
-
-            $this->schoolHeadAccountSetupService->consume($lockedToken, $request->ip(), $request->userAgent());
-
-            $user->forceFill([
-                'password' => Hash::make($newPassword),
-                'must_reset_password' => false,
-                'password_changed_at' => now(),
-                'email_verified_at' => now(),
-                'account_status' => AccountStatus::PENDING_VERIFICATION->value,
-                'verified_by_user_id' => null,
-                'verified_at' => null,
-                'verification_notes' => null,
-            ])->save();
-
-            return $this->revokeUserSessionsAndTokens($user);
-        });
-
-        if (! is_array($revocationSummary)) {
-            AuthAuditLogger::record(
-                $request,
-                'auth.account_setup.failed',
-                'failure',
-                $user,
-                $role,
-                $identifier !== '' ? $identifier : null,
-                ['reason' => 'invalid_or_expired_setup_token'],
-            );
-
-            return response()->json(
-                ['message' => 'The setup link is invalid or expired. Request a new link from your Division Monitor.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
-        AuthAuditLogger::record(
-            $request,
-            'auth.account_setup.completed',
-            'success',
-            $user,
-            $role,
-            $identifier !== '' ? $identifier : null,
-            [
-                'previous_account_status' => $previousStatus,
-                'new_account_status' => AccountStatus::PENDING_VERIFICATION->value,
-                'revoked_tokens' => $revocationSummary['revokedTokens'],
-                'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
-            ],
+            $request->ip(),
+            $request->userAgent(),
         );
 
-        return response()->json([
-            'message' => 'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
-        ]);
+        return match ($result['status'] ?? null) {
+            'storage_unavailable' => tap(
+                response()->json(
+                    ['message' => 'Account setup is temporarily unavailable. Check database migrations and cache configuration, then reissue a new setup link.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                ),
+                function () use ($request, $role): void {
+                    AuthAuditLogger::record(
+                        $request,
+                        'auth.account_setup.failed',
+                        'failure',
+                        null,
+                        $role,
+                        null,
+                        ['reason' => 'setup_token_storage_unavailable'],
+                    );
+                },
+            ),
+            'invalid_token' => tap(
+                response()->json(
+                    ['message' => 'The setup link is invalid or expired. Request a new link from your Division Monitor.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                ),
+                function () use ($request, $role, $result): void {
+                    AuthAuditLogger::record(
+                        $request,
+                        'auth.account_setup.failed',
+                        'failure',
+                        $result['user'] ?? null,
+                        $role,
+                        ($result['identifier'] ?? '') !== '' ? $result['identifier'] : null,
+                        ['reason' => 'invalid_or_expired_setup_token'],
+                    );
+                },
+            ),
+            'unsupported' => tap(
+                response()->json(
+                    ['message' => 'This setup link is no longer valid for account activation.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                ),
+                function () use ($request, $role, $result): void {
+                    AuthAuditLogger::record(
+                        $request,
+                        'auth.account_setup.failed',
+                        'failure',
+                        $result['user'] ?? null,
+                        $role,
+                        ($result['identifier'] ?? '') !== '' ? $result['identifier'] : null,
+                        ['reason' => 'account_not_supported'],
+                    );
+                },
+            ),
+            'inactive' => tap(
+                response()->json(
+                    ['message' => $this->inactiveAccountMessage($result['accountStatus'])],
+                    Response::HTTP_FORBIDDEN,
+                ),
+                function () use ($request, $role, $result): void {
+                    AuthAuditLogger::record(
+                        $request,
+                        'auth.account_setup.failed',
+                        'failure',
+                        $result['user'] ?? null,
+                        $role,
+                        ($result['identifier'] ?? '') !== '' ? $result['identifier'] : null,
+                        [
+                            'reason' => 'account_not_active',
+                            'account_status' => $result['accountStatus']->value,
+                        ],
+                    );
+                },
+            ),
+            'password_reuse' => tap(
+                response()->json(
+                    ['message' => 'New password must be different from the current password.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                ),
+                function () use ($request, $role, $result): void {
+                    AuthAuditLogger::record(
+                        $request,
+                        'auth.account_setup.failed',
+                        'failure',
+                        $result['user'] ?? null,
+                        $role,
+                        ($result['identifier'] ?? '') !== '' ? $result['identifier'] : null,
+                        ['reason' => 'password_reuse_blocked'],
+                    );
+                },
+            ),
+            'completed' => tap(
+                response()->json([
+                    'message' => 'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
+                ]),
+                function () use ($request, $role, $result): void {
+                    AuthAuditLogger::record(
+                        $request,
+                        'auth.account_setup.completed',
+                        'success',
+                        $result['user'],
+                        $role,
+                        ($result['identifier'] ?? '') !== '' ? $result['identifier'] : null,
+                        [
+                            'previous_account_status' => $result['previousStatus'],
+                            'new_account_status' => AccountStatus::PENDING_VERIFICATION->value,
+                            'revoked_tokens' => $result['revocationSummary']['revokedTokens'],
+                            'revoked_web_sessions' => $result['revocationSummary']['revokedWebSessions'],
+                        ],
+                    );
+                },
+            ),
+            default => response()->json(
+                ['message' => 'The setup request could not be completed.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            ),
+        };
     }
 
     public function regenerateMonitorMfaBackupCodes(RegenerateMonitorMfaBackupCodesRequest $request): JsonResponse
@@ -2210,8 +2174,12 @@ class AuthController extends Controller
         return response()->json([], Response::HTTP_NO_CONTENT);
     }
 
-    private function invalidCredentialsMessage(): string
+    private function invalidCredentialsMessage(?string $role = null): string
     {
+        if ($role === UserRoleResolver::SCHOOL_HEAD) {
+            return 'Invalid school code or password.';
+        }
+
         return 'Invalid credentials.';
     }
 
@@ -2328,7 +2296,7 @@ class AuthController extends Controller
         }
 
         return response()->json([
-            'message' => $this->invalidCredentialsMessage(),
+            'message' => $this->invalidCredentialsMessage($role),
         ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
@@ -2402,47 +2370,8 @@ class AuthController extends Controller
     private function resolveUserForLogin(string $role, string $login): ?User
     {
         if ($role === UserRoleResolver::SCHOOL_HEAD) {
-            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
-            if ($normalizedSchoolCode === null) {
-                return null;
-            }
-
-            $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
-
-            $baseQuery = User::query()
-                ->select([
-                    'id',
-                    'name',
-                    'email',
-                    'email_verified_at',
-                    'password',
-                    'must_reset_password',
-                    'password_changed_at',
-                    'account_status',
-                    'school_id',
-                    'last_login_at',
-                    'last_login_ip',
-                    'last_login_user_agent',
-                ])
-                ->with(['school:id,school_code,name'])
-                ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
-                    $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
-                })
-                ->orderByDesc('id');
-
-            if ($this->usersHaveAccountTypeColumn()) {
-                return $baseQuery
-                    ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
-                    ->first();
-            }
-
-            $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
-
-            return $baseQuery
-                ->whereHas('roles', function ($builder) use ($roleAliases): void {
-                    $builder->whereIn('name', $roleAliases);
-                })
-                ->first();
+            return $this->schoolHeadAccountLifecycleService
+                ->resolveSchoolHeadAccountForSchoolCode($login);
         }
 
         $normalizedEmail = strtolower(trim($login));
@@ -2834,13 +2763,7 @@ class AuthController extends Controller
 
     private function normalizeSchoolCode(string $value): ?string
     {
-        $normalized = trim($value);
-
-        if (preg_match('/^\d{6}$/', $normalized) !== 1) {
-            return null;
-        }
-
-        return $normalized;
+        return AuthLoginNormalizer::normalizeSchoolCode($value);
     }
 
     /**
@@ -3258,17 +3181,15 @@ class AuthController extends Controller
 
     private function resolvePasswordResetUser(string $role, string $email): ?User
     {
-        $query = User::query()->where('email_normalized', $email);
-
-        if ($this->usersHaveAccountTypeColumn()) {
-            return $query
-                ->where('account_type', $role)
-                ->first();
+        if ($role === UserRoleResolver::SCHOOL_HEAD) {
+            return $this->schoolHeadAccountLifecycleService
+                ->resolveSchoolHeadAccountForEmail($email);
         }
 
         $aliases = UserRoleResolver::roleAliases($role);
 
-        return $query
+        return User::query()
+            ->where('email_normalized', $email)
             ->whereHas('roles', static function ($builder) use ($aliases): void {
                 $builder->whereIn('name', $aliases);
             })
@@ -3305,7 +3226,7 @@ class AuthController extends Controller
         }
 
         $token = $this->schoolHeadAccountSetupService->latestForUser($user);
-        if ($token instanceof AccountSetupToken) {
+        if ($token instanceof SetupTokenRecord) {
             $this->schoolHeadAccountSetupService->recordDeliveryOutcome($token, $deliveryStatus, $deliveryMessage);
         }
 
@@ -3512,19 +3433,17 @@ class AuthController extends Controller
             return null;
         }
 
-        if ($this->usersHaveAccountTypeColumn()) {
-            $accountType = is_string($user->account_type)
-                ? trim($user->account_type)
-                : null;
-
-            if (in_array($accountType, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
-                return $accountType;
-            }
+        if (
+            $roleHint !== null
+            && $roleHint === UserRoleResolver::SCHOOL_HEAD
+            && $this->schoolHeadAccountLifecycleService->synchronizeSchoolHeadIdentity($user)['supported']
+        ) {
+            return $roleHint;
         }
 
         if (
             $roleHint !== null
-            && in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)
+            && $roleHint === UserRoleResolver::MONITOR
             && UserRoleResolver::has($user, $roleHint)
         ) {
             return $roleHint;
@@ -3534,7 +3453,7 @@ class AuthController extends Controller
             return UserRoleResolver::MONITOR;
         }
 
-        if (UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)) {
+        if ($this->schoolHeadAccountLifecycleService->synchronizeSchoolHeadIdentity($user)['supported']) {
             return UserRoleResolver::SCHOOL_HEAD;
         }
 
@@ -3560,18 +3479,24 @@ class AuthController extends Controller
             }
         }
 
+        if (UserRoleResolver::has($user, UserRoleResolver::MONITOR)) {
+            return UserRoleResolver::MONITOR;
+        }
+
+        if ($this->schoolHeadAccountLifecycleService->synchronizeSchoolHeadIdentity($user)['supported']) {
+            return UserRoleResolver::SCHOOL_HEAD;
+        }
+
         if ($this->usersHaveAccountTypeColumn()) {
             $accountType = is_string($user->account_type)
                 ? trim($user->account_type)
                 : null;
 
-            if (in_array($accountType, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
-                return $accountType;
+            if ($accountType === UserRoleResolver::MONITOR) {
+                return UserRoleResolver::MONITOR;
             }
         }
 
-        return UserRoleResolver::has($user, UserRoleResolver::MONITOR)
-            ? UserRoleResolver::MONITOR
-            : UserRoleResolver::SCHOOL_HEAD;
+        return UserRoleResolver::SCHOOL_HEAD;
     }
 }

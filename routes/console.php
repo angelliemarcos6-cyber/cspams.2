@@ -5,6 +5,7 @@ use App\Models\AuditLog;
 use App\Models\User;
 use App\Notifications\SchoolHeadSetupLinkExpiredNotification;
 use App\Providers\AppServiceProvider;
+use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use Illuminate\Foundation\Inspiring;
@@ -114,56 +115,67 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
         return;
     }
 
-    $roleId = DB::table('roles')
-        ->where('name', UserRoleResolver::SCHOOL_HEAD)
-        ->value('id');
+    /** @var SchoolHeadAccountLifecycleService $lifecycle */
+    $lifecycle = app(SchoolHeadAccountLifecycleService::class);
+    $candidates = $lifecycle->schoolHeadCandidatesQuery()
+        ->whereNotNull('school_id')
+        ->with('roles')
+        ->orderBy('id')
+        ->get();
 
-    if ($roleId === null) {
-        $this->warn('No school_head role found. Seed roles and permissions first.');
-        return;
-    }
-
-    $userIds = DB::table('model_has_roles')
-        ->where('role_id', $roleId)
-        ->where('model_type', 'App\\Models\\User')
-        ->pluck('model_id')
-        ->map(static fn (mixed $id): int => (int) $id)
-        ->values()
-        ->all();
-
-    if ($userIds === []) {
+    if ($candidates->isEmpty()) {
         $this->info('No School Head users found. Nothing to update.');
         return;
     }
 
-    $duplicateSchoolIds = DB::table('users')
-        ->select('school_id')
-        ->whereIn('id', $userIds)
-        ->whereNotNull('school_id')
-        ->groupBy('school_id')
-        ->havingRaw('COUNT(*) > 1')
-        ->limit(10)
+    $duplicateSchoolIds = $candidates
         ->pluck('school_id')
-        ->filter(static fn (mixed $value): bool => is_scalar($value) && (string) $value !== '')
+        ->filter(static fn (mixed $value): bool => $value !== null && (string) $value !== '')
+        ->countBy()
+        ->filter(static fn (int $count): bool => $count > 1)
+        ->keys()
         ->map(static fn (mixed $value): string => (string) $value)
         ->values();
 
     if ($duplicateSchoolIds->isNotEmpty()) {
-        $this->error(
-            'Duplicate School Head role assignments detected for school_id(s): '
+        $this->warn(
+            'Duplicate School Head account candidates detected for school_id(s): '
             . $duplicateSchoolIds->implode(', ')
         );
-        $this->line('Resolve duplicates first, then re-run this command.');
-        return;
+        $this->line('Those records will be skipped so the repair remains safe.');
     }
 
-    $updated = DB::table('users')
-        ->whereIn('id', $userIds)
-        ->update(['account_type' => UserRoleResolver::SCHOOL_HEAD]);
+    $roleRepairs = 0;
+    $accountTypeRepairs = 0;
+    $skipped = 0;
 
-    $this->info('School Head account_type synchronized.');
-    $this->line('Updated users: ' . $updated);
-})->purpose('Backfill users.account_type for School Head accounts based on role assignments.');
+    foreach ($candidates as $candidate) {
+        /** @var User $candidate */
+        if ($duplicateSchoolIds->contains((string) $candidate->school_id)) {
+            $skipped++;
+            continue;
+        }
+
+        $result = $lifecycle->synchronizeSchoolHeadIdentity($candidate);
+        if (! $result['supported']) {
+            $skipped++;
+            continue;
+        }
+
+        if ($result['roleRepaired']) {
+            $roleRepairs++;
+        }
+
+        if ($result['accountTypeRepaired']) {
+            $accountTypeRepairs++;
+        }
+    }
+
+    $this->info('School Head role/account_type markers synchronized.');
+    $this->line('Role repairs: ' . $roleRepairs);
+    $this->line('account_type repairs: ' . $accountTypeRepairs);
+    $this->line('Skipped records: ' . $skipped);
+})->purpose('Repair School Head role/account_type drift using role-first synchronization.');
 
 Artisan::command('app:check-production-config', function (): int {
     try {

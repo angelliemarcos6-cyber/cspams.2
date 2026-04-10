@@ -4,10 +4,11 @@ namespace App\Http\Resources;
 
 use App\Models\School;
 use App\Models\User;
+use App\Support\Auth\SchoolHeadAccountSetupService;
+use App\Support\Auth\SetupTokens\SetupTokenRecord;
 use App\Support\Domain\FormSubmissionStatus;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Schema;
 
 /** @mixin School */
 class SchoolRecordResource extends JsonResource
@@ -90,17 +91,13 @@ class SchoolRecordResource extends JsonResource
         }
 
         $status = $account->accountStatus();
-        $setupToken = null;
-
-        if (Schema::hasTable('account_setup_tokens')) {
-            $account->loadMissing(['latestAccountSetupToken', 'verifiedBy']);
-            $setupToken = $account->latestAccountSetupToken;
-        } else {
-            $account->loadMissing('verifiedBy');
-        }
+        $account->loadMissing('verifiedBy');
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $setupToken = $setupService->latestForUser($account);
         $setupLinkExpiresAt = null;
 
-        if ($setupToken && $setupToken->used_at === null && $setupToken->expires_at !== null && $setupToken->expires_at->isFuture()) {
+        if ($setupToken instanceof SetupTokenRecord && $setupToken->used_at === null && $setupToken->expires_at->isFuture()) {
             $setupLinkExpiresAt = $setupToken->expires_at->toISOString();
         }
 

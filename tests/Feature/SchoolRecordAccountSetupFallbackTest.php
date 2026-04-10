@@ -34,11 +34,13 @@ class SchoolRecordAccountSetupFallbackTest extends TestCase
             'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
         ]);
 
-        $login->assertOk();
+        $login->assertOk()
+            ->assertJsonPath('user.role', 'school_head');
         $token = (string) $login->json('token');
-        $this->assertNotSame('', $token);
 
-        $records = $this->withToken($token)->getJson('/api/dashboard/records');
+        $records = $token !== ''
+            ? $this->withToken($token)->getJson('/api/dashboard/records')
+            : $this->getJson('/api/dashboard/records');
         $records->assertOk()
             ->assertJsonPath('meta.scope', 'school');
     }

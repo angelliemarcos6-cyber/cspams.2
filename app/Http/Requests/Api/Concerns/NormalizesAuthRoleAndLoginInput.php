@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\Concerns;
 
+use App\Support\Auth\AuthLoginNormalizer;
 use App\Support\Auth\UserRoleResolver;
 
 trait NormalizesAuthRoleAndLoginInput
@@ -37,16 +38,9 @@ trait NormalizesAuthRoleAndLoginInput
 
     protected function normalizeLoginIdentifierForRole(mixed $rawLogin, mixed $role): mixed
     {
-        if (! is_string($rawLogin)) {
-            return $rawLogin;
-        }
-
-        $login = trim($rawLogin);
-
-        if ($role === UserRoleResolver::MONITOR) {
-            return strtolower($login);
-        }
-
-        return $login;
+        return AuthLoginNormalizer::normalizeLoginIdentifierForRole(
+            $rawLogin,
+            is_string($role) ? UserRoleResolver::normalizeLoginRole($role) : null,
+        );
     }
 }

@@ -4,6 +4,12 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Support\Audit\AuthAuditLogger;
+use App\Support\Auth\AuthLoginNormalizer;
+use App\Support\Auth\SetupTokens\CacheSetupTokenStore;
+use App\Support\Auth\SetupTokens\DatabaseSetupTokenStore;
+use App\Support\Auth\SetupTokens\FallbackSetupTokenStore;
+use App\Support\Auth\SetupTokens\SetupTokenStore;
+use App\Support\Auth\UserRoleResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +23,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(DatabaseSetupTokenStore::class);
+        $this->app->singleton(CacheSetupTokenStore::class);
+        $this->app->singleton(SetupTokenStore::class, function ($app): SetupTokenStore {
+            return new FallbackSetupTokenStore([
+                $app->make(DatabaseSetupTokenStore::class),
+                $app->make(CacheSetupTokenStore::class),
+            ]);
+        });
     }
 
     /**
@@ -70,9 +83,23 @@ class AppServiceProvider extends ServiceProvider
             ], 429, $headers);
         };
 
-        RateLimiter::for('auth-login', function (Request $request) use ($lockoutResponse): array {
-            $role = strtolower(trim((string) $request->input('role', 'unknown')));
-            $login = strtolower(trim((string) $request->input('login', 'unknown')));
+        $normalizedRoleAndLogin = static function (Request $request): array {
+            $role = UserRoleResolver::normalizeLoginRole((string) $request->input('role'));
+            $login = AuthLoginNormalizer::normalizeLoginIdentifierForRole(
+                $request->input('login', 'unknown'),
+                $role,
+            );
+
+            return [
+                'role' => $role,
+                'login' => is_string($login) && trim($login) !== ''
+                    ? strtolower(trim($login))
+                    : 'unknown',
+            ];
+        };
+
+        RateLimiter::for('auth-login', function (Request $request) use ($lockoutResponse, $normalizedRoleAndLogin): array {
+            ['role' => $role, 'login' => $login] = $normalizedRoleAndLogin($request);
             $identity = $role . '|' . $login . '|' . $request->ip();
 
             return [
@@ -97,9 +124,8 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        RateLimiter::for('auth-password-reset', function (Request $request) use ($lockoutResponse): array {
-            $role = strtolower(trim((string) $request->input('role', 'unknown')));
-            $login = strtolower(trim((string) $request->input('login', 'unknown')));
+        RateLimiter::for('auth-password-reset', function (Request $request) use ($lockoutResponse, $normalizedRoleAndLogin): array {
+            ['role' => $role, 'login' => $login] = $normalizedRoleAndLogin($request);
             $identity = $role . '|' . $login . '|' . $request->ip();
 
             return [
@@ -218,9 +244,8 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        RateLimiter::for('auth-mfa-verify', function (Request $request) use ($lockoutResponse): array {
-            $role = strtolower(trim((string) $request->input('role', 'unknown')));
-            $login = strtolower(trim((string) $request->input('login', 'unknown')));
+        RateLimiter::for('auth-mfa-verify', function (Request $request) use ($lockoutResponse, $normalizedRoleAndLogin): array {
+            ['role' => $role, 'login' => $login] = $normalizedRoleAndLogin($request);
             $challengeId = strtolower(trim((string) $request->input('challenge_id', 'unknown')));
             $identity = $role . '|' . $login . '|' . $challengeId . '|' . $request->ip();
 
@@ -246,9 +271,8 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        RateLimiter::for('auth-mfa-reset-request', function (Request $request) use ($lockoutResponse): array {
-            $role = strtolower(trim((string) $request->input('role', 'unknown')));
-            $login = strtolower(trim((string) $request->input('login', 'unknown')));
+        RateLimiter::for('auth-mfa-reset-request', function (Request $request) use ($lockoutResponse, $normalizedRoleAndLogin): array {
+            ['role' => $role, 'login' => $login] = $normalizedRoleAndLogin($request);
             $identity = $role . '|' . $login . '|' . $request->ip();
 
             return [
@@ -273,9 +297,8 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        RateLimiter::for('auth-mfa-reset-complete', function (Request $request) use ($lockoutResponse): array {
-            $role = strtolower(trim((string) $request->input('role', 'unknown')));
-            $login = strtolower(trim((string) $request->input('login', 'unknown')));
+        RateLimiter::for('auth-mfa-reset-complete', function (Request $request) use ($lockoutResponse, $normalizedRoleAndLogin): array {
+            ['role' => $role, 'login' => $login] = $normalizedRoleAndLogin($request);
             $requestId = strtolower(trim((string) $request->input('request_id', 'unknown')));
             $identity = $role . '|' . $login . '|' . $requestId . '|' . $request->ip();
 

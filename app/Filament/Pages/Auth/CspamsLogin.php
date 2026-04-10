@@ -3,6 +3,8 @@
 namespace App\Filament\Pages\Auth;
 
 use App\Models\User;
+use App\Support\Auth\AuthLoginNormalizer;
+use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use DanHarrin\LivewireRateLimiting\Exceptions\TooManyRequestsException;
@@ -74,9 +76,12 @@ class CspamsLogin extends BaseLogin
                 'x-on:keydown.enter' => 'applyLoginNormalization()',
             ])
             ->dehydrateStateUsing(function (?string $state): ?string {
-                $normalized = trim((string) $state);
+                $normalized = AuthLoginNormalizer::normalizeLoginIdentifierForRole(
+                    $state,
+                    $this->selectedRole(),
+                );
 
-                return $normalized !== '' ? $normalized : null;
+                return is_string($normalized) && $normalized !== '' ? $normalized : null;
             });
 
         $passwordField = TextInput::make('password')
@@ -168,23 +173,8 @@ class CspamsLogin extends BaseLogin
     private function resolveUserForRole(string $role, string $login): ?User
     {
         if ($role === UserRoleResolver::SCHOOL_HEAD) {
-            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
-            if ($normalizedSchoolCode === null) {
-                return null;
-            }
-
-            $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
-            $roleAliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
-
-            return User::query()
-                ->with('school')
-                ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
-                    $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
-                })
-                ->whereHas('roles', function ($builder) use ($roleAliases): void {
-                    $builder->whereIn('name', $roleAliases);
-                })
-                ->first();
+            return app(SchoolHeadAccountLifecycleService::class)
+                ->resolveSchoolHeadAccountForSchoolCode($login);
         }
 
         $normalizedEmail = strtolower(trim($login));
@@ -227,14 +217,4 @@ class CspamsLogin extends BaseLogin
         ]);
     }
 
-    private function normalizeSchoolCode(string $value): ?string
-    {
-        $normalized = trim($value);
-
-        if (preg_match('/^\d{6}$/', $normalized) !== 1) {
-            return null;
-        }
-
-        return $normalized;
-    }
 }

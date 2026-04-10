@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api;
 
+use App\Support\Auth\AuthLoginNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 
 class RequestSchoolHeadSetupLinkRecoveryRequest extends FormRequest
@@ -14,7 +15,7 @@ class RequestSchoolHeadSetupLinkRecoveryRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'school_code' => preg_replace('/\D/', '', (string) $this->input('school_code')),
+            'school_code' => AuthLoginNormalizer::normalizeSchoolCodeForValidation($this->input('school_code')),
         ]);
     }
 

@@ -432,6 +432,7 @@ class AuthSessionSecurityTest extends TestCase
 
         config()->set('auth_security.login.attempt_lockout_threshold', 3);
         config()->set('auth_security.login.attempt_lockout_minutes', 15);
+        config()->set('auth_security.login.roles.monitor.attempt_lockout_threshold', 3);
 
         $payload = [
             'role' => 'monitor',

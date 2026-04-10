@@ -34,6 +34,7 @@ class LoginRequest extends FormRequest
         return [
             'role' => ['required', 'string', Rule::in(UserRoleResolver::loginRoles())],
             'login' => [
+                'bail',
                 'required',
                 'string',
                 'max:255',

@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Support\Auth\MonitorActionVerificationService;
+use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use Illuminate\Database\QueryException;
 use PDOException;
@@ -15,6 +16,7 @@ class SchoolHeadAccountControllerUniqueConstraintTest extends TestCase
     public function test_unique_constraint_detection_handles_postgresql_duplicate_key_errors(): void
     {
         $controller = new SchoolHeadAccountController(
+            $this->createMock(SchoolHeadAccountLifecycleService::class),
             $this->createMock(SchoolHeadAccountSetupService::class),
             $this->createMock(MonitorActionVerificationService::class),
         );
@@ -31,6 +33,7 @@ class SchoolHeadAccountControllerUniqueConstraintTest extends TestCase
     public function test_unique_constraint_detection_does_not_treat_generic_foreign_key_errors_as_duplicates(): void
     {
         $controller = new SchoolHeadAccountController(
+            $this->createMock(SchoolHeadAccountLifecycleService::class),
             $this->createMock(SchoolHeadAccountSetupService::class),
             $this->createMock(MonitorActionVerificationService::class),
         );

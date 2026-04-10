@@ -56,9 +56,22 @@ class UserRoleResolver
 
     public static function normalizeLoginRole(?string $role): string
     {
-        return in_array($role, self::loginRoles(), true)
-            ? $role
-            : self::MONITOR;
+        $candidate = strtolower(trim((string) $role));
+
+        foreach (self::loginRoles() as $canonicalRole) {
+            $aliases = array_unique([
+                $canonicalRole,
+                ...self::roleAliases($canonicalRole),
+            ]);
+
+            foreach ($aliases as $alias) {
+                if ($candidate === strtolower(trim($alias))) {
+                    return $canonicalRole;
+                }
+            }
+        }
+
+        return self::MONITOR;
     }
 
     /**

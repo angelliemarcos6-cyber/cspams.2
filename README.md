@@ -44,7 +44,8 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - `POST /api/auth/forgot-password` (optional: `role=monitor|school_head`)
   - `POST /api/auth/reset-password` (optional: `role=monitor|school_head`)
 - Monitor dashboard School Head account recovery:
-  - `POST /api/dashboard/records/{school}/school-head-account/setup-link` (pending setup only)
+  - `POST /api/dashboard/records/{school}/school-head-account/setup-link` (`pending_setup` only)
+  - `POST /api/dashboard/records/{school}/school-head-account/setup-link/recover` (`archived` only; requires monitor verification + reason)
   - `POST /api/dashboard/records/{school}/school-head-account/password-reset-link` (active only; requires a reason)
   - One-time links are delivered via email and are **never returned in JSON responses**. In local/dev with `MAIL_MAILER=log|array`, check logs/test inboxes.
 - Monitor MFA reset recovery (when `CSPAMS_MONITOR_MFA_ENABLED=true`):
@@ -89,10 +90,14 @@ Recovery / admin actions (monitor dashboard):
 | `pending_verification`| Activate account                  |
 | `active`              | Send password reset link          |
 | `suspended`/`locked`  | Restore via status update         |
-| `archived`            | No normal login actions           |
+| `archived`            | Use the explicit setup-link recovery action |
 
 > **Note:** Password reset links cannot be issued for `pending_setup` or
 > `pending_verification` accounts. Use setup link or activation instead.
+>
+> If the `account_setup_tokens` table is missing at runtime, CSPAMS falls back to
+> cache-backed setup-token storage. It only fails if both database and cache-backed
+> storage are unavailable, and that failure is logged with an operator-facing message.
 
 ## Indicator Compliance Workflow (API)
 
@@ -121,6 +126,9 @@ Role flow:
 ## School Code Policy
 
 - School code format is standardized system-wide as **exactly 6 digits**.
+- Leading/trailing whitespace is trimmed during login and recovery requests.
+- Safe separator noise such as spaces, hyphens, underscores, and periods is collapsed before lookup.
+- Alphabetic or ambiguous school-code input is rejected.
 - Applied consistently to:
   - monitor CRUD validation
   - bulk import validation

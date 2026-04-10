@@ -100,19 +100,29 @@ class AuthPasswordResetPolicyTest extends TestCase
             ->assertJsonPath('user.mustResetPassword', false);
     }
 
-    public function test_setup_account_returns_service_unavailable_when_setup_token_storage_is_missing(): void
+    public function test_setup_account_completes_with_cache_fallback_when_setup_token_table_is_missing(): void
     {
         $this->seed();
 
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+
         Schema::dropIfExists('account_setup_tokens');
 
+        $issuedSetup = $setupService->issue($schoolHead);
+
         $response = $this->postJson('/api/auth/setup-account', [
-            'token' => '1.invalid-token',
+            'token' => $issuedSetup['plainToken'],
             'password' => 'NewSchool@2026!123',
             'password_confirmation' => 'NewSchool@2026!123',
         ]);
 
-        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+        $response->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
+            );
     }
 }

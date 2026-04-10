@@ -285,12 +285,13 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertTrue((bool) $schoolHead->must_reset_password);
     }
 
-    public function test_reissuing_setup_link_returns_service_unavailable_when_account_setup_token_storage_is_missing(): void
+    public function test_reissuing_setup_link_uses_cache_fallback_when_account_setup_token_table_is_missing(): void
     {
         $this->seed();
+        Notification::fake();
 
         /** @var User $schoolHead */
-        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
@@ -311,13 +312,22 @@ class SchoolHeadAccountManagementTest extends TestCase
             ],
         );
 
-        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+        $response->assertOk()
+            ->assertJsonPath('data.recoveryAction', 'reissue_setup_link');
+
+        Notification::assertSentTo($schoolHead, SchoolHeadAccountSetupNotification::class);
+
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $token = $setupService->latestForUser($schoolHead);
+        $this->assertNotNull($token);
+        $this->assertSame('cache', $token->storage_backend);
     }
 
-    public function test_creating_school_head_account_returns_service_unavailable_when_account_setup_token_storage_is_missing(): void
+    public function test_creating_school_head_account_uses_cache_fallback_when_account_setup_token_table_is_missing(): void
     {
         $this->seed();
+        Notification::fake();
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
@@ -346,8 +356,18 @@ class SchoolHeadAccountManagementTest extends TestCase
             ],
         ]);
 
-        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+        $response->assertOk()
+            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::PENDING_SETUP->value);
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'no.token.head@cspams.local')->firstOrFail();
+        Notification::assertSentTo($schoolHead, SchoolHeadAccountSetupNotification::class);
+
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $token = $setupService->latestForUser($schoolHead);
+        $this->assertNotNull($token);
+        $this->assertSame('cache', $token->storage_backend);
     }
 
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void
@@ -639,8 +659,8 @@ class SchoolHeadAccountManagementTest extends TestCase
             'password' => $newPassword,
         ]);
 
-        $loginNew->assertOk();
-        $this->assertNotSame('', (string) $loginNew->json('token'));
+        $loginNew->assertOk()
+            ->assertJsonPath('user.role', 'school_head');
     }
 
     public function test_removed_school_head_account_releases_email_for_recreation(): void

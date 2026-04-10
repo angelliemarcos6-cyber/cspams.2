@@ -2,16 +2,21 @@
 
 namespace App\Support\Auth;
 
-use App\Models\AccountSetupToken;
 use App\Models\User;
+use App\Support\Auth\SetupTokens\SetupTokenRecord;
+use App\Support\Auth\SetupTokens\SetupTokenStore;
+use App\Support\Auth\SetupTokens\SetupTokenStorageUnavailableException;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Str;
 
 class SchoolHeadAccountSetupService
 {
+    private const STORAGE_UNAVAILABLE_MESSAGE = 'Account setup token storage is unavailable. Check database migrations and cache configuration.';
+
+    public function __construct(
+        private readonly SetupTokenStore $setupTokenStore,
+    ) {
+    }
+
     /**
      * @return array{plainToken: string, setupUrl: string, expiresAt: string}
      */
@@ -22,93 +27,60 @@ class SchoolHeadAccountSetupService
         ?string $issuedUserAgent = null,
         ?int $ttlHours = null,
     ): array {
-        if (! $this->storageAvailable()) {
-            throw new \RuntimeException('Account setup token storage is unavailable. Run database migrations first.');
-        }
+        try {
+            $token = $this->setupTokenStore->issue(
+                $user,
+                $issuedBy,
+                $issuedIp,
+                $issuedUserAgent,
+                $ttlHours,
+            );
 
-        $this->expireOpenTokens($user, $issuedIp, $issuedUserAgent);
-
-        $resolvedTtlHours = max(1, $ttlHours ?? (int) config('auth_security.setup_links.ttl_hours', 72));
-        $expiresAt = CarbonImmutable::now()->addHours($resolvedTtlHours);
-        $secret = Str::random(64);
-
-        $token = AccountSetupToken::query()->create([
-            'user_id' => $user->id,
-            'issued_by_user_id' => $issuedBy?->id,
-            'token_hash' => Hash::make($secret),
-            'token_secret_ciphertext' => Crypt::encryptString($secret),
-            'expires_at' => $expiresAt,
-            'issued_ip' => $this->normalizeIpAddress($issuedIp),
-            'issued_user_agent' => $this->normalizeUserAgent($issuedUserAgent),
-            'delivery_status' => 'pending',
-        ]);
-
-        $plainToken = $token->id . '.' . $secret;
-
-        return [
-            'plainToken' => $plainToken,
-            'setupUrl' => $this->buildSetupUrl($plainToken),
-            'expiresAt' => $expiresAt->toISOString(),
-        ];
-    }
-
-    public function resolve(string $plainToken): ?AccountSetupToken
-    {
-        if (! $this->storageAvailable()) {
-            return null;
-        }
-
-        [$tokenId, $secret] = $this->parsePlainToken($plainToken);
-        if ($tokenId === null || $secret === null) {
-            return null;
-        }
-
-        /** @var AccountSetupToken|null $token */
-        $token = AccountSetupToken::query()->find($tokenId);
-        if (! $token || ! is_string($token->token_hash) || $token->token_hash === '') {
-            return null;
-        }
-
-        if (! Hash::check($secret, $token->token_hash)) {
-            return null;
-        }
-
-        if (! $token->isUsable()) {
-            if ($token->used_at === null && $token->expired_at === null && $token->isExpired()) {
-                $token->forceFill([
-                    'expired_at' => CarbonImmutable::now(),
-                ])->save();
+            $plainToken = $token->revealPlainToken();
+            if ($plainToken === null) {
+                throw new \RuntimeException('Setup token could not be revealed after issuance.');
             }
 
-            return null;
+            return [
+                'plainToken' => $plainToken,
+                'setupUrl' => $this->buildSetupUrl($plainToken),
+                'expiresAt' => $token->expires_at->toISOString(),
+            ];
+        } catch (\Throwable $exception) {
+            if (! $this->isStorageUnavailableException($exception)) {
+                throw $exception;
+            }
+
+            throw new \RuntimeException($this->storageUnavailableMessage(), 0, $exception);
+        }
+    }
+
+    public function resolve(string $plainToken): ?SetupTokenRecord
+    {
+        try {
+            $token = $this->setupTokenStore->resolve($plainToken);
+        } catch (\Throwable $exception) {
+            if (! $this->isStorageUnavailableException($exception)) {
+                throw $exception;
+            }
+
+            throw new \RuntimeException($this->storageUnavailableMessage(), 0, $exception);
         }
 
         return $token;
     }
 
-    public function consume(AccountSetupToken $token, ?string $usedIp = null, ?string $usedUserAgent = null): void
+    public function consume(string $plainToken, ?string $usedIp = null, ?string $usedUserAgent = null): ?SetupTokenRecord
     {
-        if (! $this->storageAvailable()) {
-            return;
+        try {
+            return $this->setupTokenStore->consume($plainToken, $usedIp, $usedUserAgent);
+        } catch (\Throwable $exception) {
+            if (! $this->isStorageUnavailableException($exception)) {
+                throw $exception;
+            }
+
+            throw new \RuntimeException($this->storageUnavailableMessage(), 0, $exception);
         }
-
-        $now = now();
-
-        $token->forceFill([
-            'used_at' => $now,
-            'used_ip' => $this->normalizeIpAddress($usedIp),
-            'used_user_agent' => $this->normalizeUserAgent($usedUserAgent),
-        ])->save();
-
-        AccountSetupToken::query()
-            ->where('user_id', $token->user_id)
-            ->where('id', '!=', $token->id)
-            ->whereNull('used_at')
-            ->whereNull('expired_at')
-            ->update([
-                'expired_at' => $now,
-                'updated_at' => $now,
-            ]);
     }
 
     public function buildSetupUrl(string $plainToken): string
@@ -125,31 +97,28 @@ class SchoolHeadAccountSetupService
 
     public function storageAvailable(): bool
     {
-        return Schema::hasTable('account_setup_tokens');
+        return $this->setupTokenStore->available();
     }
 
-    public function latestForUser(User $user): ?AccountSetupToken
+    public function storageUnavailableMessage(): string
     {
-        if (! $this->storageAvailable()) {
+        return self::STORAGE_UNAVAILABLE_MESSAGE;
+    }
+
+    public function latestForUser(User $user): ?SetupTokenRecord
+    {
+        try {
+            return $this->setupTokenStore->latestForUser($user);
+        } catch (\Throwable $exception) {
+            if (! $this->isStorageUnavailableException($exception)) {
+                throw $exception;
+            }
+
             return null;
         }
-
-        /** @var AccountSetupToken|null $token */
-        $token = AccountSetupToken::query()
-            ->where('user_id', $user->id)
-            ->latest('id')
-            ->first();
-
-        if ($token && $token->used_at === null && $token->expired_at === null && $token->isExpired()) {
-            $token->forceFill([
-                'expired_at' => CarbonImmutable::now(),
-            ])->save();
-        }
-
-        return $token;
     }
 
-    public function revealSetupUrl(AccountSetupToken $token): ?string
+    public function revealSetupUrl(SetupTokenRecord $token): ?string
     {
         $plainToken = $token->revealPlainToken();
         if ($plainToken === null) {
@@ -159,75 +128,33 @@ class SchoolHeadAccountSetupService
         return $this->buildSetupUrl($plainToken);
     }
 
-    public function recordDeliveryOutcome(AccountSetupToken $token, string $status, ?string $message = null): void
+    public function recordDeliveryOutcome(SetupTokenRecord $token, string $status, ?string $message = null): void
     {
-        $token->forceFill([
-            'delivery_status' => strtolower(trim($status)) ?: 'unknown',
-            'delivery_message' => $message !== null ? trim($message) : null,
-            'delivery_last_attempt_at' => now(),
-        ])->save();
+        try {
+            $this->setupTokenStore->recordDeliveryOutcome($token, $status, $message);
+        } catch (\Throwable $exception) {
+            if (! $this->isStorageUnavailableException($exception)) {
+                throw $exception;
+            }
+        }
     }
 
-    private function expireOpenTokens(User $user, ?string $usedIp = null, ?string $usedUserAgent = null): void
+    public function purgeForUser(User $user): int
     {
-        if (! $this->storageAvailable()) {
-            return;
+        try {
+            return $this->setupTokenStore->purgeForUser($user);
+        } catch (\Throwable $exception) {
+            if (! $this->isStorageUnavailableException($exception)) {
+                throw $exception;
+            }
+
+            return 0;
         }
-
-        $now = now();
-
-        AccountSetupToken::query()
-            ->where('user_id', $user->id)
-            ->whereNull('used_at')
-            ->whereNull('expired_at')
-            ->update([
-                'expired_at' => $now,
-                'updated_at' => $now,
-            ]);
     }
 
-    /**
-     * @return array{0: ?int, 1: ?string}
-     */
-    private function parsePlainToken(string $plainToken): array
+    private function isStorageUnavailableException(\Throwable $exception): bool
     {
-        $normalized = trim($plainToken);
-        if ($normalized === '') {
-            return [null, null];
-        }
-
-        $parts = explode('.', $normalized, 2);
-        if (count($parts) !== 2) {
-            return [null, null];
-        }
-
-        [$tokenIdRaw, $secret] = $parts;
-        if (! ctype_digit($tokenIdRaw)) {
-            return [null, null];
-        }
-
-        $tokenId = (int) $tokenIdRaw;
-        if ($tokenId <= 0 || trim($secret) === '') {
-            return [null, null];
-        }
-
-        return [$tokenId, $secret];
-    }
-
-    private function normalizeIpAddress(?string $value): ?string
-    {
-        $normalized = trim((string) $value);
-
-        return $normalized !== '' ? $normalized : null;
-    }
-
-    private function normalizeUserAgent(?string $value): ?string
-    {
-        $normalized = trim((string) $value);
-        if ($normalized === '') {
-            return null;
-        }
-
-        return Str::limit($normalized, 500, '');
+        return $exception instanceof SetupTokenStorageUnavailableException
+            || $exception->getPrevious() instanceof SetupTokenStorageUnavailableException;
     }
 }

@@ -178,6 +178,10 @@ class MonitorActionVerificationService
             return 'Issue password reset link';
         }
 
+        if ($normalized === 'setup_recovery') {
+            return 'Recover archived School Head account';
+        }
+
         return $targetStatus;
     }
 }
