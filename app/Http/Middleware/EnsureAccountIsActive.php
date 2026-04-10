@@ -3,13 +3,13 @@
 namespace App\Http\Middleware;
 
 use App\Models\User;
+use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\RequestAuthModeResolver;
 use App\Support\Audit\AuthAuditLogger;
 use App\Support\Auth\UserRoleResolver;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -20,8 +20,8 @@ class EnsureAccountIsActive
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $user = $request->user();
-        $authMode = RequestAuthModeResolver::resolve($request);
+        $authMode = RequestAuthModeResolver::resolveAuthMode($request);
+        $user = ApiUserResolver::fromRequest($request);
 
         if (! $user instanceof User) {
             return response()->json([
@@ -68,23 +68,10 @@ class EnsureAccountIsActive
             'ip' => $request->ip(),
         ]);
 
-        try {
-            $user->tokens()->delete();
-        } catch (\Throwable) {
-            // Ignore token cleanup failures.
-        }
-
-        try {
-            DB::table('sessions')
-                ->where('user_id', $user->id)
-                ->delete();
-        } catch (\Throwable) {
-            // Ignore session cleanup failures.
-        }
-
-        Auth::guard('web')->logout();
-
-        if ($authMode === RequestAuthModeResolver::COOKIE && $request->hasSession()) {
+        if ($authMode === RequestAuthModeResolver::TOKEN) {
+            $user->currentAccessToken()?->delete();
+        } else {
+            Auth::guard('web')->logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
         }

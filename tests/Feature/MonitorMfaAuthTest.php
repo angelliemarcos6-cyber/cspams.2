@@ -56,11 +56,13 @@ class MonitorMfaAuthTest extends TestCase
         $challengeId = (string) $login->json('mfa.challengeId');
         $this->assertNotSame('', $challengeId);
 
-        $verify = $this->postJson('/api/auth/verify-mfa', $this->verifyMfaPayload($challengeId, '123456'));
+        $verify = $this
+            ->withToken('token-mode-request')
+            ->postJson('/api/auth/verify-mfa', $this->verifyMfaPayload($challengeId, '123456'));
 
         $verify->assertOk()
-            ->assertJsonPath('user.role', 'monitor')
-            ->assertJsonPath('tokenType', 'Bearer');
+            ->assertJsonPath('mode', 'token')
+            ->assertJsonPath('user.role', 'monitor');
 
         $token = (string) $verify->json('token');
         $this->assertNotSame('', $token);

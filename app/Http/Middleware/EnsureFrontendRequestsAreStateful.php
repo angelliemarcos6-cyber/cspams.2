@@ -66,9 +66,7 @@ class EnsureFrontendRequestsAreStateful
         }
 
         Log::info('auth.mode', [
-            'mode' => RequestAuthModeResolver::resolve($request),
-            'transport' => RequestAuthModeResolver::transportHeader($request),
-            'has_session' => $request->hasSession(),
+            'mode' => RequestAuthModeResolver::resolveAuthMode($request),
             'stateful_middleware_applied' => $stateful,
             'path' => $request->path(),
             'method' => $request->method(),

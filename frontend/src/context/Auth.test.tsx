@@ -6,7 +6,7 @@ import { getApiBaseUrl } from "@/lib/api";
 import * as realtime from "@/lib/realtime";
 import { AUTH_TOKEN_STORAGE_KEY } from "@/lib/sessionCleanup";
 
-describe("AuthProvider logout", () => {
+describe("AuthProvider", () => {
   beforeEach(() => {
     document.cookie = "XSRF-TOKEN=test-xsrf-token; path=/";
     window.localStorage.clear();
@@ -24,7 +24,7 @@ describe("AuthProvider logout", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            authMode: "cookie_session",
+            mode: "cookie",
             user: {
               id: 1,
               name: "Monitor User",
@@ -121,81 +121,31 @@ describe("AuthProvider logout", () => {
     expect(result.current.accountStatus).toBe("suspended");
   });
 
-  it("retries with bearer fallback when cookie-session auth does not persist", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            message: "Unauthenticated.",
-          }),
-          {
-            status: 401,
-            headers: {
-              "Content-Type": "application/json",
-            },
+  it("restores a token-mode session from stored bearer credentials", async () => {
+    window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, "stored-bearer-token");
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          mode: "token",
+          user: {
+            id: 1,
+            name: "Monitor User",
+            email: "monitor@cspams.local",
+            role: "monitor",
+            schoolId: null,
+            schoolCode: null,
+            schoolName: null,
           },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            authMode: "cookie_session",
-            user: {
-              id: 1,
-              name: "Monitor User",
-              email: "monitor@cspams.local",
-              role: "monitor",
-              schoolId: null,
-              schoolCode: null,
-              schoolName: null,
-            },
-          }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-            },
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
           },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            message: "Unauthenticated.",
-          }),
-          {
-            status: 401,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            authMode: "token",
-            token: "temporary-bearer-token",
-            tokenType: "Bearer",
-            user: {
-              id: 1,
-              name: "Monitor User",
-              email: "monitor@cspams.local",
-              role: "monitor",
-              schoolId: null,
-              schoolCode: null,
-              schoolName: null,
-            },
-          }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          },
-        ),
-      );
+        },
+      ),
+    );
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -206,28 +156,15 @@ describe("AuthProvider logout", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    let loginResult: Awaited<ReturnType<typeof result.current.login>> | null = null;
-    await act(async () => {
-      loginResult = await result.current.login({
-        role: "monitor",
-        login: "monitor@cspams.local",
-        password: "Password123!",
-      });
-    });
-
-    expect(loginResult).toMatchObject({
-      status: "authenticated",
-      user: {
-        email: "monitor@cspams.local",
-      },
-    });
     expect(result.current.user?.email).toBe("monitor@cspams.local");
     expect(result.current.authMode).toBe("token");
-    expect(result.current.requestToken).toBe("temporary-bearer-token");
-    expect(window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe("temporary-bearer-token");
-    expect(result.current.isAuthenticating).toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    const fallbackRequestHeaders = fetchMock.mock.calls[3]?.[1]?.headers as Headers;
-    expect(fallbackRequestHeaders.get("X-CSPAMS-Auth-Transport")).toBe("token");
+    expect(result.current.requestToken).toBe("stored-bearer-token");
+    expect(window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe("stored-bearer-token");
+
+    const requestInit = fetchMock.mock.calls[0]?.[1];
+    const headers = new Headers(requestInit?.headers);
+    expect(requestInit?.credentials).toBe("omit");
+    expect(headers.get("Authorization")).toBe("Bearer stored-bearer-token");
+    expect(headers.get("X-CSRF-TOKEN")).toBeNull();
   });
 });

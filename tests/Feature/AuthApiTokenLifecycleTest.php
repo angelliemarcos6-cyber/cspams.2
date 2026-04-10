@@ -19,7 +19,7 @@ class AuthApiTokenLifecycleTest extends TestCase
         config()->set('sanctum.refresh_before', 5);
 
         $login = $this
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/login', [
                 'role' => 'monitor',
                 'login' => 'cspamsmonitor@gmail.com',
@@ -27,8 +27,8 @@ class AuthApiTokenLifecycleTest extends TestCase
             ]);
 
         $login->assertOk()
-            ->assertJsonPath('user.role', 'monitor')
-            ->assertJsonPath('tokenType', 'Bearer');
+            ->assertJsonPath('mode', 'token')
+            ->assertJsonPath('user.role', 'monitor');
 
         $token = (string) $login->json('token');
         $expiresAt = (string) $login->json('expiresAt');
@@ -42,8 +42,8 @@ class AuthApiTokenLifecycleTest extends TestCase
 
         $refresh = $this->withToken($token)->postJson('/api/auth/refresh');
         $refresh->assertOk()
-            ->assertJsonPath('user.role', 'monitor')
-            ->assertJsonPath('tokenType', 'Bearer');
+            ->assertJsonPath('mode', 'token')
+            ->assertJsonPath('user.role', 'monitor');
 
         $newToken = (string) $refresh->json('token');
         $this->assertNotSame('', $newToken);
@@ -63,7 +63,7 @@ class AuthApiTokenLifecycleTest extends TestCase
         config()->set('sanctum.expiration', 1);
 
         $login = $this
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/login', [
                 'role' => 'monitor',
                 'login' => 'cspamsmonitor@gmail.com',

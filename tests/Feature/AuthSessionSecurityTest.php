@@ -2,15 +2,14 @@
 
 namespace Tests\Feature;
 
-use App\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use App\Models\AuditLog;
 use App\Models\User;
+use App\Support\Auth\RequestAuthModeResolver;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use Illuminate\Http\Request;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Laravel\Sanctum\Sanctum;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -141,7 +140,7 @@ class AuthSessionSecurityTest extends TestCase
         $this->assertNotSame('', $schoolCode);
 
         $login = $this
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/login', [
                 'role' => 'school_head',
                 'login' => $schoolCode,
@@ -198,7 +197,7 @@ class AuthSessionSecurityTest extends TestCase
         /** @var User $monitor */
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
-        Sanctum::actingAs($monitor);
+        $this->actingAs($monitor);
 
         $response = $this->postJson('/api/auth/logout');
 
@@ -214,7 +213,7 @@ class AuthSessionSecurityTest extends TestCase
         /** @var User $monitor */
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
-        Sanctum::actingAs($monitor);
+        $this->actingAs($monitor);
 
         $response = $this->getJson('/api/auth/sessions');
 
@@ -246,7 +245,7 @@ class AuthSessionSecurityTest extends TestCase
 
         $login = $this
             ->withSession(['_token' => $csrfToken])
-            ->withHeader('X-XSRF-TOKEN', $csrfToken)
+            ->withHeader('X-CSRF-TOKEN', $csrfToken)
             ->postJson('/api/auth/login', [
                 'role' => 'school_head',
                 'login' => $schoolCode,
@@ -256,7 +255,7 @@ class AuthSessionSecurityTest extends TestCase
         $login->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('message', 'Login successful.')
-            ->assertJsonPath('authMode', 'cookie_session')
+            ->assertJsonPath('mode', 'cookie')
             ->assertJsonMissingPath('token')
             ->assertJsonPath('user.role', 'school_head');
 
@@ -266,12 +265,12 @@ class AuthSessionSecurityTest extends TestCase
 
         $me->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('authMode', 'cookie_session')
+            ->assertJsonPath('mode', 'cookie')
             ->assertJsonPath('user.email', (string) $schoolHead->email)
             ->assertJsonPath('user.role', 'school_head');
     }
 
-    public function test_explicit_token_transport_header_forces_stateless_login_even_when_csrf_state_exists(): void
+    public function test_bearer_header_forces_stateless_login_even_when_csrf_state_exists(): void
     {
         $this->seed();
 
@@ -287,8 +286,8 @@ class AuthSessionSecurityTest extends TestCase
         $login = $this
             ->withSession(['_token' => $csrfToken])
             ->withHeader('Origin', (string) config('app.frontend_url'))
-            ->withHeader('X-XSRF-TOKEN', $csrfToken)
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withHeader('X-CSRF-TOKEN', $csrfToken)
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/login', [
                 'role' => 'school_head',
                 'login' => $schoolCode,
@@ -297,9 +296,8 @@ class AuthSessionSecurityTest extends TestCase
 
         $login->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('authMode', 'token')
-            ->assertJsonPath('user.role', 'school_head')
-            ->assertJsonPath('tokenType', 'Bearer');
+            ->assertJsonPath('mode', 'token')
+            ->assertJsonPath('user.role', 'school_head');
 
         $this->assertGuest('web');
     }
@@ -318,14 +316,14 @@ class AuthSessionSecurityTest extends TestCase
             'HTTP_X_XSRF_TOKEN' => 'xsrf-header',
         ]);
 
-        $this->assertFalse(EnsureFrontendRequestsAreStateful::fromFrontend($request));
+        $this->assertSame(RequestAuthModeResolver::TOKEN, RequestAuthModeResolver::resolveAuthMode($request));
     }
 
     public function test_non_bearer_requests_default_to_cookie_mode_without_origin_or_cookie_heuristics(): void
     {
         $request = Request::create('/api/auth/login', 'POST');
 
-        $this->assertTrue(EnsureFrontendRequestsAreStateful::fromFrontend($request));
+        $this->assertSame(RequestAuthModeResolver::COOKIE, RequestAuthModeResolver::resolveAuthMode($request));
     }
 
     public function test_user_agent_version_change_alone_does_not_trigger_suspicious_login_containment(): void

@@ -102,7 +102,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
             'verification_notes' => null,
         ])->save();
 
-        $response = $this->actingAs($monitor, 'sanctum')->postJson(
+        $response = $this->actingAs($monitor)->postJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account/activate',
             ['reason' => 'Approved after monitor review.'],
         );
@@ -155,7 +155,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
         // IssueSchoolHeadPasswordResetLinkRequest requires verificationChallengeId and
         // verificationCode to pass validation. Provide format-valid dummies so that
         // FormRequest validation passes and the controller's status guard fires first.
-        $response = $this->actingAs($monitor, 'sanctum')->postJson(
+        $response = $this->actingAs($monitor)->postJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account/password-reset-link',
             [
                 'reason' => 'Test reset attempt.',
@@ -183,7 +183,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
             'account_status' => AccountStatus::SUSPENDED->value,
         ])->save();
 
-        $response = $this->actingAs($monitor, 'sanctum')->postJson(
+        $response = $this->actingAs($monitor)->postJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account/password-reset-link',
             [
                 'reason' => 'Test reset attempt on suspended account.',
@@ -216,7 +216,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
 
         // The controller blocks pending_verification → active via the generic route.
         // Activation must go through /school-head-account/activate instead.
-        $response = $this->actingAs($monitor, 'sanctum')->patchJson(
+        $response = $this->actingAs($monitor)->patchJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account',
             [
                 'accountStatus' => AccountStatus::ACTIVE->value,
@@ -251,7 +251,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
 
         // Reactivating suspended/locked/archived accounts goes through the generic PATCH route.
         // This is intentional — there is no dedicated reactivation endpoint.
-        $response = $this->actingAs($monitor, 'sanctum')->patchJson(
+        $response = $this->actingAs($monitor)->patchJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account',
             [
                 'accountStatus' => AccountStatus::ACTIVE->value,
@@ -288,7 +288,7 @@ class SchoolHeadAccountLifecycleTest extends TestCase
             'verified_at' => now()->subDays(30),
         ])->save();
 
-        $response = $this->actingAs($monitor, 'sanctum')->patchJson(
+        $response = $this->actingAs($monitor)->patchJson(
             '/api/dashboard/records/' . $schoolHead->school_id . '/school-head-account',
             [
                 'accountStatus' => AccountStatus::ACTIVE->value,

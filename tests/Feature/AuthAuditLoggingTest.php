@@ -31,7 +31,7 @@ class AuthAuditLoggingTest extends TestCase
         $failedLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
 
         $successfulLogin = $this
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/login', [
                 'role' => 'monitor',
                 'login' => 'cspamsmonitor@gmail.com',
@@ -143,7 +143,7 @@ class AuthAuditLoggingTest extends TestCase
         ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
 
         $this
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/verify-mfa', [
                 'role' => 'monitor',
                 'login' => 'cspamsmonitor@gmail.com',

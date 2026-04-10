@@ -168,6 +168,29 @@ function bearerTokenFromAuth(auth?: ApiRequestAuth): string {
   return auth.token.trim();
 }
 
+function normalizeHeaderName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function assertNoMixedTransport(auth: ApiRequestAuth | undefined, extraHeaders?: Record<string, string>): void {
+  if (!auth || !extraHeaders) {
+    return;
+  }
+
+  const headerNames = new Set(Object.keys(extraHeaders).map(normalizeHeaderName));
+
+  if (auth.authMode === "cookie" && headerNames.has("authorization")) {
+    throw new Error("Cookie-mode requests cannot include Authorization headers.");
+  }
+
+  if (
+    auth.authMode === "token" &&
+    (headerNames.has("x-csrf-token") || headerNames.has("x-xsrf-token"))
+  ) {
+    throw new Error("Token-mode requests cannot include CSRF headers.");
+  }
+}
+
 function isMutatingMethod(method: string): boolean {
   const normalized = method.toUpperCase();
   return normalized === "POST" || normalized === "PUT" || normalized === "PATCH" || normalized === "DELETE";
@@ -262,7 +285,6 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
         credentials: "include",
         headers: {
           Accept: "application/json",
-          "X-CSPAMS-Auth-Transport": "cookie",
         },
       },
       CSRF_BOOTSTRAP_TIMEOUT_MS,
@@ -292,8 +314,15 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
     throw new Error("Token-mode requests require a bearer token.");
   }
 
+  assertNoMixedTransport(auth, extraHeaders);
+
   if (mutating && useCookieSession) {
     await ensureCsrfCookie();
+  }
+
+  const xsrfToken = useCookieSession ? readXsrfToken() : null;
+  if (mutating && useCookieSession && !xsrfToken) {
+    throw new Error("Cookie-mode requests require a CSRF token.");
   }
 
   const headers = new Headers();
@@ -306,17 +335,11 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
       headers.set(key, value);
     }
   }
-  if (auth) {
-    headers.set("X-CSPAMS-Auth-Transport", auth.authMode);
-  }
   if (auth?.authMode === "token") {
     headers.set("Authorization", `Bearer ${bearerToken}`);
   }
-  if (mutating && useCookieSession) {
-    const xsrfToken = readXsrfToken();
-    if (xsrfToken) {
-      headers.set("X-XSRF-TOKEN", xsrfToken);
-    }
+  if (useCookieSession && xsrfToken) {
+    headers.set("X-CSRF-TOKEN", xsrfToken);
   }
 
   const fetchRequest = () =>

@@ -12,7 +12,7 @@ class RequestAuthModeResolver
 
     private const ATTRIBUTE = 'cspams.auth_mode';
 
-    public static function resolve(Request $request): string
+    public static function resolveAuthMode(Request $request): string
     {
         $resolved = $request->attributes->get(self::ATTRIBUTE);
 
@@ -20,7 +20,7 @@ class RequestAuthModeResolver
             return $resolved;
         }
 
-        $mode = trim((string) $request->bearerToken()) !== '' || self::transportHeader($request) === self::TOKEN
+        $mode = trim((string) $request->bearerToken()) !== ''
             ? self::TOKEN
             : self::COOKIE;
 
@@ -29,20 +29,18 @@ class RequestAuthModeResolver
         return $mode;
     }
 
+    public static function resolve(Request $request): string
+    {
+        return self::resolveAuthMode($request);
+    }
+
     public static function isToken(Request $request): bool
     {
-        return self::resolve($request) === self::TOKEN;
+        return self::resolveAuthMode($request) === self::TOKEN;
     }
 
     public static function isCookie(Request $request): bool
     {
-        return self::resolve($request) === self::COOKIE;
-    }
-
-    public static function transportHeader(Request $request): ?string
-    {
-        $transport = strtolower(trim((string) $request->header('X-CSPAMS-Auth-Transport', '')));
-
-        return in_array($transport, [self::COOKIE, self::TOKEN], true) ? $transport : null;
+        return self::resolveAuthMode($request) === self::COOKIE;
     }
 }

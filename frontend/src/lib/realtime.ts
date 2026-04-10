@@ -159,6 +159,7 @@ export function startRealtimeBridge(auth: ApiRequestAuth, scope: RealtimeBridgeS
     wssPort,
     forceTLS,
     enabledTransports: ["ws", "wss"],
+    withCredentials: auth.authMode === "cookie",
     authorizer: (channel) => ({
       authorize: (socketId, callback) => {
         const useCookieSession = auth.authMode === "cookie";
@@ -166,6 +167,10 @@ export function startRealtimeBridge(auth: ApiRequestAuth, scope: RealtimeBridgeS
         (useCookieSession ? ensureCsrfCookie() : Promise.resolve())
           .then(async () => {
             const xsrfToken = useCookieSession ? readXsrfToken() : null;
+            if (useCookieSession && !xsrfToken) {
+              throw new Error("Cookie-mode realtime authorization requires a CSRF token.");
+            }
+
             const controller = new AbortController();
             const timeoutId = window.setTimeout(() => controller.abort(), BROADCAST_AUTH_TIMEOUT_MS);
 
@@ -178,11 +183,10 @@ export function startRealtimeBridge(auth: ApiRequestAuth, scope: RealtimeBridgeS
                 headers: {
                   Accept: "application/json",
                   "Content-Type": "application/json",
-                  "X-CSPAMS-Auth-Transport": auth.authMode,
                   ...(!useCookieSession
                     ? { Authorization: `Bearer ${normalizedToken}` }
                     : {}),
-                  ...(useCookieSession && xsrfToken ? { "X-XSRF-TOKEN": xsrfToken } : {}),
+                  ...(useCookieSession ? { "X-CSRF-TOKEN": xsrfToken } : {}),
                 },
                 body: JSON.stringify({
                   socket_id: socketId,

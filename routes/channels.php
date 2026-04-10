@@ -9,7 +9,6 @@ Broadcast::channel(
     static function (User $user): bool {
         return $user->canAuthenticate() && UserRoleResolver::has($user, UserRoleResolver::MONITOR);
     },
-    ['guards' => ['sanctum']],
 );
 
 Broadcast::channel(
@@ -29,5 +28,4 @@ Broadcast::channel(
 
         return (int) $user->school_id === (int) $schoolId;
     },
-    ['guards' => ['sanctum']],
 );

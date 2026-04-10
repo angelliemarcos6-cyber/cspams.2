@@ -30,7 +30,7 @@ class AuthApiSmokeTest extends TestCase
         $schoolCode = (string) $schoolHead->school?->school_code;
 
         $login = $this
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/login', [
                 'role' => 'school_head',
                 'login' => $schoolCode,
@@ -40,7 +40,7 @@ class AuthApiSmokeTest extends TestCase
         $login->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('message', 'Login successful.')
-            ->assertJsonPath('authMode', 'token')
+            ->assertJsonPath('mode', 'token')
             ->assertJsonPath('user.role', 'school_head')
             ->assertJsonPath('user.schoolCode', $schoolCode)
             ->assertJsonStructure(['token', 'user']);
@@ -51,7 +51,7 @@ class AuthApiSmokeTest extends TestCase
         $me = $this->withToken($token)->getJson('/api/auth/me');
         $me->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('authMode', 'token')
+            ->assertJsonPath('mode', 'token')
             ->assertJsonPath('user.role', 'school_head');
 
         $logout = $this->withToken($token)->postJson('/api/auth/logout');
@@ -81,7 +81,7 @@ class AuthApiSmokeTest extends TestCase
         $challengeId = (string) $login->json('mfa.challengeId');
 
         $verify = $this
-            ->withHeader('X-CSPAMS-Auth-Transport', 'token')
+            ->withToken('token-mode-request')
             ->postJson('/api/auth/verify-mfa', [
                 'role' => 'monitor',
                 'login' => 'cspamsmonitor@gmail.com',
@@ -92,7 +92,7 @@ class AuthApiSmokeTest extends TestCase
         $verify->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('message', 'Request successful.')
-            ->assertJsonPath('authMode', 'token')
+            ->assertJsonPath('mode', 'token')
             ->assertJsonPath('user.role', 'monitor')
             ->assertJsonStructure(['token', 'user']);
 
@@ -102,7 +102,7 @@ class AuthApiSmokeTest extends TestCase
         $me = $this->withToken($token)->getJson('/api/auth/me');
         $me->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('authMode', 'token')
+            ->assertJsonPath('mode', 'token')
             ->assertJsonPath('user.role', 'monitor');
 
         $logout = $this->withToken($token)->postJson('/api/auth/logout');

@@ -5,18 +5,17 @@ namespace App\Support\Auth;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class ApiUserResolver
 {
     public static function fromRequest(Request $request): ?User
     {
-        $bearerToken = trim((string) $request->bearerToken());
-        if ($bearerToken !== '') {
-            $accessToken = PersonalAccessToken::findToken($bearerToken);
-            if (! $accessToken || self::isExpired($accessToken)) {
+        if (RequestAuthModeResolver::isToken($request)) {
+            $accessToken = PersonalAccessToken::findToken(trim((string) $request->bearerToken()));
+
+            if (! $accessToken instanceof PersonalAccessToken || self::isExpired($accessToken)) {
                 return null;
             }
 
@@ -26,28 +25,12 @@ class ApiUserResolver
                 return null;
             }
 
-            if (! $tokenable->canAuthenticate()) {
-                self::revokeUserSessionsAndTokens($tokenable);
-
-                return null;
-            }
-
             return $tokenable->withAccessToken($accessToken);
         }
 
-        $user = $request->user();
+        $user = Auth::guard('web')->user();
 
-        if (! $user instanceof User) {
-            return null;
-        }
-
-        if (! $user->canAuthenticate()) {
-            self::revokeUserSessionsAndTokens($user);
-
-            return null;
-        }
-
-        return $user;
+        return $user instanceof User ? $user : null;
     }
 
     private static function isExpired(PersonalAccessToken $accessToken): bool
@@ -69,26 +52,5 @@ class ApiUserResolver
         }
 
         return $accessToken->created_at->lte($now->subMinutes($expirationMinutes));
-    }
-
-    private static function revokeUserSessionsAndTokens(User $user): void
-    {
-        try {
-            $user->tokens()->delete();
-        } catch (\Throwable) {
-            // Ignore token revocation failures.
-        }
-
-        if (! Schema::hasTable('sessions')) {
-            return;
-        }
-
-        try {
-            DB::table('sessions')
-                ->where('user_id', $user->id)
-                ->delete();
-        } catch (\Throwable) {
-            // Ignore session cleanup failures.
-        }
     }
 }
