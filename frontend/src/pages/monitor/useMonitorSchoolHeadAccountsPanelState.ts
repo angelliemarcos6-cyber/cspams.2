@@ -6,7 +6,10 @@ import type {
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
 import type { MonitorSchoolRecordsListRow } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
+import { ACCOUNT_STATUS } from "@/types";
 import type {
+  SchoolHeadAccountActionVerificationTarget,
+  SchoolHeadAccountRestoreResult,
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountPayload,
@@ -37,9 +40,13 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change",
+    targetStatus: SchoolHeadAccountActionVerificationTarget,
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
+  recoverSchoolHeadSetupLink: (
+    schoolId: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+  ) => Promise<SchoolHeadAccountRestoreResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
     payload: { reason: string; verificationChallengeId: string; verificationCode: string },
@@ -72,6 +79,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
   activateSchoolHeadAccount,
   issueSchoolHeadAccountActionVerificationCode,
   issueSchoolHeadSetupLink,
+  recoverSchoolHeadSetupLink,
   issueSchoolHeadPasswordResetLink,
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
@@ -85,14 +93,26 @@ export function useMonitorSchoolHeadAccountsPanelState({
   const [schoolHeadAccountsOnlyFlagged, setSchoolHeadAccountsOnlyFlagged] = useState(false);
   const [schoolHeadAccountsOnlyDeleteFlagged, setSchoolHeadAccountsOnlyDeleteFlagged] = useState(false);
 
+  const recordById = useMemo(() => {
+    const map = new Map<string, SchoolRecord>();
+
+    for (const record of recordBySchoolKey.values()) {
+      map.set(record.id, record);
+    }
+
+    return map;
+  }, [recordBySchoolKey]);
+
   const schoolHeadAccountActions = useSchoolHeadAccountActions({
     isPanelOpen: showSchoolHeadAccountsPanel,
     isSaving,
     pushToast,
+    findRecordById: (schoolId) => recordById.get(schoolId) ?? null,
     updateSchoolHeadAccountStatus,
     activateSchoolHeadAccount,
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
+    recoverSchoolHeadSetupLink,
     issueSchoolHeadPasswordResetLink,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
@@ -121,7 +141,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
       const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
       const account = resolvedRecord?.schoolHeadAccount ?? null;
       const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-      const needsSetup = account ? normalizedAccountStatus === "pending_setup" : true;
+      const needsSetup = account ? normalizedAccountStatus === ACCOUNT_STATUS.pendingSetup : true;
 
       if (statusFilter !== "all") {
         if (statusFilter === "needs_setup") {
@@ -157,13 +177,13 @@ export function useMonitorSchoolHeadAccountsPanelState({
 
       if (account?.deleteRecordFlagged) return 0;
       if (!account) return 1;
-      if (normalizedAccountStatus === "pending_setup") return 2;
-      if (normalizedAccountStatus === "pending_verification") return 3;
+      if (normalizedAccountStatus === ACCOUNT_STATUS.pendingSetup) return 2;
+      if (normalizedAccountStatus === ACCOUNT_STATUS.pendingVerification) return 3;
       if (account.flagged) return 4;
-      if (normalizedAccountStatus === "active") return 5;
-      if (normalizedAccountStatus === "suspended") return 6;
-      if (normalizedAccountStatus === "locked") return 7;
-      if (normalizedAccountStatus === "archived") return 8;
+      if (normalizedAccountStatus === ACCOUNT_STATUS.active) return 5;
+      if (normalizedAccountStatus === ACCOUNT_STATUS.suspended) return 6;
+      if (normalizedAccountStatus === ACCOUNT_STATUS.locked) return 7;
+      if (normalizedAccountStatus === ACCOUNT_STATUS.archived) return 8;
       return 99;
     };
 

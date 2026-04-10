@@ -23,6 +23,7 @@ import { useMonitorSchoolBulkImport } from "@/pages/monitor/useMonitorSchoolBulk
 import { useMonitorSchoolHeadAccountsPanelState } from "@/pages/monitor/useMonitorSchoolHeadAccountsPanelState";
 import { useMonitorSchoolRecordForm } from "@/pages/monitor/useMonitorSchoolRecordForm";
 import type {
+  SchoolHeadAccountActionVerificationTarget,
   SchoolHeadAccountActivationResult,
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
@@ -31,6 +32,7 @@ import type {
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountProvisioningReceipt,
   SchoolHeadAccountRemovalResult,
+  SchoolHeadAccountRestoreResult,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
   SchoolHeadPasswordResetLinkResult,
@@ -79,9 +81,13 @@ interface UseMonitorSchoolsSectionOptions {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change",
+    targetStatus: SchoolHeadAccountActionVerificationTarget,
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
+  recoverSchoolHeadSetupLink: (
+    schoolId: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+  ) => Promise<SchoolHeadAccountRestoreResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
     payload: { reason: string; verificationChallengeId: string; verificationCode: string },
@@ -155,6 +161,7 @@ export function useMonitorSchoolsSection({
   activateSchoolHeadAccount,
   issueSchoolHeadAccountActionVerificationCode,
   issueSchoolHeadSetupLink,
+  recoverSchoolHeadSetupLink,
   issueSchoolHeadPasswordResetLink,
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
@@ -232,6 +239,7 @@ export function useMonitorSchoolsSection({
     activateSchoolHeadAccount,
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
+    recoverSchoolHeadSetupLink,
     issueSchoolHeadPasswordResetLink,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,

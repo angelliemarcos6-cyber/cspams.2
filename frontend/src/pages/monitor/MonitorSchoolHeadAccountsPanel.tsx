@@ -1,13 +1,11 @@
 import {
   AlertCircle,
   AlertTriangle,
-  CheckCircle2,
   ChevronDown,
   Database,
   Edit2,
   Filter,
   Plus,
-  RefreshCw,
   Save,
   Search,
   ShieldCheck,
@@ -15,7 +13,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { SchoolRecord } from "@/types";
+import { ACCOUNT_STATUS, type SchoolRecord } from "@/types";
+import { getAccountStatusLabel, normalizeAccountStatus } from "./schoolHeadAccountStateMachine";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 export type SchoolHeadAccountsStatusFilter =
@@ -51,23 +50,22 @@ export interface MonitorSchoolHeadAccountsPanelProps {
 
 function accountStatusLabel(status: string | null | undefined): string {
   if (!status) return "No Account";
-  const normalized = status.toLowerCase();
-  if (normalized === "active") return "Active";
-  if (normalized === "pending_setup") return "Pending Setup";
-  if (normalized === "pending_verification") return "Pending Verification";
-  if (normalized === "suspended") return "Suspended";
-  if (normalized === "locked") return "Locked";
-  if (normalized === "archived") return "Archived";
+  const normalized = normalizeAccountStatus(status);
+  if (normalized) {
+    return getAccountStatusLabel(normalized);
+  }
   return status;
 }
 
 function accountStatusTone(status: string | null | undefined): string {
-  const normalized = (status ?? "").toLowerCase();
-  if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (normalized === "pending_verification") return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
-  if (normalized === "suspended" || normalized === "locked") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  if (normalized === "archived") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+  const normalized = normalizeAccountStatus(status);
+  if (normalized === ACCOUNT_STATUS.active) return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
+  if (normalized === ACCOUNT_STATUS.pendingSetup) return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (normalized === ACCOUNT_STATUS.pendingVerification) return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
+  if (normalized === ACCOUNT_STATUS.suspended || normalized === ACCOUNT_STATUS.locked) {
+    return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+  }
+  if (normalized === ACCOUNT_STATUS.archived) return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
@@ -102,9 +100,8 @@ export function MonitorSchoolHeadAccountsPanel({
           <div>
             <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
             <p className="mt-0.5 text-xs text-slate-600">
-              Passwords are never shown/stored. After setup, the account moves to{" "}
-              <span className="font-semibold">Pending Verification</span> until a Division Monitor activates it. Use{" "}
-              <span className="font-semibold">Reset Password</span> to send a one-time password reset link.
+              Passwords are never shown/stored. The primary account action is now driven by the account lifecycle
+              state machine, so each row only exposes the backend-valid next step.
             </p>
           </div>
           <button
@@ -197,7 +194,7 @@ export function MonitorSchoolHeadAccountsPanel({
                 <th className="w-[22rem] px-3 py-1.5 text-left">Contact</th>
                 <th className="w-36 px-3 py-1.5 text-left">Status</th>
                 <th className="w-44 px-3 py-1.5 text-left">Activity</th>
-                <th className="w-28 px-3 py-1.5 text-right">Actions</th>
+                <th className="w-[20rem] px-3 py-1.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -233,11 +230,13 @@ export function MonitorSchoolHeadAccountsPanel({
                   const account = resolvedRecord.schoolHeadAccount ?? null;
                   const isEditing = actions.editingSchoolHeadAccountSchoolId === resolvedRecord.id;
                   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${resolvedRecord.id}:`));
-                  const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+                  const resolvedAccountStatus = normalizeAccountStatus(account?.accountStatus);
+                  const normalizedAccountStatus = resolvedAccountStatus ?? "";
+                  const allowedLifecycleActions = actions.resolveLifecycleActions(resolvedRecord);
                   const emailVerified = Boolean(account?.emailVerifiedAt);
-                  const verificationLabel = normalizedAccountStatus === "pending_setup"
+                  const verificationLabel = normalizedAccountStatus === ACCOUNT_STATUS.pendingSetup
                     ? "Setup needed"
-                    : normalizedAccountStatus === "pending_verification"
+                    : normalizedAccountStatus === ACCOUNT_STATUS.pendingVerification
                       ? "Awaiting monitor approval"
                       : account?.verifiedAt
                         ? "Monitor approved"
@@ -245,7 +244,9 @@ export function MonitorSchoolHeadAccountsPanel({
                           ? "Verified"
                           : "Not verified";
                   const verificationTone =
-                    normalizedAccountStatus === "pending_setup" || normalizedAccountStatus === "pending_verification" || !emailVerified
+                    normalizedAccountStatus === ACCOUNT_STATUS.pendingSetup
+                    || normalizedAccountStatus === ACCOUNT_STATUS.pendingVerification
+                    || !emailVerified
                       ? "text-amber-700"
                       : "text-primary-700";
                   const setupLinkExpiresAtMs = account?.setupLinkExpiresAt
@@ -401,20 +402,30 @@ export function MonitorSchoolHeadAccountsPanel({
                               {account ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                               <span className="sr-only">{account ? "Edit" : "Create"}</span>
                             </button>
-                            {account && (
-                              <button
-                                type="button"
-                                onClick={() => void actions.handleIssueSchoolHeadSetupLink(resolvedRecord)}
-                                disabled={isRowSaving || isSaving}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-primary-200 bg-primary-50 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                title={normalizedAccountStatus === "pending_setup" ? "Send Setup Link" : "Send Password Reset Link"}
-                              >
-                                <RefreshCw className="h-4 w-4" />
-                                <span className="sr-only">
-                                  {normalizedAccountStatus === "pending_setup" ? "Send Setup Link" : "Send Password Reset Link"}
-                                </span>
-                              </button>
-                            )}
+                            {/* FSM CHANGE: render only the lifecycle actions allowed for the current account state. */}
+                            {account &&
+                              allowedLifecycleActions.map((action) => {
+                                const lifecycleState = actions.getLifecycleActionState(resolvedRecord.id, action);
+                                const lifecycleTone = lifecycleState.phase === "failure"
+                                  ? "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                  : lifecycleState.phase === "success"
+                                    ? "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
+                                    : "border-primary-200 bg-white text-primary-700 hover:bg-primary-50";
+
+                                return (
+                                  <button
+                                    key={`${resolvedRecord.id}:${action}`}
+                                    type="button"
+                                    onClick={() => void actions.handleLifecycleAction(resolvedRecord, action)}
+                                    disabled={lifecycleState.disabled}
+                                    className={`inline-flex items-center rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${lifecycleTone}`}
+                                    title={actions.getLifecycleActionLabel(action)}
+                                    data-account-action-state={lifecycleState.phase}
+                                  >
+                                    {lifecycleState.label}
+                                  </button>
+                                );
+                              })}
                             {account && (
                               <div
                                 className="relative inline-flex"
@@ -436,50 +447,13 @@ export function MonitorSchoolHeadAccountsPanel({
                                 </button>
                                 {actions.openAccountRowMenuSchoolId === resolvedRecord.id && (
                                   <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
-                                    {normalizedAccountStatus === "pending_verification" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.openPendingAccountAction({
-                                            kind: "activate",
-                                            schoolId: resolvedRecord.id,
-                                            schoolName: resolvedRecord.schoolName,
-                                            actionLabel: "Activate account",
-                                          })
-                                        }
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
-                                        Activate
-                                      </button>
-                                    )}
-                                    {normalizedAccountStatus !== "active" &&
-                                      normalizedAccountStatus !== "pending_setup" &&
-                                      normalizedAccountStatus !== "pending_verification" && (
+                                    {normalizedAccountStatus === ACCOUNT_STATUS.active && (
                                       <button
                                         type="button"
                                         onClick={() =>
                                           actions.handleUpdateSchoolHeadAccount(
                                             resolvedRecord,
-                                            { accountStatus: "active" },
-                                            "Reactivate account",
-                                          )
-                                        }
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
-                                        Reactivate
-                                      </button>
-                                    )}
-                                    {normalizedAccountStatus === "active" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.handleUpdateSchoolHeadAccount(
-                                            resolvedRecord,
-                                            { accountStatus: "suspended" },
+                                            { accountStatus: ACCOUNT_STATUS.suspended },
                                             "Suspend account",
                                           )
                                         }
@@ -490,13 +464,13 @@ export function MonitorSchoolHeadAccountsPanel({
                                         Suspend
                                       </button>
                                     )}
-                                    {normalizedAccountStatus === "active" && (
+                                    {normalizedAccountStatus === ACCOUNT_STATUS.active && (
                                       <button
                                         type="button"
                                         onClick={() =>
                                           actions.handleUpdateSchoolHeadAccount(
                                             resolvedRecord,
-                                            { accountStatus: "locked" },
+                                            { accountStatus: ACCOUNT_STATUS.locked },
                                             "Lock account",
                                           )
                                         }
@@ -512,11 +486,11 @@ export function MonitorSchoolHeadAccountsPanel({
                                       onClick={() =>
                                         actions.handleUpdateSchoolHeadAccount(
                                           resolvedRecord,
-                                          { accountStatus: "archived" },
+                                          { accountStatus: ACCOUNT_STATUS.archived },
                                           "Archive account",
                                         )
                                       }
-                                      disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
+                                      disabled={isRowSaving || isSaving || normalizedAccountStatus === ACCOUNT_STATUS.archived}
                                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
                                     >
                                       <Trash2 className="h-3.5 w-3.5 text-slate-600" />
@@ -524,14 +498,7 @@ export function MonitorSchoolHeadAccountsPanel({
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        actions.openPendingAccountAction({
-                                          kind: "remove",
-                                          schoolId: resolvedRecord.id,
-                                          schoolName: resolvedRecord.schoolName,
-                                          actionLabel: "Remove account",
-                                        })
-                                      }
+                                      onClick={() => actions.openRemoveAccountAction(resolvedRecord)}
                                       disabled={isRowSaving || isSaving}
                                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
                                     >
@@ -602,7 +569,11 @@ export function MonitorSchoolHeadAccountsPanel({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">{actions.pendingAccountAction.actionLabel}</h3>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {actions.pendingAccountAction.kind === "lifecycle"
+                    ? actions.getLifecycleActionLabel(actions.pendingAccountAction.action)
+                    : actions.pendingAccountAction.actionLabel}
+                </h3>
                 <p className="mt-1 text-xs text-slate-600">{actions.pendingActionDescription}</p>
               </div>
               <button
@@ -617,18 +588,14 @@ export function MonitorSchoolHeadAccountsPanel({
 
             <div className="mt-3">
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                {actions.pendingAccountAction.kind === "activate" ? "Activation Note" : "Reason"}
+                {actions.pendingAccountReasonLabel}
               </label>
               <textarea
                 ref={actions.pendingAccountReasonRef}
                 value={actions.pendingAccountReason}
                 onChange={(event) => actions.updatePendingAccountReason(event.target.value)}
                 rows={3}
-                placeholder={
-                  actions.pendingAccountAction.kind === "activate"
-                    ? "Optional note for approval"
-                    : "Type a short reason (min 5 characters)"
-                }
+                placeholder={actions.pendingAccountReasonPlaceholder}
                 className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               />
               {actions.pendingAccountReasonError && (
@@ -702,7 +669,7 @@ export function MonitorSchoolHeadAccountsPanel({
                 disabled={actions.isConfirmPendingAccountActionDisabled}
                 className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Confirm
+                {actions.pendingActionConfirmLabel}
               </button>
             </div>
           </section>

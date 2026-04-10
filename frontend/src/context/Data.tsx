@@ -12,12 +12,14 @@ import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
+  SchoolHeadAccountActionVerificationTarget,
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountRemovalResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountProvisioningReceipt,
+  SchoolHeadAccountRestoreResult,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
   SchoolHeadPasswordResetLinkResult,
@@ -110,6 +112,10 @@ interface SchoolHeadPasswordResetLinkResponse {
   data: SchoolHeadPasswordResetLinkResult;
 }
 
+interface SchoolHeadAccountRestoreResponse {
+  data: SchoolHeadAccountRestoreResult;
+}
+
 interface SchoolHeadAccountProfileResponse {
   data: SchoolHeadAccountProfileUpsertResult;
 }
@@ -147,12 +153,16 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
+    targetStatus: SchoolHeadAccountActionVerificationTarget,
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (
     schoolId: string,
     reason?: string | null,
   ) => Promise<SchoolHeadSetupLinkResult>;
+  recoverSchoolHeadSetupLink: (
+    schoolId: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+  ) => Promise<SchoolHeadAccountRestoreResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
     payload: { reason: string; verificationChallengeId: string; verificationCode: string },
@@ -753,7 +763,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
     async (
       schoolId: string,
-      targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
+      targetStatus: SchoolHeadAccountActionVerificationTarget,
     ): Promise<SchoolHeadAccountActionVerificationCodeResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
@@ -867,6 +877,80 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const result = response.data?.data;
         if (!result?.account) {
           throw new Error("Setup link response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError, syncRecords],
+  );
+
+  const recoverSchoolHeadSetupLink = useCallback(
+    async (
+      schoolId: string,
+      payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    ): Promise<SchoolHeadAccountRestoreResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const reason = payload.reason.trim();
+      const verificationChallengeId = payload.verificationChallengeId.trim();
+      const verificationCode = payload.verificationCode.trim();
+
+      if (reason.length < 5) {
+        throw new Error("Reason must be at least 5 characters.");
+      }
+
+      if (!verificationChallengeId) {
+        throw new Error("Verification challenge is required.");
+      }
+
+      if (!/^\d{6}$/.test(verificationCode)) {
+        throw new Error("Verification code must be a 6-digit number.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountRestoreResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/setup-link/recover`,
+          {
+            method: "POST",
+            token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
+            body: {
+              reason,
+              verificationChallengeId,
+              verificationCode,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account) {
+          throw new Error("Account restore response is empty.");
         }
 
         setRecords((current) =>
@@ -1253,6 +1337,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       activateSchoolHeadAccount,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
+      recoverSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
@@ -1281,6 +1366,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       activateSchoolHeadAccount,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
+      recoverSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
