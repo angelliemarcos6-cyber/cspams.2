@@ -21,18 +21,31 @@ use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class IndicatorSubmissionController extends Controller
 {
+    private const ROLLING_YEAR_SYNC_CACHE_KEY = 'cspams.indicators.rolling_year_window.last_sync';
+
+    private const ROLLING_YEAR_SYNC_TTL_MINUTES = 30;
+
+    private const ROLLING_YEAR_SYNC_LOCK_KEY = 'cspams.indicators.rolling_year_window.sync_lock';
+
+    private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
+
+    private static ?bool $usersHasAccountTypeColumn = null;
+
     public function academicYears(Request $request): JsonResponse
     {
         $this->requireUser($request);
@@ -420,7 +433,7 @@ class IndicatorSubmissionController extends Controller
             ->with('roles')
             ->where('school_id', $submission->school_id);
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $schoolHeadsQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -431,14 +444,12 @@ class IndicatorSubmissionController extends Controller
 
         $schoolHeads = $schoolHeadsQuery->get();
 
-        foreach ($schoolHeads as $schoolHead) {
-            $schoolHead->notify(new IndicatorReviewOutcomeNotification(
-                $submission,
-                $user,
-                $decision,
-                $notes,
-            ));
-        }
+        Notification::send($schoolHeads, new IndicatorReviewOutcomeNotification(
+            $submission,
+            $user,
+            $decision,
+            $notes,
+        ));
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'indicators',
@@ -487,6 +498,72 @@ class IndicatorSubmissionController extends Controller
         return $user;
     }
 
+    private function syncRollingIndicatorYears(): void
+    {
+        if ($this->hasFreshRollingIndicatorYearSyncMarker()) {
+            return;
+        }
+
+        $cacheStore = Cache::getStore();
+        if (! ($cacheStore instanceof LockProvider)) {
+            $this->runRollingIndicatorYearSync();
+
+            return;
+        }
+
+        $lock = Cache::lock(self::ROLLING_YEAR_SYNC_LOCK_KEY, self::ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS);
+        if (! $lock->get()) {
+            return;
+        }
+
+        try {
+            if ($this->hasFreshRollingIndicatorYearSyncMarker()) {
+                return;
+            }
+
+            $this->runRollingIndicatorYearSync();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function hasFreshRollingIndicatorYearSyncMarker(): bool
+    {
+        $lastSyncedAt = Cache::get(self::ROLLING_YEAR_SYNC_CACHE_KEY);
+        if (! is_string($lastSyncedAt)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($lastSyncedAt)
+                ->greaterThan(now()->subMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES));
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function runRollingIndicatorYearSync(): void
+    {
+        app(RollingIndicatorYearWindow::class)->sync();
+        Cache::put(
+            self::ROLLING_YEAR_SYNC_CACHE_KEY,
+            now()->toISOString(),
+            now()->addMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES),
+        );
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
     private function applyVisibilityScope(Builder $query, User $user): void
     {
         if ($this->isSchoolHead($user)) {

@@ -16,21 +16,29 @@ class NotificationController extends Controller
     {
         $user = $this->requireUser($request);
         $perPage = $this->resolvePerPage($request);
+        $page = $this->resolvePage($request);
+        $counts = $user->notifications()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) as unread_count')
+            ->first();
+        $total = (int) ($counts?->total_count ?? 0);
+        $unreadCount = (int) ($counts?->unread_count ?? 0);
         $notifications = $user->notifications()
             ->orderByDesc('created_at')
-            ->paginate($perPage)
-            ->appends($request->query());
+            ->forPage($page, $perPage)
+            ->get();
+        $lastPage = max(1, (int) ceil($total / $perPage));
 
         return response()->json([
-            'data' => collect($notifications->items())
+            'data' => $notifications
                 ->map(fn (DatabaseNotification $notification): array => $this->serializeNotification($notification))
                 ->values(),
             'meta' => [
-                'currentPage' => $notifications->currentPage(),
-                'lastPage' => $notifications->lastPage(),
-                'perPage' => $notifications->perPage(),
-                'total' => $notifications->total(),
-                'unreadCount' => $user->unreadNotifications()->count(),
+                'currentPage' => $page,
+                'lastPage' => $lastPage,
+                'perPage' => $perPage,
+                'total' => $total,
+                'unreadCount' => $unreadCount,
             ],
         ]);
     }
@@ -86,6 +94,17 @@ class NotificationController extends Controller
         }
 
         return min($perPage, $max);
+    }
+
+    private function resolvePage(Request $request, int $default = 1): int
+    {
+        $page = $request->integer('page');
+
+        if ($page <= 0) {
+            return $default;
+        }
+
+        return $page;
     }
 
     /**

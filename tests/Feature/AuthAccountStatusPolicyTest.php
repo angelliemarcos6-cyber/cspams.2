@@ -89,6 +89,7 @@ class AuthAccountStatusPolicyTest extends TestCase
             'suspended' => [AccountStatus::SUSPENDED->value],
             'locked' => [AccountStatus::LOCKED->value],
             'archived' => [AccountStatus::ARCHIVED->value],
+            'deleted' => [AccountStatus::DELETED->value],
         ];
     }
 

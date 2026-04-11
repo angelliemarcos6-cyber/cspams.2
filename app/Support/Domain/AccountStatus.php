@@ -10,6 +10,7 @@ enum AccountStatus: string
     case SUSPENDED = 'suspended';
     case LOCKED = 'locked';
     case ARCHIVED = 'archived';
+    case DELETED = 'deleted';
 
     /**
      * @return array<string, string>
@@ -23,6 +24,7 @@ enum AccountStatus: string
             self::SUSPENDED->value => 'Suspended',
             self::LOCKED->value => 'Locked',
             self::ARCHIVED->value => 'Archived',
+            self::DELETED->value => 'Deleted',
         ];
     }
 

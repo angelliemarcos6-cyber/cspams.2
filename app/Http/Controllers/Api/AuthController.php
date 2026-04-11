@@ -44,6 +44,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    private static ?bool $usersHasAccountTypeColumn = null;
+
+    private static ?bool $sessionsTableExistsCache = null;
+
+    private static ?bool $mfaResetTicketsTableExistsCache = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
     ) {
@@ -847,7 +853,7 @@ class AuthController extends Controller
         $user = $setupToken->user()->with('school')->first();
         $supportsAccountSetup = false;
         if ($user) {
-            if (Schema::hasColumn('users', 'account_type')) {
+            if ($this->usersHaveAccountTypeColumn()) {
                 $supportsAccountSetup = $user->account_type === $role;
             } else {
                 $supportsAccountSetup = UserRoleResolver::has($user, $role);
@@ -1373,7 +1379,7 @@ class AuthController extends Controller
         $login = strtolower(trim($request->string('login')->toString()));
         $password = $request->string('password')->toString();
         $requestId = (int) $request->integer('request_id');
-        $approvalToken = $this->normalizeBackupCode($request->string('approval_token')->toString());
+        $approvalToken = $this->normalizeApprovalToken($request->string('approval_token')->toString());
 
         $user = $this->resolveUserForLogin($role, $login);
         if (! $user || ! Hash::check($password, $user->password)) {
@@ -1626,10 +1632,42 @@ class AuthController extends Controller
         }
 
         $role = $this->resolveRoleForUser($user);
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $tokenPayload = DB::transaction(function () use ($user, $role, $request, $currentToken): ?array {
+            $lockedCurrentToken = PersonalAccessToken::query()
+                ->lockForUpdate()
+                ->whereKey($currentToken->getKey())
+                ->where('tokenable_type', User::class)
+                ->where('tokenable_id', $user->id)
+                ->first();
 
-        // Rotate by revoking the old token immediately after issuing a replacement.
-        $currentToken->delete();
+            if (! $lockedCurrentToken instanceof PersonalAccessToken) {
+                return null;
+            }
+
+            $payload = $this->issueDashboardToken($user, $role, $request, false);
+
+            // Rotate by revoking the old token immediately after issuing a replacement.
+            $lockedCurrentToken->delete();
+
+            return $payload;
+        });
+
+        if ($tokenPayload === null) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.token_refresh.failed',
+                'failure',
+                $user,
+                $role,
+                $user->email,
+                ['reason' => 'token_already_rotated'],
+            );
+
+            return response()->json(
+                ['message' => 'This token was already refreshed. Please retry with your latest session or sign in again.'],
+                Response::HTTP_UNAUTHORIZED,
+            );
+        }
 
         AuthAuditLogger::record(
             $request,
@@ -1781,7 +1819,7 @@ class AuthController extends Controller
         }
 
         if (str_starts_with($identifier, 'web_')) {
-            if (! Schema::hasTable('sessions')) {
+            if (! $this->sessionsTableExists()) {
                 return response()->json(
                     ['message' => 'Session storage is not configured for device revocation.'],
                     Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -1945,7 +1983,7 @@ class AuthController extends Controller
                 })
                 ->orderByDesc('id');
 
-            if (Schema::hasColumn('users', 'account_type')) {
+            if ($this->usersHaveAccountTypeColumn()) {
                 return $baseQuery
                     ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
                     ->first();
@@ -2110,7 +2148,7 @@ class AuthController extends Controller
 
     private function revokeUserWebSessions(User $user, ?string $exceptSessionId = null): int
     {
-        if (! Schema::hasTable('sessions')) {
+        if (! $this->sessionsTableExists()) {
             return 0;
         }
 
@@ -2140,7 +2178,7 @@ class AuthController extends Controller
         $entries = [];
         $includedCurrent = false;
 
-        if (Schema::hasTable('sessions')) {
+        if ($this->sessionsTableExists()) {
             $rows = DB::table('sessions')
                 ->where('user_id', $user->id)
                 ->orderByDesc('last_activity')
@@ -2620,30 +2658,38 @@ class AuthController extends Controller
 
     private function consumeMonitorBackupCode(User $user, string $normalizedCode): bool
     {
-        $stored = $user->mfa_backup_codes;
-        if (! is_array($stored) || $stored === []) {
+        return DB::transaction(function () use ($user, $normalizedCode): bool {
+            /** @var User|null $freshUser */
+            $freshUser = User::query()->lockForUpdate()->find($user->id);
+            if (! $freshUser) {
+                return false;
+            }
+
+            $stored = $freshUser->mfa_backup_codes;
+            if (! is_array($stored) || $stored === []) {
+                return false;
+            }
+
+            foreach ($stored as $index => $hash) {
+                if (! is_string($hash) || $hash === '') {
+                    continue;
+                }
+
+                if (! Hash::check($normalizedCode, $hash)) {
+                    continue;
+                }
+
+                unset($stored[$index]);
+
+                $freshUser->forceFill([
+                    'mfa_backup_codes' => array_values($stored),
+                ])->save();
+
+                return true;
+            }
+
             return false;
-        }
-
-        foreach ($stored as $index => $hash) {
-            if (! is_string($hash) || $hash === '') {
-                continue;
-            }
-
-            if (! Hash::check($normalizedCode, $hash)) {
-                continue;
-            }
-
-            unset($stored[$index]);
-
-            $user->forceFill([
-                'mfa_backup_codes' => array_values($stored),
-            ])->save();
-
-            return true;
-        }
-
-        return false;
+        });
     }
 
     private function monitorBackupCodeCount(User $user): int
@@ -2657,6 +2703,16 @@ class AuthController extends Controller
     }
 
     private function normalizeBackupCode(string $value): ?string
+    {
+        $compact = preg_replace('/[^a-zA-Z0-9]/', '', strtoupper(trim($value)));
+        if (! is_string($compact) || strlen($compact) !== 8) {
+            return null;
+        }
+
+        return substr($compact, 0, 4) . '-' . substr($compact, 4, 4);
+    }
+
+    private function normalizeApprovalToken(string $value): ?string
     {
         $compact = preg_replace('/[^a-zA-Z0-9]/', '', strtoupper(trim($value)));
         if (! is_string($compact) || strlen($compact) !== 8) {
@@ -2688,7 +2744,7 @@ class AuthController extends Controller
             return null;
         }
 
-        return $this->normalizeBackupCode($configured);
+        return $this->normalizeApprovalToken($configured);
     }
 
     private function monitorMfaResetApprovalToken(): string
@@ -2723,7 +2779,7 @@ class AuthController extends Controller
 
     private function monitorMfaResetStorageAvailable(): bool
     {
-        return Schema::hasTable('monitor_mfa_reset_tickets');
+        return $this->mfaResetTicketsTableExists();
     }
 
     private function monitorMfaResetStorageUnavailableResponse(
@@ -2777,13 +2833,52 @@ class AuthController extends Controller
         return $frontend . '/#/reset-password?' . $query;
     }
 
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
+
+    private function sessionsTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('sessions');
+        }
+
+        if (self::$sessionsTableExistsCache === null) {
+            self::$sessionsTableExistsCache = Schema::hasTable('sessions');
+        }
+
+        return self::$sessionsTableExistsCache;
+    }
+
+    private function mfaResetTicketsTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('monitor_mfa_reset_tickets');
+        }
+
+        if (self::$mfaResetTicketsTableExistsCache === null) {
+            self::$mfaResetTicketsTableExistsCache = Schema::hasTable('monitor_mfa_reset_tickets');
+        }
+
+        return self::$mfaResetTicketsTableExistsCache;
+    }
+
     private function resolvePasswordResetRoleForUser(?User $user, ?string $roleHint = null): ?string
     {
         if (! $user) {
             return null;
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $accountType = is_string($user->account_type)
                 ? trim($user->account_type)
                 : null;
@@ -2831,7 +2926,7 @@ class AuthController extends Controller
             }
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $accountType = is_string($user->account_type)
                 ? trim($user->account_type)
                 : null;

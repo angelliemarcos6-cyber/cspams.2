@@ -23,6 +23,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,10 +31,19 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolHeadAccountController extends Controller
 {
+    private static ?bool $usersHasAccountTypeColumn = null;
+
+    private static ?bool $usersHasDeleteRecordFlags = null;
+
+    private static ?bool $sessionsTableExists = null;
+
+    private static ?bool $accountSetupTokensTableExists = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
         private readonly MonitorActionVerificationService $monitorActionVerificationService,
@@ -168,9 +178,11 @@ class SchoolHeadAccountController extends Controller
                 );
             }
 
+            $normalizedEmail = strtolower(trim($email));
             $updates = [
                 'name' => $name,
-                'email' => $email,
+                'email' => $normalizedEmail,
+                'email_normalized' => $normalizedEmail,
             ];
 
             if ($emailChanged) {
@@ -297,7 +309,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $duplicateQuery = User::query()->where('school_id', $school->id);
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -324,10 +336,21 @@ class SchoolHeadAccountController extends Controller
         $account->verified_at = null;
         $account->verification_notes = null;
         $account->school_id = $school->id;
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
-        $account->save();
+        try {
+            $account->save();
+        } catch (QueryException $exception) {
+            if ($this->isUniqueConstraintViolation($exception)) {
+                return response()->json(
+                    ['message' => 'A School Head account is already linked to this school. Update it instead of creating a new one.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                );
+            }
+
+            throw $exception;
+        }
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
 
         $issuedSetup = $this->schoolHeadAccountSetupService->issue(
@@ -502,9 +525,7 @@ class SchoolHeadAccountController extends Controller
         $previousStatus = $account->accountStatus();
         $previousFlagged = $account->flagged_at !== null;
         $deleteRecordFlagRequested = $request->has('deleteRecordFlagged');
-        $deleteRecordFlagAvailable = Schema::hasColumn('users', 'delete_record_flagged_at')
-            && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
-            && Schema::hasColumn('users', 'delete_record_flag_reason');
+        $deleteRecordFlagAvailable = $this->usersHaveDeleteRecordFlags();
 
         if ($deleteRecordFlagRequested && ! $deleteRecordFlagAvailable) {
             return response()->json(
@@ -741,20 +762,55 @@ class SchoolHeadAccountController extends Controller
         $removedCount = 0;
         $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
         $revocationSummaries = [];
+        $accountIdInts = $accounts
+            ->map(static fn (User $account): int => (int) $account->id)
+            ->values()
+            ->all();
 
-        DB::transaction(function () use ($accounts, $setupTokenStorageAvailable, &$removedCount, &$revocationSummaries): void {
+        $tokenRevocationsByUserId = collect();
+        if ($accountIdInts !== []) {
+            $tokenRevocationsByUserId = PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->selectRaw('tokenable_id, COUNT(*) as aggregate_count')
+                ->groupBy('tokenable_id')
+                ->pluck('aggregate_count', 'tokenable_id');
+
+            PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->delete();
+        }
+
+        $sessionRevocationsByUserId = collect();
+        if ($this->sessionsTableExists() && $accountIdInts !== []) {
+            $sessionRevocationsByUserId = DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->selectRaw('user_id, COUNT(*) as aggregate_count')
+                ->groupBy('user_id')
+                ->pluck('aggregate_count', 'user_id');
+
+            DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        if ($setupTokenStorageAvailable && $accountIdInts !== []) {
+            DB::table('account_setup_tokens')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        DB::transaction(function () use ($accounts, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
             foreach ($accounts as $account) {
-                $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
-
-                if ($setupTokenStorageAvailable) {
-                    $account->accountSetupTokens()->delete();
-                }
-
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
 
+                $archivedEmail = 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid';
+
                 $account->forceFill([
-                    'email' => 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid',
+                    'email' => $archivedEmail,
+                    'email_normalized' => $archivedEmail,
                     'account_status' => AccountStatus::ARCHIVED->value,
                     'must_reset_password' => true,
                     'password_changed_at' => null,
@@ -767,8 +823,8 @@ class SchoolHeadAccountController extends Controller
 
                 $revocationSummaries[] = [
                     'user_id' => (int) $account->id,
-                    'revoked_tokens' => $revocationSummary['revokedTokens'],
-                    'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+                    'revoked_tokens' => (int) ($tokenRevocationsByUserId->get((int) $account->id, 0)),
+                    'revoked_web_sessions' => (int) ($sessionRevocationsByUserId->get((int) $account->id, 0)),
                 ];
 
                 $removedCount += 1;
@@ -1099,7 +1155,7 @@ class SchoolHeadAccountController extends Controller
             $query->with('latestAccountSetupToken');
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             return $query
                 ->with(['roles', 'verifiedBy'])
                 ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
@@ -1164,7 +1220,7 @@ class SchoolHeadAccountController extends Controller
         $revokedTokens = $account->tokens()->delete();
 
         $revokedWebSessions = 0;
-        if (Schema::hasTable('sessions')) {
+        if ($this->sessionsTableExists()) {
             $revokedWebSessions = DB::table('sessions')
                 ->where('user_id', $account->id)
                 ->delete();
@@ -1178,7 +1234,67 @@ class SchoolHeadAccountController extends Controller
 
     private function accountSetupTokensAvailable(): bool
     {
-        return Schema::hasTable('account_setup_tokens');
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('account_setup_tokens');
+        }
+
+        if (self::$accountSetupTokensTableExists === null) {
+            self::$accountSetupTokensTableExists = Schema::hasTable('account_setup_tokens');
+        }
+
+        return self::$accountSetupTokensTableExists;
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
+
+    private function usersHaveDeleteRecordFlags(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'delete_record_flagged_at')
+                && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
+                && Schema::hasColumn('users', 'delete_record_flag_reason');
+        }
+
+        if (self::$usersHasDeleteRecordFlags === null) {
+            self::$usersHasDeleteRecordFlags = Schema::hasColumn('users', 'delete_record_flagged_at')
+                && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
+                && Schema::hasColumn('users', 'delete_record_flag_reason');
+        }
+
+        return self::$usersHasDeleteRecordFlags;
+    }
+
+    private function sessionsTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('sessions');
+        }
+
+        if (self::$sessionsTableExists === null) {
+            self::$sessionsTableExists = Schema::hasTable('sessions');
+        }
+
+        return self::$sessionsTableExists;
+    }
+
+    private function isUniqueConstraintViolation(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'unique constraint failed')
+            || str_contains($message, 'duplicate entry')
+            || str_contains($message, 'integrity constraint violation');
     }
 
     private function loadLatestAccountSetupToken(User $account): void

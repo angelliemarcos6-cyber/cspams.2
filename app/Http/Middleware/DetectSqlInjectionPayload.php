@@ -10,6 +10,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class DetectSqlInjectionPayload
 {
+    private const MAX_SCAN_DEPTH = 10;
+
     private ?bool $guardEnabledCache = null;
 
     /**
@@ -131,8 +133,12 @@ class DetectSqlInjectionPayload
      * @param mixed $value
      * @return array{field: string, pattern: string}|null
      */
-    private function scanInput(mixed $value, string $path = ''): ?array
+    private function scanInput(mixed $value, string $path = '', int $depth = 0): ?array
     {
+        if ($depth > self::MAX_SCAN_DEPTH) {
+            return null;
+        }
+
         if (is_array($value)) {
             foreach ($value as $key => $nestedValue) {
                 $segment = strtolower(trim((string) $key));
@@ -141,7 +147,7 @@ class DetectSqlInjectionPayload
                 }
 
                 $nestedPath = $path === '' ? (string) $key : $path . '.' . $key;
-                $result = $this->scanInput($nestedValue, $nestedPath);
+                $result = $this->scanInput($nestedValue, $nestedPath, $depth + 1);
                 if ($result !== null) {
                     return $result;
                 }

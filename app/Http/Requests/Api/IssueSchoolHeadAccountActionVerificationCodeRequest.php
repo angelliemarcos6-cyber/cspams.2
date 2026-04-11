@@ -29,7 +29,7 @@ class IssueSchoolHeadAccountActionVerificationCodeRequest extends FormRequest
                     AccountStatus::SUSPENDED->value,
                     AccountStatus::LOCKED->value,
                     AccountStatus::ARCHIVED->value,
-                    'deleted',
+                    AccountStatus::DELETED->value,
                     self::TARGET_EMAIL_CHANGE,
                     self::TARGET_PASSWORD_RESET,
                 ]),

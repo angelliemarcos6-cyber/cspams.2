@@ -29,7 +29,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -37,6 +39,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SchoolRecordController extends Controller
 {
+    private static ?bool $usersHaveDeleteRecordFlagsCache = null;
+
+    private static ?bool $usersHaveAccountTypeColumnCache = null;
+
+    private static ?bool $accountSetupTokensTableExistsCache = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
     ) {
@@ -107,14 +115,14 @@ class SchoolRecordController extends Controller
                     'flagged_reason',
                 ];
 
-                if (Schema::hasColumn('users', 'delete_record_flagged_at')) {
+                if ($this->usersHaveDeleteRecordFlags()) {
                     $columns[] = 'delete_record_flagged_at';
                     $columns[] = 'delete_record_flag_reason';
                 }
 
                 $query->select($columns);
 
-                if (Schema::hasTable('account_setup_tokens')) {
+                if ($this->accountSetupTokensTableExists()) {
                     $query->with('latestAccountSetupToken');
                 }
             }])
@@ -306,7 +314,7 @@ class SchoolRecordController extends Controller
                     'flagged_reason',
                 ]);
 
-                if (Schema::hasTable('account_setup_tokens')) {
+                if ($this->accountSetupTokensTableExists()) {
                     $query->with('latestAccountSetupToken');
                 }
             }])
@@ -363,15 +371,14 @@ class SchoolRecordController extends Controller
             );
         }
 
-        foreach ($schoolHeads as $schoolHead) {
-            $schoolHead->notify(
-                new SchoolSubmissionReminderNotification(
-                    $school,
-                    $monitor,
-                    $notes !== '' ? $notes : null,
-                ),
-            );
-        }
+        Notification::send(
+            $schoolHeads,
+            new SchoolSubmissionReminderNotification(
+                $school,
+                $monitor,
+                $notes !== '' ? $notes : null,
+            ),
+        );
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -429,13 +436,28 @@ class SchoolRecordController extends Controller
         $skipped = 0;
         $failed = 0;
         $results = [];
+        $upsertRows = [];
+
+        $normalizedSchoolCodes = [];
+        foreach ($rows as $row) {
+            $candidate = trim((string) ($row['schoolId'] ?? ''));
+            if (preg_match('/^\d{6}$/', $candidate) === 1) {
+                $normalizedSchoolCodes[strtolower($candidate)] = true;
+            }
+        }
+
+        $existingSchoolsByCode = collect();
+        if ($normalizedSchoolCodes !== []) {
+            $existingSchoolsByCode = School::withTrashed()
+                ->whereIn('school_code_normalized', array_keys($normalizedSchoolCodes))
+                ->get()
+                ->keyBy(static fn (School $school): string => (string) $school->school_code_normalized);
+        }
 
         foreach ($rows as $index => $row) {
             try {
                 $schoolCode = $this->normalizeSchoolCode((string) ($row['schoolId'] ?? ''));
-                $school = School::withTrashed()
-                    ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
-                    ->first();
+                $school = $existingSchoolsByCode->get(strtolower($schoolCode));
 
                 $action = 'created';
                 if ($school) {
@@ -451,7 +473,6 @@ class SchoolRecordController extends Controller
                             continue;
                         }
 
-                        $school->restore();
                         $restored++;
                         $action = 'restored';
                     } elseif (! $updateExisting) {
@@ -472,12 +493,16 @@ class SchoolRecordController extends Controller
                     $created++;
                 }
 
-                $this->applyArrayPayload($school, $row, $user);
+                $upsertRows[$schoolCode] = $this->schoolAttributesFromArrayPayload(
+                    $row,
+                    $user,
+                    $school?->getRawOriginal('created_at'),
+                );
 
                 $results[] = [
                     'row' => $index + 1,
                     'schoolId' => $schoolCode,
-                    'schoolName' => (string) $school->name,
+                    'schoolName' => (string) ($upsertRows[$schoolCode]['name'] ?? ''),
                     'action' => $action,
                 ];
             } catch (\Throwable $exception) {
@@ -489,6 +514,39 @@ class SchoolRecordController extends Controller
                     'message' => $exception->getMessage(),
                 ];
             }
+        }
+
+        if ($upsertRows !== []) {
+            School::query()->upsert(
+                array_values($upsertRows),
+                ['school_code_normalized'],
+                [
+                    'school_code',
+                    'name',
+                    'level',
+                    'type',
+                    'address',
+                    'district',
+                    'region',
+                    'status',
+                    'reported_student_count',
+                    'reported_teacher_count',
+                    'submitted_by',
+                    'submitted_at',
+                    'deleted_at',
+                    'updated_at',
+                ],
+            );
+
+            $affectedSchoolIds = School::query()
+                ->whereIn(
+                    'school_code_normalized',
+                    array_map(static fn (string $code): string => strtolower($code), array_keys($upsertRows)),
+                )
+                ->pluck('id')
+                ->all();
+
+            $this->syncSchoolStudentCounts($affectedSchoolIds);
         }
 
         $syncMeta = $this->buildSyncMetadataForUser($user);
@@ -559,7 +617,7 @@ class SchoolRecordController extends Controller
     {
         $schoolCode = $this->normalizeSchoolCode($request->string('schoolId')->toString());
         $existing = School::withTrashed()
-            ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
+            ->where('school_code_normalized', strtolower($schoolCode))
             ->first();
 
         if ($existing && ! $existing->trashed()) {
@@ -652,7 +710,20 @@ class SchoolRecordController extends Controller
     /**
      * @param array<string, mixed> $payload
      */
-    private function applyArrayPayload(School $school, array $payload, User $user): void
+    private function applyArrayPayload(School $school, array $payload, User $user, bool $syncStudentCount = true): void
+    {
+        $this->fillSchoolFromArrayPayload($school, $payload, $user);
+        $school->save();
+
+        if ($syncStudentCount) {
+            $this->syncSchoolStudentCount($school);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function fillSchoolFromArrayPayload(School $school, array $payload, User $user): void
     {
         $schoolCode = $this->normalizeSchoolCode((string) ($payload['schoolId'] ?? ''));
         $schoolName = trim((string) ($payload['schoolName'] ?? ''));
@@ -674,8 +745,38 @@ class SchoolRecordController extends Controller
         $school->reported_teacher_count = (int) ($payload['teacherCount'] ?? 0);
         $school->submitted_by = $user->id;
         $school->submitted_at = now();
-        $school->save();
-        $this->syncSchoolStudentCount($school);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private function schoolAttributesFromArrayPayload(array $payload, User $user, mixed $createdAt = null): array
+    {
+        $school = new School();
+        $this->fillSchoolFromArrayPayload($school, $payload, $user);
+        $timestamp = now();
+        $schoolCode = (string) $school->school_code;
+
+        return [
+            'school_code' => $schoolCode,
+            'school_code_normalized' => strtolower($schoolCode),
+            'name' => (string) $school->name,
+            'level' => (string) $school->level,
+            'type' => (string) $school->type,
+            'address' => (string) $school->address,
+            'district' => (string) $school->district,
+            'region' => (string) $school->region,
+            'status' => (string) $school->status,
+            'reported_student_count' => 0,
+            'reported_teacher_count' => (int) $school->reported_teacher_count,
+            'submitted_by' => $user->id,
+            'submitted_at' => $school->submitted_at,
+            'deleted_at' => null,
+            'created_at' => $createdAt ?? $timestamp,
+            'updated_at' => $timestamp,
+        ];
     }
 
     private function createSchoolHeadAccountIfRequested(School $school, UpsertSchoolRecordRequest $request): ?array
@@ -715,7 +816,7 @@ class SchoolRecordController extends Controller
         }
 
         $duplicateQuery = User::query()->where('school_id', $school->id);
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -738,7 +839,7 @@ class SchoolRecordController extends Controller
         $account->password_changed_at = null;
         $account->account_status = AccountStatus::PENDING_SETUP->value;
         $account->school_id = $school->id;
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
         $account->save();
@@ -886,7 +987,7 @@ class SchoolRecordController extends Controller
                         'flagged_reason',
                     ]);
 
-                    if (Schema::hasTable('account_setup_tokens')) {
+                    if ($this->accountSetupTokensTableExists()) {
                         $query->with('latestAccountSetupToken');
                     }
                 },
@@ -1097,6 +1198,52 @@ class SchoolRecordController extends Controller
 
         $school->reported_student_count = $studentCount;
         $school->saveQuietly();
+    }
+
+    /**
+     * @param array<int, int|string> $schoolIds
+     */
+    private function syncSchoolStudentCounts(array $schoolIds): void
+    {
+        $normalizedIds = collect($schoolIds)
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($normalizedIds->isEmpty()) {
+            return;
+        }
+
+        $countsBySchoolId = Student::query()
+            ->selectRaw('school_id, COUNT(*) as aggregate_count')
+            ->whereIn('school_id', $normalizedIds->all())
+            ->groupBy('school_id')
+            ->pluck('aggregate_count', 'school_id');
+
+        $normalizedIds->chunk(100)->each(function ($chunk) use ($countsBySchoolId): void {
+            $cases = [];
+            $bindings = [];
+            $chunkIds = $chunk->all();
+
+            foreach ($chunkIds as $schoolId) {
+                $cases[] = 'WHEN ? THEN ?';
+                $bindings[] = $schoolId;
+                $bindings[] = (int) $countsBySchoolId->get($schoolId, 0);
+            }
+
+            $placeholders = implode(', ', array_fill(0, count($chunkIds), '?'));
+            foreach ($chunkIds as $schoolId) {
+                $bindings[] = $schoolId;
+            }
+
+            DB::update(
+                'UPDATE schools SET reported_student_count = CASE id '
+                . implode(' ', $cases)
+                . ' END WHERE id IN (' . $placeholders . ')',
+                $bindings,
+            );
+        });
     }
 
     /**
@@ -1357,6 +1504,45 @@ class SchoolRecordController extends Controller
         }
 
         return min($perPage, $max);
+    }
+
+    private function usersHaveDeleteRecordFlags(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'delete_record_flagged_at');
+        }
+
+        if (self::$usersHaveDeleteRecordFlagsCache === null) {
+            self::$usersHaveDeleteRecordFlagsCache = Schema::hasColumn('users', 'delete_record_flagged_at');
+        }
+
+        return self::$usersHaveDeleteRecordFlagsCache;
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHaveAccountTypeColumnCache === null) {
+            self::$usersHaveAccountTypeColumnCache = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHaveAccountTypeColumnCache;
+    }
+
+    private function accountSetupTokensTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('account_setup_tokens');
+        }
+
+        if (self::$accountSetupTokensTableExistsCache === null) {
+            self::$accountSetupTokensTableExistsCache = Schema::hasTable('account_setup_tokens');
+        }
+
+        return self::$accountSetupTokensTableExistsCache;
     }
 
     private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon
