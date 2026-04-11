@@ -1,39 +1,10 @@
+import type { AccountAction, AccountStatus } from "./domain/accountStateMachine";
+export { ACCOUNT_ACTION, ACCOUNT_STATUS } from "./domain/accountStateMachine";
+export type { AccountAction, AccountStatus } from "./domain/accountStateMachine";
+
 export type UserRole = "school_head" | "monitor" | null;
-export type AccountStatus =
-  | "pending_setup"
-  | "pending_verification"
-  | "active"
-  | "suspended"
-  | "locked"
-  | "archived";
 
-// FSM CHANGE: canonical account status constants for state-machine consumers.
-export const ACCOUNT_STATUS = {
-  pendingSetup: "pending_setup",
-  pendingVerification: "pending_verification",
-  active: "active",
-  suspended: "suspended",
-  locked: "locked",
-  archived: "archived",
-} as const satisfies Record<string, AccountStatus>;
-
-export type AllowedAction =
-  | "resend_setup_link"
-  | "activate_account"
-  | "reset_password"
-  | "reactivate_account"
-  | "restore_account";
-
-// FSM CHANGE: canonical allowed account actions for frontend enforcement.
-export const ALLOWED_ACTION = {
-  resendSetupLink: "resend_setup_link",
-  activateAccount: "activate_account",
-  resetPassword: "reset_password",
-  reactivateAccount: "reactivate_account",
-  restoreAccount: "restore_account",
-} as const satisfies Record<string, AllowedAction>;
-
-export type AccountActionPhase = "idle" | "loading" | "success" | "failure";
+export type AccountActionPhase = "idle" | "sending" | "success" | "error";
 
 export type SchoolHeadAccountActionVerificationTarget =
   | "suspended"
@@ -41,8 +12,7 @@ export type SchoolHeadAccountActionVerificationTarget =
   | "archived"
   | "deleted"
   | "email_change"
-  | "password_reset"
-  | "setup_recovery";
+  | "password_reset";
 
 // FSM CHANGE: canonical verification targets used before protected account actions.
 export const SCHOOL_HEAD_ACCOUNT_ACTION_VERIFICATION_TARGET = {
@@ -52,7 +22,6 @@ export const SCHOOL_HEAD_ACCOUNT_ACTION_VERIFICATION_TARGET = {
   deleted: "deleted",
   emailChange: "email_change",
   passwordReset: "password_reset",
-  setupRecovery: "setup_recovery",
 } as const satisfies Record<string, SchoolHeadAccountActionVerificationTarget>;
 
 export type SchoolStatus = "active" | "inactive" | "pending";
@@ -181,15 +150,6 @@ export interface SchoolHeadAccountProfileUpsertResult {
 export interface SchoolHeadAccountRemovalResult {
   message: string;
   deletedCount: number;
-}
-
-export interface SchoolHeadAccountRestoreResult {
-  account: SchoolHeadAccountSummary;
-  expiresAt: string;
-  delivery: "sent" | "failed" | string;
-  deliveryMessage: string;
-  recoveryAction: string;
-  message: string;
 }
 
 export interface SchoolHeadAccountProvisioningReceipt {
