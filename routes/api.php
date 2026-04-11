@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\SchoolHeadAccountController;
+use App\Http\Controllers\Api\SubmissionController;
 use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
 use App\Http\Middleware\AuthenticateApiRequest;
@@ -131,6 +132,15 @@ Route::middleware($protectedApiMiddleware)->prefix('indicators')->group(function
     Route::post('/submissions/{submission}/submit', [IndicatorSubmissionController::class, 'submit']);
     Route::post('/submissions/{submission}/review', [IndicatorSubmissionController::class, 'review']);
     Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
+});
+
+Route::middleware($protectedApiMiddleware)->prefix('submissions')->group(function (): void {
+    Route::post('/create', [SubmissionController::class, 'create']);
+    Route::post('/{submission}/imeta-form', [SubmissionController::class, 'saveImetaForm']);
+    Route::post('/{submission}/upload-file', [SubmissionController::class, 'uploadFile']);
+    Route::get('/{submission}/download/{type}', [SubmissionController::class, 'downloadFile']);
+    Route::post('/{submission}/submit', [SubmissionController::class, 'submit']);
+    Route::get('/{submission}', [SubmissionController::class, 'show']);
 });
 
 Route::middleware($protectedApiMiddleware)->prefix('notifications')->group(function (): void {

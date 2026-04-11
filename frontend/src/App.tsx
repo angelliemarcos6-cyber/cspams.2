@@ -16,6 +16,7 @@ import { MonitorDashboard } from "@/pages/MonitorDashboard";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 import { SetupAccount } from "@/pages/SetupAccount";
+import { RequirementsPage } from "@/pages/school-head/RequirementsPage";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
 
 function FullscreenLoader() {
@@ -24,7 +25,7 @@ function FullscreenLoader() {
       <div className="surface-panel flex w-full max-w-sm items-center gap-3 border p-5">
         <img src="/depedlogo.png" alt="DepEd logo" className="h-11 w-auto bg-white px-1.5 py-1" />
         <div className="flex-1">
-          <p className="text-sm font-bold text-primary-800">CSPAMS</p>
+          <p className="text-sm font-bold text-primary-800">Centralized School Performance and Monitoring System</p>
           <p className="text-xs text-slate-600">Loading synchronized records...</p>
         </div>
         <LoaderCircle className="h-5 w-5 animate-spin text-primary" />
@@ -75,6 +76,26 @@ function AppRoutes() {
       <Route path="/mfa-reset" element={<MfaResetRequest />} />
       <Route path="/mfa-reset/complete" element={<MfaResetComplete />} />
       <Route path="/setup-account" element={<SetupAccount />} />
+      <Route
+        path="/school-head/requirements/:schoolId?"
+        element={
+          <ProtectedRoute allowedRole="school_head">
+            <AuthenticatedAppProviders>
+              <RequirementsPage />
+            </AuthenticatedAppProviders>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/school-admin/requirements"
+        element={
+          <ProtectedRoute allowedRole="school_head">
+            <AuthenticatedAppProviders>
+              <RequirementsPage />
+            </AuthenticatedAppProviders>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/school-admin"
         element={
