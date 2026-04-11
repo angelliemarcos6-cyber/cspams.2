@@ -12,23 +12,34 @@ use App\Models\School;
 use App\Models\Student;
 use App\Models\StudentStatusLog;
 use App\Models\User;
+use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
-use App\Support\Database\BuildsEscapedLikePatterns;
 use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
+use App\Support\Indicators\RollingIndicatorYearWindow;
 use Carbon\Carbon;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class StudentRecordController extends Controller
 {
-    use BuildsEscapedLikePatterns;
+    private const ROLLING_YEAR_SYNC_CACHE_KEY = 'cspams.students.rolling_year_window.last_sync';
+    private const ROLLING_YEAR_SYNC_TTL_MINUTES = 30;
+    private const ROLLING_YEAR_SYNC_LOCK_KEY = 'cspams.students.rolling_year_window.sync_lock';
+    private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
+
+    public function __construct(
+        private readonly FilterService $filterService,
+    ) {
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -44,6 +55,7 @@ class StudentRecordController extends Controller
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
+        $this->syncRollingAcademicYears();
         [$academicYearFilterMode, $academicYearFilterId] = $this->resolveAcademicYearFilter($request);
         $academicYearScope = $academicYearFilterMode === 'all'
             ? 'academic-year:all'
@@ -53,7 +65,10 @@ class StudentRecordController extends Controller
         $scopeKey = $isSchoolHead
             ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
             : 'division:all';
-        $scopeKey .= '|' . $academicYearScope;
+        $filters = $this->filterService->extract($request);
+        $schoolCode = trim((string) $request->query('schoolCode', ''));
+        $schoolCodes = $this->parseSchoolCodes($request);
+        $teacherName = trim((string) $request->query('teacherName', ''));
 
         $query = Student::query()
             ->select([
@@ -92,54 +107,46 @@ class StudentRecordController extends Controller
         if ($academicYearFilterMode !== 'all') {
             if ($academicYearFilterId) {
                 $query->where('academic_year_id', $academicYearFilterId);
+                $filters['academic_year_id'] = $academicYearFilterId;
             } else {
                 $query->whereRaw('1 = 0');
             }
         }
 
-        $status = trim((string) $request->query('status', ''));
-        if ($status !== '' && StudentStatus::tryFrom($status)) {
-            $query->where('status', $status);
+        if (array_key_exists('status', $filters)) {
+            $status = trim((string) $filters['status']);
+            if (StudentStatus::tryFrom($status) === null) {
+                unset($filters['status']);
+            }
         }
 
-        $schoolCode = trim((string) $request->query('schoolCode', ''));
         if ($schoolCode !== '' && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCode): void {
                 $builder->where('school_code_normalized', strtolower($schoolCode));
             });
         }
 
-        $schoolCodes = $this->parseSchoolCodes($request);
         if ($schoolCodes->isNotEmpty() && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCodes): void {
                 $builder->whereIn('school_code_normalized', $schoolCodes->all());
             });
         }
 
-        $teacherName = trim((string) $request->query('teacherName', ''));
         if ($teacherName !== '') {
             $query->whereRaw('LOWER(TRIM(teacher_name)) = ?', [strtolower($teacherName)]);
         }
 
-        $search = trim((string) $request->query('search', ''));
-        if ($search !== '') {
-            $query->where(function (Builder $builder) use ($search, $isMonitor): void {
-                $this->whereLikeContains($builder, 'lrn', $search);
-                $this->whereLikeContains($builder, 'first_name', $search, 'or');
-                $this->whereLikeContains($builder, 'middle_name', $search, 'or');
-                $this->whereLikeContains($builder, 'last_name', $search, 'or');
-                $this->whereLikeContains($builder, 'current_level', $search, 'or');
-                $this->whereLikeContains($builder, 'section_name', $search, 'or');
-                $this->whereLikeContains($builder, 'teacher_name', $search, 'or');
+        $this->filterService->apply($query, $filters, [
+            'date_column' => 'last_status_at',
+            'search_columns' => ['lrn', 'first_name', 'middle_name', 'last_name', 'current_level', 'section_name', 'teacher_name'],
+            'search_relations' => $isMonitor ? ['school' => ['school_code', 'name']] : [],
+        ]);
 
-                if ($isMonitor) {
-                    $builder->orWhereHas('school', function (Builder $schoolQuery) use ($search): void {
-                        $this->whereLikeContains($schoolQuery, 'school_code', $search);
-                        $this->whereLikeContains($schoolQuery, 'name', $search, 'or');
-                    });
-                }
-            });
-        }
+        $scopeKey .= '|' . $academicYearScope;
+        $scopeKey .= '|' . $this->filterService->buildCacheKey($filters);
+        $scopeKey .= '|school_code:' . ($schoolCode !== '' ? strtolower($schoolCode) : 'any');
+        $scopeKey .= '|school_codes:' . ($schoolCodes->isNotEmpty() ? $schoolCodes->implode(',') : 'any');
+        $scopeKey .= '|teacher_name:' . ($teacherName !== '' ? strtolower($teacherName) : 'any');
 
         $perPage = $this->resolvePerPage($request);
         $page = max(1, $request->integer('page', 1));
@@ -213,6 +220,7 @@ class StudentRecordController extends Controller
     {
         $user = $this->requireSchoolHead($request);
 
+        $this->syncRollingAcademicYears();
         $academicYearId = $this->resolveAcademicYearId();
         if (! $academicYearId) {
             return response()->json(
@@ -678,6 +686,62 @@ class StudentRecordController extends Controller
         if ($affected === 0) {
             $this->syncSchoolStudentCount($schoolId);
         }
+    }
+
+    private function syncRollingAcademicYears(): void
+    {
+        if ($this->hasFreshRollingAcademicYearSyncMarker()) {
+            return;
+        }
+
+        $cacheStore = Cache::getStore();
+        if (! ($cacheStore instanceof LockProvider)) {
+            $this->runRollingAcademicYearSync();
+
+            return;
+        }
+
+        $lock = Cache::lock(self::ROLLING_YEAR_SYNC_LOCK_KEY, self::ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS);
+        if (! $lock->get()) {
+            return;
+        }
+
+        try {
+            // Re-check once we own the lock in case another request already synced.
+            if ($this->hasFreshRollingAcademicYearSyncMarker()) {
+                return;
+            }
+
+            $this->runRollingAcademicYearSync();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function hasFreshRollingAcademicYearSyncMarker(): bool
+    {
+        $lastSyncedAt = Cache::get(self::ROLLING_YEAR_SYNC_CACHE_KEY);
+        if (! is_string($lastSyncedAt)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($lastSyncedAt)
+                ->greaterThan(now()->subMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES));
+        } catch (\Throwable) {
+            // Invalid cache payload. Treat as stale and run sync.
+            return false;
+        }
+    }
+
+    private function runRollingAcademicYearSync(): void
+    {
+        app(RollingIndicatorYearWindow::class)->sync();
+        Cache::put(
+            self::ROLLING_YEAR_SYNC_CACHE_KEY,
+            now()->toISOString(),
+            now()->addMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES),
+        );
     }
 
     private function isSchoolScopedLrnConstraintViolation(QueryException $exception): bool

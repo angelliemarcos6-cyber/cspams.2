@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Domain\FormSubmissionStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class IndicatorSubmission extends Model
 {
     use AuditsActivity;
+    use Filterable;
     use HasFactory;
 
     public const FORM_TYPE = 'indicator';
@@ -33,6 +35,16 @@ class IndicatorSubmission extends Model
         'reviewed_at',
         'review_notes',
     ];
+
+    /**
+     * @var list<string>
+     */
+    protected array $filterableSearchColumns = [
+        'reporting_period',
+        'notes',
+    ];
+
+    protected ?string $filterableDateColumn = 'submitted_at';
 
     /**
      * @return array<string, string>

@@ -16,8 +16,9 @@ use App\Models\Student;
 use App\Models\User;
 use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolSubmissionReminderNotification;
+use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
-use App\Support\Auth\SchoolHeadAccountSetupService;
+use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Domain\SchoolStatus;
@@ -43,10 +44,9 @@ class SchoolRecordController extends Controller
 
     private static ?bool $usersHaveAccountTypeColumnCache = null;
 
-    private static ?bool $accountSetupTokensTableExistsCache = null;
-
     public function __construct(
-        private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
+        private readonly SchoolHeadAccountLifecycleService $schoolHeadAccountLifecycleService,
+        private readonly FilterService $filterService,
     ) {
     }
 
@@ -59,6 +59,7 @@ class SchoolRecordController extends Controller
 
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
+        $filters = $this->filterService->extract($request);
 
         $scope = $isSchoolHead ? 'school' : 'division';
         $scopeKey = $scope === 'division' ? 'division:all' : 'school:unassigned';
@@ -74,6 +75,13 @@ class SchoolRecordController extends Controller
         } elseif (! $isMonitor) {
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
+
+        $this->filterService->apply($baseQuery, $filters, [
+            'school_column' => 'id',
+            'date_column' => 'submitted_at',
+            'search_columns' => ['school_code', 'name', 'level', 'district', 'address', 'region', 'type'],
+        ]);
+        $scopeKey .= '|' . $this->filterService->buildCacheKey($filters);
 
         $syncFingerprint = $this->buildSyncFingerprint(clone $baseQuery);
         $recordCount = $syncFingerprint['recordCount'];
@@ -121,10 +129,6 @@ class SchoolRecordController extends Controller
                 }
 
                 $query->select($columns);
-
-                if ($this->accountSetupTokensTableExists()) {
-                    $query->with('latestAccountSetupToken');
-                }
             }])
             ->withCount('students')
             ->orderByDesc('submitted_at')
@@ -313,10 +317,6 @@ class SchoolRecordController extends Controller
                     'flagged_at',
                     'flagged_reason',
                 ]);
-
-                if ($this->accountSetupTokensTableExists()) {
-                    $query->with('latestAccountSetupToken');
-                }
             }])
             ->withCount('students')
             ->orderByDesc('deleted_at')
@@ -616,6 +616,13 @@ class SchoolRecordController extends Controller
     private function storeAsMonitor(UpsertSchoolRecordRequest $request, User $user): JsonResponse
     {
         $schoolCode = $this->normalizeSchoolCode($request->string('schoolId')->toString());
+
+        if ($request->filled('schoolHeadAccount') && ! $this->schoolHeadAccountLifecycleService->storageAvailable()) {
+            throw ValidationException::withMessages([
+                'schoolHeadAccount' => 'Account setup link storage is unavailable. Check database migrations and cache configuration before provisioning a School Head account.',
+            ]);
+        }
+
         $existing = School::withTrashed()
             ->where('school_code_normalized', strtolower($schoolCode))
             ->first();
@@ -802,28 +809,15 @@ class SchoolRecordController extends Controller
             return null;
         }
 
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            abort(
-                Response::HTTP_SERVICE_UNAVAILABLE,
-                'Account setup token storage is unavailable. Run database migrations first.',
-            );
-        }
-
         if (User::query()->where('email_normalized', $email)->exists()) {
             throw ValidationException::withMessages([
                 'schoolHeadAccount.email' => 'A user account with this email already exists.',
             ]);
         }
 
-        $duplicateQuery = User::query()->where('school_id', $school->id);
-        if ($this->usersHaveAccountTypeColumn()) {
-            $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
-        } else {
-            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
-            $duplicateQuery->whereHas('roles', static function ($builder) use ($aliases): void {
-                $builder->whereIn('name', $aliases);
-            });
-        }
+        $duplicateQuery = $this->schoolHeadAccountLifecycleService
+            ->schoolHeadCandidatesQuery()
+            ->where('school_id', $school->id);
 
         if ($duplicateQuery->exists()) {
             throw ValidationException::withMessages([
@@ -844,13 +838,20 @@ class SchoolRecordController extends Controller
         }
         $account->save();
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
+        $this->schoolHeadAccountLifecycleService->synchronizeSchoolHeadIdentity($account);
 
-        $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+        $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
             $account,
             $monitor,
             $request->ip(),
             $request->userAgent(),
         );
+
+        if (($issuedSetup['status'] ?? null) !== 'issued') {
+            throw ValidationException::withMessages([
+                'schoolHeadAccount' => 'Account setup link storage is unavailable. Check database migrations and cache configuration before provisioning a School Head account.',
+            ]);
+        }
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -863,8 +864,8 @@ class SchoolRecordController extends Controller
             $account->notify(
                 new SchoolHeadAccountSetupNotification(
                     $school,
-                    $issuedSetup['setupUrl'],
-                    CarbonImmutable::parse($issuedSetup['expiresAt']),
+                    $issuedSetup['setup']['setupUrl'],
+                    CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
                 ),
             );
         } catch (\Throwable $exception) {
@@ -887,7 +888,7 @@ class SchoolRecordController extends Controller
                 'account_status' => $account->accountStatus()->value,
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
-                'setup_link_expires_at' => $issuedSetup['expiresAt'],
+                'setup_link_expires_at' => $issuedSetup['setup']['expiresAt'],
                 'delivery_status' => $deliveryStatus,
                 'delivery_message' => $deliveryMessage,
                 'reason' => 'account_created',
@@ -903,7 +904,7 @@ class SchoolRecordController extends Controller
             'email' => $account->email,
             'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
+            'setupLinkExpiresAt' => $issuedSetup['setup']['expiresAt'],
             'setupLinkDelivery' => $deliveryStatus,
             'setupLinkDeliveryMessage' => $deliveryMessage,
         ];
@@ -986,10 +987,6 @@ class SchoolRecordController extends Controller
                         'flagged_at',
                         'flagged_reason',
                     ]);
-
-                    if ($this->accountSetupTokensTableExists()) {
-                        $query->with('latestAccountSetupToken');
-                    }
                 },
             ])))->resolve(),
             'meta' => array_merge([
@@ -1530,19 +1527,6 @@ class SchoolRecordController extends Controller
         }
 
         return self::$usersHaveAccountTypeColumnCache;
-    }
-
-    private function accountSetupTokensTableExists(): bool
-    {
-        if (app()->runningUnitTests()) {
-            return Schema::hasTable('account_setup_tokens');
-        }
-
-        if (self::$accountSetupTokensTableExistsCache === null) {
-            self::$accountSetupTokensTableExistsCache = Schema::hasTable('account_setup_tokens');
-        }
-
-        return self::$accountSetupTokensTableExistsCache;
     }
 
     private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon

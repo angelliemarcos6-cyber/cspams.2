@@ -1,16 +1,14 @@
 import type { ComponentProps } from "react";
 import {
   Building2,
-  CalendarDays,
   ChevronDown,
-  ClipboardList,
-  Filter,
   GraduationCap,
   ListChecks,
   SlidersHorizontal,
   Users,
   X,
 } from "lucide-react";
+import { FilterBar, type FilterBarOption } from "@/components/shared/FilterBar";
 import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
 import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
 import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
@@ -94,149 +92,115 @@ export function MonitorQuickFiltersContent({
   onClearAllFilters,
   onClearFilterChip,
 }: MonitorQuickFiltersContentProps) {
+  const statusOptions: FilterBarOption[] = [
+    { value: "all", label: `All (${schoolStatusCounts.all})` },
+    { value: "active", label: `Active (${schoolStatusCounts.active})` },
+    { value: "inactive", label: `Inactive (${schoolStatusCounts.inactive})` },
+    { value: "pending", label: `Pending (${schoolStatusCounts.pending})` },
+  ];
+
+  const workflowOptions: FilterBarOption[] = visibleRequirementFilterOptions.map((option) => ({
+    value: option.id,
+    label: option.label,
+  }));
+
   return (
     <>
-      <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
-        <div
-          className={`grid gap-2 sm:grid-cols-2 ${
-            activeTopNavigator === "reviews" || showMoreFilters ? "lg:grid-cols-5" : "lg:grid-cols-4"
-          }`}
+      <div className="mt-3">
+        <FilterBar
+          showStatus
+          showCategory
+          showDateRange
+          statusLabel="School Status"
+          statusValue={statusFilter}
+          statusParamKey="status"
+          statusOptions={statusOptions}
+          onStatusChange={(value) => onStatusFilterChange(value as SchoolStatus | "all")}
+          categoryLabel="Workflow"
+          categoryValue={requirementFilter}
+          categoryParamKey="workflow"
+          categoryOptions={workflowOptions}
+          onCategoryChange={(value) => onRequirementFilterChange(value as RequirementFilter)}
+          dateFromValue={filterDateFrom}
+          dateToValue={filterDateTo}
+          dateFromParamKey="from"
+          dateToParamKey="to"
+          onDateFromChange={onFilterDateFromChange}
+          onDateToChange={onFilterDateToChange}
+          onClearDateRange={onClearDateRange}
         >
-          <label
-            title="School status"
-            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-          >
-            <Filter className="h-3.5 w-3.5 text-slate-400" />
-            <select
-              value={statusFilter}
-              onChange={(event) => onStatusFilterChange(event.target.value as SchoolStatus | "all")}
-              className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            >
-              <option value="all">All ({schoolStatusCounts.all})</option>
-              <option value="active">Active ({schoolStatusCounts.active})</option>
-              <option value="inactive">Inactive ({schoolStatusCounts.inactive})</option>
-              <option value="pending">Pending ({schoolStatusCounts.pending})</option>
-            </select>
-          </label>
-
-          <label
-            title="Workflow status"
-            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-          >
-            <ClipboardList className="h-3.5 w-3.5 text-slate-400" />
-            <select
-              value={requirementFilter}
-              onChange={(event) => onRequirementFilterChange(event.target.value as RequirementFilter)}
-              className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            >
-              {visibleRequirementFilterOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {(activeTopNavigator === "reviews" || showMoreFilters) && (
-            <label
-              title="Queue lane"
-              className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-            >
-              <ListChecks className="h-3.5 w-3.5 text-slate-400" />
-              <select
-                value={queueLane}
-                onChange={(event) => onQueueLaneChange(event.target.value as QueueLane)}
-                className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-              >
-                <option value="all">All ({queueLaneCounts.all})</option>
-                <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
-                <option value="returned">Returned ({queueLaneCounts.returned})</option>
-                <option value="for_review">Review ({queueLaneCounts.for_review})</option>
-                <option value="waiting_data">Waiting ({queueLaneCounts.waiting_data})</option>
-              </select>
-            </label>
-          )}
-
           <div
-            className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary-100"
-            title="Date range"
+            className={`grid gap-2 ${
+              activeTopNavigator === "reviews" || showMoreFilters ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-1"
+            }`}
           >
-            <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-            <input
-              type="date"
-              value={filterDateFrom}
-              onChange={(event) => onFilterDateFromChange(event.target.value)}
-              className="min-w-0 flex-1 border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            />
-            <span className="text-slate-300">-</span>
-            <input
-              type="date"
-              value={filterDateTo}
-              onChange={(event) => onFilterDateToChange(event.target.value)}
-              className="min-w-0 flex-1 border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
-            />
-            {(filterDateFrom.trim() || filterDateTo.trim()) && (
-              <button
-                type="button"
-                onClick={onClearDateRange}
-                className="ml-auto rounded-sm p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                aria-label="Clear date range"
-                title="Clear date range"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+            {(activeTopNavigator === "reviews" || showMoreFilters) && (
+              <label className="inline-flex w-full items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600 shadow-sm">
+                <ListChecks className="h-3.5 w-3.5 text-slate-400" />
+                <select
+                  value={queueLane}
+                  onChange={(event) => onQueueLaneChange(event.target.value as QueueLane)}
+                  className="w-full cursor-pointer border-none bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                >
+                  <option value="all">All ({queueLaneCounts.all})</option>
+                  <option value="urgent">Urgent ({queueLaneCounts.urgent})</option>
+                  <option value="returned">Returned ({queueLaneCounts.returned})</option>
+                  <option value="for_review">Review ({queueLaneCounts.for_review})</option>
+                  <option value="waiting_data">Waiting ({queueLaneCounts.waiting_data})</option>
+                </select>
+              </label>
             )}
-          </div>
 
-          <button
-            type="button"
-            onClick={onToggleShowMoreFilters}
-            className="inline-flex w-full items-center justify-center gap-1 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
-            aria-expanded={showMoreFilters}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
-            Advanced
-            {hiddenAdvancedFilterCount > 0 && (
-              <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-primary-50 px-1 text-[10px] font-bold text-primary-700">
-                {hiddenAdvancedFilterCount}
-              </span>
-            )}
-            <ChevronDown className={`h-3.5 w-3.5 transition ${showMoreFilters ? "rotate-180" : ""}`} />
-          </button>
-        </div>
-
-        {showMoreFilters && (
-          <div className="mt-2 border-t border-slate-200 pt-2">
-            <div className="grid gap-2 md:grid-cols-3">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                <SchoolScopeSelector {...schoolScopeSelectorProps} />
-              </div>
-              <div className="flex items-center gap-2">
-                <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
-                <StudentLookupSelector {...studentLookupSelectorProps} />
-              </div>
-              <div className="flex items-center gap-2">
-                <Users className="h-3.5 w-3.5 text-slate-400" />
-                <TeacherLookupSelector {...teacherLookupSelectorProps} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showMoreFilters && activeTopNavigator === "overview" && (
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-            <p className="text-[11px] font-semibold text-slate-700">Analytics</p>
             <button
-              id="monitor-analytics-toggle"
               type="button"
-              onClick={onToggleAdvancedAnalytics}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+              onClick={onToggleShowMoreFilters}
+              className="inline-flex w-full items-center justify-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50/40"
+              aria-expanded={showMoreFilters}
             >
-              {showAdvancedAnalytics ? "Hide" : "Show"}
+              <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+              Advanced
+              {hiddenAdvancedFilterCount > 0 && (
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-primary-50 px-1 text-[10px] font-bold text-primary-700">
+                  {hiddenAdvancedFilterCount}
+                </span>
+              )}
+              <ChevronDown className={`h-3.5 w-3.5 transition ${showMoreFilters ? "rotate-180" : ""}`} />
             </button>
           </div>
-        )}
+
+          {showMoreFilters && (
+            <div className="mt-2 space-y-2">
+              <div className="grid gap-2 md:grid-cols-3">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                  <SchoolScopeSelector {...schoolScopeSelectorProps} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
+                  <StudentLookupSelector {...studentLookupSelectorProps} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-3.5 w-3.5 text-slate-400" />
+                  <TeacherLookupSelector {...teacherLookupSelectorProps} />
+                </div>
+              </div>
+
+              {activeTopNavigator === "overview" && (
+                <div className="flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2">
+                  <p className="text-[11px] font-semibold text-slate-700">Analytics</p>
+                  <button
+                    id="monitor-analytics-toggle"
+                    type="button"
+                    onClick={onToggleAdvancedAnalytics}
+                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    {showAdvancedAnalytics ? "Hide" : "Show"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </FilterBar>
       </div>
 
       {activeFilterChips.length > 0 && (

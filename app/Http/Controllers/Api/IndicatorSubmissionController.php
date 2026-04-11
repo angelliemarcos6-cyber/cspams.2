@@ -14,6 +14,7 @@ use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
+use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
@@ -45,6 +46,11 @@ class IndicatorSubmissionController extends Controller
     private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
 
     private static ?bool $usersHasAccountTypeColumn = null;
+
+    public function __construct(
+        private readonly FilterService $filterService,
+    ) {
+    }
 
     public function academicYears(Request $request): JsonResponse
     {
@@ -99,17 +105,21 @@ class IndicatorSubmissionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $this->requireUser($request);
+        $filters = $this->buildIndicatorFilters($request);
 
         $scope = $this->isSchoolHead($user) ? 'school' : 'division';
         $baseScopeKey = $scope === 'school'
             ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
             : 'division:all';
-        $filtersKey = $this->buildFiltersKey($request);
+        $filtersKey = $this->filterService->buildCacheKey(
+            $filters,
+            ['school_id', 'academic_year_id', 'status', 'category', 'date_from', 'date_to', 'search', 'reporting_period'],
+        );
         $scopeKey = $baseScopeKey . '|' . $filtersKey;
 
         $baseQuery = IndicatorSubmission::query();
         $this->applyVisibilityScope($baseQuery, $user);
-        $this->applyCommonFilters($baseQuery, $request);
+        $this->applyIndicatorFilters($baseQuery, $filters);
 
         $perPage = $this->resolvePerPage($request);
         $page = max(1, $request->integer('page', 1));
@@ -575,27 +585,43 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanReview($user);
     }
 
-    private function applyCommonFilters(Builder $query, Request $request): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildIndicatorFilters(Request $request): array
     {
-        if ($request->filled('school_id')) {
-            $query->where('school_id', $request->integer('school_id'));
-        }
-
-        if ($request->filled('academic_year_id')) {
-            $query->where('academic_year_id', $request->integer('academic_year_id'));
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->string('status')->toString());
-        }
+        $filters = $this->filterService->extract($request);
 
         if ($request->has('reporting_period')) {
             $reportingPeriod = trim((string) $request->input('reporting_period'));
-            if ($reportingPeriod === '') {
-                $query->whereNull('reporting_period');
-            } else {
-                $query->where('reporting_period', $reportingPeriod);
-            }
+            $filters['reporting_period'] = $reportingPeriod === '' ? null : $reportingPeriod;
+        }
+
+        return $filters;
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     */
+    private function applyIndicatorFilters(Builder $query, array $filters): void
+    {
+        $this->filterService->apply($query, $filters, [
+            'date_column' => 'submitted_at',
+            'search_columns' => ['reporting_period', 'notes'],
+        ]);
+
+        if (! array_key_exists('reporting_period', $filters)) {
+            return;
+        }
+
+        if ($filters['reporting_period'] === null) {
+            $query->whereNull('reporting_period');
+            return;
+        }
+
+        $reportingPeriod = trim((string) $filters['reporting_period']);
+        if ($reportingPeriod !== '') {
+            $query->where('reporting_period', $reportingPeriod);
         }
     }
 
@@ -1190,31 +1216,6 @@ class IndicatorSubmissionController extends Controller
         }
 
         return min($perPage, $max);
-    }
-
-    private function buildFiltersKey(Request $request): string
-    {
-        $schoolIdKey = $request->filled('school_id')
-            ? 'school_id:' . $request->integer('school_id')
-            : 'school_id:any';
-        $academicYearKey = $request->filled('academic_year_id')
-            ? 'academic_year_id:' . $request->integer('academic_year_id')
-            : 'academic_year_id:any';
-        $statusKey = $request->filled('status')
-            ? 'status:' . $request->string('status')->toString()
-            : 'status:any';
-        $reportingPeriodKey = 'reporting_period:any';
-        if ($request->has('reporting_period')) {
-            $raw = trim((string) $request->input('reporting_period'));
-            $reportingPeriodKey = $raw === '' ? 'reporting_period:null' : 'reporting_period:' . $raw;
-        }
-
-        return implode('|', [
-            $schoolIdKey,
-            $academicYearKey,
-            $statusKey,
-            $reportingPeriodKey,
-        ]);
     }
 
     /**
