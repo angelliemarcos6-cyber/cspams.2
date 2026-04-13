@@ -32,6 +32,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -343,6 +345,136 @@ class IndicatorSubmissionController extends Controller
         ]);
     }
 
+    public function uploadFile(Request $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanSubmit($user, $submission->school_id);
+
+        $currentStatus = $this->statusValue($submission->status);
+        if (! in_array($currentStatus, [
+            FormSubmissionStatus::DRAFT->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only draft or returned indicator submissions can upload or replace files.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'type' => ['required', 'string', Rule::in(['bmef', 'smea'])],
+            'file' => ['required', 'file', 'max:10240', 'mimes:pdf,docx,xlsx'],
+        ]);
+
+        $fileType = strtolower(trim((string) $validated['type']));
+        $file = $request->file('file');
+        if (! $file) {
+            throw ValidationException::withMessages([
+                'file' => 'A file upload is required.',
+            ]);
+        }
+
+        $existingPath = $this->filePathForType($submission, $fileType);
+        if (is_string($existingPath) && $existingPath !== '' && Storage::disk('local')->exists($existingPath)) {
+            Storage::disk('local')->delete($existingPath);
+        }
+
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        $timestamp = now()->format('YmdHis');
+        $filename = sprintf(
+            '%d_%d_%s_%s.%s',
+            (int) $submission->school_id,
+            (int) $submission->academic_year_id,
+            $fileType,
+            $timestamp,
+            $extension !== '' ? $extension : 'bin',
+        );
+        $path = $file->storeAs('submissions', $filename, 'local');
+        $sizeBytes = max(0, (int) $file->getSize());
+        $originalFilename = trim((string) $file->getClientOriginalName());
+
+        if ($fileType === 'bmef') {
+            $submission->forceFill([
+                'bmef_file_path' => $path,
+                'bmef_original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                'bmef_uploaded_at' => now(),
+                'bmef_file_size' => $sizeBytes,
+            ])->save();
+        } else {
+            $submission->forceFill([
+                'smea_file_path' => $path,
+                'smea_original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                'smea_uploaded_at' => now(),
+                'smea_file_size' => $sizeBytes,
+            ])->save();
+        }
+
+        app(FormSubmissionHistoryLogger::class)->log(
+            formType: IndicatorSubmission::FORM_TYPE,
+            submissionId: $submission->id,
+            schoolId: $submission->school_id,
+            academicYearId: $submission->academic_year_id,
+            action: "{$fileType}_uploaded",
+            fromStatus: $currentStatus,
+            toStatus: $currentStatus ?? FormSubmissionStatus::DRAFT->value,
+            actorId: $user->id,
+            notes: strtoupper($fileType) . ' file uploaded or replaced.',
+            metadata: [
+                'type' => $fileType,
+                'path' => $path,
+                'filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                'size_bytes' => $sizeBytes,
+            ],
+        );
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'indicators',
+            'eventType' => 'indicators.file_uploaded',
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'fileType' => $fileType,
+        ]));
+
+        $submission->load([
+            'school:id,school_code,name',
+            'academicYear:id,name',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'createdBy:id,name,email',
+            'submittedBy:id,name,email',
+            'reviewedBy:id,name,email',
+        ]);
+
+        return response()->json([
+            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
+        ]);
+    }
+
+    public function downloadFile(Request $request, IndicatorSubmission $submission, string $type)
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanView($user, $submission->school_id);
+
+        $fileType = strtolower(trim($type));
+        if (! in_array($fileType, ['bmef', 'smea'], true)) {
+            throw ValidationException::withMessages([
+                'type' => 'Download type must be either bmef or smea.',
+            ]);
+        }
+
+        $path = $this->filePathForType($submission, $fileType);
+        $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
+        if (! is_string($path) || trim($path) === '' || ! Storage::disk('local')->exists($path)) {
+            abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
+        }
+
+        $fallbackFilename = basename($path);
+        $downloadFilename = is_string($originalFilename) && trim($originalFilename) !== ''
+            ? trim($originalFilename)
+            : $fallbackFilename;
+
+        return Storage::disk('local')->download($path, $downloadFilename);
+    }
+
     public function submit(Request $request, IndicatorSubmission $submission): JsonResponse
     {
         $user = $this->requireUser($request);
@@ -355,6 +487,23 @@ class IndicatorSubmissionController extends Controller
         ], true)) {
             throw ValidationException::withMessages([
                 'submission' => 'Only draft or returned indicator submissions can be submitted.',
+            ]);
+        }
+
+        $missingRequirements = [];
+        if (! $submission->hasImetaFormData()) {
+            $missingRequirements[] = 'I-META form data';
+        }
+        if (! $submission->hasBmefFile()) {
+            $missingRequirements[] = 'BMEF file';
+        }
+        if (! $submission->hasSmeaFile()) {
+            $missingRequirements[] = 'SMEA file';
+        }
+
+        if ($missingRequirements !== []) {
+            throw ValidationException::withMessages([
+                'submission' => 'Submission is incomplete. Missing: ' . implode(', ', $missingRequirements) . '.',
             ]);
         }
 
@@ -645,6 +794,24 @@ class IndicatorSubmissionController extends Controller
         }
 
         abort(Response::HTTP_FORBIDDEN, 'Only the assigned School Head can submit this indicator package.');
+    }
+
+    private function filePathForType(IndicatorSubmission $submission, string $type): ?string
+    {
+        return match ($type) {
+            'bmef' => $submission->bmef_file_path,
+            'smea' => $submission->smea_file_path,
+            default => null,
+        };
+    }
+
+    private function fileOriginalNameForType(IndicatorSubmission $submission, string $type): ?string
+    {
+        return match ($type) {
+            'bmef' => $submission->bmef_original_filename,
+            'smea' => $submission->smea_original_filename,
+            default => null,
+        };
     }
 
     private function assertCanReview(User $user): void

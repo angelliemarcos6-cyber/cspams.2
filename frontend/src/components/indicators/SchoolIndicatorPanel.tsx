@@ -5,12 +5,13 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type FocusEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Edit2, History, RefreshCw, Send, Target, Upload, XCircle } from "lucide-react";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
@@ -22,6 +23,7 @@ import type {
   IndicatorSubmission,
   IndicatorSubmissionItem,
   IndicatorSubmissionPayload,
+  IndicatorSubmissionFileType,
   IndicatorTypedValuePayload,
   MetricDataType,
 } from "@/types";
@@ -175,6 +177,8 @@ const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
 const INDICATOR_DRAFT_STORAGE_KEY = "cspams.schoolhead.indicator.autosave.v1";
 const ALL_RECORDS_YEAR_ID = "__all_records__";
+const BMEF_TAB_ID = "bmef_upload";
+const SMEA_TAB_ID = "smea_upload";
 
 const METRIC_LABEL_OVERRIDES: Record<string, string> = {
   IMETA_HEAD_NAME: "NAME OF SCHOOL HEAD",
@@ -266,6 +270,23 @@ function formatDateTime(value: string | null): string {
   if (!value) return "N/A";
   const date = new Date(value);
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function formatFileSize(sizeBytes: number | null | undefined): string {
+  const value = Number(sizeBytes ?? 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return "Unknown size";
+  }
+
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -662,6 +683,8 @@ export function SchoolIndicatorPanel({
     refreshSubmissions,
     createSubmission,
     updateSubmission,
+    uploadSubmissionFile,
+    downloadSubmissionFile,
     submitSubmission,
     loadHistory,
   } = useIndicatorData();
@@ -693,11 +716,18 @@ export function SchoolIndicatorPanel({
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [teacherSexCounts, setTeacherSexCounts] = useState<{ male: number; female: number }>({ male: 0, female: 0 });
+  const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
+  const [uploadErrorByType, setUploadErrorByType] = useState<Record<IndicatorSubmissionFileType, string>>({
+    bmef: "",
+    smea: "",
+  });
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
+  const bmefInputRef = useRef<HTMLInputElement | null>(null);
+  const smeaInputRef = useRef<HTMLInputElement | null>(null);
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -1165,7 +1195,7 @@ export function SchoolIndicatorPanel({
     return unique.slice(0, 3);
   }, [academicYearId, eligibleAcademicYears, showAllAcademicYears]);
   const hiddenAcademicYearCount = Math.max(0, eligibleAcademicYears.length - compactAcademicYears.length);
-  const visibleCategoryMetrics = showAdvancedInputs ? categoryMetrics : categoryMetrics.slice(0, 1);
+  const visibleCategoryMetrics = categoryMetrics;
   const metricCompletionById = useMemo(() => {
     const map = new Map<string, boolean>();
 
@@ -1363,9 +1393,50 @@ export function SchoolIndicatorPanel({
 
     return summary;
   }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, requiredSchoolYearSet, schoolYearByAcademicYearId, schoolYears, sortedSubmissions]);
+  const selectedSubmissionForUploads = useMemo(() => {
+    const scopedByYear = academicYearId && academicYearId !== ALL_RECORDS_YEAR_ID
+      ? sortedSubmissions.filter((submission) => submission.academicYear?.id === academicYearId)
+      : sortedSubmissions;
+
+    return editingSubmission ?? latestServerDraft ?? scopedByYear[0] ?? null;
+  }, [academicYearId, editingSubmission, latestServerDraft, sortedSubmissions]);
+  const bmefFileEntry = selectedSubmissionForUploads?.files?.bmef ?? null;
+  const smeaFileEntry = selectedSubmissionForUploads?.files?.smea ?? null;
+  const bmefSubmitted = Boolean(bmefFileEntry?.uploaded);
+  const smeaSubmitted = Boolean(smeaFileEntry?.uploaded);
+  // NEW: BMEF/SMEA tab added
+  const complianceTabs = useMemo(
+    () => [
+      ...visibleCategoryMetrics.map((category) => ({
+        id: category.id,
+        kind: "category" as const,
+        label: categoryTabLabel(category),
+      })),
+      {
+        id: BMEF_TAB_ID,
+        kind: "upload" as const,
+        label: "BMEF",
+        uploadType: "bmef" as const,
+      },
+      {
+        id: SMEA_TAB_ID,
+        kind: "upload" as const,
+        label: "SMEA",
+        uploadType: "smea" as const,
+      },
+    ],
+    [visibleCategoryMetrics],
+  );
+  const activeTab = useMemo(
+    () => complianceTabs.find((tab) => tab.id === activeCategoryId) ?? complianceTabs[0] ?? null,
+    [activeCategoryId, complianceTabs],
+  );
+  const activeUploadType = activeTab?.kind === "upload" ? activeTab.uploadType : null;
   const activeCategory = useMemo(
-    () => visibleCategoryMetrics.find((category) => category.id === activeCategoryId) ?? visibleCategoryMetrics[0] ?? null,
-    [activeCategoryId, visibleCategoryMetrics],
+    () => (activeTab?.kind === "category"
+      ? visibleCategoryMetrics.find((category) => category.id === activeTab.id) ?? null
+      : null),
+    [activeTab, visibleCategoryMetrics],
   );
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
@@ -1407,21 +1478,21 @@ export function SchoolIndicatorPanel({
   }, []);
 
   const handleSlideCategory = useCallback((direction: 1 | -1) => {
-    if (visibleCategoryMetrics.length === 0) {
+    if (complianceTabs.length === 0) {
       return;
     }
 
-    const currentIndex = visibleCategoryMetrics.findIndex((category) => category.id === activeCategoryId);
+    const currentIndex = complianceTabs.findIndex((tab) => tab.id === activeCategoryId);
     const safeIndex = currentIndex >= 0 ? currentIndex : 0;
-    const nextIndex = (safeIndex + direction + visibleCategoryMetrics.length) % visibleCategoryMetrics.length;
-    const nextCategory = visibleCategoryMetrics[nextIndex];
-    if (!nextCategory) {
+    const nextIndex = (safeIndex + direction + complianceTabs.length) % complianceTabs.length;
+    const nextTab = complianceTabs[nextIndex];
+    if (!nextTab) {
       return;
     }
 
-    handleSelectCategory(nextCategory.id);
+    handleSelectCategory(nextTab.id);
     scrollCategoryRail(direction);
-  }, [activeCategoryId, handleSelectCategory, scrollCategoryRail, visibleCategoryMetrics]);
+  }, [activeCategoryId, complianceTabs, handleSelectCategory, scrollCategoryRail]);
 
   const slideIndicatorTable = useCallback((direction: 1 | -1) => {
     const tableContainer = indicatorTableRef.current;
@@ -2290,6 +2361,94 @@ export function SchoolIndicatorPanel({
     }
   };
 
+  const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
+    setSubmitError("");
+    setSaveMessage("");
+    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+
+    const normalizedName = file.name.toLowerCase();
+    const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
+    if (!validExtension) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "Only PDF, DOCX, and XLSX files are allowed.",
+      }));
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "File size must not exceed 10MB.",
+      }));
+      return;
+    }
+
+    if (!selectedSubmissionForUploads) {
+      setSubmitError("Save the indicator draft first before uploading BMEF or SMEA files.");
+      return;
+    }
+
+    setUploadingFileType(type);
+    try {
+      const updated = await uploadSubmissionFile(selectedSubmissionForUploads.id, type, file);
+      setSaveMessage(`${type.toUpperCase()} file uploaded for package #${updated.id}.`);
+      setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+    } catch (err) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
+      }));
+    } finally {
+      setUploadingFileType(null);
+    }
+  }, [selectedSubmissionForUploads, uploadSubmissionFile]);
+
+  const handleFileInputChange = useCallback(
+    async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
+      const selectedFile = event.target.files?.[0];
+      event.currentTarget.value = "";
+      if (!selectedFile) {
+        return;
+      }
+
+      await handleFileUpload(type, selectedFile);
+    },
+    [handleFileUpload],
+  );
+
+  const handleDownloadUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
+    setSubmitError("");
+    setSaveMessage("");
+    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+
+    if (!selectedSubmissionForUploads) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "No draft package is available for download.",
+      }));
+      return;
+    }
+
+    try {
+      await downloadSubmissionFile(selectedSubmissionForUploads.id, type);
+    } catch (err) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`,
+      }));
+    }
+  }, [downloadSubmissionFile, selectedSubmissionForUploads]);
+
+  const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
+    if (type === "bmef") {
+      bmefInputRef.current?.click();
+      return;
+    }
+
+    smeaInputRef.current?.click();
+  }, []);
+
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -2301,14 +2460,25 @@ export function SchoolIndicatorPanel({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAdvancedInputs((current) => !current)}
-              title={showAdvancedInputs ? "Show core indicators only" : "Show all sections"}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+            {/* NEW: BMEF/SMEA tab added */}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                bmefSubmitted
+                  ? "border border-primary-300 bg-primary-50 text-primary-700"
+                  : "border border-amber-300 bg-amber-50 text-amber-700"
+              }`}
             >
-              {showAdvancedInputs ? "Core" : "All"}
-            </button>
+              BMEF: {bmefSubmitted ? "Submitted ✅" : "Not Submitted ❌"}
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                smeaSubmitted
+                  ? "border border-primary-300 bg-primary-50 text-primary-700"
+                  : "border border-amber-300 bg-amber-50 text-amber-700"
+              }`}
+            >
+              SMEA: {smeaSubmitted ? "Submitted ✅" : "Not Submitted ❌"}
+            </span>
             <button
               type="button"
               onClick={() => void refreshSubmissions()}
@@ -2498,7 +2668,7 @@ export function SchoolIndicatorPanel({
               <button
                 type="button"
                 onClick={() => handleSlideCategory(-1)}
-                disabled={visibleCategoryMetrics.length <= 1}
+                disabled={complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories left"
                 aria-label="Slide categories left"
@@ -2508,17 +2678,25 @@ export function SchoolIndicatorPanel({
 
               <div ref={categoryRailRef} className="min-w-0 flex-1 overflow-x-auto scroll-smooth">
                 <div className="flex min-w-max items-stretch gap-1 pr-1">
-                  {visibleCategoryMetrics.map((category) => {
-                    const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
-                    const missingCount = missingCountByCategory.find((item) => item.categoryId === category.id)?.count ?? 0;
-                    const isActive = activeCategory?.id === category.id;
+                  {complianceTabs.map((tab) => {
+                    const category = visibleCategoryMetrics.find((candidate) => candidate.id === tab.id) ?? null;
+                    const progress = category
+                      ? categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 }
+                      : null;
+                    const missingCount = category
+                      ? missingCountByCategory.find((item) => item.categoryId === category.id)?.count ?? 0
+                      : null;
+                    const isActive = activeCategoryId === tab.id;
+                    const uploadSubmitted = tab.kind === "upload"
+                      ? (tab.uploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
+                      : null;
 
                     return (
                       <button
-                        key={category.id}
-                        data-category-id={category.id}
+                        key={tab.id}
+                        data-category-id={tab.id}
                         type="button"
-                        onClick={() => handleSelectCategory(category.id)}
+                        onClick={() => handleSelectCategory(tab.id)}
                         className={`inline-flex min-w-[188px] items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-left transition ${
                           isActive
                             ? "border-primary-300 bg-primary-50 text-primary-700"
@@ -2527,20 +2705,34 @@ export function SchoolIndicatorPanel({
                       >
                         <span className="min-w-0">
                           <span className="block truncate text-[11px] font-semibold uppercase tracking-wide">
-                            {categoryTabLabel(category)}
+                            {tab.label}
                           </span>
-                          <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
-                            {progress.complete}/{progress.total} complete
-                          </span>
+                          {tab.kind === "category" && progress ? (
+                            <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
+                              {progress.complete}/{progress.total} complete
+                            </span>
+                          ) : (
+                            <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
+                              {uploadSubmitted ? "Submitted" : "Not submitted"}
+                            </span>
+                          )}
                         </span>
                         <span
                           className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
-                            missingCount > 0
-                              ? "border-amber-300 bg-amber-50 text-amber-700"
-                              : "border-primary-300 bg-primary-50 text-primary-700"
+                            tab.kind === "category"
+                              ? (missingCount && missingCount > 0
+                                ? "border-amber-300 bg-amber-50 text-amber-700"
+                                : "border-primary-300 bg-primary-50 text-primary-700")
+                              : (uploadSubmitted
+                                ? "border-primary-300 bg-primary-50 text-primary-700"
+                                : "border-amber-300 bg-amber-50 text-amber-700")
                           }`}
                         >
-                          Missing {missingCount}
+                          {tab.kind === "category"
+                            ? `Missing ${missingCount ?? 0}`
+                            : uploadSubmitted
+                              ? "Submitted"
+                              : "Not Submitted"}
                         </span>
                       </button>
                     );
@@ -2551,7 +2743,7 @@ export function SchoolIndicatorPanel({
               <button
                 type="button"
                 onClick={() => handleSlideCategory(1)}
-                disabled={visibleCategoryMetrics.length <= 1}
+                disabled={complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories right"
                 aria-label="Slide categories right"
@@ -2561,6 +2753,8 @@ export function SchoolIndicatorPanel({
             </div>
           </div>
 
+          {activeCategory && (
+          <>
           <div className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_auto]">
             <input
               type="search"
@@ -2684,6 +2878,120 @@ export function SchoolIndicatorPanel({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+          </>
+          )}
+
+          {activeUploadType && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              {/* NEW: BMEF/SMEA tab added */}
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
+                    {activeUploadType === "bmef" ? "BMEF Upload" : "SMEA Upload"}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Upload-only section. Accepted formats: PDF, DOCX, XLSX (max 10MB).
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    (activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
+                      ? "border border-primary-300 bg-primary-50 text-primary-700"
+                      : "border border-amber-300 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {(activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted) ? "Submitted" : "Not Submitted"}
+                </span>
+              </div>
+
+              <input
+                ref={bmefInputRef}
+                type="file"
+                accept=".pdf,.docx,.xlsx"
+                className="hidden"
+                onChange={(event) => void handleFileInputChange("bmef", event)}
+              />
+              <input
+                ref={smeaInputRef}
+                type="file"
+                accept=".pdf,.docx,.xlsx"
+                className="hidden"
+                onChange={(event) => void handleFileInputChange("smea", event)}
+              />
+
+              {(() => {
+                const fileEntry = activeUploadType === "bmef" ? bmefFileEntry : smeaFileEntry;
+                const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
+                const uploadError = uploadErrorByType[activeUploadType];
+                const isUploading = uploadingFileType === activeUploadType;
+                const uploadDisabled = !selectedSubmissionForUploads || isSaving || isSubmissionDataLoading || isUploading;
+                const uploadTypeLabel = activeUploadType.toUpperCase();
+
+                return (
+                  <div className="space-y-3">
+                    {uploaded ? (
+                      <div className="rounded-xl border border-primary-200 bg-primary-50/40 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {fileEntry?.originalFilename || `Uploaded ${uploadTypeLabel} file`}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Size: {formatFileSize(fileEntry?.sizeBytes)} | Uploaded: {formatDateTime(fileEntry?.uploadedAt ?? null)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openUploadPicker(activeUploadType)}
+                              disabled={uploadDisabled}
+                              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Upload className="h-3.5 w-3.5" />
+                              {isUploading ? "Uploading..." : "Replace"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDownloadUploadedFile(activeUploadType)}
+                              disabled={isSaving || isSubmissionDataLoading}
+                              className="inline-flex items-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Download
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                        <p className="text-sm font-semibold text-slate-700">{uploadTypeLabel} file not submitted yet.</p>
+                        <p className="mt-1 text-xs text-slate-500">Upload to mark this requirement as submitted.</p>
+                        <button
+                          type="button"
+                          onClick={() => openUploadPicker(activeUploadType)}
+                          disabled={uploadDisabled}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          {isUploading ? "Uploading..." : `Upload ${uploadTypeLabel}`}
+                        </button>
+                      </div>
+                    )}
+                    {!selectedSubmissionForUploads && (
+                      <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                        Save the indicator draft first to enable file upload.
+                      </p>
+                    )}
+                    {uploadError && (
+                      <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                        {uploadError}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 

@@ -407,6 +407,23 @@ export interface IndicatorSubmissionItem {
   remarks: string | null;
 }
 
+export type IndicatorSubmissionFileType = "bmef" | "smea";
+
+export interface IndicatorSubmissionFileEntry {
+  type: IndicatorSubmissionFileType;
+  uploaded: boolean;
+  path: string | null;
+  originalFilename: string | null;
+  sizeBytes: number | null;
+  uploadedAt: string | null;
+  downloadUrl: string | null;
+}
+
+export interface IndicatorSubmissionFiles {
+  bmef: IndicatorSubmissionFileEntry;
+  smea: IndicatorSubmissionFileEntry;
+}
+
 export interface IndicatorTypedValuePayload {
   value?: string | number | boolean | null;
   amount?: number | string | null;
@@ -440,6 +457,13 @@ export interface IndicatorSubmission {
   notes: string | null;
   reviewNotes: string | null;
   summary: IndicatorSubmissionSummary;
+  files?: IndicatorSubmissionFiles;
+  completion?: {
+    hasImetaFormData: boolean;
+    hasBmefFile: boolean;
+    hasSmeaFile: boolean;
+    isComplete: boolean;
+  };
   indicators: IndicatorSubmissionItem[];
   createdBy?: {
     id: string;

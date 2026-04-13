@@ -9,11 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError } from "@/lib/api";
 import type {
   AcademicYearOption,
   IndicatorMetric,
   IndicatorSubmission,
+  IndicatorSubmissionFileType,
   FormSubmissionHistoryEntry,
   IndicatorSubmissionPayload,
 } from "@/types";
@@ -92,6 +93,8 @@ export interface IndicatorDataContextType {
   loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
+  uploadSubmissionFile: (id: string, type: IndicatorSubmissionFileType, file: File) => Promise<IndicatorSubmission>;
+  downloadSubmissionFile: (id: string, type: IndicatorSubmissionFileType) => Promise<void>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
   reviewSubmission: (id: string, decision: ReviewDecision, notes?: string) => Promise<IndicatorSubmission>;
   loadHistory: (id: string) => Promise<FormSubmissionHistoryEntry[]>;
@@ -196,6 +199,28 @@ function normalizeSubmissionListMeta(
 
 function toSubmissionSortTime(submission: IndicatorSubmission): number {
   return new Date(submission.updatedAt ?? submission.submittedAt ?? submission.createdAt ?? 0).getTime();
+}
+
+function parseDownloadFilename(contentDisposition: string | null): string | null {
+  if (!contentDisposition) {
+    return null;
+  }
+
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).trim();
+    } catch {
+      return utf8Match[1].trim();
+    }
+  }
+
+  const basicMatch = /filename="?([^";]+)"?/i.exec(contentDisposition);
+  if (basicMatch?.[1]) {
+    return basicMatch[1].trim();
+  }
+
+  return null;
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
@@ -687,6 +712,83 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [token, syncSubmissions, handleApiError],
   );
 
+  const uploadSubmissionFile = useCallback(
+    async (id: string, type: IndicatorSubmissionFileType, file: File): Promise<IndicatorSubmission> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const formData = new FormData();
+        formData.append("type", type);
+        formData.append("file", file);
+
+        const response = await apiRequest<IndicatorSubmissionResponse>(`/api/submissions/${id}/upload-file`, {
+          method: "POST",
+          token,
+          body: formData,
+        });
+
+        allSubmissionsCacheRef.current = null;
+        await syncSubmissions(true);
+        return response.data;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, syncSubmissions, handleApiError],
+  );
+
+  const downloadSubmissionFile = useCallback(
+    async (id: string, type: IndicatorSubmissionFileType): Promise<void> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setError("");
+
+      try {
+        const endpoint = `${getApiBaseUrl()}/api/submissions/${id}/download/${type}`;
+        const headers = new Headers({ Accept: "*/*" });
+        if (token !== COOKIE_SESSION_TOKEN) {
+          headers.set("Authorization", `Bearer ${token}`);
+        }
+
+        const response = await fetch(endpoint, {
+          method: "GET",
+          credentials: token === COOKIE_SESSION_TOKEN ? "include" : "omit",
+          headers,
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null) as { message?: string } | null;
+          throw new Error(payload?.message?.trim() || `Request failed with status ${response.status}.`);
+        }
+
+        const blob = await response.blob();
+        const filename = parseDownloadFilename(response.headers.get("Content-Disposition")) ?? `${type}-${id}`;
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [token, handleApiError],
+  );
+
   const reviewSubmission = useCallback(
     async (id: string, decision: ReviewDecision, notes?: string): Promise<IndicatorSubmission> => {
       if (!token) {
@@ -790,6 +892,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       loadAllSubmissions,
       createSubmission,
       updateSubmission,
+      uploadSubmissionFile,
+      downloadSubmissionFile,
       submitSubmission,
       reviewSubmission,
       loadHistory,
@@ -811,6 +915,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       loadAllSubmissions,
       createSubmission,
       updateSubmission,
+      uploadSubmissionFile,
+      downloadSubmissionFile,
       submitSubmission,
       reviewSubmission,
       loadHistory,
