@@ -45,6 +45,10 @@ export interface SchoolRecord {
     createdAt: string | null;
     updatedAt: string | null;
   } | null;
+  openCasesCount?: number;
+  highSeverityCasesCount?: number;
+  bmefStatus?: ReportStatus | string | null;
+  targetsMetStatus?: ReportStatus | string | null;
 }
 
 export interface SchoolHeadAccountPayload {
@@ -493,6 +497,105 @@ export interface FormSubmissionHistoryEntry {
     email: string;
   };
   createdAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Learner Cases
+// ---------------------------------------------------------------------------
+
+export type CaseSeverity = "low" | "medium" | "high";
+export type CaseStatus = "open" | "monitoring" | "resolved";
+export type CaseIssueType =
+  | "financial"
+  | "abuse"
+  | "health"
+  | "attendance"
+  | "academic"
+  | "other";
+
+export interface LearnerCaseAttachment {
+  id: string;
+  originalFilename: string;
+  fileType: string;
+  uploadedBy?: { id: string; name: string } | null;
+  uploadedAt: string | null;
+}
+
+export interface LearnerCaseThread {
+  id: string;
+  userId: string;
+  userName: string | null;
+  message: string;
+  createdAt: string | null;
+}
+
+export interface LearnerCase {
+  id: string;
+  schoolId: string;
+  school?: { id: string; schoolCode: string | null; name: string } | null;
+  flaggedBy?: { id: string; name: string } | null;
+  lrn?: string | null;
+  learnerName?: string | null;
+  gradeLevel: string;
+  section: string;
+  issueType: CaseIssueType;
+  severity: CaseSeverity;
+  description: string;
+  status: CaseStatus;
+  flaggedAt: string | null;
+  acknowledgedAt?: string | null;
+  acknowledgedBy?: { id: string; name: string } | null;
+  resolvedAt?: string | null;
+  resolvedBy?: { id: string; name: string } | null;
+  daysOpen: number;
+  isOverdue: boolean;
+  attachments?: LearnerCaseAttachment[];
+  threads?: LearnerCaseThread[];
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface LearnerCasePayload {
+  lrn?: string | null;
+  learnerName?: string | null;
+  gradeLevel: string;
+  section: string;
+  issueType: CaseIssueType;
+  severity: CaseSeverity;
+  description: string;
+}
+
+export interface LearnerCaseListMeta {
+  total: number;
+  perPage: number;
+  currentPage: number;
+  lastPage: number;
+}
+
+// ---------------------------------------------------------------------------
+// Report Submissions (BMEF, TARGETS-MET)
+// ---------------------------------------------------------------------------
+
+export type ReportType = "bmef" | "targets_met";
+export type ReportStatus = "pending" | "submitted" | "approved";
+
+export interface ReportSubmission {
+  id: string;
+  schoolId: string;
+  school?: { id: string; schoolCode: string | null; name: string } | null;
+  academicYearId: string;
+  academicYear?: { id: string; name: string; isCurrent: boolean } | null;
+  reportType: ReportType;
+  status: ReportStatus;
+  originalFilename?: string | null;
+  fileSize?: number | null;
+  submittedAt?: string | null;
+  submittedBy?: { id: string; name: string } | null;
+  approvedAt?: string | null;
+  approvedBy?: { id: string; name: string } | null;
+  notes?: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface AppNotification {

@@ -20,6 +20,10 @@ import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import { MonitorSideNavigator } from "@/pages/monitor/MonitorSideNavigator";
+import MonitorCasesSection from "@/pages/monitor/MonitorCasesSection";
+import MonitorComplianceSection from "@/pages/monitor/MonitorComplianceSection";
+import { LearnerCaseDataProvider } from "@/context/LearnerCaseData";
+import { ReportSubmissionDataProvider } from "@/context/ReportSubmissionData";
 import { MonitorToastStack } from "@/pages/monitor/MonitorToastStack";
 import {
   MONITOR_QUICK_JUMPS,
@@ -1008,6 +1012,22 @@ export function MonitorDashboard() {
                 studentRecordsLookupTerm={studentRecordsLookupTerm}
               />
             </>
+          )}
+
+          {!showNavigatorManual && activeTopNavigator === "cases" && (
+            <section className="px-4 py-6 max-w-6xl mx-auto">
+              <LearnerCaseDataProvider>
+                <MonitorCasesSection />
+              </LearnerCaseDataProvider>
+            </section>
+          )}
+
+          {!showNavigatorManual && activeTopNavigator === "compliance" && (
+            <section className="px-4 py-6 max-w-6xl mx-auto">
+              <ReportSubmissionDataProvider>
+                <MonitorComplianceSection />
+              </ReportSubmissionDataProvider>
+            </section>
           )}
 
           <MonitorSchoolDrawer {...schoolDrawerProps} />

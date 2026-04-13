@@ -7,6 +7,8 @@ import {
   ListChecks,
   TrendingUp,
   Users,
+  AlertTriangle,
+  CheckSquare,
 } from "lucide-react";
 import type {
   MonitorTopNavigatorId,
@@ -39,6 +41,8 @@ export interface QuickJumpItem {
 export const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "overview", label: "Overview" },
   { id: "schools", label: "Schools" },
+  { id: "cases", label: "Learner Cases" },
+  { id: "compliance", label: "Compliance" },
   { id: "reviews", label: "Reviews" },
 ];
 
@@ -49,6 +53,8 @@ export const MONITOR_TOP_NAVIGATOR_IDS: MonitorTopNavigatorId[] = MONITOR_TOP_NA
 export const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorId, NavigatorIcon> = {
   overview: LayoutDashboard,
   schools: Building2,
+  cases: AlertTriangle,
+  compliance: CheckSquare,
   reviews: ClipboardList,
 };
 

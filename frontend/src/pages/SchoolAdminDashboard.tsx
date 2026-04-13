@@ -24,6 +24,10 @@ import {
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { Shell } from "@/components/Shell";
 import { StatCard } from "@/components/StatCard";
+import LearnerCasesPanel from "@/components/cases/LearnerCasesPanel";
+import ReportSubmissionsPanel from "@/components/submissions/ReportSubmissionsPanel";
+import { LearnerCaseDataProvider } from "@/context/LearnerCaseData";
+import { ReportSubmissionDataProvider } from "@/context/ReportSubmissionData";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
 import { StudentRecordsPanel } from "@/components/students/StudentRecordsPanel";
 import { TeacherRecordsPanel } from "@/components/teachers/TeacherRecordsPanel";
@@ -55,7 +59,7 @@ interface RequirementItem {
 }
 
 interface TopNavigatorItem {
-  id: "requirements" | "compliance" | "records";
+  id: "requirements" | "compliance" | "records" | "cases" | "submissions";
   label: string;
 }
 
@@ -79,6 +83,8 @@ interface QuickJumpItem {
 
 const TOP_NAVIGATOR_ITEMS: TopNavigatorItem[] = [
   { id: "compliance", label: "Workspace" },
+  { id: "cases", label: "Learner Cases" },
+  { id: "submissions", label: "Submissions" },
   { id: "requirements", label: "Revisions" },
   { id: "records", label: "Reports" },
 ];
@@ -1953,6 +1959,31 @@ export function SchoolAdminDashboard() {
       </section>
       )}
       </div>
+
+      {/* Learner Cases tab */}
+      {!showNavigatorManual && activeTopNavigator === "cases" && (
+        <section className="px-4 py-6 max-w-5xl mx-auto">
+          <LearnerCaseDataProvider>
+            <LearnerCasesPanel />
+          </LearnerCaseDataProvider>
+        </section>
+      )}
+
+      {/* File Submissions tab (BMEF, TARGETS-MET + I-META divider) */}
+      {!showNavigatorManual && activeTopNavigator === "submissions" && (
+        <section className="px-4 py-6 max-w-5xl mx-auto space-y-6">
+          <ReportSubmissionDataProvider>
+            <ReportSubmissionsPanel />
+          </ReportSubmissionDataProvider>
+          <section id="indicator-workflow-submissions" className="mt-4">
+            <SchoolIndicatorPanel
+              statusFilter={contextWorkflowStatus}
+              academicYearFilter={contextAcademicYearId}
+            />
+          </section>
+        </section>
+      )}
+
       </div>
     </Shell>
   );

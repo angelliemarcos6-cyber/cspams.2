@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
+use App\Http\Controllers\Api\LearnerCaseController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\ReportSubmissionController;
 use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Http\Controllers\Api\StudentRecordController;
@@ -105,6 +107,30 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicat
     Route::post('/submissions/{submission}/submit', [IndicatorSubmissionController::class, 'submit']);
     Route::post('/submissions/{submission}/review', [IndicatorSubmissionController::class, 'review']);
     Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
+});
+
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('cases')->group(function (): void {
+    Route::get('/', [LearnerCaseController::class, 'index']);
+    Route::post('/', [LearnerCaseController::class, 'store']);
+    Route::get('/{case}', [LearnerCaseController::class, 'show']);
+    Route::put('/{case}', [LearnerCaseController::class, 'update']);
+    Route::patch('/{case}', [LearnerCaseController::class, 'update']);
+    Route::delete('/{case}', [LearnerCaseController::class, 'destroy']);
+    Route::post('/{case}/acknowledge', [LearnerCaseController::class, 'acknowledge']);
+    Route::post('/{case}/resolve', [LearnerCaseController::class, 'resolve']);
+    Route::get('/{case}/threads', [LearnerCaseController::class, 'threads']);
+    Route::post('/{case}/threads', [LearnerCaseController::class, 'addThread']);
+    Route::post('/{case}/attachments', [LearnerCaseController::class, 'uploadAttachment']);
+    Route::get('/{case}/attachments/{attachment}/download', [LearnerCaseController::class, 'downloadAttachment']);
+});
+
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('submissions/reports')->group(function (): void {
+    Route::get('/', [ReportSubmissionController::class, 'index']);
+    Route::post('/', [ReportSubmissionController::class, 'store']);
+    Route::get('/{submission}', [ReportSubmissionController::class, 'show']);
+    Route::post('/{submission}/replace', [ReportSubmissionController::class, 'replace']);
+    Route::post('/{submission}/approve', [ReportSubmissionController::class, 'approve']);
+    Route::get('/{submission}/download', [ReportSubmissionController::class, 'download']);
 });
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('notifications')->group(function (): void {

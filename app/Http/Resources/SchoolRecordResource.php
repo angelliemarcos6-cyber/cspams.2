@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Models\LearnerCase;
+use App\Models\ReportSubmission;
 use App\Models\School;
 use App\Models\User;
 use App\Support\Domain\FormSubmissionStatus;
@@ -39,7 +41,49 @@ class SchoolRecordResource extends JsonResource
             'deletedAt' => $this->deleted_at?->toISOString(),
             'schoolHeadAccount' => $this->serializeSchoolHeadAccount(),
             'indicatorLatest' => $this->serializeIndicatorLatest(),
+            'openCasesCount' => $this->getOpenCasesCount(),
+            'highSeverityCasesCount' => $this->getHighSeverityCasesCount(),
+            'bmefStatus' => $this->getReportStatus('bmef'),
+            'targetsMetStatus' => $this->getReportStatus('targets_met'),
         ];
+    }
+
+    private function getOpenCasesCount(): int
+    {
+        try {
+            return LearnerCase::where('school_id', $this->id)
+                ->whereIn('status', ['open', 'monitoring'])
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    private function getHighSeverityCasesCount(): int
+    {
+        try {
+            return LearnerCase::where('school_id', $this->id)
+                ->where('severity', 'high')
+                ->whereIn('status', ['open', 'monitoring'])
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    private function getReportStatus(string $reportType): string
+    {
+        try {
+            $submission = ReportSubmission::where('school_id', $this->id)
+                ->where('report_type', $reportType)
+                ->whereHas('academicYear', fn ($q) => $q->where('is_current', true))
+                ->latest()
+                ->first();
+
+            return $submission?->status ?? 'pending';
+        } catch (\Throwable) {
+            return 'pending';
+        }
     }
 
     /**

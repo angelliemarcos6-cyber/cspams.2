@@ -3,7 +3,7 @@ import type { SchoolStatus } from "@/types";
 export type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 export type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
 export type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission" | "high_risk";
-export type MonitorTopNavigatorId = "overview" | "schools" | "reviews";
+export type MonitorTopNavigatorId = "overview" | "schools" | "reviews" | "cases" | "compliance";
 
 export interface PersistedMonitorFilters {
   search?: string;
@@ -69,7 +69,7 @@ export function isValidSchoolStatusFilter(value: string | null | undefined): val
 }
 
 export function resolveMonitorTopNavigator(value: string | null | undefined): MonitorTopNavigatorId | null {
-  if (value === "overview" || value === "schools" || value === "reviews") {
+  if (value === "overview" || value === "schools" || value === "reviews" || value === "cases" || value === "compliance") {
     return value;
   }
 
