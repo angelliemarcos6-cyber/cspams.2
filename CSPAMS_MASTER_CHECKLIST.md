@@ -1,10 +1,19 @@
-# CSPAMS 2.0 - MASTER IMPLEMENTATION CHECKLIST
+﻿# CSPAMS 2.0 - MASTER IMPLEMENTATION CHECKLIST
+
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+> April 2026 compliance UI refactor - TARGETS-MET renamed to BMEF with 4-tab layout.
+
 
 **Use this to track your progress from brainstorm to production.**
 
 ---
 
-## 📋 PRE-KICKOFF (This Week)
+## ðŸ“‹ PRE-KICKOFF (This Week)
 
 ### Understanding Phase
 - [ ] Read CSPAMS_QUICK_START.md (15 min)
@@ -17,7 +26,7 @@
 - [ ] Answer all 10 brainstorm questions (see PROJECT_ANALYSIS, Part 10)
 - [ ] Schedule sync with DepEd Santiago City
 - [ ] Get sign-off on new design (vs old capstone)
-- [ ] Confirm form structures (I-META, TARGETS-MET, SMEA)
+- [ ] Confirm form structures (I-META, BMEF, SMEA)
 - [ ] Confirm concern categories (8 categories final?)
 - [ ] Confirm go-live date
 - [ ] Confirm number of schools (50? 100? 200?)
@@ -35,7 +44,7 @@
 
 ---
 
-## 🔄 PHASE 1: CLEANUP & SIMPLIFICATION (2-3 Days)
+## ðŸ”„ PHASE 1: CLEANUP & SIMPLIFICATION (2-3 Days)
 
 ### Database Audit
 - [ ] List all existing tables (document)
@@ -68,19 +77,19 @@
 ### Testing
 - [ ] Run `php artisan migrate:fresh --seed` (fresh install)
 - [ ] Verify no errors in log
-- [ ] Check database – 4 new tables exist
+- [ ] Check database â€“ 4 new tables exist
 - [ ] Check seeders still work
 - [ ] Test login still works
 
 ### Deliverable
-- ✅ Clean database schema
-- ✅ Old code deleted
-- ✅ New migrations running
-- ✅ Seeders working
+- âœ… Clean database schema
+- âœ… Old code deleted
+- âœ… New migrations running
+- âœ… Seeders working
 
 ---
 
-## 🏗️ PHASE 2: BACKEND CORE API (3-4 Days)
+## ðŸ—ï¸ PHASE 2: BACKEND CORE API (3-4 Days)
 
 ### Models
 - [ ] Create WelfareConcern.php model (with relationships, scopes)
@@ -136,15 +145,15 @@
 - [ ] Achieve 80%+ code coverage
 
 ### Deliverable
-- ✅ All 4 models created & tested
-- ✅ All controllers working
-- ✅ All API endpoints testable in Postman
-- ✅ Validation rules working
-- ✅ Tests passing
+- âœ… All 4 models created & tested
+- âœ… All controllers working
+- âœ… All API endpoints testable in Postman
+- âœ… Validation rules working
+- âœ… Tests passing
 
 ---
 
-## 🎨 PHASE 3: FRONTEND AUTH & LAYOUT (2 Days)
+## ðŸŽ¨ PHASE 3: FRONTEND AUTH & LAYOUT (2 Days)
 
 ### Authentication
 - [ ] Update LoginPage.tsx (unified form + role selector)
@@ -188,17 +197,17 @@
 - [ ] Test dark mode toggle
 
 ### Deliverable
-- ✅ Unified login page working
-- ✅ Role-based layouts working
-- ✅ Authentication context working
-- ✅ Route guards protecting pages
+- âœ… Unified login page working
+- âœ… Role-based layouts working
+- âœ… Authentication context working
+- âœ… Route guards protecting pages
 
 ---
 
-## 📝 PHASE 4: SCHOOL HEAD FEATURES (4-5 Days)
+## ðŸ“ PHASE 4: SCHOOL HEAD FEATURES (4-5 Days)
 
 ### Requirements Page (Forms)
-- [ ] Create RequirementsPage.tsx (tabs: I-META | TARGETS-MET | SMEA)
+- [ ] Create RequirementsPage.tsx (tabs: I-META | BMEF | SMEA)
 - [ ] Create I_METAForm.tsx (form fields from document)
 - [ ] Create TARGETSMETForm.tsx (auto-calculated KPIs)
 - [ ] Create SMEAForm.tsx (form fields)
@@ -226,10 +235,10 @@
 ### Dashboard Page
 - [ ] Create DashboardPage.tsx (school head view)
 - [ ] Add KPI cards: Requirements Due (3 packages + status), Enrollment Snapshot, Open Concerns
-- [ ] Add 5-step progress bar (Prepare → Draft → Submit → Review → Approved)
+- [ ] Add 5-step progress bar (Prepare â†’ Draft â†’ Submit â†’ Review â†’ Approved)
 - [ ] Add Recent Activity timeline (last 5 submissions + concern updates)
-- [ ] Add "Submit New Package" button (→ Requirements page)
-- [ ] Add "Flag New Concern" button (→ Modal)
+- [ ] Add "Submit New Package" button (â†’ Requirements page)
+- [ ] Add "Flag New Concern" button (â†’ Modal)
 
 ### History Page
 - [ ] Create HistoryPage.tsx
@@ -252,20 +261,20 @@
 - [ ] Test dashboard displays correct data
 
 ### Deliverable
-- ✅ School head can fill all 3 forms
-- ✅ School head can save drafts
-- ✅ School head can submit (with validation)
-- ✅ School head can flag concerns
-- ✅ Dashboard shows correct KPIs
+- âœ… School head can fill all 3 forms
+- âœ… School head can save drafts
+- âœ… School head can submit (with validation)
+- âœ… School head can flag concerns
+- âœ… Dashboard shows correct KPIs
 
 ---
 
-## 👨‍💼 PHASE 5: MONITOR FEATURES (4-5 Days)
+## ðŸ‘¨â€ðŸ’¼ PHASE 5: MONITOR FEATURES (4-5 Days)
 
 ### Dashboard Page
 - [ ] Create DashboardPage.tsx (monitor view)
 - [ ] Add KPI cards: Submission Progress (X of Y), Pending Reviews (count), At-Risk Schools (count), Total Enrollment & Dropout Rate
-- [ ] Add Compliance Breakdown pie chart (I-META / TARGETS-MET / SMEA by status)
+- [ ] Add Compliance Breakdown pie chart (I-META / BMEF / SMEA by status)
 - [ ] Add Pending Review Queue table (school name, package type, submitted date, action buttons)
 - [ ] Add Open Concerns list (sorted by urgency, status counts by category)
 - [ ] Add quick export buttons (CSV reports)
@@ -296,9 +305,9 @@
 ### Reports Page
 - [ ] Create ReportsPage.tsx
 - [ ] Add export buttons:
-  - [ ] Compliance Report (CSV – all submissions + status)
-  - [ ] Enrollment Report (CSV – all schools enrollment numbers)
-  - [ ] Concerns Summary (CSV – all concerns + status)
+  - [ ] Compliance Report (CSV â€“ all submissions + status)
+  - [ ] Enrollment Report (CSV â€“ all schools enrollment numbers)
+  - [ ] Concerns Summary (CSV â€“ all concerns + status)
 - [ ] Add date range filters
 - [ ] Add school filters
 - [ ] Generate & download CSV files
@@ -320,14 +329,14 @@
 - [ ] Test reports generate correctly
 
 ### Deliverable
-- ✅ Monitor dashboard shows all KPIs
-- ✅ Monitor can review & approve/return submissions
-- ✅ Monitor can manage concerns (acknowledge, resolve)
-- ✅ Monitor can export reports (CSV)
+- âœ… Monitor dashboard shows all KPIs
+- âœ… Monitor can review & approve/return submissions
+- âœ… Monitor can manage concerns (acknowledge, resolve)
+- âœ… Monitor can export reports (CSV)
 
 ---
 
-## 🔔 PHASE 6: REAL-TIME & NOTIFICATIONS (2 Days)
+## ðŸ”” PHASE 6: REAL-TIME & NOTIFICATIONS (2 Days)
 
 ### Backend Events
 - [ ] Verify Laravel Reverb is running
@@ -376,14 +385,14 @@
 - [ ] Test notifications appear in UI
 
 ### Deliverable
-- ✅ Real-time notifications via Reverb
-- ✅ Email notifications as fallback
-- ✅ Notification center in UI
-- ✅ Users see instant updates
+- âœ… Real-time notifications via Reverb
+- âœ… Email notifications as fallback
+- âœ… Notification center in UI
+- âœ… Users see instant updates
 
 ---
 
-## 🔐 PHASE 7: SECURITY & HARDENING (2 Days)
+## ðŸ” PHASE 7: SECURITY & HARDENING (2 Days)
 
 ### CSRF & CORS
 - [ ] Verify CSRF tokens on forms
@@ -438,16 +447,16 @@
 - [ ] Test recovery from attacks
 
 ### Deliverable
-- ✅ CSRF tokens protecting forms
-- ✅ Rate limiting on all endpoints
-- ✅ Concern attachments encrypted
-- ✅ Audit logs tracking changes
-- ✅ Tokens managing securely
-- ✅ Security audit passed
+- âœ… CSRF tokens protecting forms
+- âœ… Rate limiting on all endpoints
+- âœ… Concern attachments encrypted
+- âœ… Audit logs tracking changes
+- âœ… Tokens managing securely
+- âœ… Security audit passed
 
 ---
 
-## 🧪 PHASE 8: TESTING & DEPLOYMENT (2-3 Days)
+## ðŸ§ª PHASE 8: TESTING & DEPLOYMENT (2-3 Days)
 
 ### Unit Tests
 - [ ] Write tests for all models
@@ -517,17 +526,17 @@
 - [ ] Prepare support email/hotline
 
 ### Deliverable
-- ✅ 80%+ test coverage
-- ✅ E2E tests passing
-- ✅ Load test results analyzed
-- ✅ Staging deployment stable
-- ✅ User manual written
-- ✅ Training videos created
-- ✅ **LIVE IN PRODUCTION** ✅
+- âœ… 80%+ test coverage
+- âœ… E2E tests passing
+- âœ… Load test results analyzed
+- âœ… Staging deployment stable
+- âœ… User manual written
+- âœ… Training videos created
+- âœ… **LIVE IN PRODUCTION** âœ…
 
 ---
 
-## 🎯 POST-LAUNCH (Weeks 9-12)
+## ðŸŽ¯ POST-LAUNCH (Weeks 9-12)
 
 ### Day 1
 - [ ] Monitor error logs (Sentry)
@@ -549,10 +558,10 @@
 
 ---
 
-## 📊 SUCCESS METRICS (Go-Live Readiness)
+## ðŸ“Š SUCCESS METRICS (Go-Live Readiness)
 
-### Must Have ✅
-- [ ] All 3 form types (I-META, TARGETS-MET, SMEA) working
+### Must Have âœ…
+- [ ] All 3 form types (I-META, BMEF, SMEA) working
 - [ ] School heads can submit
 - [ ] Monitor can review & approve/return
 - [ ] Concerns workflow complete
@@ -563,14 +572,14 @@
 - [ ] E2E tests passing
 - [ ] Staging deployment stable (48h)
 
-### Should Have 🟠
+### Should Have ðŸŸ 
 - [ ] User manual written
 - [ ] Training videos created
 - [ ] Performance benchmarks met (<200ms API, <2s page load)
 - [ ] Load test passed (100 concurrent users)
 - [ ] Backup/restore tested
 
-### Nice to Have 🟡
+### Nice to Have ðŸŸ¡
 - [ ] Mobile app (can defer to Phase 2)
 - [ ] Advanced analytics dashboard
 - [ ] Bulk import interface
@@ -578,7 +587,7 @@
 
 ---
 
-## 🏁 FINAL CHECKLIST BEFORE GOING LIVE
+## ðŸ FINAL CHECKLIST BEFORE GOING LIVE
 
 ### Technical
 - [ ] Database backups configured
@@ -613,7 +622,7 @@
 
 ---
 
-## 💬 DECISION LOG
+## ðŸ’¬ DECISION LOG
 
 Use this section to document decisions made during implementation:
 
@@ -638,7 +647,7 @@ Decision 3: Concern Attachments
 
 ---
 
-## 📞 CONTACT INFORMATION
+## ðŸ“ž CONTACT INFORMATION
 
 **Project Lead:** [Your Name]  
 **DepEd Contact:** [Name, Email, Phone]  
@@ -648,25 +657,27 @@ Decision 3: Concern Attachments
 
 ---
 
-## 📈 TIMELINE TRACKER
+## ðŸ“ˆ TIMELINE TRACKER
 
 | Phase | Start Date | End Date | Status | Notes |
 |-------|-----------|----------|--------|-------|
-| 1. Cleanup | - | - | ⏳ Not started | |
-| 2. Backend | - | - | ⏳ Not started | |
-| 3. Frontend Auth | - | - | ⏳ Not started | |
-| 4. School Head UI | - | - | ⏳ Not started | |
-| 5. Monitor UI | - | - | ⏳ Not started | |
-| 6. Real-time | - | - | ⏳ Not started | |
-| 7. Security | - | - | ⏳ Not started | |
-| 8. Testing & Deploy | - | - | ⏳ Not started | |
+| 1. Cleanup | - | - | â³ Not started | |
+| 2. Backend | - | - | â³ Not started | |
+| 3. Frontend Auth | - | - | â³ Not started | |
+| 4. School Head UI | - | - | â³ Not started | |
+| 5. Monitor UI | - | - | â³ Not started | |
+| 6. Real-time | - | - | â³ Not started | |
+| 7. Security | - | - | â³ Not started | |
+| 8. Testing & Deploy | - | - | â³ Not started | |
 
 ---
 
-## ✅ ALL DONE!
+## âœ… ALL DONE!
 
-When you check all boxes above, your project is ready for production. 🎉
+When you check all boxes above, your project is ready for production. ðŸŽ‰
 
 **Total time: 8 weeks (solo) or 4-5 weeks (2-person team)**
 
-Good luck! 🚀
+Good luck! ðŸš€
+
+

@@ -1,10 +1,19 @@
-# CSPAMS 2.0 - Quick Start Guide
+﻿# CSPAMS 2.0 - Quick Start Guide
+
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+> April 2026 compliance UI refactor - TARGETS-MET renamed to BMEF with 4-tab layout.
+
 
 **TL;DR:** Your new design is **4x simpler** than the old capstone. Stop tracking students. Start tracking compliance + concerns.
 
 ---
 
-## 🎯 THE BIG PICTURE
+## ðŸŽ¯ THE BIG PICTURE
 
 | Aspect | Old Design | New Design |
 |--------|-----------|-----------|
@@ -12,41 +21,41 @@
 | **Database** | 3.5M+ rows (learners, performance) | ~7K rows (submissions, concerns) |
 | **Time to Build** | 6-8 months | **2-3 weeks** |
 | **Complexity** | Enterprise-grade | Simple & focused |
-| **Forms to build** | None (manual process) | **3 forms** (I-META, TARGETS-MET, SMEA) |
+| **Forms to build** | None (manual process) | **3 forms** (I-META, BMEF, SMEA) |
 
 ---
 
-## 📋 YOUR TWO CORE JOBS
+## ðŸ“‹ YOUR TWO CORE JOBS
 
 ```
 JOB 1: Annual Compliance
-├─ School head fills 3 forms once per year
-├─ Monitor reviews & approves or returns
-└─ Done!
+â”œâ”€ School head fills 3 forms once per year
+â”œâ”€ Monitor reviews & approves or returns
+â””â”€ Done!
 
 JOB 2: Welfare Tracking
-├─ School head flags student concerns (no names, just grade/section)
-├─ Monitor gets instant alert
-├─ Monitor & school head chat to resolve
-└─ Mark as resolved when done
+â”œâ”€ School head flags student concerns (no names, just grade/section)
+â”œâ”€ Monitor gets instant alert
+â”œâ”€ Monitor & school head chat to resolve
+â””â”€ Mark as resolved when done
 ```
 
 ---
 
-## ✅ WHAT'S ALREADY BUILT (Reuse)
+## âœ… WHAT'S ALREADY BUILT (Reuse)
 
-- ✅ Role-based authentication (monitor + school head)
-- ✅ 6-digit school code login
-- ✅ Audit logging
-- ✅ Reverb real-time notifications
-- ✅ Email delivery (SMTP, Resend)
-- ✅ Master data (Schools, Academic Years)
+- âœ… Role-based authentication (monitor + school head)
+- âœ… 6-digit school code login
+- âœ… Audit logging
+- âœ… Reverb real-time notifications
+- âœ… Email delivery (SMTP, Resend)
+- âœ… Master data (Schools, Academic Years)
 
-**Don't reinvent the wheel – these work!**
+**Don't reinvent the wheel â€“ these work!**
 
 ---
 
-## ❌ WHAT TO DELETE
+## âŒ WHAT TO DELETE
 
 ```php
 // Delete these models (they're over-engineered):
@@ -59,7 +68,7 @@ DELETE: (any learner-related code)
 
 ---
 
-## 🆕 WHAT TO BUILD (3 New Tables)
+## ðŸ†• WHAT TO BUILD (3 New Tables)
 
 ```sql
 CREATE TABLE welfare_concerns (
@@ -83,7 +92,7 @@ CREATE TABLE enrollment_records (
 
 ---
 
-## 🚀 8-WEEK ROADMAP
+## ðŸš€ 8-WEEK ROADMAP
 
 | Week | Phase | Deliverable |
 |------|-------|-------------|
@@ -97,7 +106,7 @@ CREATE TABLE enrollment_records (
 
 ---
 
-## 🎬 START HERE (This Week)
+## ðŸŽ¬ START HERE (This Week)
 
 ### Step 1: Answer These 10 Questions
 1. When does this need to go live? (school year date?)
@@ -113,7 +122,7 @@ CREATE TABLE enrollment_records (
 
 ### Step 2: Get Sign-off
 - Show DepEd the **new design** (much simpler!)
-- Confirm the 3 forms (I-META, TARGETS-MET, SMEA)
+- Confirm the 3 forms (I-META, BMEF, SMEA)
 - Get buy-in on concern categories
 
 ### Step 3: Start Phase 1 (Cleanup)
@@ -136,7 +145,7 @@ rm app/Models/StudentStatusLog.php
 
 ---
 
-## 📱 WHICH FILE IS WHICH?
+## ðŸ“± WHICH FILE IS WHICH?
 
 You have **3 documents:**
 
@@ -149,7 +158,7 @@ You have **3 documents:**
 
 2. **CSPAMS_DESIGN_COMPARISON.md** (The visual summary)
    - Old vs New side-by-side
-   - Database size impact (3.5M → 7K rows)
+   - Database size impact (3.5M â†’ 7K rows)
    - Code cleanup checklist
    - Risk & mitigation
    - Deployment recommendations
@@ -169,125 +178,125 @@ You have **3 documents:**
 
 ---
 
-## 🎨 FORM FIELDS (I-META Example)
+## ðŸŽ¨ FORM FIELDS (I-META Example)
 
 From your uploaded document, I-META has:
 
-**Section I.A – Leadership & Governance**
+**Section I.A â€“ Leadership & Governance**
 - 5+ items, each scored 1-5
 - Total = average of all items
 
-**Section I.B – Teaching & Learning**
+**Section I.B â€“ Teaching & Learning**
 - Similar structure
 
 ...and so on. (Full form structure is in the Implementation Guide)
 
 ---
 
-## 🏗️ FOLDER STRUCTURE (After Cleanup)
+## ðŸ—ï¸ FOLDER STRUCTURE (After Cleanup)
 
 ```
 cspams.2/
-├─ app/
-│  ├─ Http/Controllers/Api/
-│  │  ├─ SubmissionController.php (existing, refine)
-│  │  ├─ ConcernController.php (NEW)
-│  │  ├─ EnrollmentController.php (NEW)
-│  │  └─ DashboardController.php (refine)
-│  │
-│  ├─ Models/
-│  │  ├─ IndicatorSubmission.php (refine)
-│  │  ├─ WelfareConcern.php (NEW)
-│  │  ├─ WelfareConcernThread.php (NEW)
-│  │  ├─ WelfareConcernAttachment.php (NEW)
-│  │  ├─ EnrollmentRecord.php (NEW)
-│  │  └─ School.php (existing)
-│  │
-│  ├─ Services/
-│  │  ├─ SubmissionService.php (existing)
-│  │  ├─ ConcernService.php (NEW)
-│  │  ├─ EnrollmentService.php (NEW)
-│  │  └─ DashboardService.php (refine)
-│  │
-│  └─ Events/
-│     ├─ SubmissionSubmitted.php (existing)
-│     ├─ ConcernFlagged.php (NEW)
-│     └─ ConcernResolved.php (NEW)
-│
-├─ frontend/src/
-│  ├─ pages/
-│  │  ├─ school-head/
-│  │  │  ├─ Dashboard.tsx
-│  │  │  ├─ Requirements.tsx (I-META, TARGETS-MET, SMEA forms)
-│  │  │  ├─ EnrollmentAndConcerns.tsx
-│  │  │  └─ History.tsx
-│  │  │
-│  │  ├─ monitor/
-│  │  │  ├─ Dashboard.tsx
-│  │  │  ├─ Reviews.tsx
-│  │  │  ├─ Concerns.tsx
-│  │  │  └─ Reports.tsx
-│  │  │
-│  │  └─ auth/
-│  │     └─ Login.tsx
-│  │
-│  ├─ components/
-│  │  ├─ modals/
-│  │  │  └─ FlagConcernModal.tsx
-│  │  ├─ forms/
-│  │  │  ├─ IMetaForm.tsx
-│  │  │  ├─ TargetsMETForm.tsx
-│  │  │  ├─ SMEAForm.tsx
-│  │  │  └─ EnrollmentForm.tsx
-│  │  └─ concerns/
-│  │     ├─ ConcernsList.tsx
-│  │     └─ ConcernDetail.tsx
-│  │
-│  ├─ hooks/
-│  │  ├─ useAuth.ts
-│  │  ├─ useConcerns.ts
-│  │  ├─ useSubmissions.ts
-│  │  └─ useEnrollment.ts
-│  │
-│  └─ types/
-│     ├─ concerns.ts
-│     ├─ submissions.ts
-│     └─ enrollment.ts
-│
-└─ database/migrations/
-   ├─ YYYY_XX_XX_create_welfare_concerns_table.php
-   ├─ YYYY_XX_XX_create_welfare_concern_attachments_table.php
-   ├─ YYYY_XX_XX_create_welfare_concern_threads_table.php
-   └─ YYYY_XX_XX_create_enrollment_records_table.php
+â”œâ”€ app/
+â”‚  â”œâ”€ Http/Controllers/Api/
+â”‚  â”‚  â”œâ”€ SubmissionController.php (existing, refine)
+â”‚  â”‚  â”œâ”€ ConcernController.php (NEW)
+â”‚  â”‚  â”œâ”€ EnrollmentController.php (NEW)
+â”‚  â”‚  â””â”€ DashboardController.php (refine)
+â”‚  â”‚
+â”‚  â”œâ”€ Models/
+â”‚  â”‚  â”œâ”€ IndicatorSubmission.php (refine)
+â”‚  â”‚  â”œâ”€ WelfareConcern.php (NEW)
+â”‚  â”‚  â”œâ”€ WelfareConcernThread.php (NEW)
+â”‚  â”‚  â”œâ”€ WelfareConcernAttachment.php (NEW)
+â”‚  â”‚  â”œâ”€ EnrollmentRecord.php (NEW)
+â”‚  â”‚  â””â”€ School.php (existing)
+â”‚  â”‚
+â”‚  â”œâ”€ Services/
+â”‚  â”‚  â”œâ”€ SubmissionService.php (existing)
+â”‚  â”‚  â”œâ”€ ConcernService.php (NEW)
+â”‚  â”‚  â”œâ”€ EnrollmentService.php (NEW)
+â”‚  â”‚  â””â”€ DashboardService.php (refine)
+â”‚  â”‚
+â”‚  â””â”€ Events/
+â”‚     â”œâ”€ SubmissionSubmitted.php (existing)
+â”‚     â”œâ”€ ConcernFlagged.php (NEW)
+â”‚     â””â”€ ConcernResolved.php (NEW)
+â”‚
+â”œâ”€ frontend/src/
+â”‚  â”œâ”€ pages/
+â”‚  â”‚  â”œâ”€ school-head/
+â”‚  â”‚  â”‚  â”œâ”€ Dashboard.tsx
+â”‚  â”‚  â”‚  â”œâ”€ Requirements.tsx (I-META, BMEF, SMEA forms)
+â”‚  â”‚  â”‚  â”œâ”€ EnrollmentAndConcerns.tsx
+â”‚  â”‚  â”‚  â””â”€ History.tsx
+â”‚  â”‚  â”‚
+â”‚  â”‚  â”œâ”€ monitor/
+â”‚  â”‚  â”‚  â”œâ”€ Dashboard.tsx
+â”‚  â”‚  â”‚  â”œâ”€ Reviews.tsx
+â”‚  â”‚  â”‚  â”œâ”€ Concerns.tsx
+â”‚  â”‚  â”‚  â””â”€ Reports.tsx
+â”‚  â”‚  â”‚
+â”‚  â”‚  â””â”€ auth/
+â”‚  â”‚     â””â”€ Login.tsx
+â”‚  â”‚
+â”‚  â”œâ”€ components/
+â”‚  â”‚  â”œâ”€ modals/
+â”‚  â”‚  â”‚  â””â”€ FlagConcernModal.tsx
+â”‚  â”‚  â”œâ”€ forms/
+â”‚  â”‚  â”‚  â”œâ”€ IMetaForm.tsx
+â”‚  â”‚  â”‚  â”œâ”€ TargetsMETForm.tsx
+â”‚  â”‚  â”‚  â”œâ”€ SMEAForm.tsx
+â”‚  â”‚  â”‚  â””â”€ EnrollmentForm.tsx
+â”‚  â”‚  â””â”€ concerns/
+â”‚  â”‚     â”œâ”€ ConcernsList.tsx
+â”‚  â”‚     â””â”€ ConcernDetail.tsx
+â”‚  â”‚
+â”‚  â”œâ”€ hooks/
+â”‚  â”‚  â”œâ”€ useAuth.ts
+â”‚  â”‚  â”œâ”€ useConcerns.ts
+â”‚  â”‚  â”œâ”€ useSubmissions.ts
+â”‚  â”‚  â””â”€ useEnrollment.ts
+â”‚  â”‚
+â”‚  â””â”€ types/
+â”‚     â”œâ”€ concerns.ts
+â”‚     â”œâ”€ submissions.ts
+â”‚     â””â”€ enrollment.ts
+â”‚
+â””â”€ database/migrations/
+   â”œâ”€ YYYY_XX_XX_create_welfare_concerns_table.php
+   â”œâ”€ YYYY_XX_XX_create_welfare_concern_attachments_table.php
+   â”œâ”€ YYYY_XX_XX_create_welfare_concern_threads_table.php
+   â””â”€ YYYY_XX_XX_create_enrollment_records_table.php
 ```
 
 ---
 
-## 💡 KEY DESIGN DECISIONS
+## ðŸ’¡ KEY DESIGN DECISIONS
 
 ### Decision 1: Form Data Storage
 **JSON in DB** (simplest) or Normalized Tables (queryable)?
-→ **Start with JSON**, migrate if needed
+â†’ **Start with JSON**, migrate if needed
 
 ### Decision 2: Draft Auto-Save
 **localStorage draft + manual save** (no API overhead)
-→ **Recommended approach**
+â†’ **Recommended approach**
 
 ### Decision 3: Real-time Notifications
 **Reverb + email + polling** (best UX)
-→ **Implement all three**
+â†’ **Implement all three**
 
 ### Decision 4: Concern Evidence
 **Encrypt files before storage** using Laravel Crypt
-→ **Privacy-safe**
+â†’ **Privacy-safe**
 
 ### Decision 5: Submission Deadlines
 **Soft deadline** (warning only, allows late)
-→ **Plus email reminders** (30d, 7d, 1d before)
+â†’ **Plus email reminders** (30d, 7d, 1d before)
 
 ---
 
-## 🔐 SECURITY CHECKLIST
+## ðŸ” SECURITY CHECKLIST
 
 - [ ] CSRF tokens on forms
 - [ ] Rate limiting on login (brute force protection)
@@ -299,43 +308,43 @@ cspams.2/
 
 ---
 
-## 📊 WHAT AINT INCLUDED (Intentionally)
+## ðŸ“Š WHAT AINT INCLUDED (Intentionally)
 
 These are features from the OLD design that are **NOT** in the new scope:
 
-- ❌ Full student roster / LRN database
-- ❌ Individual student performance tracking
-- ❌ Attendance tracking
-- ❌ Grade/assessment recording
-- ❌ At-risk algorithm (AI detection)
-- ❌ Teacher records
-- ❌ National LIS/EBEIS integration
-- ❌ Detailed learner lifecycle states
+- âŒ Full student roster / LRN database
+- âŒ Individual student performance tracking
+- âŒ Attendance tracking
+- âŒ Grade/assessment recording
+- âŒ At-risk algorithm (AI detection)
+- âŒ Teacher records
+- âŒ National LIS/EBEIS integration
+- âŒ Detailed learner lifecycle states
 
 **Why removed?** They're out of scope + add complexity. If DepEd needs them later, they're separate systems.
 
 ---
 
-## 🎓 FORM STRUCTURES (To Be Finalized)
+## ðŸŽ“ FORM STRUCTURES (To Be Finalized)
 
 You have uploaded I-META doc. Still need clarification on:
 
-1. **TARGETS-MET**: Is this auto-calculated from enrollment + previous targets?
+1. **BMEF**: Is this auto-calculated from enrollment + previous targets?
 2. **SMEA**: What fields/sections does it have?
 3. **Enrollment Form**: Do schools report by grade or school-wide?
 4. **Concern Categories**: Are the 8 categories (abuse, financial, dropout, etc.) final?
 
-→ **Ask DepEd to confirm these before coding**
+â†’ **Ask DepEd to confirm these before coding**
 
 ---
 
-## 🚢 GO-LIVE CHECKLIST
+## ðŸš¢ GO-LIVE CHECKLIST
 
 Before deploying to production:
 
-- [ ] All 3 forms working (I-META, TARGETS-MET, SMEA)
+- [ ] All 3 forms working (I-META, BMEF, SMEA)
 - [ ] School head can submit + monitor can review
-- [ ] Concerns workflow complete (flag → acknowledge → resolve)
+- [ ] Concerns workflow complete (flag â†’ acknowledge â†’ resolve)
 - [ ] Notifications working (email + real-time)
 - [ ] Dashboard shows accurate KPIs
 - [ ] CSV export working for monitors
@@ -351,7 +360,7 @@ Before deploying to production:
 
 ---
 
-## 💬 NEXT STEPS FOR YOU
+## ðŸ’¬ NEXT STEPS FOR YOU
 
 ### **This week:**
 1. Read the 3 documents (start with QUICK_START, then PROJECT_ANALYSIS)
@@ -376,23 +385,23 @@ Before deploying to production:
 
 ---
 
-## 🆘 IF YOU GET STUCK
+## ðŸ†˜ IF YOU GET STUCK
 
 **Problem:** "I don't know how to structure the I-META form"
-→ See: CSPAMS_IMPLEMENTATION_GUIDE.md, Section 4 (Form Validation) + copy the Request class pattern
+â†’ See: CSPAMS_IMPLEMENTATION_GUIDE.md, Section 4 (Form Validation) + copy the Request class pattern
 
 **Problem:** "Real-time notifications seem complex"
-→ See: CSPAMS_PROJECT_ANALYSIS.md, Part 5, Decision 4 (Real-time Notifications) + the Events code in Implementation Guide
+â†’ See: CSPAMS_PROJECT_ANALYSIS.md, Part 5, Decision 4 (Real-time Notifications) + the Events code in Implementation Guide
 
 **Problem:** "How do I delete all the old student models?"
-→ See: CSPAMS_DESIGN_COMPARISON.md, Code Cleanup Checklist
+â†’ See: CSPAMS_DESIGN_COMPARISON.md, Code Cleanup Checklist
 
 **Problem:** "What should I deploy to first?"
-→ See: CSPAMS_DESIGN_COMPARISON.md, Deployment Recommendations
+â†’ See: CSPAMS_DESIGN_COMPARISON.md, Deployment Recommendations
 
 ---
 
-## 📞 QUESTIONS TO ASK DEPED
+## ðŸ“ž QUESTIONS TO ASK DEPED
 
 Before you code anything, **confirm these with DepEd Santiago City:**
 
@@ -402,14 +411,14 @@ Before you code anything, **confirm these with DepEd Santiago City:**
 4. **Submission deadline date?** (e.g., June 30 each year?)
 5. **Top 3 reports monitors need?**
 6. **Concern response SLA?** (acknowledge within 24h?)
-7. **Forms final?** (Can I-META/TARGETS-MET/SMEA change mid-year?)
+7. **Forms final?** (Can I-META/BMEF/SMEA change mid-year?)
 8. **Mobile needed?** (Or responsive web only?)
 9. **Historical data migration?** (Keep old system's data?)
 10. **Training plan?** (You'll train? Or provide docs?)
 
 ---
 
-## 📈 SUCCESS METRICS
+## ðŸ“ˆ SUCCESS METRICS
 
 ### By Week 3:
 - [ ] Migrations running
@@ -430,7 +439,7 @@ Before you code anything, **confirm these with DepEd Santiago City:**
 
 ---
 
-## 🎁 BONUS: Copy-Paste Starters
+## ðŸŽ BONUS: Copy-Paste Starters
 
 All code in the Implementation Guide is production-ready. Just:
 
@@ -443,42 +452,42 @@ All code in the Implementation Guide is production-ready. Just:
 
 ---
 
-## 📚 Document Map
+## ðŸ“š Document Map
 
 ```
 CSPAMS_QUICK_START.md (You are here)
-├─ Overview + action items
-│
-├─ CSPAMS_PROJECT_ANALYSIS.md
-│  ├─ Gap analysis (what's in repo vs what you need)
-│  ├─ New database schema
-│  ├─ Component architecture
-│  ├─ 8-phase implementation roadmap
-│  ├─ 10 brainstorm topics
-│  └─ 10 questions to answer
-│
-├─ CSPAMS_DESIGN_COMPARISON.md
-│  ├─ Old vs New side-by-side
-│  ├─ Database size impact
-│  ├─ Feature comparison table
-│  ├─ Code cleanup checklist
-│  ├─ Risk & mitigation
-│  └─ Deployment recommendations
-│
-└─ CSPAMS_IMPLEMENTATION_GUIDE.md
-   ├─ Copy-paste migrations
-   ├─ All 4 models (full code)
-   ├─ API controllers
-   ├─ Form validation
-   ├─ React components (TypeScript)
-   ├─ Database queries
-   ├─ Notification events
-   └─ Test examples
+â”œâ”€ Overview + action items
+â”‚
+â”œâ”€ CSPAMS_PROJECT_ANALYSIS.md
+â”‚  â”œâ”€ Gap analysis (what's in repo vs what you need)
+â”‚  â”œâ”€ New database schema
+â”‚  â”œâ”€ Component architecture
+â”‚  â”œâ”€ 8-phase implementation roadmap
+â”‚  â”œâ”€ 10 brainstorm topics
+â”‚  â””â”€ 10 questions to answer
+â”‚
+â”œâ”€ CSPAMS_DESIGN_COMPARISON.md
+â”‚  â”œâ”€ Old vs New side-by-side
+â”‚  â”œâ”€ Database size impact
+â”‚  â”œâ”€ Feature comparison table
+â”‚  â”œâ”€ Code cleanup checklist
+â”‚  â”œâ”€ Risk & mitigation
+â”‚  â””â”€ Deployment recommendations
+â”‚
+â””â”€ CSPAMS_IMPLEMENTATION_GUIDE.md
+   â”œâ”€ Copy-paste migrations
+   â”œâ”€ All 4 models (full code)
+   â”œâ”€ API controllers
+   â”œâ”€ Form validation
+   â”œâ”€ React components (TypeScript)
+   â”œâ”€ Database queries
+   â”œâ”€ Notification events
+   â””â”€ Test examples
 ```
 
 ---
 
-## 🏁 FINAL WORDS
+## ðŸ FINAL WORDS
 
 Your new design is **pragmatic & achievable**. Instead of building a learner management system, you're building a compliance tracker + concern flagging system. That's much more doable in the real world.
 
@@ -486,10 +495,12 @@ Your new design is **pragmatic & achievable**. Instead of building a learner man
 
 **2-3 weeks of focused work** and you'll have a working system ready for DepEd Santiago City.
 
-**Go get it!** 🚀
+**Go get it!** ðŸš€
 
 ---
 
 **Last Updated:** April 11, 2026  
 **Project:** CSPAMS 2.0 Redesign  
 **Status:** Ready for Kickoff
+
+

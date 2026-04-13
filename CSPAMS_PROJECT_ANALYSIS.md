@@ -1,4 +1,13 @@
-# CSPAMS 2.0 - Project Analysis & Implementation Brainstorm
+﻿# CSPAMS 2.0 - Project Analysis & Implementation Brainstorm
+
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+> April 2026 compliance UI refactor - TARGETS-MET renamed to BMEF with 4-tab layout.
+
 
 **Current Date:** April 11, 2026  
 **Project:** Centralized Student Performance Analytics and Monitoring System (CSPAMS)  
@@ -10,30 +19,30 @@
 
 Your **new design** is a radical simplification from the capstone scope. Instead of a comprehensive learner lifecycle management system, you're building a **lightweight compliance + welfare tracking tool** focused on two core workflows:
 
-1. **Annual Compliance** – School heads submit 3 required packages yearly (I-META, TARGETS-MET, SMEA)
-2. **School Welfare Tracking** – Real-time flagging of student concerns (abuse, dropout risk, attendance, etc.)
+1. **Annual Compliance** â€“ School heads submit 3 required packages yearly (I-META, BMEF, SMEA)
+2. **School Welfare Tracking** â€“ Real-time flagging of student concerns (abuse, dropout risk, attendance, etc.)
 
 **Current Repo Status:** ~274 commits, full learner database (LRN tracking, lifecycle, performance metrics, audit logs). This is **overcomplicated** for the new scope.
 
 ---
 
-## PART 1: GAP ANALYSIS – WHAT'S IN THE REPO VS. WHAT YOU NEED
+## PART 1: GAP ANALYSIS â€“ WHAT'S IN THE REPO VS. WHAT YOU NEED
 
-### ✅ ALREADY BUILT (Reuse These)
+### âœ… ALREADY BUILT (Reuse These)
 
 | Component | Status | Repo Location | Notes |
 |-----------|--------|---------------|-------|
-| **Role-based auth** | ✅ Done | `app/Models/User.php`, Filament | Monitor + School Head roles exist; school code login works |
-| **Sanctum API** | ✅ Done | `routes/api.php` | Token-based auth; good foundation |
-| **Dashboard layout** | ✅ Partial | `frontend/src/pages` | Sidebar navigation, KPI cards – reusable |
-| **Schools master data** | ✅ Done | `app/Models/School.php` | School CRUD, 6-digit code validation |
-| **Academic years** | ✅ Done | `app/Models/AcademicYear.php` | School year model for context |
-| **Audit logging** | ✅ Done | `app/Models/AuditLog.php` | Track all CRUD actions |
-| **Notifications** | ✅ Partial | Reverb + queue | Real-time + email; needs refinement for concern updates |
-| **Reports/exports** | ✅ Partial | `app/Resources` (Filament) | CSV export framework exists; refine for new reports |
-| **Email delivery** | ✅ Done | SMTP/Resend integration | Password reset, MFA, setup links – reusable |
+| **Role-based auth** | âœ… Done | `app/Models/User.php`, Filament | Monitor + School Head roles exist; school code login works |
+| **Sanctum API** | âœ… Done | `routes/api.php` | Token-based auth; good foundation |
+| **Dashboard layout** | âœ… Partial | `frontend/src/pages` | Sidebar navigation, KPI cards â€“ reusable |
+| **Schools master data** | âœ… Done | `app/Models/School.php` | School CRUD, 6-digit code validation |
+| **Academic years** | âœ… Done | `app/Models/AcademicYear.php` | School year model for context |
+| **Audit logging** | âœ… Done | `app/Models/AuditLog.php` | Track all CRUD actions |
+| **Notifications** | âœ… Partial | Reverb + queue | Real-time + email; needs refinement for concern updates |
+| **Reports/exports** | âœ… Partial | `app/Resources` (Filament) | CSV export framework exists; refine for new reports |
+| **Email delivery** | âœ… Done | SMTP/Resend integration | Password reset, MFA, setup links â€“ reusable |
 
-### ❌ NEEDS TO BE REMOVED/SIMPLIFIED (Too Complex for New Scope)
+### âŒ NEEDS TO BE REMOVED/SIMPLIFIED (Too Complex for New Scope)
 
 | Component | Current State | Action | Why |
 |-----------|---------------|--------|-----|
@@ -45,17 +54,17 @@ Your **new design** is a radical simplification from the capstone scope. Instead
 | **Detailed learner history** | Granular timeline tracking | **SIMPLIFY** | Keep simple submission history + concern status history |
 | **Filament admin panel bloat** | Many resource pages | **REFACTOR** | Keep only: Schools, Monitors, School Heads, Submissions, Concerns |
 
-### 🔶 NEEDS TO BE BUILT (New Functionality)
+### ðŸ”¶ NEEDS TO BE BUILT (New Functionality)
 
 | Component | Priority | Effort | Details |
 |-----------|----------|--------|---------|
-| **Indicator Submission Forms** | 🔴 Critical | 2-3 days | I-META, TARGETS-MET, SMEA form builders + validation |
-| **Concerns (Welfare Flagging)** | 🔴 Critical | 2 days | Form, state machine (Open → In Progress → Resolved), notifications |
-| **Division-wide Reports** | 🟠 High | 1-2 days | KPIs: % schools submitted, at-risk count, enrollment/dropout rates |
-| **Simplified Enrollment Form** | 🟠 High | 1 day | School heads enter: Total enrolled, Dropouts, Transferees, Completers |
-| **Notification Center** | 🟠 High | 1 day | In-app + email for submission returns, concern updates |
-| **Multi-school Sync** | 🟡 Medium | 1-2 days | Monitor dashboard aggregates all schools instantly |
-| **Attachment Encryption** | 🟡 Medium | 1 day | For concern evidence (PDFs/photos) |
+| **Indicator Submission Forms** | ðŸ”´ Critical | 2-3 days | I-META, BMEF, SMEA form builders + validation |
+| **Concerns (Welfare Flagging)** | ðŸ”´ Critical | 2 days | Form, state machine (Open â†’ In Progress â†’ Resolved), notifications |
+| **Division-wide Reports** | ðŸŸ  High | 1-2 days | KPIs: % schools submitted, at-risk count, enrollment/dropout rates |
+| **Simplified Enrollment Form** | ðŸŸ  High | 1 day | School heads enter: Total enrolled, Dropouts, Transferees, Completers |
+| **Notification Center** | ðŸŸ  High | 1 day | In-app + email for submission returns, concern updates |
+| **Multi-school Sync** | ðŸŸ¡ Medium | 1-2 days | Monitor dashboard aggregates all schools instantly |
+| **Attachment Encryption** | ðŸŸ¡ Medium | 1 day | For concern evidence (PDFs/photos) |
 
 ---
 
@@ -76,67 +85,67 @@ Your **new design** is a radical simplification from the capstone scope. Instead
 
 ```
 Tables to Create:
-├─ indicator_submissions (exists, refine)
-│  ├─ id
-│  ├─ school_id
-│  ├─ academic_year_id
-│  ├─ submission_type ('I-META', 'TARGETS-MET', 'SMEA')
-│  ├─ status ('draft', 'submitted', 'returned', 'approved')
-│  ├─ submitted_at (nullable)
-│  ├─ submitted_by (school_head_id)
-│  ├─ reviewed_by (monitor_id, nullable)
-│  ├─ review_notes (text, nullable)
-│  ├─ form_data (json – stores form fields)
-│  ├─ created_at, updated_at
-│
-├─ enrollment_records (NEW)
-│  ├─ id
-│  ├─ school_id
-│  ├─ academic_year_id
-│  ├─ total_enrolled
-│  ├─ dropouts
-│  ├─ transferees_in
-│  ├─ transferees_out
-│  ├─ completers
-│  ├─ retention_rate (computed)
-│  ├─ submitted_at
-│  ├─ submitted_by (school_head_id)
-│  ├─ created_at, updated_at
-│
-├─ welfare_concerns (NEW – replaces or extends)
-│  ├─ id
-│  ├─ school_id
-│  ├─ flagged_by (school_head_id)
-│  ├─ flagged_at
-│  ├─ grade_level
-│  ├─ section
-│  ├─ category ('abuse', 'financial', 'dropout_risk', 'attendance', 'family', 'health', 'bullying', 'other')
-│  ├─ description (text – NO student name/LRN)
-│  ├─ status ('open', 'in_progress', 'resolved')
-│  ├─ acknowledged_by (monitor_id, nullable)
-│  ├─ acknowledged_at (nullable)
-│  ├─ resolved_by (monitor_id, nullable)
-│  ├─ resolved_at (nullable)
-│  ├─ created_at, updated_at
-│
-├─ welfare_concern_attachments (NEW)
-│  ├─ id
-│  ├─ concern_id
-│  ├─ file_path (encrypted)
-│  ├─ original_filename
-│  ├─ file_type (PDF/JPG/PNG)
-│  ├─ uploaded_by (school_head_id)
-│  ├─ created_at
-│
-├─ welfare_concern_threads (NEW)
-│  ├─ id
-│  ├─ concern_id
-│  ├─ user_id (monitor or school_head)
-│  ├─ message (text)
-│  ├─ created_at
-│
-├─ submission_history (exists, refine)
-│  └─ Already covers I-META/TARGETS-MET/SMEA history
+â”œâ”€ indicator_submissions (exists, refine)
+â”‚  â”œâ”€ id
+â”‚  â”œâ”€ school_id
+â”‚  â”œâ”€ academic_year_id
+â”‚  â”œâ”€ submission_type ('I-META', 'BMEF', 'SMEA')
+â”‚  â”œâ”€ status ('draft', 'submitted', 'returned', 'approved')
+â”‚  â”œâ”€ submitted_at (nullable)
+â”‚  â”œâ”€ submitted_by (school_head_id)
+â”‚  â”œâ”€ reviewed_by (monitor_id, nullable)
+â”‚  â”œâ”€ review_notes (text, nullable)
+â”‚  â”œâ”€ form_data (json â€“ stores form fields)
+â”‚  â”œâ”€ created_at, updated_at
+â”‚
+â”œâ”€ enrollment_records (NEW)
+â”‚  â”œâ”€ id
+â”‚  â”œâ”€ school_id
+â”‚  â”œâ”€ academic_year_id
+â”‚  â”œâ”€ total_enrolled
+â”‚  â”œâ”€ dropouts
+â”‚  â”œâ”€ transferees_in
+â”‚  â”œâ”€ transferees_out
+â”‚  â”œâ”€ completers
+â”‚  â”œâ”€ retention_rate (computed)
+â”‚  â”œâ”€ submitted_at
+â”‚  â”œâ”€ submitted_by (school_head_id)
+â”‚  â”œâ”€ created_at, updated_at
+â”‚
+â”œâ”€ welfare_concerns (NEW â€“ replaces or extends)
+â”‚  â”œâ”€ id
+â”‚  â”œâ”€ school_id
+â”‚  â”œâ”€ flagged_by (school_head_id)
+â”‚  â”œâ”€ flagged_at
+â”‚  â”œâ”€ grade_level
+â”‚  â”œâ”€ section
+â”‚  â”œâ”€ category ('abuse', 'financial', 'dropout_risk', 'attendance', 'family', 'health', 'bullying', 'other')
+â”‚  â”œâ”€ description (text â€“ NO student name/LRN)
+â”‚  â”œâ”€ status ('open', 'in_progress', 'resolved')
+â”‚  â”œâ”€ acknowledged_by (monitor_id, nullable)
+â”‚  â”œâ”€ acknowledged_at (nullable)
+â”‚  â”œâ”€ resolved_by (monitor_id, nullable)
+â”‚  â”œâ”€ resolved_at (nullable)
+â”‚  â”œâ”€ created_at, updated_at
+â”‚
+â”œâ”€ welfare_concern_attachments (NEW)
+â”‚  â”œâ”€ id
+â”‚  â”œâ”€ concern_id
+â”‚  â”œâ”€ file_path (encrypted)
+â”‚  â”œâ”€ original_filename
+â”‚  â”œâ”€ file_type (PDF/JPG/PNG)
+â”‚  â”œâ”€ uploaded_by (school_head_id)
+â”‚  â”œâ”€ created_at
+â”‚
+â”œâ”€ welfare_concern_threads (NEW)
+â”‚  â”œâ”€ id
+â”‚  â”œâ”€ concern_id
+â”‚  â”œâ”€ user_id (monitor or school_head)
+â”‚  â”œâ”€ message (text)
+â”‚  â”œâ”€ created_at
+â”‚
+â”œâ”€ submission_history (exists, refine)
+â”‚  â””â”€ Already covers I-META/BMEF/SMEA history
 ```
 
 ### API Endpoints (Refined)
@@ -182,107 +191,107 @@ GET    /api/reports/export?format=csv&type=compliance|enrollment|concerns
 
 ```
 frontend/src/
-├─ layouts/
-│  ├─ SchoolHeadLayout.tsx         (sidebar: Dashboard, Requirements, Enrollment & Concerns, History, Settings)
-│  └─ DivisionMonitorLayout.tsx     (sidebar: Dashboard, Schools, Reviews, Reports, Concerns, System)
-│
-├─ pages/
-│  ├─ auth/
-│  │  ├─ LoginPage.tsx             (unified login form, role selector)
-│  │  ├─ ForgotPasswordPage.tsx
-│  │  └─ MFAPage.tsx
-│  │
-│  ├─ school-head/
-│  │  ├─ Dashboard.tsx             (3 cards: Requirements Due, Enrollment Snapshot, Open Concerns)
-│  │  ├─ Requirements/
-│  │  │  ├─ RequirementsPage.tsx   (tabs: I-META | TARGETS-MET | SMEA)
-│  │  │  ├─ I_METAForm.tsx         (form builder from document)
-│  │  │  ├─ TARGETSMETForm.tsx
-│  │  │  ├─ SMEAForm.tsx
-│  │  │  └─ SubmissionHistory.tsx
-│  │  ├─ EnrollmentAndConcerns/
-│  │  │  ├─ EnrollmentTab.tsx      (form: total, dropouts, transferees)
-│  │  │  └─ ConcernsTab.tsx        (list: my school's flagged concerns)
-│  │  ├─ FlagConcernModal.tsx      (reusable modal to flag new concern)
-│  │  ├─ ConcernDetail.tsx         (view + thread messages)
-│  │  └─ Settings.tsx
-│  │
-│  ├─ monitor/
-│  │  ├─ Dashboard.tsx             (4 KPI cards, compliance pie, pending queue, concerns list)
-│  │  ├─ Schools/
-│  │  │  ├─ SchoolsList.tsx        (searchable table)
-│  │  │  └─ SchoolDetail.tsx       (view school data + quick actions)
-│  │  ├─ Reviews/
-│  │  │  ├─ ReviewsQueue.tsx       (pending submissions table)
-│  │  │  ├─ SubmissionReview.tsx   (open package, add notes, return/approve)
-│  │  │  └─ ReviewHistory.tsx
-│  │  ├─ Concerns/
-│  │  │  ├─ ConcernsBoard.tsx      (division-wide, sortable by urgency)
-│  │  │  ├─ ConcernDetail.tsx      (view + thread + acknowledge/resolve buttons)
-│  │  │  └─ ConcernStats.tsx       (counts by category)
-│  │  ├─ Reports/
-│  │  │  ├─ ReportsPage.tsx        (export options)
-│  │  │  └─ ReportBuilder.tsx
-│  │  └─ System/
-│  │     ├─ AuditLog.tsx
-│  │     └─ Settings.tsx
-│  │
-│  └─ NotFound.tsx
-│
-├─ components/
-│  ├─ shared/
-│  │  ├─ Sidebar.tsx              (role-aware, collapse/expand)
-│  │  ├─ Header.tsx               (school year banner, user menu)
-│  │  ├─ ProgressBar.tsx          (5-step submission flow)
-│  │  ├─ KPICard.tsx              (reusable metric card)
-│  │  ├─ StatusBadge.tsx          (Draft/Submitted/Returned/Approved)
-│  │  ├─ LoadingSpinner.tsx
-│  │  └─ ErrorBoundary.tsx
-│  │
-│  ├─ forms/
-│  │  ├─ IndicatorForm.tsx        (base form for I-META/TARGETS-MET/SMEA)
-│  │  ├─ EnrollmentForm.tsx
-│  │  ├─ ConcernForm.tsx
-│  │  └─ FormField.tsx            (input, select, textarea wrapper)
-│  │
-│  └─ tables/
-│     ├─ SubmissionsTable.tsx
-│     ├─ ConcernsTable.tsx
-│     └─ DataTable.tsx            (generic, sortable, filterable)
-│
-├─ hooks/
-│  ├─ useAuth.ts                  (auth context + login/logout)
-│  ├─ useSubmissions.ts           (CRUD for indicator submissions)
-│  ├─ useConcerns.ts              (CRUD + state changes for concerns)
-│  ├─ useEnrollment.ts
-│  ├─ useDashboard.ts
-│  └─ useFetch.ts                 (wrapper for API calls with error handling)
-│
-├─ services/
-│  ├─ api.ts                      (Axios instance, interceptors)
-│  ├─ auth.service.ts
-│  ├─ submissions.service.ts
-│  ├─ concerns.service.ts
-│  └─ reports.service.ts
-│
-├─ context/
-│  ├─ AuthContext.tsx             (user, role, permissions)
-│  ├─ NotificationContext.tsx     (toast messages, in-app alerts)
-│  └─ SchoolContext.tsx           (current school, academic year)
-│
-├─ types/
-│  ├─ index.ts                    (all TypeScript interfaces)
-│  └─ api.ts                      (request/response types)
-│
-└─ utils/
-   ├─ formatters.ts               (date, number, status labels)
-   ├─ validators.ts
-   └─ storage.ts                  (localStorage for drafts)
+â”œâ”€ layouts/
+â”‚  â”œâ”€ SchoolHeadLayout.tsx         (sidebar: Dashboard, Requirements, Enrollment & Concerns, History, Settings)
+â”‚  â””â”€ DivisionMonitorLayout.tsx     (sidebar: Dashboard, Schools, Reviews, Reports, Concerns, System)
+â”‚
+â”œâ”€ pages/
+â”‚  â”œâ”€ auth/
+â”‚  â”‚  â”œâ”€ LoginPage.tsx             (unified login form, role selector)
+â”‚  â”‚  â”œâ”€ ForgotPasswordPage.tsx
+â”‚  â”‚  â””â”€ MFAPage.tsx
+â”‚  â”‚
+â”‚  â”œâ”€ school-head/
+â”‚  â”‚  â”œâ”€ Dashboard.tsx             (3 cards: Requirements Due, Enrollment Snapshot, Open Concerns)
+â”‚  â”‚  â”œâ”€ Requirements/
+â”‚  â”‚  â”‚  â”œâ”€ RequirementsPage.tsx   (tabs: I-META | BMEF | SMEA)
+â”‚  â”‚  â”‚  â”œâ”€ I_METAForm.tsx         (form builder from document)
+â”‚  â”‚  â”‚  â”œâ”€ TARGETSMETForm.tsx
+â”‚  â”‚  â”‚  â”œâ”€ SMEAForm.tsx
+â”‚  â”‚  â”‚  â””â”€ SubmissionHistory.tsx
+â”‚  â”‚  â”œâ”€ EnrollmentAndConcerns/
+â”‚  â”‚  â”‚  â”œâ”€ EnrollmentTab.tsx      (form: total, dropouts, transferees)
+â”‚  â”‚  â”‚  â””â”€ ConcernsTab.tsx        (list: my school's flagged concerns)
+â”‚  â”‚  â”œâ”€ FlagConcernModal.tsx      (reusable modal to flag new concern)
+â”‚  â”‚  â”œâ”€ ConcernDetail.tsx         (view + thread messages)
+â”‚  â”‚  â””â”€ Settings.tsx
+â”‚  â”‚
+â”‚  â”œâ”€ monitor/
+â”‚  â”‚  â”œâ”€ Dashboard.tsx             (4 KPI cards, compliance pie, pending queue, concerns list)
+â”‚  â”‚  â”œâ”€ Schools/
+â”‚  â”‚  â”‚  â”œâ”€ SchoolsList.tsx        (searchable table)
+â”‚  â”‚  â”‚  â””â”€ SchoolDetail.tsx       (view school data + quick actions)
+â”‚  â”‚  â”œâ”€ Reviews/
+â”‚  â”‚  â”‚  â”œâ”€ ReviewsQueue.tsx       (pending submissions table)
+â”‚  â”‚  â”‚  â”œâ”€ SubmissionReview.tsx   (open package, add notes, return/approve)
+â”‚  â”‚  â”‚  â””â”€ ReviewHistory.tsx
+â”‚  â”‚  â”œâ”€ Concerns/
+â”‚  â”‚  â”‚  â”œâ”€ ConcernsBoard.tsx      (division-wide, sortable by urgency)
+â”‚  â”‚  â”‚  â”œâ”€ ConcernDetail.tsx      (view + thread + acknowledge/resolve buttons)
+â”‚  â”‚  â”‚  â””â”€ ConcernStats.tsx       (counts by category)
+â”‚  â”‚  â”œâ”€ Reports/
+â”‚  â”‚  â”‚  â”œâ”€ ReportsPage.tsx        (export options)
+â”‚  â”‚  â”‚  â””â”€ ReportBuilder.tsx
+â”‚  â”‚  â””â”€ System/
+â”‚  â”‚     â”œâ”€ AuditLog.tsx
+â”‚  â”‚     â””â”€ Settings.tsx
+â”‚  â”‚
+â”‚  â””â”€ NotFound.tsx
+â”‚
+â”œâ”€ components/
+â”‚  â”œâ”€ shared/
+â”‚  â”‚  â”œâ”€ Sidebar.tsx              (role-aware, collapse/expand)
+â”‚  â”‚  â”œâ”€ Header.tsx               (school year banner, user menu)
+â”‚  â”‚  â”œâ”€ ProgressBar.tsx          (5-step submission flow)
+â”‚  â”‚  â”œâ”€ KPICard.tsx              (reusable metric card)
+â”‚  â”‚  â”œâ”€ StatusBadge.tsx          (Draft/Submitted/Returned/Approved)
+â”‚  â”‚  â”œâ”€ LoadingSpinner.tsx
+â”‚  â”‚  â””â”€ ErrorBoundary.tsx
+â”‚  â”‚
+â”‚  â”œâ”€ forms/
+â”‚  â”‚  â”œâ”€ IndicatorForm.tsx        (base form for I-META/BMEF/SMEA)
+â”‚  â”‚  â”œâ”€ EnrollmentForm.tsx
+â”‚  â”‚  â”œâ”€ ConcernForm.tsx
+â”‚  â”‚  â””â”€ FormField.tsx            (input, select, textarea wrapper)
+â”‚  â”‚
+â”‚  â””â”€ tables/
+â”‚     â”œâ”€ SubmissionsTable.tsx
+â”‚     â”œâ”€ ConcernsTable.tsx
+â”‚     â””â”€ DataTable.tsx            (generic, sortable, filterable)
+â”‚
+â”œâ”€ hooks/
+â”‚  â”œâ”€ useAuth.ts                  (auth context + login/logout)
+â”‚  â”œâ”€ useSubmissions.ts           (CRUD for indicator submissions)
+â”‚  â”œâ”€ useConcerns.ts              (CRUD + state changes for concerns)
+â”‚  â”œâ”€ useEnrollment.ts
+â”‚  â”œâ”€ useDashboard.ts
+â”‚  â””â”€ useFetch.ts                 (wrapper for API calls with error handling)
+â”‚
+â”œâ”€ services/
+â”‚  â”œâ”€ api.ts                      (Axios instance, interceptors)
+â”‚  â”œâ”€ auth.service.ts
+â”‚  â”œâ”€ submissions.service.ts
+â”‚  â”œâ”€ concerns.service.ts
+â”‚  â””â”€ reports.service.ts
+â”‚
+â”œâ”€ context/
+â”‚  â”œâ”€ AuthContext.tsx             (user, role, permissions)
+â”‚  â”œâ”€ NotificationContext.tsx     (toast messages, in-app alerts)
+â”‚  â””â”€ SchoolContext.tsx           (current school, academic year)
+â”‚
+â”œâ”€ types/
+â”‚  â”œâ”€ index.ts                    (all TypeScript interfaces)
+â”‚  â””â”€ api.ts                      (request/response types)
+â”‚
+â””â”€ utils/
+   â”œâ”€ formatters.ts               (date, number, status labels)
+   â”œâ”€ validators.ts
+   â””â”€ storage.ts                  (localStorage for drafts)
 ```
 
 ---
 
-## PART 4: FORMS – THE HEART OF THE SYSTEM
+## PART 4: FORMS â€“ THE HEART OF THE SYSTEM
 
 ### I-META Form Structure (from uploaded document)
 
@@ -290,13 +299,13 @@ Your I-META document is a **multi-section quality assurance self-evaluation**:
 
 **Sections to Digitize:**
 1. School Identification (school name, address, school code, principal name)
-2. I.A – Leadership & Governance (score 1-5 per item)
-3. I.B – Teaching & Learning (score 1-5)
-4. I.C – Learning Environment (score 1-5)
-5. I.D – Curriculum & Instruction (score 1-5)
-6. I.E – Assessment (score 1-5)
-7. II – Institutional Capacity (ratings)
-8. III – Financial Management (yes/no items)
+2. I.A â€“ Leadership & Governance (score 1-5 per item)
+3. I.B â€“ Teaching & Learning (score 1-5)
+4. I.C â€“ Learning Environment (score 1-5)
+5. I.D â€“ Curriculum & Instruction (score 1-5)
+6. I.E â€“ Assessment (score 1-5)
+7. II â€“ Institutional Capacity (ratings)
+8. III â€“ Financial Management (yes/no items)
 9. Overall School Rating (auto-calculated from averages)
 
 **Form Builder Approach:**
@@ -328,7 +337,7 @@ export interface IMetaSubmission {
 // - Pre-fill from previous year where applicable
 ```
 
-**TARGETS-MET** is KPI-based (auto-calculated from enrollment data + previous targets).
+**BMEF** is KPI-based (auto-calculated from enrollment data + previous targets).
 
 **SMEA** needs to be reviewed in the uploaded doc.
 
@@ -336,7 +345,7 @@ export interface IMetaSubmission {
 
 ## PART 5: KEY DESIGN DECISIONS & QUESTIONS FOR BRAINSTORM
 
-### 🤔 **Decision 1: Form Data Storage**
+### ðŸ¤” **Decision 1: Form Data Storage**
 
 **Option A: Flatten JSON in DB**
 ```json
@@ -347,43 +356,43 @@ export interface IMetaSubmission {
   ...
 }
 ```
-✅ Simple; ❌ Hard to query/report on individual fields
+âœ… Simple; âŒ Hard to query/report on individual fields
 
 **Option B: Normalized Sub-tables**
 ```
 Create tables: form_section_ia, form_section_ib, etc.
 Link to submission via submission_id
 ```
-✅ Queryable; ❌ More migrations
+âœ… Queryable; âŒ More migrations
 
 **RECOMMENDATION:** Start with **Option A (JSON)** for speed. If reporting needs are heavy, migrate to Option B later.
 
 ---
 
-### 🤔 **Decision 2: Draft Auto-Save**
+### ðŸ¤” **Decision 2: Draft Auto-Save**
 
 School heads may draft forms over multiple sessions.
 
-**Option A: Auto-save on every keystroke (frontend → backend)**
+**Option A: Auto-save on every keystroke (frontend â†’ backend)**
 ```javascript
 // Every 3 seconds while typing
 debounce(() => {
   api.put(`/api/submissions/indicator/${id}`, formData);
 }, 3000)
 ```
-✅ Never lose work; ❌ Heavy API traffic
+âœ… Never lose work; âŒ Heavy API traffic
 
 **Option B: Save on blur or interval (every 30 sec)**
-✅ Balance; ❌ Could lose recent edits
+âœ… Balance; âŒ Could lose recent edits
 
 **Option C: localStorage + manual save button**
-✅ No API overhead; ❌ Loss on browser crash
+âœ… No API overhead; âŒ Loss on browser crash
 
 **RECOMMENDATION:** Use **Option C (localStorage draft)** + **manual Save button** + one-click "Load Draft" to reload from localStorage. Lighter and clearer UX.
 
 ---
 
-### 🤔 **Decision 3: Concern Evidence Encryption**
+### ðŸ¤” **Decision 3: Concern Evidence Encryption**
 
 **Option A: Use Laravel's built-in Crypt**
 ```php
@@ -392,23 +401,23 @@ protected $casts = [
   'file_path' => 'encrypted',
 ];
 ```
-✅ Simple; ❌ All data encrypted at rest (slower)
+âœ… Simple; âŒ All data encrypted at rest (slower)
 
 **Option B: Encrypt file content before storage**
 ```php
 $encrypted = Crypt::encrypt(file_get_contents($file));
 Storage::disk('local')->put('concerns/' . $uuid, $encrypted);
 ```
-✅ Only sensitive files encrypted; ❌ More code
+âœ… Only sensitive files encrypted; âŒ More code
 
 **Option C: Use S3 with server-side encryption**
-✅ Scalable; ❌ Costs money
+âœ… Scalable; âŒ Costs money
 
 **RECOMMENDATION:** Start with **Option B** (encrypt individual files). Use Laravel's `Storage` facade + `Crypt` class.
 
 ---
 
-### 🤔 **Decision 4: Real-time Notifications**
+### ðŸ¤” **Decision 4: Real-time Notifications**
 
 **Current Stack:** Reverb + Laravel Reverb (WebSocket)
 
@@ -417,23 +426,23 @@ Storage::disk('local')->put('concerns/' . $uuid, $encrypted);
 // In ReviewSubmissionAction
 broadcast(new SubmissionReviewed($submission))->toOthers();
 ```
-✅ Already set up; ❌ Requires Reverb running in production
+âœ… Already set up; âŒ Requires Reverb running in production
 
 **Option B: Fallback to polling + email**
 ```javascript
 // Frontend polls /api/submissions/status every 30 seconds
 setInterval(() => fetch('/api/submissions/status'), 30000);
 ```
-✅ No extra service; ❌ Delay in updates
+âœ… No extra service; âŒ Delay in updates
 
 **Option C: Hybrid (Reverb + email + polling fallback)**
-✅ Best UX; ❌ Most complex
+âœ… Best UX; âŒ Most complex
 
-**RECOMMENDATION:** Implement **Option C** – Reverb for real-time, email for offline, polling as fallback.
+**RECOMMENDATION:** Implement **Option C** â€“ Reverb for real-time, email for offline, polling as fallback.
 
 ---
 
-### 🤔 **Decision 5: Bulk School Data Seeding**
+### ðŸ¤” **Decision 5: Bulk School Data Seeding**
 
 Your repo has a `SantiagoCitySchoolAccountsSeeder`. Should you:
 
@@ -493,10 +502,10 @@ POST /api/admin/schools/import-csv
 
 ### **Phase 4: School Head Features (4-5 days)**
 
-- [ ] Build Requirements page (tabs: I-META, TARGETS-MET, SMEA)
+- [ ] Build Requirements page (tabs: I-META, BMEF, SMEA)
   - [ ] Form builder for each indicator type
   - [ ] Draft save to localStorage
-  - [ ] Submit workflow (validation → API call → status update)
+  - [ ] Submit workflow (validation â†’ API call â†’ status update)
 - [ ] Build Enrollment & Concerns page
   - [ ] Enrollment form
   - [ ] Concerns list + detail view
@@ -565,7 +574,7 @@ Q: How do new school heads get accounts?
 **Current approach:** Monitor creates account + sends setup link.
 
 **Options:**
-- A) Monitor bulk imports school heads via CSV → auto-generates accounts → sends setup links via email
+- A) Monitor bulk imports school heads via CSV â†’ auto-generates accounts â†’ sends setup links via email
 - B) School heads self-register with school code + verification PIN
 - C) DepEd admin portal handles all account creation centrally
 
@@ -646,7 +655,7 @@ If Santiago City has an old system with historical data, how do you migrate?
 **Plan:**
 1. Export old data to CSV
 2. Create `DataMigrationImporter` command
-3. Map old fields → new schema
+3. Map old fields â†’ new schema
 4. Test with sample data
 5. Run in staging first
 
@@ -667,7 +676,7 @@ Current logic: 6-digit school code assigned during school creation.
 
 ### **Topic 8: Form Versioning**
 
-What if DepEd changes the I-META/TARGETS-MET/SMEA form structure mid-year?
+What if DepEd changes the I-META/BMEF/SMEA form structure mid-year?
 
 **Options:**
 - A) Form is fixed per academic year (no changes)
@@ -680,7 +689,7 @@ What if DepEd changes the I-META/TARGETS-MET/SMEA form structure mid-year?
 
 ### **Topic 9: Concern Resolution Workflow**
 
-Current: Open → In Progress → Resolved
+Current: Open â†’ In Progress â†’ Resolved
 
 **Should you add:**
 - Status: "Escalated to DepEd HQ"?
@@ -718,95 +727,95 @@ foreach (School::all() as $school) {
 
 ```
 cspams.2/
-├─ app/
-│  ├─ Actions/                    (business logic)
-│  │  ├─ SubmitIndicatorAction.php
-│  │  ├─ ApproveSubmissionAction.php
-│  │  ├─ FlagConcernAction.php
-│  │  └─ ResolveConcernAction.php
-│  ├─ Console/
-│  │  └─ Commands/
-│  │     ├─ SendSubmissionReminders.php
-│  │     └─ CleanupStaleSubmissions.php
-│  ├─ Events/
-│  │  ├─ SubmissionSubmitted.php
-│  │  ├─ SubmissionReviewed.php
-│  │  ├─ ConcernFlagged.php
-│  │  └─ ConcernResolved.php
-│  ├─ Http/
-│  │  ├─ Controllers/
-│  │  │  ├─ Api/
-│  │  │  │  ├─ SubmissionController.php
-│  │  │  │  ├─ ConcernController.php
-│  │  │  │  ├─ EnrollmentController.php
-│  │  │  │  ├─ DashboardController.php
-│  │  │  │  └─ ReportController.php
-│  │  │  └─ Auth/
-│  │  ├─ Requests/
-│  │  │  ├─ StoreIndicatorSubmissionRequest.php
-│  │  │  ├─ ReviewSubmissionRequest.php
-│  │  │  ├─ FlagConcernRequest.php
-│  │  │  └─ UpdateEnrollmentRequest.php
-│  │  └─ Resources/
-│  │     └─ (Filament admin resources)
-│  ├─ Models/
-│  │  ├─ User.php
-│  │  ├─ School.php
-│  │  ├─ AcademicYear.php
-│  │  ├─ IndicatorSubmission.php         (refine)
-│  │  ├─ EnrollmentRecord.php            (new)
-│  │  ├─ WelfareConcern.php              (new)
-│  │  ├─ WelfareConcernAttachment.php    (new)
-│  │  ├─ WelfareConcernThread.php        (new)
-│  │  └─ AuditLog.php
-│  ├─ Notifications/
-│  │  ├─ SubmissionSubmittedNotification.php
-│  │  ├─ SubmissionReturnedNotification.php
-│  │  ├─ SubmissionApprovedNotification.php
-│  │  ├─ ConcernFlaggedNotification.php
-│  │  └─ ConcernResolvedNotification.php
-│  ├─ Services/
-│  │  ├─ SubmissionService.php
-│  │  ├─ ConcernService.php
-│  │  ├─ EnrollmentService.php
-│  │  └─ ReportService.php
-│  └─ Traits/
-│     ├─ HasSchoolScope.php              (all queries scoped to school)
-│     └─ Auditable.php
-│
-├─ database/
-│  ├─ migrations/
-│  │  ├─ 2025_XX_XX_create_schools_table.php
-│  │  ├─ 2025_XX_XX_create_indicator_submissions_table.php
-│  │  ├─ 2025_XX_XX_create_enrollment_records_table.php
-│  │  ├─ 2025_XX_XX_create_welfare_concerns_table.php (new)
-│  │  └─ (others)
-│  └─ seeders/
-│     ├─ DatabaseSeeder.php
-│     ├─ SchoolSeeder.php
-│     ├─ UserSeeder.php
-│     └─ SantiagoCitySchoolAccountsSeeder.php
-│
-├─ frontend/
-│  ├─ src/
-│  │  ├─ pages/          (as described in component tree)
-│  │  ├─ components/
-│  │  ├─ hooks/
-│  │  ├─ services/
-│  │  ├─ context/
-│  │  ├─ types/
-│  │  ├─ utils/
-│  │  └─ App.tsx
-│  └─ vite.config.ts
-│
-├─ routes/
-│  ├─ api.php            (API endpoints)
-│  └─ web.php            (Filament, auth)
-│
-├─ storage/
-│  └─ concerns/          (encrypted attachment storage)
-│
-└─ docker-compose.yml
+â”œâ”€ app/
+â”‚  â”œâ”€ Actions/                    (business logic)
+â”‚  â”‚  â”œâ”€ SubmitIndicatorAction.php
+â”‚  â”‚  â”œâ”€ ApproveSubmissionAction.php
+â”‚  â”‚  â”œâ”€ FlagConcernAction.php
+â”‚  â”‚  â””â”€ ResolveConcernAction.php
+â”‚  â”œâ”€ Console/
+â”‚  â”‚  â””â”€ Commands/
+â”‚  â”‚     â”œâ”€ SendSubmissionReminders.php
+â”‚  â”‚     â””â”€ CleanupStaleSubmissions.php
+â”‚  â”œâ”€ Events/
+â”‚  â”‚  â”œâ”€ SubmissionSubmitted.php
+â”‚  â”‚  â”œâ”€ SubmissionReviewed.php
+â”‚  â”‚  â”œâ”€ ConcernFlagged.php
+â”‚  â”‚  â””â”€ ConcernResolved.php
+â”‚  â”œâ”€ Http/
+â”‚  â”‚  â”œâ”€ Controllers/
+â”‚  â”‚  â”‚  â”œâ”€ Api/
+â”‚  â”‚  â”‚  â”‚  â”œâ”€ SubmissionController.php
+â”‚  â”‚  â”‚  â”‚  â”œâ”€ ConcernController.php
+â”‚  â”‚  â”‚  â”‚  â”œâ”€ EnrollmentController.php
+â”‚  â”‚  â”‚  â”‚  â”œâ”€ DashboardController.php
+â”‚  â”‚  â”‚  â”‚  â””â”€ ReportController.php
+â”‚  â”‚  â”‚  â””â”€ Auth/
+â”‚  â”‚  â”œâ”€ Requests/
+â”‚  â”‚  â”‚  â”œâ”€ StoreIndicatorSubmissionRequest.php
+â”‚  â”‚  â”‚  â”œâ”€ ReviewSubmissionRequest.php
+â”‚  â”‚  â”‚  â”œâ”€ FlagConcernRequest.php
+â”‚  â”‚  â”‚  â””â”€ UpdateEnrollmentRequest.php
+â”‚  â”‚  â””â”€ Resources/
+â”‚  â”‚     â””â”€ (Filament admin resources)
+â”‚  â”œâ”€ Models/
+â”‚  â”‚  â”œâ”€ User.php
+â”‚  â”‚  â”œâ”€ School.php
+â”‚  â”‚  â”œâ”€ AcademicYear.php
+â”‚  â”‚  â”œâ”€ IndicatorSubmission.php         (refine)
+â”‚  â”‚  â”œâ”€ EnrollmentRecord.php            (new)
+â”‚  â”‚  â”œâ”€ WelfareConcern.php              (new)
+â”‚  â”‚  â”œâ”€ WelfareConcernAttachment.php    (new)
+â”‚  â”‚  â”œâ”€ WelfareConcernThread.php        (new)
+â”‚  â”‚  â””â”€ AuditLog.php
+â”‚  â”œâ”€ Notifications/
+â”‚  â”‚  â”œâ”€ SubmissionSubmittedNotification.php
+â”‚  â”‚  â”œâ”€ SubmissionReturnedNotification.php
+â”‚  â”‚  â”œâ”€ SubmissionApprovedNotification.php
+â”‚  â”‚  â”œâ”€ ConcernFlaggedNotification.php
+â”‚  â”‚  â””â”€ ConcernResolvedNotification.php
+â”‚  â”œâ”€ Services/
+â”‚  â”‚  â”œâ”€ SubmissionService.php
+â”‚  â”‚  â”œâ”€ ConcernService.php
+â”‚  â”‚  â”œâ”€ EnrollmentService.php
+â”‚  â”‚  â””â”€ ReportService.php
+â”‚  â””â”€ Traits/
+â”‚     â”œâ”€ HasSchoolScope.php              (all queries scoped to school)
+â”‚     â””â”€ Auditable.php
+â”‚
+â”œâ”€ database/
+â”‚  â”œâ”€ migrations/
+â”‚  â”‚  â”œâ”€ 2025_XX_XX_create_schools_table.php
+â”‚  â”‚  â”œâ”€ 2025_XX_XX_create_indicator_submissions_table.php
+â”‚  â”‚  â”œâ”€ 2025_XX_XX_create_enrollment_records_table.php
+â”‚  â”‚  â”œâ”€ 2025_XX_XX_create_welfare_concerns_table.php (new)
+â”‚  â”‚  â””â”€ (others)
+â”‚  â””â”€ seeders/
+â”‚     â”œâ”€ DatabaseSeeder.php
+â”‚     â”œâ”€ SchoolSeeder.php
+â”‚     â”œâ”€ UserSeeder.php
+â”‚     â””â”€ SantiagoCitySchoolAccountsSeeder.php
+â”‚
+â”œâ”€ frontend/
+â”‚  â”œâ”€ src/
+â”‚  â”‚  â”œâ”€ pages/          (as described in component tree)
+â”‚  â”‚  â”œâ”€ components/
+â”‚  â”‚  â”œâ”€ hooks/
+â”‚  â”‚  â”œâ”€ services/
+â”‚  â”‚  â”œâ”€ context/
+â”‚  â”‚  â”œâ”€ types/
+â”‚  â”‚  â”œâ”€ utils/
+â”‚  â”‚  â””â”€ App.tsx
+â”‚  â””â”€ vite.config.ts
+â”‚
+â”œâ”€ routes/
+â”‚  â”œâ”€ api.php            (API endpoints)
+â”‚  â””â”€ web.php            (Filament, auth)
+â”‚
+â”œâ”€ storage/
+â”‚  â””â”€ concerns/          (encrypted attachment storage)
+â”‚
+â””â”€ docker-compose.yml
 ```
 
 ---
@@ -817,11 +826,11 @@ These are things you can do **right now** to unblock development:
 
 - [ ] **Create the 3 new tables** (EnrollmentRecord, WelfareConcern, Attachments) via migrations
 - [ ] **Define TypeScript types** for all API responses (in `frontend/src/types`)
-- [ ] **Write API route signatures** (in `routes/api.php`) – don't implement yet, just structure
+- [ ] **Write API route signatures** (in `routes/api.php`) â€“ don't implement yet, just structure
 - [ ] **Create Filament resource stubs** for new models
 - [ ] **Draft form JSON schema** for I-META (what fields, types, validation rules)
 - [ ] **Set up test database** (SQLite in-memory for fast testing)
-- [ ] **Write E2E scenario outline** (user story → steps → expected behavior)
+- [ ] **Write E2E scenario outline** (user story â†’ steps â†’ expected behavior)
 
 ---
 
@@ -839,7 +848,7 @@ I need answers to these to refine the roadmap:
 
 5. **Historical data:** Do you need to import data from an old system, or start fresh?
 
-6. **Forms:** Are I-META, TARGETS-MET, SMEA forms **fixed structure**, or do they change?
+6. **Forms:** Are I-META, BMEF, SMEA forms **fixed structure**, or do they change?
 
 7. **Reporting:** What are the top 3 reports monitors MUST have?
 
@@ -855,17 +864,19 @@ I need answers to these to refine the roadmap:
 
 | Priority | Feature | Timeline | Depends On |
 |----------|---------|----------|-----------|
-| 🔴 P0 | Auth (login by school code / email) | Day 1 | Backend setup |
-| 🔴 P0 | School Head Dashboard | Day 2-3 | Auth |
-| 🔴 P0 | Requirements page (form builder) | Day 4-6 | Backend models, forms validation |
-| 🔴 P0 | Monitor Dashboard | Day 6-7 | API aggregation |
-| 🔴 P0 | Monitor Reviews page | Day 8-9 | Submission workflow |
-| 🟠 P1 | Concerns flagging + workflow | Day 9-11 | Backend concerns table |
-| 🟠 P1 | Notifications | Day 12-13 | Reverb setup |
-| 🟠 P1 | Reports & export | Day 14-15 | ReportService |
-| 🟡 P2 | Enrollment tracking | Day 16 | Enrollment table |
-| 🟡 P2 | Security hardening | Day 17-18 | All features |
+| ðŸ”´ P0 | Auth (login by school code / email) | Day 1 | Backend setup |
+| ðŸ”´ P0 | School Head Dashboard | Day 2-3 | Auth |
+| ðŸ”´ P0 | Requirements page (form builder) | Day 4-6 | Backend models, forms validation |
+| ðŸ”´ P0 | Monitor Dashboard | Day 6-7 | API aggregation |
+| ðŸ”´ P0 | Monitor Reviews page | Day 8-9 | Submission workflow |
+| ðŸŸ  P1 | Concerns flagging + workflow | Day 9-11 | Backend concerns table |
+| ðŸŸ  P1 | Notifications | Day 12-13 | Reverb setup |
+| ðŸŸ  P1 | Reports & export | Day 14-15 | ReportService |
+| ðŸŸ¡ P2 | Enrollment tracking | Day 16 | Enrollment table |
+| ðŸŸ¡ P2 | Security hardening | Day 17-18 | All features |
 
 ---
 
 **Next Steps:** Review this analysis, answer the 10 questions above, and let's dive into **Phase 1: Cleanup** or whichever phase makes sense to start first!
+
+
