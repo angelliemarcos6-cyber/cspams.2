@@ -5,9 +5,15 @@ import {
   CircleHelp,
   ClipboardList,
   Database,
+  Download,
+  Eye,
   FilterX,
   LayoutDashboard,
   RefreshCw,
+  Upload,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { Shell } from "@/components/Shell";
@@ -16,7 +22,7 @@ import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
-import type { IndicatorSubmission } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType } from "@/types";
 
 /* ── Quick-jump targets ── */
 interface QuickJumpItem {
@@ -64,6 +70,24 @@ function uploadChipTone(uploaded: boolean): string {
     : "border-slate-300 bg-slate-50 text-slate-600";
 }
 
+function normalizeFileExtension(filename: string | null | undefined): string {
+  const value = String(filename ?? "").trim().toLowerCase();
+  if (!value.includes(".")) return "";
+  return value.slice(value.lastIndexOf(".") + 1);
+}
+
+function selectedYearLabel(
+  yearId: string,
+  years: Array<{ id: string; name: string }>,
+  fallback: string,
+): string {
+  if (!yearId || yearId === "all") {
+    return fallback;
+  }
+
+  return years.find((year) => year.id === yearId)?.name ?? fallback;
+}
+
 const MOBILE_BREAKPOINT = 768;
 
 /* ── Component ── */
@@ -74,6 +98,7 @@ export function SchoolAdminDashboard() {
     submissions: indicatorSubmissionSnapshot,
     allSubmissions,
     academicYears,
+    downloadSubmissionFile,
     refreshSubmissions,
   } = useIndicatorData();
 
@@ -84,11 +109,13 @@ export function SchoolAdminDashboard() {
   >("all");
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
-  const [openReportPreviewId, setOpenReportPreviewId] = useState<"bmef" | "smea" | null>(null);
+  const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
+  const [reportZoomLevel, setReportZoomLevel] = useState(1);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
   const initialLoadStartedRef = useRef(false);
+  const initialAcademicYearAppliedRef = useRef(false);
 
   /* ── Derived data ── */
   const indicatorSubmissions = useMemo(
@@ -103,9 +130,32 @@ export function SchoolAdminDashboard() {
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
+
+  const currentAcademicYearOption = useMemo(
+    () => academicYears.find((y) => y.isCurrent) ?? academicYears[0] ?? null,
+    [academicYears],
+  );
+  const effectiveAcademicYearId = contextAcademicYearId;
+  const filteredIndicatorsByYear = useMemo(
+    () =>
+      effectiveAcademicYearId === "all"
+        ? indicatorSubmissions
+        : indicatorSubmissions.filter((submission) => submission.academicYear?.id === effectiveAcademicYearId),
+    [effectiveAcademicYearId, indicatorSubmissions],
+  );
   const latestIndicators: IndicatorSubmission | null = useMemo(
-    () => latestSubmission(indicatorSubmissions),
-    [indicatorSubmissions],
+    () => latestSubmission(filteredIndicatorsByYear),
+    [filteredIndicatorsByYear],
+  );
+  const latestSubmittedIndicators: IndicatorSubmission | null = useMemo(
+    () =>
+      latestSubmission(
+        filteredIndicatorsByYear.filter((submission) => {
+          const status = String(submission.status ?? "").toLowerCase();
+          return status === "submitted" || status === "validated";
+        }),
+      ),
+    [filteredIndicatorsByYear],
   );
 
   const bmefFile = latestIndicators?.files?.bmef ?? null;
@@ -115,11 +165,22 @@ export function SchoolAdminDashboard() {
 
   const completedIndicators = latestIndicators?.summary?.metIndicators ?? 0;
   const totalIndicators = latestIndicators?.summary?.totalIndicators ?? 0;
-
-  const currentAcademicYearOption = useMemo(
-    () => academicYears.find((y) => y.isCurrent) ?? academicYears[0] ?? null,
-    [academicYears],
+  const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
+    if (!activeReportModalType || !latestIndicators?.files) return null;
+    return latestIndicators.files[activeReportModalType] ?? null;
+  }, [activeReportModalType, latestIndicators]);
+  const activeReportFileName = activeReportFileEntry?.originalFilename ?? null;
+  const activeReportExtension = normalizeFileExtension(activeReportFileName);
+  const activeSchoolYearLabel = selectedYearLabel(
+    effectiveAcademicYearId,
+    academicYears.map((year) => ({ id: year.id, name: year.name })),
+    currentAcademicYearOption?.name ?? "N/A",
   );
+  const submittedIndicatorRows = useMemo(
+    () => latestSubmittedIndicators?.indicators ?? [],
+    [latestSubmittedIndicators],
+  );
+
   const hasContextOverrides = contextAcademicYearId !== "all" || contextWorkflowStatus !== "all";
 
   /* ── Refresh ── */
@@ -158,6 +219,13 @@ export function SchoolAdminDashboard() {
     window.addEventListener("resize", sync);
     return () => window.removeEventListener("resize", sync);
   }, []);
+
+  useEffect(() => {
+    if (initialAcademicYearAppliedRef.current) return;
+    if (!currentAcademicYearOption?.id) return;
+    setContextAcademicYearId(currentAcademicYearOption.id);
+    initialAcademicYearAppliedRef.current = true;
+  }, [currentAcademicYearOption]);
 
   /* ── Context presets ── */
   const applyContextPreset = (preset: "current_year" | "needs_revision" | "all_submission") => {
@@ -201,6 +269,54 @@ export function SchoolAdminDashboard() {
   };
 
   const focusCls = (id: string) => (focusedSectionId === id ? "dashboard-focus-glow" : "");
+
+  const openReportModal = useCallback(
+    (type: IndicatorSubmissionFileType) => {
+      if (!latestIndicators?.files?.[type]?.uploaded) return;
+      setActiveReportModalType(type);
+      setReportZoomLevel(1);
+    },
+    [latestIndicators],
+  );
+
+  const closeReportModal = useCallback(() => {
+    setActiveReportModalType(null);
+    setReportZoomLevel(1);
+  }, []);
+
+  const handleDownloadActiveReport = useCallback(async () => {
+    if (!activeReportModalType || !latestIndicators) return;
+    const activeFile = latestIndicators.files?.[activeReportModalType] ?? null;
+
+    if (activeFile?.downloadUrl) {
+      const anchor = document.createElement("a");
+      anchor.href = activeFile.downloadUrl;
+      if (activeFile.originalFilename) {
+        anchor.download = activeFile.originalFilename;
+      }
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      return;
+    }
+
+    await downloadSubmissionFile(latestIndicators.id, activeReportModalType);
+  }, [activeReportModalType, downloadSubmissionFile, latestIndicators]);
+
+  useEffect(() => {
+    if (!activeReportModalType || typeof window === "undefined") return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeReportModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [activeReportModalType, closeReportModal]);
 
   const presetBtnCls = (active: boolean) =>
     `rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
@@ -316,7 +432,7 @@ export function SchoolAdminDashboard() {
 
         {/* Quick Navigation */}
         <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-2">
-          <span className="shrink-0 text-[11px] font-semibold text-slate-500">Quick Navigation →</span>
+          <span className="shrink-0 text-[11px] font-semibold text-slate-500">Quick Navigation {"->"}</span>
           <div className="flex flex-wrap gap-1.5">
             {QUICK_JUMPS.map((item) => (
               <button
@@ -375,7 +491,7 @@ export function SchoolAdminDashboard() {
       </section>
 
       {/* ── School Info ── */}
-      <section id="school-info" className={`mb-4 grid gap-2 md:grid-cols-3 ${focusCls("school-info")}`}>
+      <section id="school-info" className={`mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4 ${focusCls("school-info")}`}>
         <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
           <p className="text-sm font-bold text-slate-900">{schoolName}</p>
@@ -388,115 +504,270 @@ export function SchoolAdminDashboard() {
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Region</p>
           <p className="text-sm font-bold text-slate-900">{schoolRegion}</p>
         </article>
+        <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Academic Year</p>
+          <div className="mt-1 relative">
+            <select
+              value={effectiveAcademicYearId}
+              onChange={(event) => setContextAcademicYearId(event.target.value)}
+              className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              aria-label="Academic year filter"
+            >
+              <option value="all">All years</option>
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-slate-500">v</span>
+          </div>
+        </article>
       </section>
 
       {/* ── File Reports ── */}
       <section id="file-reports" className={`mb-5 ${focusCls("file-reports")}`}>
-        <h2 className="mb-6 text-lg font-semibold text-gray-900">FILE REPORTS</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-900">Reports</h2>
 
-        {([
-          {
-            id: "bmef" as const,
-            name: "BMEF Report",
-            isSubmitted: bmefUploaded,
-            fileName: bmefFile?.originalFilename ?? null,
-            dateSubmitted: bmefFile?.uploadedAt ? new Date(bmefFile.uploadedAt).toLocaleDateString() : null,
-            uploadLabel: "Upload BMEF Report",
-          },
-          {
-            id: "smea" as const,
-            name: "SMEA Report",
-            isSubmitted: smeaUploaded,
-            fileName: smeaFile?.originalFilename ?? null,
-            dateSubmitted: smeaFile?.uploadedAt ? new Date(smeaFile.uploadedAt).toLocaleDateString() : null,
-            uploadLabel: "Upload SMEA Report",
-          },
-        ]).map((report) => {
-          const isPreviewOpen = openReportPreviewId === report.id;
+        <div className="flex flex-col gap-4 md:flex-row">
+          {([
+            {
+              type: "bmef" as const,
+              title: "BMEF Report",
+              file: bmefFile,
+            },
+            {
+              type: "smea" as const,
+              title: "SMEA Report",
+              file: smeaFile,
+            },
+          ]).map((report) => {
+            const hasFile = Boolean(report.file?.uploaded && report.file?.originalFilename);
+            const badgeTone = uploadChipTone(hasFile);
+            const buttonLabel = hasFile
+              ? `View ${report.type.toUpperCase()} Report`
+              : `Upload ${report.type.toUpperCase()} Report`;
 
-          return (
-            <div key={report.id} className="mb-6 rounded-xl border border-gray-200 p-8">
-              <h3 className="text-base font-semibold text-gray-900">{report.name}</h3>
+            return (
+              <article key={report.type} className="flex-1 rounded-sm border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{report.title}</h3>
+                  <span className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[11px] font-semibold ${badgeTone}`}>
+                    {hasFile ? "Submitted" : "Not Submitted"}
+                  </span>
+                </div>
 
-              <div className="mt-6 space-y-4">
-                <div className="flex items-start">
-                  <span className="w-40 shrink-0 text-sm font-medium text-gray-500">Status:</span>
-                  <div className="text-base font-semibold text-gray-900">
-                    {report.isSubmitted ? (
-                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
-                        Submitted
-                      </span>
-                    ) : (
-                      <span className="text-gray-500">Not uploaded yet</span>
-                    )}
+                <dl className="mt-4 space-y-2">
+                  <div className="flex items-start gap-2 text-sm">
+                    <dt className="w-28 shrink-0 font-semibold text-slate-500">File</dt>
+                    <dd className="truncate font-semibold text-slate-900">{report.file?.originalFilename ?? "- (none)"}</dd>
                   </div>
-                </div>
+                  <div className="flex items-start gap-2 text-sm">
+                    <dt className="w-28 shrink-0 font-semibold text-slate-500">Date</dt>
+                    <dd className="font-semibold text-slate-900">
+                      {report.file?.uploadedAt ? new Date(report.file.uploadedAt).toLocaleDateString() : "-"}
+                    </dd>
+                  </div>
+                </dl>
 
-                <div className="flex items-start">
-                  <span className="w-40 shrink-0 text-sm font-medium text-gray-500">Submitted file:</span>
-                  <span className="text-base font-semibold text-gray-900">
-                    {report.isSubmitted && report.fileName ? report.fileName : "— (none)"}
-                  </span>
+                <div className="mt-4">
+                  {hasFile ? (
+                    <button
+                      type="button"
+                      onClick={() => openReportModal(report.type)}
+                      className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      {buttonLabel}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => scrollToSection("imeta-compliance")}
+                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {buttonLabel}
+                    </button>
+                  )}
                 </div>
+              </article>
+            );
+          })}
+        </div>
 
-                <div className="flex items-start">
-                  <span className="w-40 shrink-0 text-sm font-medium text-gray-500">Date submitted:</span>
-                  <span className="text-base font-semibold text-gray-900">
-                    {report.isSubmitted && report.dateSubmitted ? report.dateSubmitted : "—"}
-                  </span>
-                </div>
-              </div>
+        <section className="mt-5 rounded-sm border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
+              Submitted Indicators Summary (SY {activeSchoolYearLabel})
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  <th className="px-3 py-2 text-left">Indicator</th>
+                  <th className="px-3 py-2 text-right">Target</th>
+                  <th className="px-3 py-2 text-right">Actual</th>
+                  <th className="px-3 py-2 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {submittedIndicatorRows.length > 0 ? (
+                  submittedIndicatorRows.map((item) => {
+                    const status = String(item.complianceStatus ?? "").toLowerCase();
+                    const tone =
+                      status === "met"
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                        : status === "below_target"
+                          ? "border-amber-300 bg-amber-50 text-amber-700"
+                          : "border-slate-300 bg-slate-50 text-slate-700";
 
-              <div className="mt-8 flex flex-wrap gap-3">
-                {report.isSubmitted ? (
+                    return (
+                      <tr key={item.id} className="border-b border-slate-100 text-sm text-slate-800">
+                        <td className="px-3 py-2">
+                          <p className="font-semibold text-slate-900">{item.metric?.name ?? "Untitled indicator"}</p>
+                          <p className="text-xs text-slate-500">{item.metric?.code ?? "N/A"}</p>
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold">{item.targetDisplay ?? item.targetValue ?? "-"}</td>
+                        <td className="px-3 py-2 text-right font-semibold">{item.actualDisplay ?? item.actualValue ?? "-"}</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`inline-flex rounded-sm border px-2 py-0.5 text-[11px] font-semibold ${tone}`}>
+                            {status === "met" ? "Met" : status === "below_target" ? "Below Target" : "Pending"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-4">
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+                        <p className="text-sm font-semibold text-slate-700">No indicators submitted yet for this academic year.</p>
+                        <button
+                          type="button"
+                          onClick={() => scrollToSection("imeta-compliance")}
+                          className="mt-2 inline-flex items-center rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                        >
+                          Go to School Achievements
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      {activeReportModalType && activeReportFileEntry && (
+        <>
+          <button
+            type="button"
+            onClick={closeReportModal}
+            className="fixed inset-0 z-[80] bg-slate-950/70 backdrop-blur-sm"
+            aria-label="Close report preview"
+          />
+          <section className="fixed inset-3 z-[81] flex flex-col overflow-hidden rounded-sm border border-slate-300 bg-white shadow-2xl">
+            <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
+                {activeReportModalType.toUpperCase()} Report - SY {activeSchoolYearLabel}
+              </h3>
+              <div className="flex items-center gap-2">
+                {activeReportExtension === "png" || activeReportExtension === "jpg" || activeReportExtension === "jpeg" || activeReportExtension === "webp" || activeReportExtension === "gif" ? (
                   <>
                     <button
                       type="button"
-                      onClick={() =>
-                        setOpenReportPreviewId((prev) => (prev === report.id ? null : report.id))
-                      }
-                      className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      onClick={() => setReportZoomLevel((prev) => Math.max(0.5, Number((prev - 0.1).toFixed(2))))}
+                      className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1.5 text-slate-700 transition hover:bg-slate-100"
+                      aria-label="Zoom out"
                     >
-                      View File
+                      <ZoomOut className="h-4 w-4" />
                     </button>
                     <button
                       type="button"
-                      className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      onClick={() => setReportZoomLevel((prev) => Math.min(3, Number((prev + 0.1).toFixed(2))))}
+                      className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1.5 text-slate-700 transition hover:bg-slate-100"
+                      aria-label="Zoom in"
                     >
-                      Re-upload
+                      <ZoomIn className="h-4 w-4" />
                     </button>
                   </>
-                ) : (
-                  <button
-                    type="button"
-                    className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    {report.uploadLabel}
-                  </button>
-                )}
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadActiveReport()}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                </button>
+                <button
+                  type="button"
+                  onClick={closeReportModal}
+                  className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1.5 text-slate-700 transition hover:bg-slate-100"
+                  aria-label="Close modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
+            </header>
 
-              {report.isSubmitted && isPreviewOpen && (
-                <div className="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-6">
-                  <p className="mb-4 text-base font-semibold text-gray-900">{report.name} — Preview</p>
-                  <div className="mb-4 flex h-80 items-center justify-center rounded-lg border border-gray-300 bg-white text-sm text-gray-400">
-                    [Inline file preview area - placeholder div with border]
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setOpenReportPreviewId(null)}
-                    className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Close Preview
-                  </button>
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
+              {activeReportExtension === "pdf" && activeReportFileEntry.downloadUrl ? (
+                <iframe
+                  title={`${activeReportModalType.toUpperCase()} PDF preview`}
+                  src={activeReportFileEntry.downloadUrl}
+                  className="h-full w-full rounded-sm border border-slate-300 bg-white"
+                />
+              ) : activeReportExtension === "png" || activeReportExtension === "jpg" || activeReportExtension === "jpeg" || activeReportExtension === "webp" || activeReportExtension === "gif" ? (
+                <div className="h-full overflow-auto rounded-sm border border-slate-300 bg-white p-4">
+                  <img
+                    src={activeReportFileEntry.downloadUrl ?? ""}
+                    alt={`${activeReportModalType.toUpperCase()} report`}
+                    className="max-w-none origin-top-left"
+                    style={{ transform: `scale(${reportZoomLevel})` }}
+                  />
+                </div>
+              ) : activeReportExtension === "xlsx" || activeReportExtension === "xls" || activeReportExtension === "csv" ? (
+                <div className="h-full overflow-auto rounded-sm border border-slate-300 bg-white">
+                  <table className="min-w-full">
+                    <thead className="sticky top-0 z-10 bg-slate-50">
+                      <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                        <th className="px-3 py-2 text-left">Indicator</th>
+                        <th className="px-3 py-2 text-right">Target</th>
+                        <th className="px-3 py-2 text-right">Actual</th>
+                        <th className="px-3 py-2 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {submittedIndicatorRows.map((item) => (
+                        <tr key={`modal-${item.id}`} className="border-b border-slate-100 text-sm text-slate-800">
+                          <td className="px-3 py-2">{item.metric?.name ?? "Untitled indicator"}</td>
+                          <td className="px-3 py-2 text-right">{item.targetDisplay ?? item.targetValue ?? "-"}</td>
+                          <td className="px-3 py-2 text-right">{item.actualDisplay ?? item.actualValue ?? "-"}</td>
+                          <td className="px-3 py-2 text-center">{String(item.complianceStatus ?? "pending")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : activeReportFileEntry.downloadUrl ? (
+                <iframe
+                  title={`${activeReportModalType.toUpperCase()} report preview`}
+                  src={activeReportFileEntry.downloadUrl}
+                  className="h-full w-full rounded-sm border border-slate-300 bg-white"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white text-sm font-semibold text-slate-600">
+                  Preview unavailable for this file.
                 </div>
               )}
             </div>
-          );
-        })}
-      </section>
-
-      {/* ── I-META Compliance Indicators ── */}
+          </section>
+        </>
+      )}
       <section id="imeta-compliance" className={focusCls("imeta-compliance")}>
         <div className="mb-3 flex items-center justify-between">
           <div>
@@ -512,7 +783,7 @@ export function SchoolAdminDashboard() {
         </div>
         <SchoolIndicatorPanel
           statusFilter={contextWorkflowStatus}
-          academicYearFilter={contextAcademicYearId}
+          academicYearFilter={effectiveAcademicYearId}
         />
       </section>
     </Shell>
