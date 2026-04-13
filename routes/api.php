@@ -112,3 +112,12 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('notific
     Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);
 });
+
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboard')->group(function (): void {
+    Route::get('/learner-cases', [\App\Http\Controllers\Api\LearnerCaseController::class, 'index']);
+    Route::post('/learner-cases', [\App\Http\Controllers\Api\LearnerCaseController::class, 'store']);
+    Route::get('/learner-cases/{learnerCase}', [\App\Http\Controllers\Api\LearnerCaseController::class, 'show']);
+    Route::put('/learner-cases/{learnerCase}', [\App\Http\Controllers\Api\LearnerCaseController::class, 'update']);
+    Route::patch('/learner-cases/{learnerCase}', [\App\Http\Controllers\Api\LearnerCaseController::class, 'update']);
+    Route::delete('/learner-cases/{learnerCase}', [\App\Http\Controllers\Api\LearnerCaseController::class, 'destroy']);
+});
