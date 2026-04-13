@@ -110,9 +110,39 @@ Role flow:
 - `school_head`: encode indicators for own school and submit to monitor
 - `monitor`: division-wide visibility and validate/return indicator submissions
 
-## TARGETS-MET KPI Auto-Calculation
+## Compliance Indicators – 4-Tab System (v2 – April 2026)
 
-- KPI indicators in TARGETS-MET are auto-calculated server-side from synchronized records (students, sections, teachers, school/resource context).
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+School Head view now uses one compliance workspace with exactly four tabs:
+
+1. School Achievements (I-META, unchanged)
+2. Key Performance (I-META, unchanged)
+3. BMEF (upload-only)
+4. SMEA (upload-only)
+
+Key behavior:
+
+- Every prior UI label of `TARGETS-MET` is now `BMEF`.
+- BMEF and SMEA tabs both use the same upload card behavior (submit/replace/download + metadata).
+- Header progress badges are reactive to submission data:
+  - `BMEF: Submitted ✅` / `Not Submitted ❌`
+  - `SMEA: Submitted ✅` / `Not Submitted ❌`
+- Monitor review drawer now exposes dedicated `I-META`, `BMEF`, and `SMEA` tabs for package inspection.
+- Backend compatibility remains intact: existing storage/database field names may still use `targets_met_*`.
+
+Additional endpoints used by the upload tabs:
+
+- `POST /api/submissions/{submission}/upload-file`
+- `GET /api/submissions/{submission}/download/{type}`
+
+## I-META KPI Auto-Calculation
+
+- KPI indicators in I-META are auto-calculated server-side from synchronized records (students, sections, teachers, school/resource context).
 - Auto-calculated KPI rows are enforced on save/submit; manual payload values for these KPIs are replaced by derived values.
 - KPI metric metadata includes `isAutoCalculated` so the frontend can render these rows as read-only.
 - Rolling school-year matrix window uses a 5-year range anchored from `2022-2023` and moves forward by school year.

@@ -238,6 +238,11 @@ describe("MonitorDashboard School Head delivery flows", () => {
       loadAllSubmissions: vi.fn(),
       createSubmission: vi.fn(),
       updateSubmission: vi.fn(),
+      // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+      // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+      // Monitor & School Head views updated for DepEd standards
+      uploadSubmissionFile: vi.fn(),
+      downloadSubmissionFile: vi.fn(),
       submitSubmission: vi.fn(),
       reviewSubmission: vi.fn(),
       loadHistory: vi.fn(),

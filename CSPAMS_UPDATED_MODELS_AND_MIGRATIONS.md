@@ -1,8 +1,17 @@
-# CSPAMS 2.0 - Updated Database & Models for File Upload Design
+﻿# CSPAMS 2.0 - Updated Database & Models for File Upload Design
+
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+> April 2026 compliance UI refactor - TARGETS-MET renamed to BMEF with 4-tab layout.
+
 
 ---
 
-## 🗄️ DATABASE MIGRATION (Updated)
+## ðŸ—„ï¸ DATABASE MIGRATION (Updated)
 
 ### File: `database/migrations/YYYY_MM_DD_create_indicator_submissions_table.php`
 
@@ -39,12 +48,12 @@ return new class extends Migration
             //   "overallRating": 4.1
             // }
             
-            // ===== TARGETS-MET (File Upload) =====
+            // ===== BMEF (File Upload) =====
             $table->string('targets_met_file_path')->nullable();
             // Example: "submissions/12345_targets_met_1681234567.xlsx"
             
             $table->string('targets_met_original_filename')->nullable();
-            // Example: "TARGETS-MET 2025-2026.xlsx"
+            // Example: "BMEF 2025-2026.xlsx"
             
             $table->timestamp('targets_met_uploaded_at')->nullable();
             
@@ -99,7 +108,7 @@ return new class extends Migration
 
 ---
 
-## 📦 MODEL: IndicatorSubmission.php (Updated)
+## ðŸ“¦ MODEL: IndicatorSubmission.php (Updated)
 
 ### File: `app/Models/IndicatorSubmission.php`
 
@@ -133,7 +142,7 @@ class IndicatorSubmission extends Model
     ];
 
     protected $casts = [
-        'form_data' => 'json',  // Auto-convert JSON ↔ array
+        'form_data' => 'json',  // Auto-convert JSON â†” array
         'targets_met_uploaded_at' => 'datetime',
         'smea_uploaded_at' => 'datetime',
         'submitted_at' => 'datetime',
@@ -292,7 +301,7 @@ class IndicatorSubmission extends Model
 
 ---
 
-## 📁 FILE UPLOAD CONTROLLER
+## ðŸ“ FILE UPLOAD CONTROLLER
 
 ### File: `app/Http/Controllers/Api/SubmissionController.php` (Updated)
 
@@ -370,7 +379,7 @@ class SubmissionController extends Controller
         ]);
     }
 
-    // ===== UPLOAD FILE (TARGETS-MET or SMEA) =====
+    // ===== UPLOAD FILE (BMEF or SMEA) =====
 
     public function uploadFile(Request $request, IndicatorSubmission $submission)
     {
@@ -564,7 +573,7 @@ class SubmissionController extends Controller
 
 ---
 
-## 🔍 MONITOR ENDPOINTS (For Review)
+## ðŸ” MONITOR ENDPOINTS (For Review)
 
 ### File: `app/Http/Controllers/Api/MonitorController.php` (New)
 
@@ -726,7 +735,7 @@ class MonitorController extends Controller
 
 ---
 
-## 🔐 FILE STORAGE CONFIGURATION
+## ðŸ” FILE STORAGE CONFIGURATION
 
 ### File: `config/filesystems.php` (Update)
 
@@ -760,7 +769,7 @@ storage/app/private/submissions/*
 
 ---
 
-## 📊 MIGRATION: From Old to New Schema
+## ðŸ“Š MIGRATION: From Old to New Schema
 
 If you have existing submissions:
 
@@ -798,13 +807,13 @@ public function down(): void
 
 ---
 
-## ✅ API SUMMARY
+## âœ… API SUMMARY
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/submissions` | POST | Create new submission |
 | `/api/submissions/{id}/imeta` | POST | Save I-META form data |
-| `/api/submissions/{id}/upload-file` | POST | Upload TARGETS-MET or SMEA file |
+| `/api/submissions/{id}/upload-file` | POST | Upload BMEF or SMEA file |
 | `/api/submissions/{id}/download/{type}` | GET | Download uploaded file |
 | `/api/submissions/{id}` | GET | View submission details |
 | `/api/submissions/{id}/submit` | POST | Submit all requirements |
@@ -815,7 +824,7 @@ public function down(): void
 
 ---
 
-## 🎯 KEY CHANGES SUMMARY
+## ðŸŽ¯ KEY CHANGES SUMMARY
 
 | Item | Before | After | Code |
 |------|--------|-------|------|
@@ -828,6 +837,8 @@ public function down(): void
 
 ---
 
-**Document Status:** ✅ Complete  
+**Document Status:** âœ… Complete  
 **Ready to Code:** Yes  
 **Timeline Impact:** -2 weeks  
+
+

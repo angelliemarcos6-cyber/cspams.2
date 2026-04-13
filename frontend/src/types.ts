@@ -407,6 +407,9 @@ export interface IndicatorSubmissionItem {
   remarks: string | null;
 }
 
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
 export type IndicatorSubmissionFileType = "bmef" | "smea";
 
 export interface IndicatorSubmissionFileEntry {

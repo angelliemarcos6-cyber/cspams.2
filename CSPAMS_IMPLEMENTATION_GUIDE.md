@@ -1,4 +1,13 @@
-# CSPAMS 2.0 - Detailed Implementation Guide
+﻿# CSPAMS 2.0 - Detailed Implementation Guide
+
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+> April 2026 compliance UI refactor - TARGETS-MET renamed to BMEF with 4-tab layout.
+
 
 ---
 
@@ -1027,7 +1036,7 @@ export function ConcernsList() {
 
             {concern.acknowledged_at && (
               <p className="text-xs text-green-600 mb-2">
-                ✓ Acknowledged on {format(new Date(concern.acknowledged_at), 'MMM dd, yyyy')}
+                âœ“ Acknowledged on {format(new Date(concern.acknowledged_at), 'MMM dd, yyyy')}
               </p>
             )}
 
@@ -1155,7 +1164,7 @@ class DashboardService {
     public function getComplianceBreakdown($academicYear) {
         return [
             'i_meta' => $this->getSubmissionStatusCounts('I-META', $academicYear),
-            'targets_met' => $this->getSubmissionStatusCounts('TARGETS-MET', $academicYear),
+            'targets_met' => $this->getSubmissionStatusCounts('BMEF', $academicYear),
             'smea' => $this->getSubmissionStatusCounts('SMEA', $academicYear),
         ];
     }
@@ -1297,12 +1306,14 @@ class ConcernControllerTest extends TestCase {
 ---
 
 **This guide covers:**
-- ✅ Database schema & migrations
-- ✅ Backend models & relationships
-- ✅ API controllers & validation
-- ✅ Frontend components & types
-- ✅ Dashboard queries & KPI aggregation
-- ✅ Notifications & events
-- ✅ Testing strategy
+- âœ… Database schema & migrations
+- âœ… Backend models & relationships
+- âœ… API controllers & validation
+- âœ… Frontend components & types
+- âœ… Dashboard queries & KPI aggregation
+- âœ… Notifications & events
+- âœ… Testing strategy
 
 **Ready to code!**
+
+

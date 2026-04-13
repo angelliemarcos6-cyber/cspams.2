@@ -1,34 +1,43 @@
-# CSPAMS: Old Capstone vs. New Design Side-by-Side
+﻿# CSPAMS: Old Capstone vs. New Design Side-by-Side
+
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+> April 2026 compliance UI refactor - TARGETS-MET renamed to BMEF with 4-tab layout.
+
 
 ## SCOPE COMPARISON
 
-### ❌ OLD CAPSTONE DESIGN (Over-engineered)
+### âŒ OLD CAPSTONE DESIGN (Over-engineered)
 ```
 CORE JOBS (too many):
-├─ Full learner lifecycle tracking (enrollement → graduation)
-├─ Individual student performance monitoring
-├─ At-risk student detection & alerts (AI-driven)
-├─ Teacher records & assignment tracking
-├─ Detailed attendance tracking
-├─ Grade/assessment recording
-├─ Learner status transitions (15+ states)
-└─ National LIS/EBEIS integration
+â”œâ”€ Full learner lifecycle tracking (enrollement â†’ graduation)
+â”œâ”€ Individual student performance monitoring
+â”œâ”€ At-risk student detection & alerts (AI-driven)
+â”œâ”€ Teacher records & assignment tracking
+â”œâ”€ Detailed attendance tracking
+â”œâ”€ Grade/assessment recording
+â”œâ”€ Learner status transitions (15+ states)
+â””â”€ National LIS/EBEIS integration
 
 DATABASE:
-├─ students table (10,000+ records per school)
-├─ student_status_logs (100K+ rows per year)
-├─ student_performance_records (50K+ rows)
-├─ teachers table
-├─ classes/sections with full student rosters
-├─ performance_metrics (detailed metrics catalog)
-└─ 20+ related tables
+â”œâ”€ students table (10,000+ records per school)
+â”œâ”€ student_status_logs (100K+ rows per year)
+â”œâ”€ student_performance_records (50K+ rows)
+â”œâ”€ teachers table
+â”œâ”€ classes/sections with full student rosters
+â”œâ”€ performance_metrics (detailed metrics catalog)
+â””â”€ 20+ related tables
 
 MONITORING:
-├─ Per-student dashboard (risk scores, trends)
-├─ Detailed attendance reports
-├─ Individual grade analysis
-├─ LRN tracking (national sync)
-└─ Complex at-risk watchlists
+â”œâ”€ Per-student dashboard (risk scores, trends)
+â”œâ”€ Detailed attendance reports
+â”œâ”€ Individual grade analysis
+â”œâ”€ LRN tracking (national sync)
+â””â”€ Complex at-risk watchlists
 
 TIME TO IMPLEMENT: 6-8 months
 DEPLOYMENT: Enterprise-grade, heavy infrastructure
@@ -37,25 +46,25 @@ MAINTENANCE: High (many moving parts)
 
 ---
 
-### ✅ NEW DESIGN (Laser-focused)
+### âœ… NEW DESIGN (Laser-focused)
 ```
 CORE JOBS (exactly 2):
-├─ Annual Compliance (3 packages: I-META, TARGETS-MET, SMEA)
-└─ School Welfare Tracking (flag student concerns, monitor responds)
+â”œâ”€ Annual Compliance (3 packages: I-META, BMEF, SMEA)
+â””â”€ School Welfare Tracking (flag student concerns, monitor responds)
 
 DATABASE:
-├─ schools (with 6-digit codes)
-├─ academic_years
-├─ indicator_submissions (one per package per school per year)
-├─ enrollment_records (school-level numbers only)
-├─ welfare_concerns (flagged issues, not student records)
-└─ welfare_concern_threads (monitor ↔ school_head communication)
+â”œâ”€ schools (with 6-digit codes)
+â”œâ”€ academic_years
+â”œâ”€ indicator_submissions (one per package per school per year)
+â”œâ”€ enrollment_records (school-level numbers only)
+â”œâ”€ welfare_concerns (flagged issues, not student records)
+â””â”€ welfare_concern_threads (monitor â†” school_head communication)
 
 MONITORING:
-├─ Compliance dashboard (% schools submitted)
-├─ Enrollment snapshot (division-wide numbers)
-├─ Concerns board (open issues, categorized)
-└─ Simple reports (CSV exports)
+â”œâ”€ Compliance dashboard (% schools submitted)
+â”œâ”€ Enrollment snapshot (division-wide numbers)
+â”œâ”€ Concerns board (open issues, categorized)
+â””â”€ Simple reports (CSV exports)
 
 TIME TO IMPLEMENT: 2-3 weeks
 DEPLOYMENT: Lightweight, works on any shared hosting
@@ -71,7 +80,7 @@ MAINTENANCE: Low (simple architecture)
 School Head:
 1. View comprehensive student roster (LRN, names, grades, status)
 2. Mark individual students as at-risk based on performance
-3. Update student status (enrolled → dropping-out → dropped-out)
+3. Update student status (enrolled â†’ dropping-out â†’ dropped-out)
 4. Submit per-student data monthly
 
 Monitor:
@@ -87,7 +96,7 @@ Data Model: Learner-centric (individual records)
 ### NEW WORKFLOW (Simple)
 ```
 School Head:
-1. Fill 3 forms once per year (I-META, TARGETS-MET, SMEA)
+1. Fill 3 forms once per year (I-META, BMEF, SMEA)
 2. Submit enrollment numbers (total, dropouts, transferees)
 3. Flag specific concerns when they arise (abuse, dropout risk, etc.)
 4. Wait for monitor feedback
@@ -117,7 +126,7 @@ student_status_logs: 2,000,000 rows (multiple transitions per student)
 student_performance_records: 1,000,000 rows (monthly records)
 teachers: 5,000 rows
 classes: 1,000 rows
-─────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TOTAL: ~3.5M rows
 
 DB size: ~2-3 GB (with indices)
@@ -130,12 +139,12 @@ API response times: Can be slow (complex JOINs)
 Schools: 100
 Years of data: 5
 
-indicator_submissions: 300 rows (100 schools × 3 packages)
-enrollment_records: 500 rows (100 schools × 5 years)
+indicator_submissions: 300 rows (100 schools Ã— 3 packages)
+enrollment_records: 500 rows (100 schools Ã— 5 years)
 welfare_concerns: ~2,000 rows (est. 20 per school per year)
 welfare_concern_attachments: ~1,000 rows
 welfare_concern_threads: ~3,000 rows
-─────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TOTAL: ~6.8K rows
 
 DB size: ~50-100 MB
@@ -152,70 +161,70 @@ API response times: Sub-second
 ```
 PHASE 1: CLEANUP & SIMPLIFICATION
 Time: 2-3 days
-├─ Mark old models for deprecation
-├─ Create new migrations
-├─ Update seeders
-└─ Test clean schema
+â”œâ”€ Mark old models for deprecation
+â”œâ”€ Create new migrations
+â”œâ”€ Update seeders
+â””â”€ Test clean schema
 
 PHASE 2: BACKEND CORE API
 Time: 3-4 days
-├─ Controllers: Submission, Concern, Enrollment, Dashboard
-├─ Services: Submission, Concern, Enrollment, Report
-├─ Models: IndicatorSubmission, WelfareConcern, EnrollmentRecord
-├─ Validation rules
-├─ Notification events
-└─ API testing (Postman)
+â”œâ”€ Controllers: Submission, Concern, Enrollment, Dashboard
+â”œâ”€ Services: Submission, Concern, Enrollment, Report
+â”œâ”€ Models: IndicatorSubmission, WelfareConcern, EnrollmentRecord
+â”œâ”€ Validation rules
+â”œâ”€ Notification events
+â””â”€ API testing (Postman)
 
 PHASE 3: FRONTEND AUTH & LAYOUT
 Time: 2 days
-├─ Login page (unified)
-├─ Role-based layouts (School Head / Monitor)
-├─ Sidebar navigation
-├─ Auth context & guards
-└─ Settings page
+â”œâ”€ Login page (unified)
+â”œâ”€ Role-based layouts (School Head / Monitor)
+â”œâ”€ Sidebar navigation
+â”œâ”€ Auth context & guards
+â””â”€ Settings page
 
 PHASE 4: SCHOOL HEAD FEATURES
 Time: 4-5 days
-├─ Requirements page (I-META, TARGETS-MET, SMEA forms)
-├─ Form builder & validation
-├─ Enrollment & Concerns page
-├─ Flag New Concern modal
-├─ Dashboard (3 cards + progress bar)
-└─ History/Activity feed
+â”œâ”€ Requirements page (I-META, BMEF, SMEA forms)
+â”œâ”€ Form builder & validation
+â”œâ”€ Enrollment & Concerns page
+â”œâ”€ Flag New Concern modal
+â”œâ”€ Dashboard (3 cards + progress bar)
+â””â”€ History/Activity feed
 
 PHASE 5: MONITOR FEATURES
 Time: 4-5 days
-├─ Reviews page (pending submissions queue)
-├─ Review modal (view + comment + approve/return)
-├─ Concerns board (division-wide)
-├─ Reports page (CSV export + charts)
-└─ Dashboard (4 KPI cards + breakdown)
+â”œâ”€ Reviews page (pending submissions queue)
+â”œâ”€ Review modal (view + comment + approve/return)
+â”œâ”€ Concerns board (division-wide)
+â”œâ”€ Reports page (CSV export + charts)
+â””â”€ Dashboard (4 KPI cards + breakdown)
 
 PHASE 6: REAL-TIME & NOTIFICATIONS
 Time: 2 days
-├─ Reverb listeners
-├─ Email queue
-├─ Notification center (toast + bell)
-└─ Multi-browser sync
+â”œâ”€ Reverb listeners
+â”œâ”€ Email queue
+â”œâ”€ Notification center (toast + bell)
+â””â”€ Multi-browser sync
 
 PHASE 7: SECURITY HARDENING
 Time: 2 days
-├─ CSRF tokens
-├─ Rate limiting
-├─ Attachment encryption
-├─ Audit logging
-└─ Auth edge cases (token expiry, MFA, etc.)
+â”œâ”€ CSRF tokens
+â”œâ”€ Rate limiting
+â”œâ”€ Attachment encryption
+â”œâ”€ Audit logging
+â””â”€ Auth edge cases (token expiry, MFA, etc.)
 
 PHASE 8: TESTING & DEPLOYMENT
 Time: 2-3 days
-├─ Unit tests
-├─ Integration tests
-├─ E2E tests
-├─ Staging deployment
-├─ Load testing
-└─ Production deployment
+â”œâ”€ Unit tests
+â”œâ”€ Integration tests
+â”œâ”€ E2E tests
+â”œâ”€ Staging deployment
+â”œâ”€ Load testing
+â””â”€ Production deployment
 
-─────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TOTAL: 4-5 WEEKS (solo dev)
        2-3 WEEKS (2-person team)
 ```
@@ -226,22 +235,22 @@ TOTAL: 4-5 WEEKS (solo dev)
 
 | Feature | Old Capstone | New Design | Status |
 |---------|--------------|-----------|--------|
-| **Role-based Auth** | ✅ Monitor + School Head | ✅ Monitor + School Head | Reuse existing |
-| **School Code Login** | ✅ 6-digit | ✅ 6-digit | Reuse existing |
-| **Student Roster** | ✅ Full LRN tracking | ❌ REMOVED | Delete models |
-| **Per-Student Status** | ✅ (15+ states) | ❌ REMOVED | Delete code |
-| **Performance Tracking** | ✅ Grade/metric recording | ❌ REMOVED | Delete models |
-| **I-META Submission** | ❌ Manual process | ✅ Digital form | Build new |
-| **TARGETS-MET Submission** | ❌ Manual process | ✅ Auto-calculated from enrollment | Build new |
-| **SMEA Submission** | ❌ Manual process | ✅ Digital form | Build new |
-| **Enrollment Numbers** | ⚠️ Derived from student roster | ✅ Direct input form | Simplify |
-| **Welfare Concerns** | ❌ Not in scope | ✅ Flagging + workflow | Build new |
-| **Bulk Import** | ✅ User data | ✅ Schools + school heads | Refactor |
-| **Audit Logging** | ✅ Full audit trail | ✅ Full audit trail | Reuse existing |
-| **Notifications** | ✅ Reverb + email | ✅ Reverb + email | Reuse & refine |
-| **Reports/Exports** | ✅ Complex analytics | ✅ Simple KPI reports | Simplify |
-| **Dashboard Analytics** | ✅ Per-learner insights | ✅ Division-wide KPIs | Redesign |
-| **MFA** | ✅ TOTP for monitor | ✅ TOTP for monitor | Reuse existing |
+| **Role-based Auth** | âœ… Monitor + School Head | âœ… Monitor + School Head | Reuse existing |
+| **School Code Login** | âœ… 6-digit | âœ… 6-digit | Reuse existing |
+| **Student Roster** | âœ… Full LRN tracking | âŒ REMOVED | Delete models |
+| **Per-Student Status** | âœ… (15+ states) | âŒ REMOVED | Delete code |
+| **Performance Tracking** | âœ… Grade/metric recording | âŒ REMOVED | Delete models |
+| **I-META Submission** | âŒ Manual process | âœ… Digital form | Build new |
+| **BMEF Submission** | âŒ Manual process | âœ… Auto-calculated from enrollment | Build new |
+| **SMEA Submission** | âŒ Manual process | âœ… Digital form | Build new |
+| **Enrollment Numbers** | âš ï¸ Derived from student roster | âœ… Direct input form | Simplify |
+| **Welfare Concerns** | âŒ Not in scope | âœ… Flagging + workflow | Build new |
+| **Bulk Import** | âœ… User data | âœ… Schools + school heads | Refactor |
+| **Audit Logging** | âœ… Full audit trail | âœ… Full audit trail | Reuse existing |
+| **Notifications** | âœ… Reverb + email | âœ… Reverb + email | Reuse & refine |
+| **Reports/Exports** | âœ… Complex analytics | âœ… Simple KPI reports | Simplify |
+| **Dashboard Analytics** | âœ… Per-learner insights | âœ… Division-wide KPIs | Redesign |
+| **MFA** | âœ… TOTP for monitor | âœ… TOTP for monitor | Reuse existing |
 
 ---
 
@@ -249,42 +258,42 @@ TOTAL: 4-5 WEEKS (solo dev)
 
 ### OLD ARCHITECTURE (Monolithic)
 ```
-┌──────────────────────────────────────┐
-│         CSPAMS MONOLITH              │
-├──────────────────────────────────────┤
-│ Auth Service                         │
-│ Learner Management Service           │
-│ Performance Tracking Service         │
-│ At-Risk Detection Service (AI)       │
-│ Reporting Service (complex)          │
-│ Audit Service                        │
-│ Notification Service                 │
-├──────────────────────────────────────┤
-│          LARGE DATABASE              │
-│  (3.5M rows, complex schema)         │
-├──────────────────────────────────────┤
-│   React Frontend (many pages)        │
-└──────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚         CSPAMS MONOLITH              â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ Auth Service                         â”‚
+â”‚ Learner Management Service           â”‚
+â”‚ Performance Tracking Service         â”‚
+â”‚ At-Risk Detection Service (AI)       â”‚
+â”‚ Reporting Service (complex)          â”‚
+â”‚ Audit Service                        â”‚
+â”‚ Notification Service                 â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚          LARGE DATABASE              â”‚
+â”‚  (3.5M rows, complex schema)         â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚   React Frontend (many pages)        â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### NEW ARCHITECTURE (Focused)
 ```
-┌──────────────────────────────────────┐
-│         CSPAMS FOCUSED               │
-├──────────────────────────────────────┤
-│ Auth Service (reuse)                 │
-│ Submission Service (new)             │
-│ Concern Service (new)                │
-│ Enrollment Service (new)             │
-│ Reporting Service (simplified)       │
-│ Audit Service (reuse)                │
-│ Notification Service (reuse)         │
-├──────────────────────────────────────┤
-│       LIGHTWEIGHT DATABASE           │
-│   (~7K rows, simple schema)          │
-├──────────────────────────────────────┤
-│  React Frontend (8-10 pages)         │
-└──────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚         CSPAMS FOCUSED               â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ Auth Service (reuse)                 â”‚
+â”‚ Submission Service (new)             â”‚
+â”‚ Concern Service (new)                â”‚
+â”‚ Enrollment Service (new)             â”‚
+â”‚ Reporting Service (simplified)       â”‚
+â”‚ Audit Service (reuse)                â”‚
+â”‚ Notification Service (reuse)         â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚       LIGHTWEIGHT DATABASE           â”‚
+â”‚   (~7K rows, simple schema)          â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚  React Frontend (8-10 pages)         â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -294,52 +303,52 @@ TOTAL: 4-5 WEEKS (solo dev)
 ### MODELS TO REMOVE
 ```sql
 DELETE FROM models/
-├─ Student.php
-├─ StudentPerformanceRecord.php
-├─ StudentStatusLog.php
-├─ PerformanceMetric.php
-├─ Teacher.php (if exists)
-└─ (any learner lifecycle related)
+â”œâ”€ Student.php
+â”œâ”€ StudentPerformanceRecord.php
+â”œâ”€ StudentStatusLog.php
+â”œâ”€ PerformanceMetric.php
+â”œâ”€ Teacher.php (if exists)
+â””â”€ (any learner lifecycle related)
 
 DELETE FROM migrations/
-├─ create_students_table
-├─ create_student_performance_records_table
-├─ create_student_status_logs_table
-├─ create_performance_metrics_table
-└─ (any student-related migrations)
+â”œâ”€ create_students_table
+â”œâ”€ create_student_performance_records_table
+â”œâ”€ create_student_status_logs_table
+â”œâ”€ create_performance_metrics_table
+â””â”€ (any student-related migrations)
 ```
 
 ### FILAMENT RESOURCES TO REMOVE
 ```php
 DELETE FROM app/Filament/Resources/
-├─ StudentResource.php
-├─ StudentPerformanceRecordResource.php
-├─ StudentStatusLogResource.php
-├─ PerformanceMetricResource.php
-├─ TeacherResource.php
-└─ (keep: SchoolResource, UserResource, AcademicYearResource, IndicatorSubmissionResource)
+â”œâ”€ StudentResource.php
+â”œâ”€ StudentPerformanceRecordResource.php
+â”œâ”€ StudentStatusLogResource.php
+â”œâ”€ PerformanceMetricResource.php
+â”œâ”€ TeacherResource.php
+â””â”€ (keep: SchoolResource, UserResource, AcademicYearResource, IndicatorSubmissionResource)
 ```
 
 ### API ROUTES TO REMOVE
 ```
 DELETE FROM routes/api.php:
-├─ /api/students/*
-├─ /api/performance/*
-├─ /api/status-logs/*
-├─ /api/teachers/*
-└─ (keep: /api/submissions/*, /api/concerns/*, /api/enrollment/*, /api/auth/*, /api/dashboard/*)
+â”œâ”€ /api/students/*
+â”œâ”€ /api/performance/*
+â”œâ”€ /api/status-logs/*
+â”œâ”€ /api/teachers/*
+â””â”€ (keep: /api/submissions/*, /api/concerns/*, /api/enrollment/*, /api/auth/*, /api/dashboard/*)
 ```
 
 ### FRONTEND COMPONENTS TO REMOVE
 ```
 DELETE from frontend/src/:
-├─ pages/LearnerRoster.tsx
-├─ pages/StudentPerformance.tsx
-├─ pages/AtRiskWatchlist.tsx
-├─ pages/TeacherManagement.tsx
-├─ components/StudentTable.tsx
-├─ components/PerformanceChart.tsx
-└─ hooks/useStudentData.ts
+â”œâ”€ pages/LearnerRoster.tsx
+â”œâ”€ pages/StudentPerformance.tsx
+â”œâ”€ pages/AtRiskWatchlist.tsx
+â”œâ”€ pages/TeacherManagement.tsx
+â”œâ”€ components/StudentTable.tsx
+â”œâ”€ components/PerformanceChart.tsx
+â””â”€ hooks/useStudentData.ts
 ```
 
 ---
@@ -353,15 +362,15 @@ DELETE from frontend/src/:
 **Mitigation:**
 ```
 Option A: Archive to separate schema (read-only)
-├─ Create archive_students, archive_performance tables
-├─ Keep old data accessible but not active
-└─ Export to JSON for historical reference
+â”œâ”€ Create archive_students, archive_performance tables
+â”œâ”€ Keep old data accessible but not active
+â””â”€ Export to JSON for historical reference
 
 Option B: Delete (clean slate)
-├─ Backup full database
-├─ Delete all student records
-├─ Start fresh with new design
-└─ Only keep schools + accounts
+â”œâ”€ Backup full database
+â”œâ”€ Delete all student records
+â”œâ”€ Start fresh with new design
+â””â”€ Only keep schools + accounts
 ```
 
 ---
@@ -373,14 +382,14 @@ Option B: Delete (clean slate)
 **Mitigation:**
 ```
 Solution 1: Allow form flexibility
-├─ Store form_data as JSON (no fixed columns)
-├─ Add new fields to next year's form_data schema
-└─ Old year's submissions stay as-is
+â”œâ”€ Store form_data as JSON (no fixed columns)
+â”œâ”€ Add new fields to next year's form_data schema
+â””â”€ Old year's submissions stay as-is
 
 Solution 2: Version forms
-├─ indicator_submissions.form_version (v1, v2, v3)
-├─ Each version has different schema
-└─ Monitor can view with version-aware renderer
+â”œâ”€ indicator_submissions.form_version (v1, v2, v3)
+â”œâ”€ Each version has different schema
+â””â”€ Monitor can view with version-aware renderer
 ```
 
 ---
@@ -449,11 +458,11 @@ CDN: Cloudflare (optional, for static assets)
 
 ## SUCCESS METRICS
 
-**Launch Readiness (✅ When to Deploy):**
+**Launch Readiness (âœ… When to Deploy):**
 
-- [ ] All 3 form types (I-META, TARGETS-MET, SMEA) working end-to-end
+- [ ] All 3 form types (I-META, BMEF, SMEA) working end-to-end
 - [ ] School heads can submit + monitor can review
-- [ ] Concerns workflow complete (flag → acknowledge → resolve)
+- [ ] Concerns workflow complete (flag â†’ acknowledge â†’ resolve)
 - [ ] Notifications working (email + real-time)
 - [ ] Division dashboard shows accurate KPIs
 - [ ] CSV export working for monitors
@@ -476,7 +485,7 @@ CDN: Cloudflare (optional, for static assets)
 
 - [ ] **Answer all 10 brainstorm questions** (in Part 10 of main analysis)
 - [ ] **Get sign-off from DepEd** on new design
-- [ ] **Finalize form structures** (I-META, TARGETS-MET, SMEA fields)
+- [ ] **Finalize form structures** (I-META, BMEF, SMEA fields)
 - [ ] **Define concern categories** (with DepEd validation)
 - [ ] **Set submission deadlines** (date per academic year)
 - [ ] **Assign project owner** (who approves decisions?)
@@ -515,3 +524,5 @@ CDN: Cloudflare (optional, for static assets)
 **Document Generated:** April 11, 2026  
 **Project:** CSPAMS 2.0 Redesign  
 **Status:** Ready for Implementation Kickoff
+
+
