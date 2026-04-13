@@ -20,7 +20,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
   const [signOutError, setSignOutError] = useState("");
 
   const roleLabel = role === "school_head" ? "School Head" : "Division Monitor";
-  const appTagline = "Centralized Student Performance Analytics and Monitoring System";
+  const appTagline = "Centralized School Performance and Monitoring System (CSPAMS) for DepEd SMM&E workflows";
 
   const handleSignOut = async () => {
     if (isLoggingOut) return;

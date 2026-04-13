@@ -93,7 +93,7 @@
 
     <main class="wrap">
         <h1 class="brand">CSPAMS</h1>
-        <p class="subtitle">Centralized Student Performance Analytics and Monitoring System</p>
+        <p class="subtitle">Centralized School Performance and Monitoring System (CSPAMS) for DepEd SMM&E workflows</p>
 
         <div class="actions">
             <a class="btn btn-primary" href="{{ $loginUrl }}">Open Login</a>
