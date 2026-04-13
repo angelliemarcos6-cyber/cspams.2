@@ -84,6 +84,7 @@ export function SchoolAdminDashboard() {
   >("all");
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
+  const [openReportPreviewId, setOpenReportPreviewId] = useState<"bmef" | "smea" | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
@@ -390,59 +391,109 @@ export function SchoolAdminDashboard() {
       </section>
 
       {/* ── File Reports ── */}
-      <section id="file-reports" className={`mb-5 rounded-sm border border-slate-200 bg-white ${focusCls("file-reports")}`}>
-        <div className="border-b border-slate-200 px-4 py-2.5">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">File Reports</h2>
-        </div>
-        <div className="grid gap-3 p-4 md:grid-cols-2">
-          {/* BMEF Card */}
-          <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-slate-800">BMEF</p>
-              <span
-                className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
-                  bmefUploaded
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                    : "border-slate-300 bg-slate-100 text-slate-500"
-                }`}
-              >
-                {bmefUploaded ? "Uploaded" : "Not uploaded"}
-              </span>
-            </div>
-            {bmefFile?.originalFilename && (
-              <p className="mt-1.5 truncate text-[11px] text-slate-600">{bmefFile.originalFilename}</p>
-            )}
-            {bmefFile?.uploadedAt && (
-              <p className="mt-0.5 text-[10px] text-slate-500">
-                Uploaded: {new Date(bmefFile.uploadedAt).toLocaleDateString()}
-              </p>
-            )}
-          </article>
+      <section id="file-reports" className={`mb-5 ${focusCls("file-reports")}`}>
+        <h2 className="mb-6 text-lg font-semibold text-gray-900">FILE REPORTS</h2>
 
-          {/* SMEA Card */}
-          <article className="rounded-sm border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-slate-800">SMEA</p>
-              <span
-                className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
-                  smeaUploaded
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                    : "border-slate-300 bg-slate-100 text-slate-500"
-                }`}
-              >
-                {smeaUploaded ? "Uploaded" : "Not uploaded"}
-              </span>
+        {([
+          {
+            id: "bmef" as const,
+            name: "BMEF Report",
+            isSubmitted: bmefUploaded,
+            fileName: bmefFile?.originalFilename ?? null,
+            dateSubmitted: bmefFile?.uploadedAt ? new Date(bmefFile.uploadedAt).toLocaleDateString() : null,
+            uploadLabel: "Upload BMEF Report",
+          },
+          {
+            id: "smea" as const,
+            name: "SMEA Report",
+            isSubmitted: smeaUploaded,
+            fileName: smeaFile?.originalFilename ?? null,
+            dateSubmitted: smeaFile?.uploadedAt ? new Date(smeaFile.uploadedAt).toLocaleDateString() : null,
+            uploadLabel: "Upload SMEA Report",
+          },
+        ]).map((report) => {
+          const isPreviewOpen = openReportPreviewId === report.id;
+
+          return (
+            <div key={report.id} className="mb-6 rounded-xl border border-gray-200 p-8">
+              <h3 className="text-base font-semibold text-gray-900">{report.name}</h3>
+
+              <div className="mt-6 space-y-4">
+                <div className="flex items-start">
+                  <span className="w-40 shrink-0 text-sm font-medium text-gray-500">Status:</span>
+                  <div className="text-base font-semibold text-gray-900">
+                    {report.isSubmitted ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
+                        Submitted
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">Not uploaded yet</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-start">
+                  <span className="w-40 shrink-0 text-sm font-medium text-gray-500">Submitted file:</span>
+                  <span className="text-base font-semibold text-gray-900">
+                    {report.isSubmitted && report.fileName ? report.fileName : "— (none)"}
+                  </span>
+                </div>
+
+                <div className="flex items-start">
+                  <span className="w-40 shrink-0 text-sm font-medium text-gray-500">Date submitted:</span>
+                  <span className="text-base font-semibold text-gray-900">
+                    {report.isSubmitted && report.dateSubmitted ? report.dateSubmitted : "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                {report.isSubmitted ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenReportPreviewId((prev) => (prev === report.id ? null : report.id))
+                      }
+                      className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      View File
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Re-upload
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    {report.uploadLabel}
+                  </button>
+                )}
+              </div>
+
+              {report.isSubmitted && isPreviewOpen && (
+                <div className="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-6">
+                  <p className="mb-4 text-base font-semibold text-gray-900">{report.name} — Preview</p>
+                  <div className="mb-4 flex h-80 items-center justify-center rounded-lg border border-gray-300 bg-white text-sm text-gray-400">
+                    [Inline file preview area - placeholder div with border]
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenReportPreviewId(null)}
+                    className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Close Preview
+                  </button>
+                </div>
+              )}
             </div>
-            {smeaFile?.originalFilename && (
-              <p className="mt-1.5 truncate text-[11px] text-slate-600">{smeaFile.originalFilename}</p>
-            )}
-            {smeaFile?.uploadedAt && (
-              <p className="mt-0.5 text-[10px] text-slate-500">
-                Uploaded: {new Date(smeaFile.uploadedAt).toLocaleDateString()}
-              </p>
-            )}
-          </article>
-        </div>
+          );
+        })}
       </section>
 
       {/* ── I-META Compliance Indicators ── */}
