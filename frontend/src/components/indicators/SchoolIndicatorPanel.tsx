@@ -3312,196 +3312,107 @@ export function SchoolIndicatorPanel({
         </div>
       </form>
 
-      <div className="border-t border-slate-100 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
-            Submission History ({filteredSubmissions.length})
-          </h3>
-          <button
-            type="button"
-            onClick={() => setShowSubmissionPanel((current) => !current)}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            {showSubmissionPanel ? "Hide" : "Show"}
-            {showSubmissionPanel ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-
-        {showSubmissionPanel && (
-        <div className="mt-3 overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                <th className="px-2 py-2 text-left">Package</th>
-                <th className="px-2 py-2 text-left">Period</th>
-                <th className="px-2 py-2 text-center">Status</th>
-                <th className="px-2 py-2 text-right">Compliance</th>
-                <th className="px-2 py-2 text-left">Review Note</th>
-                <th className="px-2 py-2 text-left">Last Updated</th>
-                <th className="px-2 py-2 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredSubmissions.map((submission) => {
-                const historyRows = historyBySubmissionId[submission.id] ?? [];
-                const isExpanded = expandedSubmissionId === submission.id;
-                const isHistoryLoading = historyLoadingSubmissionId === submission.id;
-                const submissionSummary = submissionMissingSummaryById.get(submission.id) ?? { missingCount: 0, reason: "" };
-                const canSubmitPackage = submissionSummary.missingCount === 0;
-                const isDraftOrReturned = submission.status === "draft" || submission.status === "returned";
-
-                return (
-                  <Fragment key={submission.id}>
-                    <tr>
-                      <td className="px-2 py-2 text-sm font-semibold text-slate-900">#{submission.id}</td>
-                      <td className="px-2 py-2 text-sm text-slate-700">{submission.reportingPeriod || "N/A"}</td>
-                      <td className="px-2 py-2 text-center">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(
-                            submission.status,
-                          )}`}
-                        >
-                          {workflowLabel(submission.status, submission.statusLabel)}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 text-right text-sm font-semibold text-slate-900">
-                        {submission.summary.complianceRatePercent.toFixed(2)}%
-                      </td>
-                      <td className="px-2 py-2 text-sm text-slate-600">{submission.reviewNotes || "N/A"}</td>
-                      <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(submission.updatedAt ?? submission.createdAt)}</td>
-                      <td className="px-2 py-2 text-center">
-                        <div className="space-y-1">
-                          <div className="inline-flex items-center gap-2">
-                          {isDraftOrReturned ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleEditDraft(submission)}
-                                disabled={isSaving}
-                                className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
-                                  editingSubmissionId === submission.id
-                                    ? "border-primary-300 bg-primary-100 text-primary-800"
-                                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                                }`}
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                                {editingSubmissionId === submission.id ? "Editing" : "Edit Draft"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleSubmitToMonitor(submission)}
-                                disabled={isSaving || !canSubmitPackage}
-                                title={!canSubmitPackage ? submissionSummary.reason : "Submit to monitor"}
-                                className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
-                              >
-                                <Send className="h-3.5 w-3.5" />
-                                Submit
-                              </button>
-                            </>
-                          ) : submission.status === "validated" ? (
-                            <span className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700">
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              Validated
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-600">
-                              <XCircle className="h-3.5 w-3.5" />
-                              In Review
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void handleToggleDetails(submission)}
-                            className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                          >
-                            <History className="h-3.5 w-3.5" />
-                            {isExpanded ? "Hide" : "Details"}
-                            {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                          </button>
-                          </div>
-                          {isDraftOrReturned && !canSubmitPackage && (
-                            <p className="text-[11px] font-semibold text-amber-700">{submissionSummary.reason}</p>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={7} className="bg-slate-50 px-3 py-3">
-                          <div className="grid gap-4 lg:grid-cols-2">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Indicator Entries</p>
-                              <div className="mt-2 overflow-x-auto rounded-sm border border-slate-200 bg-white">
-                                <table className="min-w-full">
-                                  <thead>
-                                    <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                                      <th className="px-2 py-2 text-left">Indicator</th>
-                                      <th className="px-2 py-2 text-right">Target</th>
-                                      <th className="px-2 py-2 text-right">Actual</th>
-                                      <th className="px-2 py-2 text-center">Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100">
-                                    {submission.indicators.map((entry) => (
-                                      <tr key={entry.id}>
-                                        <td className="px-2 py-2">
-                                          <p className="text-xs font-semibold text-slate-900">{entry.metric?.code || "N/A"}</p>
-                                          <p className="text-xs text-slate-500">{entry.metric?.name || "Unknown metric"}</p>
-                                        </td>
-                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.targetDisplay ?? entry.targetValue}</td>
-                                        <td className="px-2 py-2 text-right text-xs text-slate-700">{entry.actualDisplay ?? entry.actualValue}</td>
-                                        <td className="px-2 py-2 text-center">
-                                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${complianceTone(entry.complianceStatus)}`}>
-                                            {entry.complianceStatus === "met" ? "Met" : "Below"}
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Workflow History</p>
-                              <div className="mt-2 space-y-2">
-                                {isHistoryLoading ? (
-                                  <p className="rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Loading history...</p>
-                                ) : historyRows.length === 0 ? (
-                                  <p className="rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">No history entries found.</p>
-                                ) : (
-                                  historyRows.map((entry) => (
-                                    <article key={entry.id} className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-                                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                                        {entry.action} - {formatDateTime(entry.createdAt)}
-                                      </p>
-                                      <p className="mt-0.5 text-xs text-slate-600">
-                                        {entry.actor?.name ? `By ${entry.actor.name}` : "System action"}
-                                      </p>
-                                      {entry.notes && <p className="mt-1 text-xs text-slate-700">{entry.notes}</p>}
-                                    </article>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              {filteredSubmissions.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-2 py-8 text-center text-sm text-slate-500">
-                    No indicator packages match the current context.
-                  </td>
+      <div className="border-t border-slate-100 px-4 py-4">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700 mb-3">TARGETS-MET</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* School's Achievement Table */}
+          <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+            <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-800">School's Achievement (SY 2025-2026)</h3>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-4 py-2 text-left font-medium text-slate-600">Metric</th>
+                  <th className="px-4 py-2 text-right font-medium text-slate-600">Value</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr><td className="px-4 py-2">NAME OF SCHOOL HEAD</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">TOTAL NUMBER OF ENROLMENT</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">SBM LEVEL OF PRACTICE</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Kindergarten)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 1 to 3)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 4 to 6)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 7 to 10)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 11 to 12)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Water and Sanitation facility to pupil ratio</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Number of Comfort rooms</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">a. Toilet bowl</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">b. Urinal</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Handwashing Facilities</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Ideal learning materials to learner ratio</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Pupil/student seat ratio (Overall)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">a. Kindergarten</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">b. Grades 1 - 6</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">c. Grades 7 - 10</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">d. Grades 11 - 12</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">ICT Package/E-classroom package to sections ratio</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">a. ICT Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Science Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Do you have internet access? (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Do you have electricity (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Do you have a complete fence/gate? (Evident/Partially/Not Evident)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">No. of Teachers</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Teachers with Physical Disability</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Functional SGC</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">School-Based Feeding Program Beneficiaries</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">School-Managed Canteen (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Teachers Cooperative Managed Canteen - if there is (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">Security and Safety (Contingency Plan)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">a. Earthquake</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">b. Typhoon</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">c. COVID-19</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">d. Power interruption</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">e. In-person classes</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">No. of Teachers trained on Psychological First Aid (PFA)</td><td className="px-4 py-2 text-right">-</td></tr>
+                <tr><td className="px-4 py-2">No. of Teachers trained on Occupational First Aid</td><td className="px-4 py-2 text-right">-</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Key Performance Indicators Table */}
+          <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+            <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY 2025-2026 only)</h3>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="px-4 py-2 text-left font-medium text-slate-600">Indicator</th>
+                  <th className="px-4 py-2 text-center font-medium text-slate-600">Target</th>
+                  <th className="px-4 py-2 text-center font-medium text-slate-600">Actual</th>
+                  <th className="px-4 py-2 text-center font-medium text-slate-600">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr><td className="px-4 py-2">Net Enrollment Rate (NER)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Retention Rate (RR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Drop-out Rate (DR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Transition Rate (TR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Net Intake Rate (NIR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Participation Rate (PR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">ALS Completion Rate</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Gender Parity Index (GPI)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Interquartile Ratio (IQR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Completion Rate (CR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Cohort Survival Rate (CSR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Learning Mastery: Nearly Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Learning Mastery: Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Learning Mastery: Highly Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">A&amp;E Test Pass Rate</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Learners Reporting School Violence</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Learner Satisfaction</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Learners Aware of Education Rights</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                <tr><td className="px-4 py-2">Schools/LCs Manifesting RBE Indicators</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        )}
       </div>
     </section>
   );
