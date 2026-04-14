@@ -5,12 +5,14 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type FocusEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, RefreshCw, Send, Target, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target, XCircle } from "lucide-react";
+import { FileUploadField } from "@/components/indicators/FileUploadField";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
@@ -22,6 +24,7 @@ import type {
   IndicatorSubmission,
   IndicatorSubmissionItem,
   IndicatorSubmissionPayload,
+  IndicatorSubmissionFileType,
   IndicatorTypedValuePayload,
   MetricDataType,
 } from "@/types";
@@ -52,7 +55,7 @@ interface ComplianceCategory {
   metricCodes: string[];
 }
 
-type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" | "validated" | "overdue";
+type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" | "validated";
 
 interface SchoolIndicatorPanelProps {
   statusFilter?: IndicatorWorkflowStatusFilter;
@@ -147,7 +150,20 @@ const KEY_PERFORMANCE_METRIC_CODES = [
   "RBE_MANIFEST",
 ];
 
-const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [];
+const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
+  {
+    id: "school_achievements_learning_outcomes",
+    label: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES",
+    mode: "actual_only",
+    metricCodes: SCHOOL_ACHIEVEMENTS_METRIC_CODES,
+  },
+  {
+    id: "key_performance_indicators",
+    label: "KEY PERFORMANCE INDICATORS",
+    mode: "target_actual",
+    metricCodes: KEY_PERFORMANCE_METRIC_CODES,
+  },
+];
 
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
@@ -162,6 +178,11 @@ const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
 const INDICATOR_DRAFT_STORAGE_KEY = "cspams.schoolhead.indicator.autosave.v1";
 const ALL_RECORDS_YEAR_ID = "__all_records__";
+const BMEF_TAB_ID = "bmef_upload";
+const SMEA_TAB_ID = "smea_upload";
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
 
 const METRIC_LABEL_OVERRIDES: Record<string, string> = {
   IMETA_HEAD_NAME: "NAME OF SCHOOL HEAD",
@@ -240,7 +261,6 @@ function workflowLabel(status: string, fallback: string): string {
   if (status === "submitted") return "Submitted";
   if (status === "validated") return "Validated";
   if (status === "returned") return "Needs Revision";
-  if (status === "overdue") return "Overdue";
   return fallback || status;
 }
 
@@ -639,15 +659,19 @@ export function SchoolIndicatorPanel({
   const { totalCount: syncedStudentCount } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
   const {
-    submissions,
+    submissions: submissionSnapshot,
+    allSubmissions,
     metrics,
     academicYears,
     isLoading,
+    isAllSubmissionsLoading,
     isSaving,
     error,
     refreshSubmissions,
     createSubmission,
     updateSubmission,
+    uploadSubmissionFile,
+    downloadSubmissionFile,
     submitSubmission,
     loadHistory,
   } = useIndicatorData();
@@ -673,17 +697,25 @@ export function SchoolIndicatorPanel({
   const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
   const [autoMissingAppliedForSubmissionId, setAutoMissingAppliedForSubmissionId] = useState<string | null>(null);
   const [showAllAcademicYears, setShowAllAcademicYears] = useState(false);
+  const [showOptionalNotes, setShowOptionalNotes] = useState(false);
   const [pendingLocalDraft, setPendingLocalDraft] = useState<LocalDraftSnapshot | null>(null);
   const [restoreBannerDismissed, setRestoreBannerDismissed] = useState(false);
   const [serverAutosaveAt, setServerAutosaveAt] = useState<string | null>(null);
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [teacherSexCounts, setTeacherSexCounts] = useState<{ male: number; female: number }>({ male: 0, female: 0 });
+  const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
+  const [uploadErrorByType, setUploadErrorByType] = useState<Record<IndicatorSubmissionFileType, string>>({
+    bmef: "",
+    smea: "",
+  });
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
+  const bmefInputRef = useRef<HTMLInputElement | null>(null);
+  const smeaInputRef = useRef<HTMLInputElement | null>(null);
 
   const complianceMetrics = useMemo(
     () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
@@ -1088,6 +1120,11 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [academicYearId, notes, metricEntries, editingSubmissionId, complianceMetrics.length]);
 
+  const submissions = useMemo(
+    () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
+    [allSubmissions, submissionSnapshot],
+  );
+  const isSubmissionDataLoading = isLoading || isAllSubmissionsLoading;
   const sortedSubmissions = useMemo(
     () =>
       [...submissions].sort((a, b) => {
@@ -1104,7 +1141,7 @@ export function SchoolIndicatorPanel({
         const normalizedStatus = String(submission.status ?? "").toLowerCase();
         const matchesStatus =
           statusFilter === "all" ||
-          (statusFilter === "overdue" ? normalizedStatus === "returned" : normalizedStatus === statusFilter);
+          normalizedStatus === statusFilter;
 
         return matchesYear && matchesStatus;
       }),
@@ -1146,7 +1183,7 @@ export function SchoolIndicatorPanel({
     return unique.slice(0, 3);
   }, [academicYearId, eligibleAcademicYears, showAllAcademicYears]);
   const hiddenAcademicYearCount = Math.max(0, eligibleAcademicYears.length - compactAcademicYears.length);
-  const visibleCategoryMetrics = showAdvancedInputs ? categoryMetrics : categoryMetrics.slice(0, 1);
+  const visibleCategoryMetrics = categoryMetrics;
   const metricCompletionById = useMemo(() => {
     const map = new Map<string, boolean>();
 
@@ -1198,6 +1235,15 @@ export function SchoolIndicatorPanel({
     () => orderedComplianceMetrics.reduce((count, metric) => count + Number(metricCompletionById.get(metric.id) ?? false), 0),
     [metricCompletionById, orderedComplianceMetrics],
   );
+  const completionPercent = useMemo(
+    () => (totalIndicators > 0 ? Math.round((completeIndicators / totalIndicators) * 100) : 0),
+    [completeIndicators, totalIndicators],
+  );
+  const completionBarToneClass = useMemo(() => {
+    if (completionPercent >= 80) return "bg-emerald-500";
+    if (completionPercent >= 50) return "bg-amber-500";
+    return "bg-rose-500";
+  }, [completionPercent]);
   const missingFieldTargets = useMemo(() => {
     const targets: MissingFieldTarget[] = [];
 
@@ -1344,9 +1390,52 @@ export function SchoolIndicatorPanel({
 
     return summary;
   }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, requiredSchoolYearSet, schoolYearByAcademicYearId, schoolYears, sortedSubmissions]);
+  const selectedSubmissionForUploads = useMemo(() => {
+    const scopedByYear = academicYearId && academicYearId !== ALL_RECORDS_YEAR_ID
+      ? sortedSubmissions.filter((submission) => submission.academicYear?.id === academicYearId)
+      : sortedSubmissions;
+
+    return editingSubmission ?? latestServerDraft ?? scopedByYear[0] ?? null;
+  }, [academicYearId, editingSubmission, latestServerDraft, sortedSubmissions]);
+  const bmefFileEntry = selectedSubmissionForUploads?.files?.bmef ?? null;
+  const smeaFileEntry = selectedSubmissionForUploads?.files?.smea ?? null;
+  const bmefSubmitted = Boolean(bmefFileEntry?.uploaded);
+  const smeaSubmitted = Boolean(smeaFileEntry?.uploaded);
+  // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+  // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+  // Monitor & School Head views updated for DepEd standards
+  const complianceTabs = useMemo(
+    () => [
+      ...visibleCategoryMetrics.map((category) => ({
+        id: category.id,
+        kind: "category" as const,
+        label: categoryTabLabel(category),
+      })),
+      {
+        id: BMEF_TAB_ID,
+        kind: "upload" as const,
+        label: "BMEF",
+        uploadType: "bmef" as const,
+      },
+      {
+        id: SMEA_TAB_ID,
+        kind: "upload" as const,
+        label: "SMEA",
+        uploadType: "smea" as const,
+      },
+    ],
+    [visibleCategoryMetrics],
+  );
+  const activeTab = useMemo(
+    () => complianceTabs.find((tab) => tab.id === activeCategoryId) ?? complianceTabs[0] ?? null,
+    [activeCategoryId, complianceTabs],
+  );
+  const activeUploadType = activeTab?.kind === "upload" ? activeTab.uploadType : null;
   const activeCategory = useMemo(
-    () => visibleCategoryMetrics.find((category) => category.id === activeCategoryId) ?? visibleCategoryMetrics[0] ?? null,
-    [activeCategoryId, visibleCategoryMetrics],
+    () => (activeTab?.kind === "category"
+      ? visibleCategoryMetrics.find((category) => category.id === activeTab.id) ?? null
+      : null),
+    [activeTab, visibleCategoryMetrics],
   );
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
@@ -1388,21 +1477,21 @@ export function SchoolIndicatorPanel({
   }, []);
 
   const handleSlideCategory = useCallback((direction: 1 | -1) => {
-    if (visibleCategoryMetrics.length === 0) {
+    if (complianceTabs.length === 0) {
       return;
     }
 
-    const currentIndex = visibleCategoryMetrics.findIndex((category) => category.id === activeCategoryId);
+    const currentIndex = complianceTabs.findIndex((tab) => tab.id === activeCategoryId);
     const safeIndex = currentIndex >= 0 ? currentIndex : 0;
-    const nextIndex = (safeIndex + direction + visibleCategoryMetrics.length) % visibleCategoryMetrics.length;
-    const nextCategory = visibleCategoryMetrics[nextIndex];
-    if (!nextCategory) {
+    const nextIndex = (safeIndex + direction + complianceTabs.length) % complianceTabs.length;
+    const nextTab = complianceTabs[nextIndex];
+    if (!nextTab) {
       return;
     }
 
-    handleSelectCategory(nextCategory.id);
+    handleSelectCategory(nextTab.id);
     scrollCategoryRail(direction);
-  }, [activeCategoryId, handleSelectCategory, scrollCategoryRail, visibleCategoryMetrics]);
+  }, [activeCategoryId, complianceTabs, handleSelectCategory, scrollCategoryRail]);
 
   const slideIndicatorTable = useCallback((direction: 1 | -1) => {
     const tableContainer = indicatorTableRef.current;
@@ -1488,7 +1577,7 @@ export function SchoolIndicatorPanel({
 
     const targetButton = rail.querySelector<HTMLButtonElement>(`button[data-category-id="${activeCategoryId}"]`);
     targetButton?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-  }, [activeCategoryId, visibleCategoryMetrics.length]);
+  }, [activeCategoryId, complianceTabs.length]);
 
   useEffect(() => {
     if (missingFieldTargets.length === 0) {
@@ -2271,38 +2360,140 @@ export function SchoolIndicatorPanel({
     }
   };
 
+  const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
+    setSubmitError("");
+    setSaveMessage("");
+    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+
+    const normalizedName = file.name.toLowerCase();
+    const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
+    if (!validExtension) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "Only PDF, DOCX, and XLSX files are allowed.",
+      }));
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "File size must not exceed 10MB.",
+      }));
+      return;
+    }
+
+    if (!selectedSubmissionForUploads) {
+      setSubmitError("Save the indicator draft first before uploading BMEF or SMEA files.");
+      return;
+    }
+
+    setUploadingFileType(type);
+    try {
+      const updated = await uploadSubmissionFile(selectedSubmissionForUploads.id, type, file);
+      setSaveMessage(`${type.toUpperCase()} file uploaded for package #${updated.id}.`);
+      setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+    } catch (err) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
+      }));
+    } finally {
+      setUploadingFileType(null);
+    }
+  }, [selectedSubmissionForUploads, uploadSubmissionFile]);
+
+  const handleFileInputChange = useCallback(
+    async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
+      const selectedFile = event.target.files?.[0];
+      event.currentTarget.value = "";
+      if (!selectedFile) {
+        return;
+      }
+
+      await handleFileUpload(type, selectedFile);
+    },
+    [handleFileUpload],
+  );
+
+  const handleDownloadUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
+    setSubmitError("");
+    setSaveMessage("");
+    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+
+    if (!selectedSubmissionForUploads) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "No draft package is available for download.",
+      }));
+      return;
+    }
+
+    try {
+      await downloadSubmissionFile(selectedSubmissionForUploads.id, type);
+    } catch (err) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`,
+      }));
+    }
+  }, [downloadSubmissionFile, selectedSubmissionForUploads]);
+
+  const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
+    if (type === "bmef") {
+      bmefInputRef.current?.click();
+      return;
+    }
+
+    smeaInputRef.current?.click();
+  }, []);
+
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Compliance Indicators</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {completeIndicators}/{totalIndicators} complete
-            </p>
+      <div className="border-b border-slate-200 bg-white px-4 py-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-base font-bold uppercase tracking-wide text-slate-900">I-META COMPLIANCE INDICATORS</h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAdvancedInputs((current) => !current)}
-              title={showAdvancedInputs ? "Show core indicators only" : "Show all sections"}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              {showAdvancedInputs ? "Core" : "All"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void refreshSubmissions()}
-              title="Refresh"
-              aria-label="Refresh"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
+
+          <div className="w-full md:w-auto md:min-w-[340px]">
+            <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+              <span
+                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                  bmefSubmitted
+                    ? "border-primary-300 bg-primary-50 text-primary-700"
+                    : "border-amber-300 bg-amber-50 text-amber-700"
+                }`}
+              >
+                BMEF: {bmefSubmitted ? "Submitted" : "Not Submitted"}
+              </span>
+              <span
+                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                  smeaSubmitted
+                    ? "border-primary-300 bg-primary-50 text-primary-700"
+                    : "border-amber-300 bg-amber-50 text-amber-700"
+                }`}
+              >
+                SMEA: {smeaSubmitted ? "Submitted" : "Not Submitted"}
+              </span>
+              <p className="ml-auto text-xl font-bold leading-none text-slate-900 md:ml-2">
+                {completeIndicators}/{totalIndicators} complete
+              </p>
+            </div>
+            <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
+              <div
+                className={`h-1.5 rounded-full transition-[width] duration-300 ${completionBarToneClass}`}
+                style={{ width: `${completionPercent}%` }}
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={completionPercent}
+                aria-label="Indicator completion progress"
+              />
+            </div>
           </div>
         </div>
       </div>
-
       {returnedSubmission && returnedSubmissionNotes && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
@@ -2340,146 +2531,90 @@ export function SchoolIndicatorPanel({
         </div>
       )}
 
-      {showRestoreBanner && (
-        <div className="border-b border-primary-200 bg-primary-50/70 px-4 py-1.5">
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-primary-900">
-            <span className="font-semibold uppercase tracking-wide text-primary-800">Draft Available</span>
-            {pendingLocalDraft && (
-              <span>
-                Local
-                {pendingLocalDraft.savedAt
-                  ? ` (${new Date(pendingLocalDraft.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`
-                  : ""}
-              </span>
-            )}
-            {latestServerDraft && latestServerDraft.id !== editingSubmissionId && (
-              <span>
-                Server #{latestServerDraft.id}
-                {latestServerDraft.updatedAt
-                  ? ` (${new Date(latestServerDraft.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`
-                  : ""}
-              </span>
-            )}
-            {pendingLocalDraft && (
-              <button
-                type="button"
-                onClick={handleRestoreLocalDraft}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[10px] font-semibold text-primary-800 transition hover:bg-primary-100"
-              >
-                Restore local
-              </button>
-            )}
-            {latestServerDraft && latestServerDraft.id !== editingSubmissionId && (
-              <button
-                type="button"
-                onClick={handleRestoreServerDraft}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-white px-2 py-1 text-[10px] font-semibold text-primary-800 transition hover:bg-primary-100"
-              >
-                Restore server
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setRestoreBannerDismissed(true)}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
-      <form className="space-y-2.5 border-b border-slate-100 px-4 py-2.5" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
-        <div className="grid gap-2.5 md:grid-cols-2">
+      <form className="space-y-4 border-b border-slate-100 px-4 py-4" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
+        <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              Academic Year
+            <label htmlFor="indicator-school-year" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+              School Year:
             </label>
-            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 pr-1">
-              <button
-                type="button"
-                onClick={() => setAcademicYearId(ALL_RECORDS_YEAR_ID)}
-                title="Show all record years"
-                className={`inline-flex shrink-0 items-center rounded-sm border px-2 py-0.5 text-[11px] font-semibold leading-5 transition ${
-                  academicYearId === ALL_RECORDS_YEAR_ID
-                    ? "border-primary bg-primary-50 text-primary-800"
-                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                }`}
+            <div className="relative">
+              <select
+                id="indicator-school-year"
+                value={academicYearId}
+                onChange={(event) => setAcademicYearId(event.target.value)}
+                aria-label="School year"
+                className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
-                All records
-              </button>
-              {compactAcademicYears.map((year) => {
-                const isSelected = academicYearId === year.id;
-                return (
-                <button
-                  key={year.id}
-                  type="button"
-                  onClick={() => setAcademicYearId(year.id)}
-                  title={year.isCurrent ? `${year.name} (Current)` : year.name}
-                  className={`inline-flex shrink-0 items-center rounded-sm border px-2 py-0.5 text-[11px] font-semibold leading-5 transition ${
-                    isSelected
-                      ? "border-primary bg-primary-50 text-primary-800"
-                      : year.isCurrent
-                        ? "border-primary-200 bg-primary-50/60 text-primary-700 hover:bg-primary-50"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {year.name}
-                </button>
-              );
-              })}
-              {hiddenAcademicYearCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllAcademicYears(true)}
-                  className="inline-flex shrink-0 items-center rounded-sm border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100"
-                >
-                  +{hiddenAcademicYearCount} more
-                </button>
-              )}
-              {showAllAcademicYears && eligibleAcademicYears.length > 3 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllAcademicYears(false)}
-                  className="inline-flex shrink-0 items-center rounded-sm border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100"
-                >
-                  Less
-                </button>
-              )}
+                <option value={ALL_RECORDS_YEAR_ID}>All records</option>
+                {eligibleAcademicYears.map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             </div>
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              Reporting Period
+            <label htmlFor="indicator-reporting-period" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+              Reporting Period:
             </label>
-            <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800">
-              Annual
-            </p>
-          </div>
-
-          <div className="md:col-span-2">
-            <label htmlFor="indicator-notes" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              Notes
-            </label>
-            <input
-              id="indicator-notes"
-              type="text"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Optional note"
-              className="w-full rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            />
+            <div className="relative">
+              <select
+                id="indicator-reporting-period"
+                value={reportingPeriod}
+                onChange={() => undefined}
+                aria-label="Reporting period"
+                className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              >
+                <option value="ANNUAL">Annual</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            </div>
           </div>
         </div>
 
-        <div className="space-y-2">
+        <div>
+          {showOptionalNotes || notes.trim().length > 0 ? (
+            <div className="space-y-1.5">
+              <label htmlFor="indicator-notes" className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                Optional Note
+              </label>
+              <textarea
+                id="indicator-notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                rows={3}
+                placeholder="Add optional note"
+                className="w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+              <button
+                type="button"
+                onClick={() => setShowOptionalNotes(false)}
+                className="text-xs font-semibold text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline"
+              >
+                Hide optional note
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowOptionalNotes(true)}
+              className="text-xs font-semibold text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline"
+            >
+              + Add optional note
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-2 pt-3">
           <div className="rounded-sm border border-slate-200 bg-slate-50 p-1.5">
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => handleSlideCategory(-1)}
-                disabled={visibleCategoryMetrics.length <= 1}
+                disabled={complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories left"
                 aria-label="Slide categories left"
@@ -2489,17 +2624,25 @@ export function SchoolIndicatorPanel({
 
               <div ref={categoryRailRef} className="min-w-0 flex-1 overflow-x-auto scroll-smooth">
                 <div className="flex min-w-max items-stretch gap-1 pr-1">
-                  {visibleCategoryMetrics.map((category) => {
-                    const progress = categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 };
-                    const missingCount = missingCountByCategory.find((item) => item.categoryId === category.id)?.count ?? 0;
-                    const isActive = activeCategory?.id === category.id;
+                  {complianceTabs.map((tab) => {
+                    const category = visibleCategoryMetrics.find((candidate) => candidate.id === tab.id) ?? null;
+                    const progress = category
+                      ? categoryProgressById.get(category.id) ?? { total: category.metrics.length, complete: 0 }
+                      : null;
+                    const missingCount = category
+                      ? missingCountByCategory.find((item) => item.categoryId === category.id)?.count ?? 0
+                      : null;
+                    const isActive = activeCategoryId === tab.id;
+                    const uploadSubmitted = tab.kind === "upload"
+                      ? (tab.uploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
+                      : null;
 
                     return (
                       <button
-                        key={category.id}
-                        data-category-id={category.id}
+                        key={tab.id}
+                        data-category-id={tab.id}
                         type="button"
-                        onClick={() => handleSelectCategory(category.id)}
+                        onClick={() => handleSelectCategory(tab.id)}
                         className={`inline-flex min-w-[188px] items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-left transition ${
                           isActive
                             ? "border-primary-300 bg-primary-50 text-primary-700"
@@ -2508,20 +2651,34 @@ export function SchoolIndicatorPanel({
                       >
                         <span className="min-w-0">
                           <span className="block truncate text-[11px] font-semibold uppercase tracking-wide">
-                            {categoryTabLabel(category)}
+                            {tab.label}
                           </span>
-                          <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
-                            {progress.complete}/{progress.total} complete
-                          </span>
+                          {tab.kind === "category" && progress ? (
+                            <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
+                              {progress.complete}/{progress.total} complete
+                            </span>
+                          ) : (
+                            <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
+                              {uploadSubmitted ? "Submitted" : "Not submitted"}
+                            </span>
+                          )}
                         </span>
                         <span
                           className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
-                            missingCount > 0
-                              ? "border-amber-300 bg-amber-50 text-amber-700"
-                              : "border-primary-300 bg-primary-50 text-primary-700"
+                            tab.kind === "category"
+                              ? (missingCount && missingCount > 0
+                                ? "border-amber-300 bg-amber-50 text-amber-700"
+                                : "border-primary-300 bg-primary-50 text-primary-700")
+                              : (uploadSubmitted
+                                ? "border-primary-300 bg-primary-50 text-primary-700"
+                                : "border-amber-300 bg-amber-50 text-amber-700")
                           }`}
                         >
-                          Missing {missingCount}
+                          {tab.kind === "category"
+                            ? `Missing ${missingCount ?? 0}`
+                            : uploadSubmitted
+                              ? "Submitted"
+                              : "Not Submitted"}
                         </span>
                       </button>
                     );
@@ -2532,7 +2689,7 @@ export function SchoolIndicatorPanel({
               <button
                 type="button"
                 onClick={() => handleSlideCategory(1)}
-                disabled={visibleCategoryMetrics.length <= 1}
+                disabled={complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories right"
                 aria-label="Slide categories right"
@@ -2542,6 +2699,8 @@ export function SchoolIndicatorPanel({
             </div>
           </div>
 
+          {activeCategory && (
+          <>
           <div className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_auto]">
             <input
               type="search"
@@ -2589,6 +2748,63 @@ export function SchoolIndicatorPanel({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+          </>
+          )}
+
+          {activeUploadType && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <input
+                ref={bmefInputRef}
+                type="file"
+                accept=".pdf,.docx,.xlsx"
+                className="hidden"
+                onChange={(event) => void handleFileInputChange("bmef", event)}
+              />
+              <input
+                ref={smeaInputRef}
+                type="file"
+                accept=".pdf,.docx,.xlsx"
+                className="hidden"
+                onChange={(event) => void handleFileInputChange("smea", event)}
+              />
+
+              {(() => {
+                const fileEntry = activeUploadType === "bmef" ? bmefFileEntry : smeaFileEntry;
+                const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
+                const uploadError = uploadErrorByType[activeUploadType];
+                const isUploading = uploadingFileType === activeUploadType;
+                const uploadDisabled = !selectedSubmissionForUploads || isSaving || isSubmissionDataLoading || isUploading;
+                const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
+
+                return (
+                  <div className="space-y-3">
+                    <FileUploadField
+                      label={uploadTypeLabel}
+                      description="Upload-only section. Accepted formats: PDF, DOCX, XLSX (max 10MB)."
+                      file={fileEntry
+                        ? {
+                          filename: fileEntry.originalFilename,
+                          sizeBytes: fileEntry.sizeBytes,
+                          uploadedAt: fileEntry.uploadedAt,
+                        }
+                        : null}
+                      submitted={uploaded}
+                      isUploading={isUploading}
+                      disabled={uploadDisabled}
+                      onUploadClick={() => openUploadPicker(activeUploadType)}
+                      onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
+                      error={uploadError}
+                    />
+                    {!selectedSubmissionForUploads && (
+                      <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                        Save the indicator draft first to enable file upload.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -2989,7 +3205,7 @@ export function SchoolIndicatorPanel({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="submit"
-            disabled={isSaving || isLoading || complianceMetrics.length === 0 || academicYearId === ALL_RECORDS_YEAR_ID}
+            disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || academicYearId === ALL_RECORDS_YEAR_ID}
             title={academicYearId === ALL_RECORDS_YEAR_ID ? "Select a specific academic year to save draft." : undefined}
             className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
           >
@@ -3001,7 +3217,7 @@ export function SchoolIndicatorPanel({
             onClick={() => void handleCreateAndSubmit()}
             disabled={
               isSaving
-              || isLoading
+              || isSubmissionDataLoading
               || complianceMetrics.length === 0
               || academicYearId === ALL_RECORDS_YEAR_ID
               || missingFieldTargets.length > 0
