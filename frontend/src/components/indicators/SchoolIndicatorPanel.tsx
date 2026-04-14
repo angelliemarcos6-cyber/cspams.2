@@ -147,20 +147,7 @@ const KEY_PERFORMANCE_METRIC_CODES = [
   "RBE_MANIFEST",
 ];
 
-const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
-  {
-    id: "school_achievements_learning_outcomes",
-    label: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES",
-    mode: "actual_only",
-    metricCodes: SCHOOL_ACHIEVEMENTS_METRIC_CODES,
-  },
-  {
-    id: "key_performance_indicators",
-    label: "KEY PERFORMANCE INDICATORS",
-    mode: "target_actual",
-    metricCodes: KEY_PERFORMANCE_METRIC_CODES,
-  },
-];
+const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [];
 
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
