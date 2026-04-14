@@ -1,34 +1,18 @@
-FROM php:8.4-cli
+FROM node:20-alpine
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    unzip \
-    curl \
-    libicu-dev \
-    libzip-dev \
-    libxml2-dev \
-    libonig-dev \
-    libpng-dev \
-    libjpeg62-turbo-dev \
-    libfreetype6-dev \
-    libsqlite3-dev \
-    sqlite3 \
-    libpq-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j1 intl zip mbstring gd pdo_sqlite pdo_pgsql \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Copy package files first
+COPY package*.json ./
 
-WORKDIR /var/www/html
+# Install dependencies
+RUN npm ci --only=production
 
+# Copy the rest of the application
 COPY . .
 
-RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-progress
+# Expose the port Render commonly uses
+EXPOSE 3000
 
-RUN chmod +x docker/render-start.sh
-
-RUN mkdir -p storage/logs bootstrap/cache \
-    && chown -R www-data:www-data storage bootstrap/cache
-
-CMD ["./docker/render-start.sh"]
+# Start the backend (change "server.js" if your main file is different)
+CMD ["node", "server.js"]
