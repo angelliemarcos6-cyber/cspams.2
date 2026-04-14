@@ -1328,8 +1328,8 @@ export function SchoolIndicatorPanel({
     for (const submission of sortedSubmissions) {
       const indicatorByMetricId = new Map(
         submission.indicators
-          .map((indicator) => [indicator.metric?.id ?? "", indicator] as const)
-          .filter(([metricId]) => metricId.length > 0),
+          .map((indicator: IndicatorSubmissionItem) => [indicator.metric?.id ?? "", indicator] as const)
+          .filter(([metricId]: readonly [string, IndicatorSubmissionItem]) => metricId.length > 0),
       );
       const missingTargets: MissingFieldTarget[] = [];
 
@@ -2154,8 +2154,8 @@ export function SchoolIndicatorPanel({
 
     const sourceByMetricId = new Map(
       latestValidatedSubmission.indicators
-        .map((indicator) => [indicator.metric?.id ?? "", indicator] as const)
-        .filter(([metricId]) => metricId.length > 0),
+        .map((indicator: IndicatorSubmissionItem) => [indicator.metric?.id ?? "", indicator] as const)
+        .filter(([metricId]: readonly [string, IndicatorSubmissionItem]) => metricId.length > 0),
     );
     let copiedCount = 0;
 
