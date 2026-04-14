@@ -19,11 +19,11 @@ class AuthAuditLoggingTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         $failedLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'password' => 'wrong-password',
         ]);
 
@@ -31,8 +31,8 @@ class AuthAuditLoggingTest extends TestCase
 
         $successfulLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $successfulLogin->assertOk();
@@ -47,7 +47,7 @@ class AuthAuditLoggingTest extends TestCase
             ->firstOrFail();
         $this->assertSame('failure', data_get($failedAudit->metadata, 'outcome'));
         $this->assertSame('monitor', data_get($failedAudit->metadata, 'role'));
-        $this->assertSame('monitor@cspams.local', data_get($failedAudit->metadata, 'identifier'));
+        $this->assertSame('cspamsmonitor@gmail.com', data_get($failedAudit->metadata, 'identifier'));
         $this->assertSame('invalid_credentials', data_get($failedAudit->metadata, 'reason'));
         $this->assertSame('auth.login.failed', data_get($failedAudit->metadata, 'event'));
         $this->assertSame('login', data_get($failedAudit->metadata, 'event_group'));
@@ -64,7 +64,7 @@ class AuthAuditLoggingTest extends TestCase
         $this->assertSame($monitor->id, $successAudit->user_id);
         $this->assertSame('success', data_get($successAudit->metadata, 'outcome'));
         $this->assertSame('monitor', data_get($successAudit->metadata, 'role'));
-        $this->assertSame('monitor@cspams.local', data_get($successAudit->metadata, 'identifier'));
+        $this->assertSame('cspamsmonitor@gmail.com', data_get($successAudit->metadata, 'identifier'));
         $this->assertSame('auth.login.success', data_get($successAudit->metadata, 'event'));
         $this->assertSame('login', data_get($successAudit->metadata, 'event_group'));
         $this->assertNotNull(data_get($successAudit->metadata, 'ip_address'));
@@ -121,8 +121,8 @@ class AuthAuditLoggingTest extends TestCase
 
         $loginResponse = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $loginResponse->assertStatus(Response::HTTP_ACCEPTED)
@@ -133,14 +133,14 @@ class AuthAuditLoggingTest extends TestCase
 
         $this->postJson('/api/auth/verify-mfa', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $challengeId,
             'code' => '000000',
         ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
 
         $this->postJson('/api/auth/verify-mfa', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $challengeId,
             'code' => '123456',
         ])->assertOk();
@@ -153,7 +153,7 @@ class AuthAuditLoggingTest extends TestCase
         $this->assertSame('challenge', data_get($challengeAudit->metadata, 'outcome'));
         $this->assertSame('mfa', data_get($challengeAudit->metadata, 'event_group'));
         $this->assertSame('monitor', data_get($challengeAudit->metadata, 'role'));
-        $this->assertSame('monitor@cspams.local', data_get($challengeAudit->metadata, 'identifier'));
+        $this->assertSame('cspamsmonitor@gmail.com', data_get($challengeAudit->metadata, 'identifier'));
         $this->assertNotNull(data_get($challengeAudit->metadata, 'ip_address'));
         $this->assertNotNull(data_get($challengeAudit->metadata, 'user_agent'));
 
@@ -166,7 +166,7 @@ class AuthAuditLoggingTest extends TestCase
         $this->assertSame('mfa', data_get($failureAudit->metadata, 'event_group'));
         $this->assertSame('invalid_code', data_get($failureAudit->metadata, 'reason'));
         $this->assertSame('monitor', data_get($failureAudit->metadata, 'role'));
-        $this->assertSame('monitor@cspams.local', data_get($failureAudit->metadata, 'identifier'));
+        $this->assertSame('cspamsmonitor@gmail.com', data_get($failureAudit->metadata, 'identifier'));
         $this->assertNotNull(data_get($failureAudit->metadata, 'ip_address'));
         $this->assertNotNull(data_get($failureAudit->metadata, 'user_agent'));
 
@@ -178,9 +178,10 @@ class AuthAuditLoggingTest extends TestCase
         $this->assertSame('success', data_get($successAudit->metadata, 'outcome'));
         $this->assertSame('mfa', data_get($successAudit->metadata, 'event_group'));
         $this->assertSame('monitor', data_get($successAudit->metadata, 'role'));
-        $this->assertSame('monitor@cspams.local', data_get($successAudit->metadata, 'identifier'));
+        $this->assertSame('cspamsmonitor@gmail.com', data_get($successAudit->metadata, 'identifier'));
         $this->assertSame('email_code', data_get($successAudit->metadata, 'mfa_method'));
         $this->assertNotNull(data_get($successAudit->metadata, 'ip_address'));
         $this->assertNotNull(data_get($successAudit->metadata, 'user_agent'));
     }
 }
+

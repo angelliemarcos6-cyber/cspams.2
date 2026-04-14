@@ -22,6 +22,9 @@ class IndicatorSubmissionResource extends JsonResource
         $complianceRate = $totalIndicators > 0
             ? round(($metIndicators / $totalIndicators) * 100, 2)
             : 0.0;
+        $hasImeta = $totalIndicators > 0;
+        $hasBmef = is_string($this->bmef_file_path) && trim($this->bmef_file_path) !== '';
+        $hasSmea = is_string($this->smea_file_path) && trim($this->smea_file_path) !== '';
 
         return [
             'id' => (string) $this->id,
@@ -52,6 +55,33 @@ class IndicatorSubmissionResource extends JsonResource
                 'metIndicators' => $metIndicators,
                 'belowTargetIndicators' => $belowTargetIndicators,
                 'complianceRatePercent' => $complianceRate,
+            ],
+            // BMEF/SMEA upload support added per redesign doc
+            'files' => [
+                'bmef' => [
+                    'type' => 'bmef',
+                    'uploaded' => $hasBmef,
+                    'path' => $this->bmef_file_path,
+                    'originalFilename' => $this->bmef_original_filename,
+                    'sizeBytes' => $this->bmef_file_size ? (int) $this->bmef_file_size : null,
+                    'uploadedAt' => optional($this->bmef_uploaded_at)->toISOString(),
+                    'downloadUrl' => $hasBmef ? "/api/submissions/{$this->id}/download/bmef" : null,
+                ],
+                'smea' => [
+                    'type' => 'smea',
+                    'uploaded' => $hasSmea,
+                    'path' => $this->smea_file_path,
+                    'originalFilename' => $this->smea_original_filename,
+                    'sizeBytes' => $this->smea_file_size ? (int) $this->smea_file_size : null,
+                    'uploadedAt' => optional($this->smea_uploaded_at)->toISOString(),
+                    'downloadUrl' => $hasSmea ? "/api/submissions/{$this->id}/download/smea" : null,
+                ],
+            ],
+            'completion' => [
+                'hasImetaFormData' => $hasImeta,
+                'hasBmefFile' => $hasBmef,
+                'hasSmeaFile' => $hasSmea,
+                'isComplete' => $hasImeta && $hasBmef && $hasSmea,
             ],
             'indicators' => IndicatorSubmissionItemResource::collection($itemCollection),
             'createdBy' => $this->when(

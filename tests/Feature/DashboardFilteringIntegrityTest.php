@@ -17,7 +17,7 @@ class DashboardFilteringIntegrityTest extends TestCase
     {
         $this->seed();
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $all = $this->withToken($monitorToken)->getJson('/api/dashboard/students');
         $all->assertOk();
@@ -80,7 +80,7 @@ class DashboardFilteringIntegrityTest extends TestCase
     {
         $this->seed();
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $studentResponse = $this->withToken($monitorToken)->getJson('/api/dashboard/students?search=' . urlencode('%'));
         $studentResponse->assertOk()
@@ -111,3 +111,4 @@ class DashboardFilteringIntegrityTest extends TestCase
         return (string) $user->school?->school_code;
     }
 }
+

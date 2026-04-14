@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, ShieldCheck, UserCog, Radar, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/Auth";
@@ -61,8 +61,17 @@ const ROLE_META: Record<
 
 export function Login() {
   const navigate = useNavigate();
-  const { login, verifyMfa, resetRequiredPassword, isAuthenticating } = useAuth();
-  const appTagline = "Centralized Student Performance Analytics and Monitoring System";
+  const {
+    login,
+    verifyMfa,
+    resetRequiredPassword,
+    isAuthenticating,
+    authError,
+    authErrorCode,
+    accountStatus,
+    clearAuthError,
+  } = useAuth();
+  const appTagline = "Centralized School Performance and Monitoring System (CSPAMS) for DepEd SMM&E workflows";
 
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
   const [loginId, setLoginId] = useState("");
@@ -75,6 +84,7 @@ export function Login() {
   const [showPasscode, setShowPasscode] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isMfaChallengeActive = pendingMfa !== null;
 
   const roleMeta = ROLE_META[activeRole];
   const forgotPasswordHref = (() => {
@@ -97,6 +107,32 @@ export function Login() {
     setPendingMfa(null);
     setMfaCode("");
   };
+
+  useEffect(() => {
+    if (!authError) {
+      return;
+    }
+
+    if (authErrorCode === 403) {
+      const statusMessage =
+        accountStatus === "pending_setup"
+          ? "Account setup is still pending."
+          : accountStatus === "pending_verification"
+            ? "Your account setup is complete, but your Division Monitor has not activated it yet."
+          : accountStatus === "suspended"
+            ? "Your account is suspended."
+            : accountStatus === "locked"
+              ? "Your account is locked."
+              : accountStatus === "archived"
+                ? "Your account is archived."
+                : authError;
+
+      setError(statusMessage);
+      return;
+    }
+
+    setError(authError);
+  }, [accountStatus, authError, authErrorCode]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -122,25 +158,25 @@ export function Login() {
         setError("Enter a 6-digit verification code or backup code in XXXX-XXXX format.");
         return;
       }
-    }
+    } else {
+      if (!password) {
+        setError("Enter your passcode.");
+        return;
+      }
 
-    if (!password) {
-      setError("Enter your passcode.");
-      return;
-    }
-
-    if (requiresPasswordReset && !pendingMfa) {
-      if (!newPassword || !confirmPassword) {
+      if (requiresPasswordReset && (!newPassword || !confirmPassword)) {
         setError("Enter and confirm your new passcode.");
         return;
       }
-      if (newPassword !== confirmPassword) {
+
+      if (requiresPasswordReset && newPassword !== confirmPassword) {
         setError("New passcode and confirmation do not match.");
         return;
       }
     }
 
     setIsSubmitting(true);
+    clearAuthError();
     setError("");
 
     try {
@@ -204,6 +240,10 @@ export function Login() {
           pendingMfa === null &&
           err.status === 403 &&
           Boolean((err.payload as { requiresAccountSetup?: boolean } | null)?.requiresAccountSetup);
+        const requiresMonitorApproval =
+          pendingMfa === null &&
+          err.status === 403 &&
+          Boolean((err.payload as { requiresMonitorApproval?: boolean } | null)?.requiresMonitorApproval);
 
         if (requiresReset) {
           clearMfaState();
@@ -213,6 +253,10 @@ export function Login() {
           clearMfaState();
           clearResetState();
           setError("Account setup is required. Use your one-time setup link, or request a new one from your Division Monitor.");
+        } else if (requiresMonitorApproval) {
+          clearMfaState();
+          clearResetState();
+          setError("Your account setup is complete, but your Division Monitor has not activated it yet.");
         } else {
           if (pendingMfa === null) {
             clearResetState();
@@ -267,15 +311,17 @@ export function Login() {
                   type="button"
                   onClick={() => {
                     setActiveRole("school_head");
+                    clearAuthError();
                     setError("");
                     clearResetState();
                     clearMfaState();
                   }}
+                  disabled={isMfaChallengeActive}
                   className={`rounded-xl border px-3 py-3 text-left transition ${
                     activeRole === "school_head"
                       ? "border-primary-300 bg-white text-primary-800 shadow-[0_14px_28px_-24px_rgba(2,46,80,0.65)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
                 >
                   <p className="inline-flex items-center gap-2 text-sm font-semibold">
                     <UserCog className="h-4 w-4" />
@@ -287,15 +333,17 @@ export function Login() {
                   type="button"
                   onClick={() => {
                     setActiveRole("monitor");
+                    clearAuthError();
                     setError("");
                     clearResetState();
                     clearMfaState();
                   }}
+                  disabled={isMfaChallengeActive}
                   className={`rounded-xl border px-3 py-3 text-left transition ${
                     activeRole === "monitor"
                       ? "border-primary-300 bg-white text-primary-800 shadow-[0_14px_28px_-24px_rgba(2,46,80,0.65)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
-                  }`}
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
                 >
                   <p className="inline-flex items-center gap-2 text-sm font-semibold">
                     <Radar className="h-4 w-4" />
@@ -324,6 +372,7 @@ export function Login() {
                           ? event.target.value.replace(/\D/g, "").slice(0, 6)
                           : event.target.value;
                       setLoginId(nextValue);
+                      clearAuthError();
                       setError("");
                       clearResetState();
                       clearMfaState();
@@ -332,6 +381,7 @@ export function Login() {
                     inputMode={activeRole === "school_head" ? "numeric" : "text"}
                     maxLength={activeRole === "school_head" ? 6 : 255}
                     pattern={activeRole === "school_head" ? "\\d{6}" : undefined}
+                    disabled={isMfaChallengeActive}
                     className={`${formInputClass} pl-10`}
                   />
                 </div>
@@ -351,15 +401,18 @@ export function Login() {
                     value={password}
                     onChange={(event) => {
                       setPassword(event.target.value);
+                      clearAuthError();
                       setError("");
                       clearMfaState();
                     }}
                     placeholder="Enter passcode"
+                    disabled={isMfaChallengeActive}
                     className={`${formInputClass} py-3 pl-10 pr-11`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPasscode((current) => !current)}
+                    disabled={isMfaChallengeActive}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                     aria-label={showPasscode ? "Hide passcode" : "Show passcode"}
                   >
@@ -388,6 +441,7 @@ export function Login() {
                     value={mfaCode}
                     onChange={(event) => {
                       setMfaCode(normalizeMfaCodeInput(event.target.value));
+                      clearAuthError();
                       setError("");
                     }}
                     placeholder="Enter 6-digit or backup code"
@@ -429,6 +483,7 @@ export function Login() {
                       value={newPassword}
                       onChange={(event) => {
                         setNewPassword(event.target.value);
+                        clearAuthError();
                         setError("");
                       }}
                       placeholder="Create a new passcode"
@@ -447,6 +502,7 @@ export function Login() {
                       value={confirmPassword}
                       onChange={(event) => {
                         setConfirmPassword(event.target.value);
+                        clearAuthError();
                         setError("");
                       }}
                       placeholder="Confirm your new passcode"

@@ -9,6 +9,8 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
+use Database\Seeders\DemoDataSeeder;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -21,7 +23,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_metrics_endpoint_includes_salo_indicator(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -43,7 +45,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_auto_calculated_kpi_replaces_manual_payload_values(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -81,7 +83,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_school_achievement_counts_auto_sync_from_reports_and_teacher_records(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -149,7 +151,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_school_head_indicator_workflow_and_monitor_review(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -203,7 +205,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $submitted->assertOk()
             ->assertJsonPath('data.status', 'submitted');
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $reviewed = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
             'decision' => 'validated',
@@ -229,7 +231,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_school_head_cannot_submit_other_schools_indicator_package(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHeadOne */
         $schoolHeadOne = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -261,7 +263,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_returned_indicator_review_requires_notes_and_resubmission_clears_review_metadata(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -288,7 +290,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->postJson("/api/indicators/submissions/{$submissionId}/submit")
             ->assertOk();
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $missingNotes = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
             'decision' => 'returned',
@@ -314,7 +316,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_school_head_can_submit_annual_compliance_matrix_values(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -397,7 +399,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_school_head_can_update_existing_draft_submission(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -450,7 +452,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     public function test_submitted_indicator_submission_cannot_be_updated(): void
     {
-        $this->seed();
+        $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -513,4 +515,13 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         return (string) $user->school?->school_code;
     }
+
+    private function seedIndicatorFixtures(): void
+    {
+        $this->seed([
+            RolesAndPermissionsSeeder::class,
+            DemoDataSeeder::class,
+        ]);
+    }
 }
+

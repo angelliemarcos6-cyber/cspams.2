@@ -14,7 +14,7 @@ class SqlInjectionGuardTest extends TestCase
     {
         $response = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'password' => 'SafePassword@2026',
             'probe' => 'UNION SELECT username, password FROM users',
         ]);
@@ -46,3 +46,4 @@ class SqlInjectionGuardTest extends TestCase
         $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 }
+

@@ -34,8 +34,8 @@ class AccountIdentifierConstraintTest extends TestCase
     {
         DB::table('users')->insert([
             'name' => 'First Monitor',
-            'email' => 'first.monitor@cspams.local',
-            'email_normalized' => 'first.monitor@cspams.local',
+            'email' => 'first.cspamsmonitor@gmail.com',
+            'email_normalized' => 'first.cspamsmonitor@gmail.com',
             'password' => Hash::make('password'),
             'created_at' => now(),
             'updated_at' => now(),
@@ -45,8 +45,8 @@ class AccountIdentifierConstraintTest extends TestCase
 
         DB::table('users')->insert([
             'name' => 'Second Monitor',
-            'email' => 'FIRST.MONITOR@CSPAMS.LOCAL',
-            'email_normalized' => 'first.monitor@cspams.local',
+            'email' => 'FIRST.CSPAMSMONITOR@GMAIL.COM',
+            'email_normalized' => 'first.cspamsmonitor@gmail.com',
             'password' => Hash::make('password'),
             'created_at' => now(),
             'updated_at' => now(),
@@ -56,7 +56,7 @@ class AccountIdentifierConstraintTest extends TestCase
     public function test_school_code_identifier_is_unique_case_insensitive_at_database_level(): void
     {
         School::query()->create([
-            'school_code' => 'AB12CD',
+            'school_code' => '123456',
             'name' => 'Alpha School',
             'district' => 'District 1',
             'region' => 'Region II',
@@ -67,8 +67,8 @@ class AccountIdentifierConstraintTest extends TestCase
         $this->expectException(QueryException::class);
 
         DB::table('schools')->insert([
-            'school_code' => 'ab12cd',
-            'school_code_normalized' => 'ab12cd',
+            'school_code' => '123456',
+            'school_code_normalized' => '123456',
             'name' => 'Beta School',
             'district' => 'District 2',
             'region' => 'Region II',
@@ -79,3 +79,4 @@ class AccountIdentifierConstraintTest extends TestCase
         ]);
     }
 }
+

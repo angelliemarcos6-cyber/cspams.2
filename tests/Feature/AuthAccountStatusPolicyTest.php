@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\Domain\AccountStatus;
+use Database\Seeders\DemoDataSeeder;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,16 +21,16 @@ class AuthAccountStatusPolicyTest extends TestCase
     #[DataProvider('blockedStatusesProvider')]
     public function test_monitor_login_is_blocked_for_non_active_account_states(string $status): void
     {
-        $this->seed();
+        $this->seedMinimalAuthFixtures();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
         $monitor->forceFill(['account_status' => $status])->save();
 
         $response = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $response->assertStatus(Response::HTTP_FORBIDDEN);
@@ -47,7 +49,7 @@ class AuthAccountStatusPolicyTest extends TestCase
     #[DataProvider('blockedStatusesProvider')]
     public function test_school_head_login_is_blocked_for_non_active_account_states(string $status): void
     {
-        $this->seed();
+        $this->seedMinimalAuthFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
@@ -83,9 +85,20 @@ class AuthAccountStatusPolicyTest extends TestCase
     {
         return [
             'pending_setup' => [AccountStatus::PENDING_SETUP->value],
+            'pending_verification' => [AccountStatus::PENDING_VERIFICATION->value],
             'suspended' => [AccountStatus::SUSPENDED->value],
             'locked' => [AccountStatus::LOCKED->value],
             'archived' => [AccountStatus::ARCHIVED->value],
+            'deleted' => [AccountStatus::DELETED->value],
         ];
     }
+
+    private function seedMinimalAuthFixtures(): void
+    {
+        $this->seed([
+            RolesAndPermissionsSeeder::class,
+            DemoDataSeeder::class,
+        ]);
+    }
 }
+

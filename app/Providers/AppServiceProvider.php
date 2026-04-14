@@ -24,7 +24,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->assertSafeProductionRuntimeConfiguration();
+        if (! $this->shouldSkipProductionConfigurationAudit()) {
+            $this->assertSafeProductionRuntimeConfiguration();
+        }
 
         RateLimiter::for('api', function (Request $request): Limit {
             $key = $request->user()?->id
@@ -427,6 +429,25 @@ class AppServiceProvider extends ServiceProvider
         $this->throwIfUnsafeProductionConfiguration($this->productionRuntimeConfigurationIssues());
     }
 
+    private function shouldSkipProductionConfigurationAudit(): bool
+    {
+        if (! app()->runningInConsole()) {
+            return false;
+        }
+
+        $argv = $_SERVER['argv'] ?? [];
+        $commandLine = implode(' ', array_map(
+            static fn (mixed $value): string => (string) $value,
+            is_array($argv) ? $argv : [],
+        ));
+
+        return str_contains($commandLine, 'package:discover')
+            || str_contains($commandLine, 'filament:upgrade')
+            || str_contains($commandLine, 'config:cache')
+            || str_contains($commandLine, 'config:clear')
+            || str_contains($commandLine, 'optimize');
+    }
+
     /**
      * @return list<string>
      */
@@ -445,6 +466,11 @@ class AppServiceProvider extends ServiceProvider
         $testCode = trim((string) config('auth_mfa.monitor.test_code', ''));
         if ($testCode !== '') {
             $issues[] = 'CSPAMS_MONITOR_MFA_TEST_CODE must be empty.';
+        }
+
+        $queueConnection = strtolower(trim((string) config('queue.default', 'database')));
+        if ((bool) config('auth_mfa.monitor.enabled', false) && $queueConnection === 'sync') {
+            $issues[] = 'QUEUE_CONNECTION must not be sync when monitor MFA email is enabled.';
         }
 
         $resetTestApprovalToken = trim((string) config('auth_mfa.monitor.reset_test_approval_token', ''));

@@ -12,6 +12,7 @@ import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
+  SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountRemovalResult,
   SchoolHeadAccountPayload,
@@ -97,6 +98,10 @@ interface SchoolHeadAccountActionVerificationCodeResponse {
   data: SchoolHeadAccountActionVerificationCodeResult;
 }
 
+interface SchoolHeadAccountActivationResponse {
+  data: SchoolHeadAccountActivationResult;
+}
+
 interface SchoolHeadSetupLinkResponse {
   data: SchoolHeadSetupLinkResult;
 }
@@ -136,6 +141,10 @@ interface DataContextType {
     schoolId: string,
     payload: SchoolHeadAccountStatusUpdatePayload,
   ) => Promise<SchoolHeadAccountStatusUpdateResult>;
+  activateSchoolHeadAccount: (
+    schoolId: string,
+    payload?: { reason?: string | null },
+  ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
     targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
@@ -163,6 +172,9 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+const SCHOOL_BULK_IMPORT_TIMEOUT_MS = 120_000;
+const SCHOOL_SEND_REMINDER_TIMEOUT_MS = 45_000;
+const SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS = 45_000;
 
 function normalizeScope(value: string | undefined): SyncScope {
   if (value === "division" || value === "school") return value;
@@ -187,7 +199,7 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, role } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -247,15 +259,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const handleApiError = useCallback(
     async (err: unknown) => {
-      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout({ force: true });
-        return;
+      if (isApiError(err)) {
+        if (err.status === 401) {
+          setError("Authentication check failed. Please refresh and sign in again if needed.");
+          setSyncStatus("error");
+          return;
+        }
+
+        if (err.status === 403) {
+          setError(err.message || "You do not have permission to access this data.");
+          setSyncStatus("error");
+          return;
+        }
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
       setSyncStatus("error");
     },
-    [logout],
+    [],
   );
 
   const syncRecords = useCallback(
@@ -654,6 +675,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequestRaw<SchoolReminderResponse>(`/api/dashboard/records/${id}/send-reminder`, {
           method: "POST",
           token,
+          timeoutMs: SCHOOL_SEND_REMINDER_TIMEOUT_MS,
           body: {
             notes: notes?.trim() || undefined,
           },
@@ -692,6 +714,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "PATCH",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: payload,
           },
         );
@@ -713,6 +736,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -722,7 +747,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
@@ -740,6 +765,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "POST",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               targetStatus,
             },
@@ -760,6 +786,62 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
+  const activateSchoolHeadAccount = useCallback(
+    async (
+      schoolId: string,
+      payload?: { reason?: string | null },
+    ): Promise<SchoolHeadAccountActivationResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountActivationResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/activate`,
+          {
+            method: "POST",
+            token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
+            body: {
+              reason: payload?.reason?.trim() || undefined,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account) {
+          throw new Error("Account activation response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError, syncRecords],
+  );
+
   const issueSchoolHeadSetupLink = useCallback(
     async (schoolId: string, reason?: string | null): Promise<SchoolHeadSetupLinkResult> => {
       if (!token) {
@@ -775,6 +857,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "POST",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason: reason?.trim() || undefined,
             },
@@ -798,6 +881,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -807,7 +892,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const issueSchoolHeadPasswordResetLink = useCallback(
@@ -844,6 +929,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "POST",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason: trimmedReason,
               verificationChallengeId,
@@ -869,6 +955,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -878,7 +966,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const upsertSchoolHeadAccountProfile = useCallback(
@@ -905,6 +993,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "PUT",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               name,
               email,
@@ -932,6 +1021,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -941,7 +1032,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const removeSchoolHeadAccount = useCallback(
@@ -974,6 +1065,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           {
             method: "DELETE",
             token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason,
               verificationChallengeId,
@@ -999,6 +1091,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
 
         return result;
       } catch (err) {
@@ -1008,7 +1102,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, syncRecords],
   );
 
   const bulkImportRecords = useCallback(
@@ -1030,6 +1124,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequestRaw<SchoolRecordBulkImportResponse>("/api/dashboard/records/bulk-import", {
           method: "POST",
           token,
+          timeoutMs: SCHOOL_BULK_IMPORT_TIMEOUT_MS,
           body: {
             rows,
             options: {
@@ -1078,10 +1173,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    void syncRecords(false);
-  }, [syncRecords]);
-
-  useEffect(() => {
     if (!token) return;
 
     const scheduleSync = (delayMs: number) => {
@@ -1099,9 +1190,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
       if (trigger === "realtime") {
         const entity = payload?.entity ?? "";
-        if (["dashboard", "students", "forms", "indicators"].includes(entity)) {
-          scheduleSync(220);
+        if (!["dashboard", "students", "teachers", "forms", "indicators"].includes(entity)) {
+          return;
         }
+
+        if (role === "school_head" && (entity === "students" || entity === "teachers")) {
+          const incomingSchoolCode = String(payload?.schoolCode ?? "").trim().toUpperCase();
+          const userSchoolCode = String(user?.schoolCode ?? "").trim().toUpperCase();
+          if (incomingSchoolCode && userSchoolCode) {
+            if (incomingSchoolCode !== userSchoolCode) {
+              return;
+            }
+          } else if (
+            user?.schoolId !== null
+            && user?.schoolId !== undefined
+            && payload?.schoolId !== null
+            && payload?.schoolId !== undefined
+            && String(payload.schoolId) !== String(user.schoolId)
+          ) {
+            return;
+          }
+        }
+
+        scheduleSync(220);
         return;
       }
 
@@ -1112,7 +1223,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncRecords]);
+  }, [token, syncRecords, role, user?.schoolId, user?.schoolCode]);
 
   const value = useMemo<DataContextType>(
     () => ({
@@ -1135,6 +1246,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       restoreRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
+      activateSchoolHeadAccount,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,
@@ -1162,6 +1274,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       restoreRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
+      activateSchoolHeadAccount,
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,

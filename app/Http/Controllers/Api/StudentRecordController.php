@@ -12,9 +12,9 @@ use App\Models\School;
 use App\Models\Student;
 use App\Models\StudentStatusLog;
 use App\Models\User;
+use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
-use App\Support\Database\BuildsEscapedLikePatterns;
 use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
 use App\Support\Indicators\RollingIndicatorYearWindow;
@@ -31,12 +31,15 @@ use Symfony\Component\HttpFoundation\Response;
 
 class StudentRecordController extends Controller
 {
-    use BuildsEscapedLikePatterns;
-
     private const ROLLING_YEAR_SYNC_CACHE_KEY = 'cspams.students.rolling_year_window.last_sync';
     private const ROLLING_YEAR_SYNC_TTL_MINUTES = 30;
     private const ROLLING_YEAR_SYNC_LOCK_KEY = 'cspams.students.rolling_year_window.sync_lock';
     private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
+
+    public function __construct(
+        private readonly FilterService $filterService,
+    ) {
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -62,7 +65,10 @@ class StudentRecordController extends Controller
         $scopeKey = $isSchoolHead
             ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
             : 'division:all';
-        $scopeKey .= '|' . $academicYearScope;
+        $filters = $this->filterService->extract($request);
+        $schoolCode = trim((string) $request->query('schoolCode', ''));
+        $schoolCodes = $this->parseSchoolCodes($request);
+        $teacherName = trim((string) $request->query('teacherName', ''));
 
         $query = Student::query()
             ->select([
@@ -101,54 +107,46 @@ class StudentRecordController extends Controller
         if ($academicYearFilterMode !== 'all') {
             if ($academicYearFilterId) {
                 $query->where('academic_year_id', $academicYearFilterId);
+                $filters['academic_year_id'] = $academicYearFilterId;
             } else {
                 $query->whereRaw('1 = 0');
             }
         }
 
-        $status = trim((string) $request->query('status', ''));
-        if ($status !== '' && StudentStatus::tryFrom($status)) {
-            $query->where('status', $status);
+        if (array_key_exists('status', $filters)) {
+            $status = trim((string) $filters['status']);
+            if (StudentStatus::tryFrom($status) === null) {
+                unset($filters['status']);
+            }
         }
 
-        $schoolCode = trim((string) $request->query('schoolCode', ''));
         if ($schoolCode !== '' && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCode): void {
                 $builder->where('school_code_normalized', strtolower($schoolCode));
             });
         }
 
-        $schoolCodes = $this->parseSchoolCodes($request);
         if ($schoolCodes->isNotEmpty() && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCodes): void {
                 $builder->whereIn('school_code_normalized', $schoolCodes->all());
             });
         }
 
-        $teacherName = trim((string) $request->query('teacherName', ''));
         if ($teacherName !== '') {
             $query->whereRaw('LOWER(TRIM(teacher_name)) = ?', [strtolower($teacherName)]);
         }
 
-        $search = trim((string) $request->query('search', ''));
-        if ($search !== '') {
-            $query->where(function (Builder $builder) use ($search, $isMonitor): void {
-                $this->whereLikeContains($builder, 'lrn', $search);
-                $this->whereLikeContains($builder, 'first_name', $search, 'or');
-                $this->whereLikeContains($builder, 'middle_name', $search, 'or');
-                $this->whereLikeContains($builder, 'last_name', $search, 'or');
-                $this->whereLikeContains($builder, 'current_level', $search, 'or');
-                $this->whereLikeContains($builder, 'section_name', $search, 'or');
-                $this->whereLikeContains($builder, 'teacher_name', $search, 'or');
+        $this->filterService->apply($query, $filters, [
+            'date_column' => 'last_status_at',
+            'search_columns' => ['lrn', 'first_name', 'middle_name', 'last_name', 'current_level', 'section_name', 'teacher_name'],
+            'search_relations' => $isMonitor ? ['school' => ['school_code', 'name']] : [],
+        ]);
 
-                if ($isMonitor) {
-                    $builder->orWhereHas('school', function (Builder $schoolQuery) use ($search): void {
-                        $this->whereLikeContains($schoolQuery, 'school_code', $search);
-                        $this->whereLikeContains($schoolQuery, 'name', $search, 'or');
-                    });
-                }
-            });
-        }
+        $scopeKey .= '|' . $academicYearScope;
+        $scopeKey .= '|' . $this->filterService->buildCacheKey($filters);
+        $scopeKey .= '|school_code:' . ($schoolCode !== '' ? strtolower($schoolCode) : 'any');
+        $scopeKey .= '|school_codes:' . ($schoolCodes->isNotEmpty() ? $schoolCodes->implode(',') : 'any');
+        $scopeKey .= '|teacher_name:' . ($teacherName !== '' ? strtolower($teacherName) : 'any');
 
         $perPage = $this->resolvePerPage($request);
         $page = max(1, $request->integer('page', 1));
@@ -316,10 +314,13 @@ class StudentRecordController extends Controller
                     return 0;
                 }
 
-                $this->prepareStudentForArchive($studentToDelete);
-                $studentToDelete->delete();
+                $this->prepareStudentsForArchive(collect([$studentToDelete]));
 
-                return 1;
+                return Student::query()
+                    ->whereKey($studentId)
+                    ->where('school_id', $schoolId)
+                    ->delete();
+
             });
         } catch (QueryException $exception) {
             report($exception);
@@ -517,10 +518,14 @@ class StudentRecordController extends Controller
                     ->lockForUpdate()
                     ->get();
 
-                foreach ($students as $student) {
-                    $this->prepareStudentForArchive($student);
-                    $student->delete();
+                if ($students->isEmpty()) {
+                    return collect();
                 }
+
+                $this->prepareStudentsForArchive($students);
+                Student::query()
+                    ->whereIn('id', $students->pluck('id')->all())
+                    ->delete();
 
                 return $students
                     ->pluck('id')
@@ -599,9 +604,7 @@ class StudentRecordController extends Controller
             ->lockForUpdate()
             ->get();
 
-        foreach ($archivedStudents as $archivedStudent) {
-            $this->prepareStudentForArchive($archivedStudent);
-        }
+        $this->prepareStudentsForArchive($archivedStudents);
 
         return $archivedStudents->count();
     }
@@ -623,21 +626,23 @@ class StudentRecordController extends Controller
                 throw $exception;
             }
 
-            // Legacy soft-deleted rows can still hold the unique LRN. Release the LRN without deleting history.
-            $releasedArchivedRows = $this->releaseArchivedStudentLrn($lrn, $schoolId);
-            if ($releasedArchivedRows > 0) {
-                try {
-                    $this->applyPayload($student, $request, $user);
+            return DB::transaction(function () use ($lrn, $schoolId, $student, $request, $user): ?JsonResponse {
+                // Legacy soft-deleted rows can still hold the unique LRN. Release the LRN without deleting history.
+                $releasedArchivedRows = $this->releaseArchivedStudentLrn($lrn, $schoolId);
+                if ($releasedArchivedRows > 0) {
+                    try {
+                        $this->applyPayload($student, $request, $user);
 
-                    return null;
-                } catch (QueryException $retryException) {
-                    if (! $this->isSchoolScopedLrnConstraintViolation($retryException)) {
-                        throw $retryException;
+                        return null;
+                    } catch (QueryException $retryException) {
+                        if (! $this->isSchoolScopedLrnConstraintViolation($retryException)) {
+                            throw $retryException;
+                        }
                     }
                 }
-            }
 
-            return $this->buildLrnConflictResponse();
+                return $this->buildLrnConflictResponse();
+            });
         }
     }
 
@@ -885,24 +890,90 @@ class StudentRecordController extends Controller
 
     private function prepareStudentForArchive(Student $student): void
     {
-        $originalLrn = trim((string) ($student->archived_original_lrn ?? $student->lrn));
-        if ($originalLrn === '') {
+        $this->prepareStudentsForArchive(collect([$student]));
+    }
+
+    /**
+     * @param Collection<int, Student> $students
+     */
+    private function prepareStudentsForArchive(Collection $students): void
+    {
+        if ($students->isEmpty()) {
             return;
         }
 
-        $student->forceFill([
-            'archived_original_lrn' => $originalLrn,
-            'lrn' => $this->archivedStudentLrnPlaceholder($student, $originalLrn),
-        ])->saveQuietly();
+        $archivedAt = now();
+        $archivedAtKey = $archivedAt->format('U.u');
+        $archivedAtTimestamp = $archivedAt->toDateTimeString();
+
+        $students->chunk(200)->each(function (Collection $chunk) use ($archivedAtKey, $archivedAtTimestamp): void {
+            $archivedOriginalCases = [];
+            $placeholderCases = [];
+            $archivedOriginalBindings = [];
+            $placeholderBindings = [];
+            $ids = [];
+
+            foreach ($chunk as $student) {
+                $studentId = (int) $student->id;
+                $originalLrn = trim((string) ($student->archived_original_lrn ?? $student->lrn));
+
+                if ($studentId <= 0 || $originalLrn === '') {
+                    continue;
+                }
+
+                $ids[] = $studentId;
+                $archivedOriginalCases[] = 'WHEN ? THEN ?';
+                $archivedOriginalBindings[] = $studentId;
+                $archivedOriginalBindings[] = $originalLrn;
+
+                $placeholderCases[] = 'WHEN ? THEN ?';
+                $placeholderBindings[] = $studentId;
+                $placeholderBindings[] = $this->archivedStudentLrnPlaceholderForId(
+                    $studentId,
+                    $originalLrn,
+                    $archivedAtKey,
+                );
+            }
+
+            if ($ids === []) {
+                return;
+            }
+
+            $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+            $bindings = array_merge(
+                $archivedOriginalBindings,
+                $placeholderBindings,
+                [$archivedAtTimestamp],
+                $ids,
+            );
+
+            DB::update(
+                'UPDATE students SET archived_original_lrn = CASE id '
+                . implode(' ', $archivedOriginalCases)
+                . ' END, lrn = CASE id '
+                . implode(' ', $placeholderCases)
+                . ' END, updated_at = ? WHERE id IN (' . $placeholders . ')',
+                $bindings,
+            );
+        });
     }
 
     private function archivedStudentLrnPlaceholder(Student $student, string $originalLrn): string
     {
+        return $this->archivedStudentLrnPlaceholderForId(
+            (int) $student->id,
+            $originalLrn,
+            $student->deleted_at?->format('U.u') ?? now()->format('U.u'),
+        );
+    }
+
+    private function archivedStudentLrnPlaceholderForId(int $studentId, string $originalLrn, string $archivedAtKey): string
+    {
         return 'AR' . strtoupper(substr(
             sha1(implode('|', [
-                (string) $student->id,
-                $originalLrn,
-                $student->deleted_at?->format('U.u') ?? now()->format('U.u'),
+                (string) $studentId,
+                trim($originalLrn),
+                $archivedAtKey,
             ])),
             0,
             18,

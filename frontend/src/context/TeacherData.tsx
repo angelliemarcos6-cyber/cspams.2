@@ -19,6 +19,8 @@ interface TeacherSyncMeta {
   syncedAt?: string;
   scope?: string;
   scopeKey?: string;
+  schoolId?: string;
+  schoolCode?: string;
   recordCount?: number;
   currentPage?: number;
   lastPage?: number;
@@ -34,6 +36,12 @@ interface TeacherRecordsResponse {
   meta?: TeacherSyncMeta;
 }
 
+interface TeacherListCacheEntry {
+  etag: string;
+  scopeKey: string | null;
+  result: TeacherListResult;
+}
+
 interface TeacherRecordMutationResponse {
   data: TeacherRecord;
   meta?: TeacherSyncMeta;
@@ -42,6 +50,8 @@ interface TeacherRecordMutationResponse {
 interface TeacherRecordDeleteResponse {
   data: {
     id: string;
+    schoolId?: string;
+    schoolCode?: string;
   };
   meta?: TeacherSyncMeta;
 }
@@ -74,14 +84,16 @@ export interface TeacherListResult {
   meta: TeacherListMeta;
 }
 
-interface TeacherDataContextType {
+export interface TeacherDataContextType {
   teachers: TeacherRecord[];
+  teacherSnapshot: TeacherRecord[];
   isLoading: boolean;
   isSaving: boolean;
   error: string;
   lastSyncedAt: string | null;
   syncScope: TeacherSyncScope;
   totalCount: number;
+  dataVersion: number;
   refreshTeachers: () => Promise<void>;
   listTeachers: (params?: TeacherListParams) => Promise<TeacherListResult>;
   addTeacher: (payload: TeacherRecordPayload) => Promise<void>;
@@ -102,6 +114,7 @@ const DataContext = createContext<TeacherDataContextType | undefined>(undefined)
 const SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_PER_PAGE = 25;
 const MAX_PER_PAGE = 200;
+const LIST_CACHE_MAX_ENTRIES = 64;
 
 const EMPTY_META: TeacherListMeta = {
   syncedAt: null,
@@ -228,8 +241,78 @@ function normalizeMeta(meta: TeacherSyncMeta | undefined, params: NormalizedTeac
   };
 }
 
+function buildTeacherListCacheKey(params: NormalizedTeacherListParams): string {
+  return [
+    params.page,
+    params.perPage,
+    params.search.toLowerCase(),
+    params.sex,
+    params.schoolCode,
+    params.schoolCodes.join(","),
+  ].join("|");
+}
+
+function storeTeacherListCacheEntry(
+  cache: Map<string, TeacherListCacheEntry>,
+  key: string,
+  entry: TeacherListCacheEntry,
+): void {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+  cache.set(key, entry);
+
+  while (cache.size > LIST_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    cache.delete(oldestKey);
+  }
+}
+
+function normalizeSchoolId(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeSchoolCodeIdentifier(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim().toUpperCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function emitTeacherUpdateEvent(detailInput: { schoolId?: unknown; schoolCode?: unknown }): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const detail: { entity: "teachers"; schoolId?: string; schoolCode?: string } = {
+    entity: "teachers",
+  };
+
+  const normalizedSchoolId = normalizeSchoolId(detailInput.schoolId);
+  const normalizedSchoolCode = normalizeSchoolCodeIdentifier(detailInput.schoolCode);
+
+  if (normalizedSchoolId) {
+    detail.schoolId = normalizedSchoolId;
+  }
+  if (normalizedSchoolCode) {
+    detail.schoolCode = normalizedSchoolCode;
+  }
+
+  window.dispatchEvent(new CustomEvent("cspams:update", { detail }));
+}
+
 export function TeacherDataProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, role } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -240,6 +323,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncScope, setSyncScope] = useState<TeacherSyncScope>(null);
   const [totalCount, setTotalCount] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
   const [snapshotMeta, setSnapshotMeta] = useState<TeacherListMeta>(EMPTY_META);
 
   const snapshotParamsRef = useRef<NormalizedTeacherListParams>(
@@ -249,6 +333,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const syncQueuedRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
+  const listCacheRef = useRef<Map<string, TeacherListCacheEntry>>(new Map());
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
@@ -276,6 +361,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     syncQueuedRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    listCacheRef.current.clear();
     clearRealtimeSyncTimer();
     setTeachers([]);
     setIsLoading(false);
@@ -284,31 +370,77 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(null);
     setSyncScope(null);
     setTotalCount(0);
+    setDataVersion(0);
     setSnapshotMeta(EMPTY_META);
   }, [sessionKey]);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
-      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout({ force: true });
-        return;
+      if (isApiError(err)) {
+        if (err.status === 401) {
+          setError("Authentication check failed. Please refresh and sign in again if needed.");
+          return;
+        }
+
+        if (err.status === 403) {
+          setError(err.message || "You do not have permission to access teacher data.");
+          return;
+        }
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [logout],
+    [],
   );
 
   const requestTeachers = useCallback(
     async (tokenValue: string, params: NormalizedTeacherListParams, signal?: AbortSignal): Promise<TeacherListResult> => {
-      const response = await apiRequestRaw<TeacherRecordsResponse>(buildListPath(params), { token: tokenValue, signal });
+      const path = buildListPath(params);
+      const cacheKey = buildTeacherListCacheKey(params);
+      const cached = listCacheRef.current.get(cacheKey);
+      const hasScopeMismatch = Boolean(
+        cached?.scopeKey
+          && syncScopeKeyRef.current
+          && cached.scopeKey !== syncScopeKeyRef.current,
+      );
+      if (hasScopeMismatch && cached) {
+        listCacheRef.current.delete(cacheKey);
+      }
+      const cacheEntry = hasScopeMismatch ? null : cached;
+
+      let response = await apiRequestRaw<TeacherRecordsResponse>(path, {
+        token: tokenValue,
+        signal,
+        extraHeaders: cacheEntry?.etag ? { "If-None-Match": cacheEntry.etag } : undefined,
+      });
+
+      if (response.status === 304) {
+        if (cacheEntry) {
+          return cacheEntry.result;
+        }
+
+        response = await apiRequestRaw<TeacherRecordsResponse>(path, {
+          token: tokenValue,
+          signal,
+        });
+      }
+
       const data = Array.isArray(response.data?.data) ? response.data.data : [];
       const meta = normalizeMeta(response.data?.meta, params, data.length);
-
-      return {
+      const result: TeacherListResult = {
         data,
         meta,
       };
+
+      const responseEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
+      const responseScopeKey = normalizeScopeKey(response.headers.get("X-Sync-Scope-Key") || response.data?.meta?.scopeKey);
+      storeTeacherListCacheEntry(listCacheRef.current, cacheKey, {
+        etag: responseEtag,
+        scopeKey: responseScopeKey,
+        result,
+      });
+
+      return result;
     },
     [],
   );
@@ -331,6 +463,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setSnapshotMeta(EMPTY_META);
         etagRef.current = "";
         syncScopeKeyRef.current = "";
+        listCacheRef.current.clear();
         return;
       }
 
@@ -364,6 +497,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         if (scopeKeyFromHeaders) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== scopeKeyFromHeaders) {
             etagRef.current = "";
+            listCacheRef.current.clear();
           }
           syncScopeKeyRef.current = scopeKeyFromHeaders;
         }
@@ -387,6 +521,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         if (payloadScopeKey) {
           if (syncScopeKeyRef.current && syncScopeKeyRef.current !== payloadScopeKey) {
             etagRef.current = "";
+            listCacheRef.current.clear();
           }
           syncScopeKeyRef.current = payloadScopeKey;
         }
@@ -467,6 +602,12 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         etagRef.current = "";
+        listCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
+        emitTeacherUpdateEvent({
+          schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -475,7 +616,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError],
+    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const updateTeacher = useCallback(
@@ -502,6 +643,12 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         etagRef.current = "";
+        listCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
+        emitTeacherUpdateEvent({
+          schoolId: nextRecord?.school?.id ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: nextRecord?.school?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -510,7 +657,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError],
+    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
 
   const deleteTeacher = useCallback(
@@ -525,13 +672,19 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        await apiRequestRaw<TeacherRecordDeleteResponse>(`/api/dashboard/teachers/${id}`, {
+        const response = await apiRequestRaw<TeacherRecordDeleteResponse>(`/api/dashboard/teachers/${id}`, {
           method: "DELETE",
           token,
         });
 
         setTeachers((current) => current.filter((item) => item.id !== id));
         etagRef.current = "";
+        listCacheRef.current.clear();
+        setDataVersion((current) => current + 1);
+        emitTeacherUpdateEvent({
+          schoolId: response.data?.data?.schoolId ?? response.data?.meta?.schoolId ?? user?.schoolId ?? null,
+          schoolCode: response.data?.data?.schoolCode ?? response.data?.meta?.schoolCode ?? user?.schoolCode ?? null,
+        });
         await syncTeachers(true);
       } catch (err) {
         await handleApiError(err);
@@ -540,12 +693,8 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncTeachers, handleApiError],
+    [token, syncTeachers, handleApiError, user?.schoolId, user?.schoolCode],
   );
-
-  useEffect(() => {
-    void syncTeachers(false);
-  }, [syncTeachers]);
 
   useEffect(() => {
     if (!token) return;
@@ -565,9 +714,29 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
       if (trigger === "realtime") {
         const entity = payload?.entity ?? "";
-        if (entity === "teachers" || entity === "dashboard" || entity === "students") {
-          scheduleSync(220);
+        if (entity !== "teachers" && entity !== "dashboard" && entity !== "students") {
+          return;
         }
+
+        if (role === "school_head" && (entity === "teachers" || entity === "students")) {
+          const incomingSchoolCode = normalizeSchoolCodeIdentifier(payload?.schoolCode);
+          const userSchoolCode = normalizeSchoolCodeIdentifier(user?.schoolCode);
+          if (incomingSchoolCode && userSchoolCode) {
+            if (incomingSchoolCode !== userSchoolCode) {
+              return;
+            }
+          } else if (
+            user?.schoolId !== null
+            && user?.schoolId !== undefined
+            && payload?.schoolId !== null
+            && payload?.schoolId !== undefined
+            && String(payload.schoolId) !== String(user.schoolId)
+          ) {
+            return;
+          }
+        }
+
+        scheduleSync(220);
         return;
       }
 
@@ -578,17 +747,19 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncTeachers]);
+  }, [token, syncTeachers, role, user?.schoolId, user?.schoolCode]);
 
   const value = useMemo<TeacherDataContextType>(
     () => ({
       teachers,
+      teacherSnapshot: teachers,
       isLoading,
       isSaving,
       error,
       lastSyncedAt,
       syncScope,
       totalCount,
+      dataVersion,
       refreshTeachers,
       listTeachers,
       addTeacher,
@@ -603,6 +774,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       lastSyncedAt,
       syncScope,
       totalCount,
+      dataVersion,
       refreshTeachers,
       listTeachers,
       addTeacher,

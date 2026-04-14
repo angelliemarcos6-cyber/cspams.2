@@ -6,6 +6,7 @@ use App\Models\School;
 use App\Models\User;
 use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
+use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -26,8 +27,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -74,6 +75,82 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
     }
 
+    public function test_school_head_setup_completion_requires_monitor_activation_before_login(): void
+    {
+        $this->seed();
+
+        $newPassword = 'PendingVerify@2026!';
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->where('email', 'schoolhead.103811@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $issuedSetup = $setupService->issue($schoolHead);
+
+        $setup = $this->postJson('/api/auth/setup-account', [
+            'token' => $issuedSetup['plainToken'],
+            'password' => $newPassword,
+            'password_confirmation' => $newPassword,
+        ]);
+
+        $setup->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
+            );
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::PENDING_VERIFICATION->value, $schoolHead->accountStatus()->value);
+        $this->assertNull($schoolHead->verified_by_user_id);
+        $this->assertNull($schoolHead->verified_at);
+
+        $blockedLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => '103811',
+            'password' => $newPassword,
+        ]);
+
+        $blockedLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresMonitorApproval', true)
+            ->assertJsonPath('accountStatus', AccountStatus::PENDING_VERIFICATION->value);
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $activate = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/activate",
+            ['reason' => 'Verified after reviewing School Head onboarding details.'],
+        );
+
+        $activate->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.verifiedByName', 'Division Monitor');
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
+        $this->assertNotNull($schoolHead->verified_by_user_id);
+        $this->assertNotNull($schoolHead->verified_at);
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => '103811',
+            'password' => $newPassword,
+        ]);
+
+        $login->assertOk()
+            ->assertJsonPath('user.role', 'school_head');
+    }
+
     public function test_monitor_can_update_school_head_status_and_issue_password_reset_link(): void
     {
         $this->seed();
@@ -82,8 +159,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -219,8 +296,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -244,8 +321,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -281,8 +358,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -401,8 +478,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -574,8 +651,8 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -643,3 +720,4 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->forceFill(['account_type' => null])->save();
     }
 }
+

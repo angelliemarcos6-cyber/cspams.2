@@ -69,7 +69,7 @@ class RoleWorkflowE2ETest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.status', 'submitted');
 
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $monitorIndicatorQueue = $this->withToken($monitorToken)->getJson('/api/indicators/submissions?status=submitted&per_page=1');
         $monitorIndicatorQueue->assertOk()
@@ -136,3 +136,4 @@ class RoleWorkflowE2ETest extends TestCase
         return (string) $user->school?->school_code;
     }
 }
+

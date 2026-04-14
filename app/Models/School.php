@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Auth\UserRoleResolver;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Schema;
 class School extends Model
 {
     use AuditsActivity;
+    use Filterable;
     use HasFactory;
     use SoftDeletes;
 
@@ -34,6 +36,23 @@ class School extends Model
         'reported_teacher_count',
         'submitted_by',
         'submitted_at',
+    ];
+
+    protected string $filterableSchoolColumn = 'id';
+
+    protected ?string $filterableDateColumn = 'submitted_at';
+
+    /**
+     * @var list<string>
+     */
+    protected array $filterableSearchColumns = [
+        'school_code',
+        'name',
+        'level',
+        'district',
+        'address',
+        'region',
+        'type',
     ];
 
     /**

@@ -365,7 +365,7 @@
                     </h1>
 
                     <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate-100">
-                        Centralized Student Performance Analytics and Monitoring System for I-META and TARGETS-MET implementation.
+                        Centralized School Performance and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
                     </p>
                 </div>
 

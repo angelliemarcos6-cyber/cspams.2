@@ -1,6 +1,6 @@
 ﻿# CSPAMS
 
-Centralized Student Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
+Centralized School Performance Analytics and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
 
 ## Implemented Scope
 
@@ -17,8 +17,9 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - Metric catalog
   - Learner performance records by period
 - Reports:
-  - Filterable school and performance summary previews
-  - CSV exports (summary and selected records)
+  - Student and teacher history panels
+  - CSV exports for student and teacher records
+  - Indicator workflow and school summary status views
 - Governance and security:
   - Spatie role/permission integration
   - Scoped access by role and school
@@ -60,6 +61,39 @@ Centralized Student Performance Analytics and Monitoring System (CSPAMS) for Dep
   - frontend calls `POST /api/auth/logout` to invalidate the session, then clears local user state
   - no bearer token is stored in `sessionStorage`/`localStorage`
 
+## School Head Account Lifecycle
+
+School Head accounts follow a monitor-controlled lifecycle. Login is never
+allowed until the Division Monitor explicitly activates the account.
+
+1. **Pending Setup** (`pending_setup`)
+   - The Division Monitor creates the School Head account.
+   - A one-time setup link is emailed to the School Head.
+   - The account cannot sign in.
+2. **Pending Verification** (`pending_verification`)
+   - The School Head completes setup by visiting the link and setting a password.
+   - Email is marked verified; `account_status` becomes `pending_verification`.
+   - The account still cannot sign in — the Division Monitor must activate it.
+   - Login attempts return HTTP 403 with `requiresMonitorApproval: true`.
+3. **Active** (`active`)
+   - The Division Monitor activates the account from the monitor dashboard:
+     `POST /api/dashboard/records/{school}/school-head-account/activate`
+   - Activation records `verified_by_user_id`, `verified_at`, and optional `verification_notes`.
+   - Only active accounts can sign in.
+
+Recovery / admin actions (monitor dashboard):
+
+| Account State         | Recommended Action                |
+|-----------------------|-----------------------------------|
+| `pending_setup`       | Reissue setup link                |
+| `pending_verification`| Activate account                  |
+| `active`              | Send password reset link          |
+| `suspended`/`locked`  | Restore via status update         |
+| `archived`            | No normal login actions           |
+
+> **Note:** Password reset links cannot be issued for `pending_setup` or
+> `pending_verification` accounts. Use setup link or activation instead.
+
 ## Indicator Compliance Workflow (API)
 
 Implemented API workflow for school-level indicator compliance packages:
@@ -76,9 +110,39 @@ Role flow:
 - `school_head`: encode indicators for own school and submit to monitor
 - `monitor`: division-wide visibility and validate/return indicator submissions
 
-## TARGETS-MET KPI Auto-Calculation
+## Compliance Indicators – 4-Tab System (v2 – April 2026)
 
-- KPI indicators in TARGETS-MET are auto-calculated server-side from synchronized records (students, sections, teachers, school/resource context).
+```ts
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+```
+
+School Head view now uses one compliance workspace with exactly four tabs:
+
+1. School Achievements (I-META, unchanged)
+2. Key Performance (I-META, unchanged)
+3. BMEF (upload-only)
+4. SMEA (upload-only)
+
+Key behavior:
+
+- Every prior UI label of `TARGETS-MET` is now `BMEF`.
+- BMEF and SMEA tabs both use the same upload card behavior (submit/replace/download + metadata).
+- Header progress badges are reactive to submission data:
+  - `BMEF: Submitted ✅` / `Not Submitted ❌`
+  - `SMEA: Submitted ✅` / `Not Submitted ❌`
+- Monitor review drawer now exposes dedicated `I-META`, `BMEF`, and `SMEA` tabs for package inspection.
+- Backend compatibility remains intact: existing storage/database field names may still use `targets_met_*`.
+
+Additional endpoints used by the upload tabs:
+
+- `POST /api/submissions/{submission}/upload-file`
+- `GET /api/submissions/{submission}/download/{type}`
+
+## I-META KPI Auto-Calculation
+
+- KPI indicators in I-META are auto-calculated server-side from synchronized records (students, sections, teachers, school/resource context).
 - Auto-calculated KPI rows are enforced on save/submit; manual payload values for these KPIs are replaced by derived values.
 - KPI metric metadata includes `isAutoCalculated` so the frontend can render these rows as read-only.
 - Rolling school-year matrix window uses a 5-year range anchored from `2022-2023` and moves forward by school year.
@@ -194,16 +258,24 @@ Notes:
 After seeding:
 
 - Division Monitor login:
-  - Login: `monitor@cspams.local`
+  - Login: seeded monitor email configured in `database/seeders/DemoDataSeeder.php`
   - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
 - School Head login:
-  - Login: assigned 6-digit `school_code` (example: `900001`, `900002`, `900003`)
-  - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env` (recommended for local/dev)
+  - **Quick demo account (school `900001`)** — seeded as `active`, can log in immediately.
+    - Login: `900001`
+    - Password: value of `CSPAMS_DEMO_PASSWORD` from `.env`
+  - **Other School Head accounts (`900002`, `900003`)** — seeded as `pending_setup`.
+    - These accounts must complete the full lifecycle before sign-in is allowed:
+      1. Monitor sends / reissues setup link from the dashboard.
+      2. School Head completes setup → account becomes `pending_verification`.
+      3. Monitor activates account from the dashboard → account becomes `active`.
+      4. School Head can now sign in with school code + password.
 
-For Santiago school accounts seeded by `SantiagoCitySchoolAccountsSeeder`:
+School Head lifecycle after seeding (for non-demo accounts):
 
-- When `CSPAMS_REQUIRE_SETUP_LINK_FOR_SEEDED_SCHOOL_HEADS=true` (default), School Head users are created with `account_status = pending_setup` and must complete the setup-link onboarding flow before sign-in.
-- When `CSPAMS_REQUIRE_SETUP_LINK_FOR_SEEDED_SCHOOL_HEADS=false`, School Head users are created as `active` with the temporary password `CSPAMS_SEED_TEMP_PASSWORD` (default: `Csp@123456`).
+```
+pending_setup → (complete setup link) → pending_verification → (monitor activates) → active
+```
 
 ## Troubleshooting Sign-in on a Fresh Clone (Linux/Windows)
 

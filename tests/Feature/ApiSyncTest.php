@@ -51,12 +51,12 @@ class ApiSyncTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         $nameLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
             'login' => $monitor->name,
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $nameLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
@@ -64,8 +64,8 @@ class ApiSyncTest extends TestCase
 
         $emailLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $emailLogin->assertOk()
@@ -78,8 +78,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk()
@@ -259,8 +259,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk()
@@ -281,10 +281,12 @@ class ApiSyncTest extends TestCase
             ->where('status', '!=', StudentStatus::DROPPED_OUT->value)
             ->firstOrFail();
 
+        $this->travel(2)->seconds();
         $student->forceFill([
             'status' => StudentStatus::DROPPED_OUT->value,
             'last_status_at' => now(),
         ])->save();
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $initialEtag])
@@ -306,8 +308,8 @@ class ApiSyncTest extends TestCase
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
@@ -365,8 +367,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -391,10 +393,15 @@ class ApiSyncTest extends TestCase
 
         /** @var Student $student */
         $student = Student::query()->firstOrFail();
+        $nextStatus = $student->status === StudentStatus::AT_RISK->value
+            ? StudentStatus::ENROLLED->value
+            : StudentStatus::AT_RISK->value;
+        $this->travel(2)->seconds();
         $student->forceFill([
-            'status' => StudentStatus::AT_RISK->value,
+            'status' => $nextStatus,
             'last_status_at' => now(),
         ])->save();
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $etag])
@@ -414,8 +421,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -444,8 +451,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -473,12 +480,13 @@ class ApiSyncTest extends TestCase
             ->assertHeader('X-Sync-Scope', 'division');
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
         $fromStatus = $student->status instanceof StudentStatus ? $student->status->value : (string) $student->status;
         $toStatus = $fromStatus === StudentStatus::AT_RISK->value
             ? StudentStatus::ENROLLED->value
             : StudentStatus::AT_RISK->value;
 
+        $this->travel(2)->seconds();
         StudentStatusLog::query()->create([
             'student_id' => $student->id,
             'from_status' => $fromStatus,
@@ -487,6 +495,7 @@ class ApiSyncTest extends TestCase
             'notes' => 'ETag sync probe history entry.',
             'changed_at' => now(),
         ]);
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $etag])
@@ -553,8 +562,8 @@ class ApiSyncTest extends TestCase
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ]);
 
         $login->assertOk();
@@ -589,7 +598,9 @@ class ApiSyncTest extends TestCase
             ]);
         }
 
+        $this->travel(2)->seconds();
         $teacher->forceFill(['name' => $teacher->name . ' Updated'])->save();
+        $this->travelBack();
 
         $resynced = $this->withToken($token)
             ->withHeaders(['If-None-Match' => $etag])
@@ -610,3 +621,4 @@ class ApiSyncTest extends TestCase
         return (string) $user->school?->school_code;
     }
 }
+

@@ -80,7 +80,11 @@ function AppRoutes() {
         path="/school-admin"
         element={
           <ProtectedRoute allowedRole="school_head">
-            <SchoolAdminDashboard />
+            <AuthenticatedAppProviders>
+              <DashboardDataProviders>
+                <SchoolAdminDashboard />
+              </DashboardDataProviders>
+            </AuthenticatedAppProviders>
           </ProtectedRoute>
         }
       />
@@ -89,7 +93,11 @@ function AppRoutes() {
         path="/monitor"
         element={
           <ProtectedRoute allowedRole="monitor">
-            <MonitorDashboard />
+            <AuthenticatedAppProviders>
+              <DashboardDataProviders>
+                <MonitorDashboard />
+              </DashboardDataProviders>
+            </AuthenticatedAppProviders>
           </ProtectedRoute>
         }
       />
@@ -100,16 +108,16 @@ function AppRoutes() {
 
 function RealtimeBridge() {
   const { role, user } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const hasCookieSession = Boolean(user && role);
   const schoolId = user?.schoolId ?? null;
 
   useEffect(() => {
-    if (!token || !role) {
+    if (!hasCookieSession || !role) {
       stopRealtimeBridge();
       return;
     }
 
-    startRealtimeBridge(token, {
+    startRealtimeBridge(COOKIE_SESSION_TOKEN, {
       role,
       schoolId,
     });
@@ -117,28 +125,38 @@ function RealtimeBridge() {
     return () => {
       stopRealtimeBridge();
     };
-  }, [token, role, schoolId]);
+  }, [hasCookieSession, role, schoolId]);
 
   return null;
+}
+
+function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <RealtimeBridge />
+      <NotificationProvider>{children}</NotificationProvider>
+    </>
+  );
+}
+
+function DashboardDataProviders({ children }: { children: ReactNode }) {
+  return (
+    <DataProvider>
+      <IndicatorDataProvider>
+        <TeacherDataProvider>
+          <StudentDataProvider>{children}</StudentDataProvider>
+        </TeacherDataProvider>
+      </IndicatorDataProvider>
+    </DataProvider>
+  );
 }
 
 export function App() {
   return (
     <AuthProvider>
-      <RealtimeBridge />
-      <NotificationProvider>
-        <DataProvider>
-          <IndicatorDataProvider>
-            <TeacherDataProvider>
-              <StudentDataProvider>
-                <HashRouter>
-                  <AppRoutes />
-                </HashRouter>
-              </StudentDataProvider>
-            </TeacherDataProvider>
-          </IndicatorDataProvider>
-        </DataProvider>
-      </NotificationProvider>
+      <HashRouter>
+        <AppRoutes />
+      </HashRouter>
     </AuthProvider>
   );
 }

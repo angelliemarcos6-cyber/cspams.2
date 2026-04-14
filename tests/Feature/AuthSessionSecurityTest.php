@@ -109,7 +109,10 @@ class AuthSessionSecurityTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('user.mustResetPassword', false);
+            ->assertJsonPath(
+                'message',
+                'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
+            );
 
         $this->assertDatabaseMissing('personal_access_tokens', ['name' => 'legacy-reset-token']);
         $this->assertDatabaseMissing('sessions', ['id' => $legacySessionId]);
@@ -121,7 +124,7 @@ class AuthSessionSecurityTest extends TestCase
             ->latest('id')
             ->firstOrFail();
 
-        $this->assertSame('active', data_get($resetAudit->metadata, 'new_account_status'));
+        $this->assertSame('pending_verification', data_get($resetAudit->metadata, 'new_account_status'));
     }
 
     public function test_active_sessions_endpoint_lists_devices_and_can_revoke_others(): void
@@ -189,7 +192,7 @@ class AuthSessionSecurityTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         Sanctum::actingAs($monitor);
 
@@ -203,7 +206,7 @@ class AuthSessionSecurityTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         Sanctum::actingAs($monitor);
 
@@ -220,4 +223,105 @@ class AuthSessionSecurityTest extends TestCase
             ]);
     }
 
+    public function test_user_agent_version_change_alone_does_not_trigger_suspicious_login_containment(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $this->assertNotSame('', $schoolCode);
+
+        $schoolHead->forceFill([
+            'last_login_at' => now()->subDay(),
+            'last_login_ip' => '203.0.113.20',
+            'last_login_user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/133.0.0.0 Safari/537.36',
+        ])->save();
+
+        $legacyToken = $schoolHead->createToken('legacy-version-change-token');
+        $legacyTokenId = $legacyToken->accessToken->id;
+        $legacySessionId = 'ua-' . Str::lower(Str::random(16));
+
+        DB::table('sessions')->insert([
+            'id' => $legacySessionId,
+            'user_id' => $schoolHead->id,
+            'ip_address' => '203.0.113.20',
+            'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/133.0.0.0 Safari/537.36',
+            'payload' => 'stub',
+            'last_activity' => now()->subHour()->getTimestamp(),
+        ]);
+
+        $response = $this
+            ->withServerVariables(['REMOTE_ADDR' => '203.0.113.20'])
+            ->withHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36')
+            ->postJson('/api/auth/login', [
+                'role' => 'school_head',
+                'login' => $schoolCode,
+                'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('user.role', 'school_head');
+
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $legacyTokenId]);
+        $this->assertDatabaseHas('sessions', ['id' => $legacySessionId]);
+        $this->assertDatabaseMissing('audit_logs', [
+            'action' => 'auth.login.suspicious_detected',
+            'user_id' => $schoolHead->id,
+        ]);
+    }
+
+    public function test_loopback_ip_variants_do_not_trigger_suspicious_login_containment(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $this->assertNotSame('', $schoolCode);
+
+        $schoolHead->forceFill([
+            'last_login_at' => now()->subDay(),
+            'last_login_ip' => '127.0.0.1',
+            'last_login_user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36',
+        ])->save();
+
+        $legacyToken = $schoolHead->createToken('legacy-loopback-token');
+        $legacyTokenId = $legacyToken->accessToken->id;
+        $legacySessionId = 'loopback-' . Str::lower(Str::random(16));
+
+        DB::table('sessions')->insert([
+            'id' => $legacySessionId,
+            'user_id' => $schoolHead->id,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36',
+            'payload' => 'stub',
+            'last_activity' => now()->subHour()->getTimestamp(),
+        ]);
+
+        $response = $this
+            ->withServerVariables(['REMOTE_ADDR' => '::1'])
+            ->withHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36')
+            ->postJson('/api/auth/login', [
+                'role' => 'school_head',
+                'login' => $schoolCode,
+                'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('user.role', 'school_head');
+
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $legacyTokenId]);
+        $this->assertDatabaseHas('sessions', ['id' => $legacySessionId]);
+        $this->assertDatabaseMissing('audit_logs', [
+            'action' => 'auth.login.suspicious_detected',
+            'user_id' => $schoolHead->id,
+        ]);
+    }
+
 }
+

@@ -76,7 +76,7 @@ class BroadcastChannelSecurityTest extends TestCase
         $this->seed();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
         $status = $this->authorizeChannel($monitor, 'private-cspams-updates.monitor');
         $this->assertSame(Response::HTTP_OK, $status);
     }
@@ -103,3 +103,4 @@ class BroadcastChannelSecurityTest extends TestCase
         return Response::HTTP_OK;
     }
 }
+

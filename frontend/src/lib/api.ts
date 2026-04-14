@@ -27,7 +27,7 @@ function resolveApiBaseUrl(): string {
 const API_BASE_URL = resolveApiBaseUrl();
 export const COOKIE_SESSION_TOKEN = "__cookie_session__";
 let csrfBootstrapPromise: Promise<void> | null = null;
-const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const CSRF_BOOTSTRAP_TIMEOUT_MS = 10_000;
 
 export function getApiBaseUrl(): string {
@@ -260,7 +260,8 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
 
   const headers = new Headers();
   headers.set("Accept", "application/json");
-  if (body !== undefined) {
+  const isFormDataPayload = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isFormDataPayload) {
     headers.set("Content-Type", "application/json");
   }
   if (token && token !== COOKIE_SESSION_TOKEN) {
@@ -283,7 +284,12 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
       method,
       credentials: useCookieSession ? "include" : "omit",
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body:
+        body === undefined
+          ? undefined
+          : isFormDataPayload
+            ? (body as FormData)
+            : JSON.stringify(body),
     }, requestTimeoutMs, signal);
 
   let response = await fetchRequest();
@@ -350,4 +356,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     );
   }
   return response.data as T;
+}
+
+export async function apiRequestVoid(path: string, options: ApiRequestOptions = {}): Promise<void> {
+  await apiRequestRaw<never>(path, options);
 }

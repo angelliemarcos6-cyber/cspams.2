@@ -14,30 +14,49 @@ use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
+use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
-use App\Support\Indicators\RollingIndicatorYearWindow;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class IndicatorSubmissionController extends Controller
 {
+    private const ROLLING_YEAR_SYNC_CACHE_KEY = 'cspams.indicators.rolling_year_window.last_sync';
+
+    private const ROLLING_YEAR_SYNC_TTL_MINUTES = 30;
+
+    private const ROLLING_YEAR_SYNC_LOCK_KEY = 'cspams.indicators.rolling_year_window.sync_lock';
+
+    private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
+
+    private static ?bool $usersHasAccountTypeColumn = null;
+
+    public function __construct(
+        private readonly FilterService $filterService,
+    ) {
+    }
+
     public function academicYears(Request $request): JsonResponse
     {
         $this->requireUser($request);
-        $this->syncRollingIndicatorYears();
 
         $years = AcademicYear::query()
             ->orderByDesc('is_current')
@@ -56,7 +75,6 @@ class IndicatorSubmissionController extends Controller
     public function metrics(Request $request): JsonResponse
     {
         $this->requireUser($request);
-        $this->syncRollingIndicatorYears();
         $autoMetricCodes = array_flip(app(TargetsMetAutoCalculator::class)->supportedCodes());
 
         $metrics = PerformanceMetric::query()
@@ -89,17 +107,21 @@ class IndicatorSubmissionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $this->requireUser($request);
+        $filters = $this->buildIndicatorFilters($request);
 
         $scope = $this->isSchoolHead($user) ? 'school' : 'division';
         $baseScopeKey = $scope === 'school'
             ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
             : 'division:all';
-        $filtersKey = $this->buildFiltersKey($request);
+        $filtersKey = $this->filterService->buildCacheKey(
+            $filters,
+            ['school_id', 'academic_year_id', 'status', 'category', 'date_from', 'date_to', 'search', 'reporting_period'],
+        );
         $scopeKey = $baseScopeKey . '|' . $filtersKey;
 
         $baseQuery = IndicatorSubmission::query();
         $this->applyVisibilityScope($baseQuery, $user);
-        $this->applyCommonFilters($baseQuery, $request);
+        $this->applyIndicatorFilters($baseQuery, $filters);
 
         $perPage = $this->resolvePerPage($request);
         $page = max(1, $request->integer('page', 1));
@@ -165,7 +187,6 @@ class IndicatorSubmissionController extends Controller
         $user = $this->requireUser($request);
         $this->assertSchoolHead($user);
         abort_if(! $user->school_id, Response::HTTP_FORBIDDEN, 'School Head account is missing school assignment.');
-        $this->syncRollingIndicatorYears();
 
         $schoolId = (int) $user->school_id;
         $academicYearId = $request->integer('academic_year_id');
@@ -245,7 +266,6 @@ class IndicatorSubmissionController extends Controller
     {
         $user = $this->requireUser($request);
         $this->assertCanSubmit($user, $submission->school_id);
-        $this->syncRollingIndicatorYears();
 
         $currentStatus = $this->statusValue($submission->status);
         if (! in_array($currentStatus, [
@@ -325,6 +345,136 @@ class IndicatorSubmissionController extends Controller
         ]);
     }
 
+    public function uploadFile(Request $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanSubmit($user, $submission->school_id);
+
+        $currentStatus = $this->statusValue($submission->status);
+        if (! in_array($currentStatus, [
+            FormSubmissionStatus::DRAFT->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only draft or returned indicator submissions can upload or replace files.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'type' => ['required', 'string', Rule::in(['bmef', 'smea'])],
+            'file' => ['required', 'file', 'max:10240', 'mimes:pdf,docx,xlsx'],
+        ]);
+
+        $fileType = strtolower(trim((string) $validated['type']));
+        $file = $request->file('file');
+        if (! $file) {
+            throw ValidationException::withMessages([
+                'file' => 'A file upload is required.',
+            ]);
+        }
+
+        $existingPath = $this->filePathForType($submission, $fileType);
+        if (is_string($existingPath) && $existingPath !== '' && Storage::disk('local')->exists($existingPath)) {
+            Storage::disk('local')->delete($existingPath);
+        }
+
+        $extension = strtolower((string) $file->getClientOriginalExtension());
+        $timestamp = now()->format('YmdHis');
+        $filename = sprintf(
+            '%d_%d_%s_%s.%s',
+            (int) $submission->school_id,
+            (int) $submission->academic_year_id,
+            $fileType,
+            $timestamp,
+            $extension !== '' ? $extension : 'bin',
+        );
+        $path = $file->storeAs('submissions', $filename, 'local');
+        $sizeBytes = max(0, (int) $file->getSize());
+        $originalFilename = trim((string) $file->getClientOriginalName());
+
+        if ($fileType === 'bmef') {
+            $submission->forceFill([
+                'bmef_file_path' => $path,
+                'bmef_original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                'bmef_uploaded_at' => now(),
+                'bmef_file_size' => $sizeBytes,
+            ])->save();
+        } else {
+            $submission->forceFill([
+                'smea_file_path' => $path,
+                'smea_original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                'smea_uploaded_at' => now(),
+                'smea_file_size' => $sizeBytes,
+            ])->save();
+        }
+
+        app(FormSubmissionHistoryLogger::class)->log(
+            formType: IndicatorSubmission::FORM_TYPE,
+            submissionId: $submission->id,
+            schoolId: $submission->school_id,
+            academicYearId: $submission->academic_year_id,
+            action: "{$fileType}_uploaded",
+            fromStatus: $currentStatus,
+            toStatus: $currentStatus ?? FormSubmissionStatus::DRAFT->value,
+            actorId: $user->id,
+            notes: strtoupper($fileType) . ' file uploaded or replaced.',
+            metadata: [
+                'type' => $fileType,
+                'path' => $path,
+                'filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                'size_bytes' => $sizeBytes,
+            ],
+        );
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'indicators',
+            'eventType' => 'indicators.file_uploaded',
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'fileType' => $fileType,
+        ]));
+
+        $submission->load([
+            'school:id,school_code,name',
+            'academicYear:id,name',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'createdBy:id,name,email',
+            'submittedBy:id,name,email',
+            'reviewedBy:id,name,email',
+        ]);
+
+        return response()->json([
+            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
+        ]);
+    }
+
+    public function downloadFile(Request $request, IndicatorSubmission $submission, string $type)
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanView($user, $submission->school_id);
+
+        $fileType = strtolower(trim($type));
+        if (! in_array($fileType, ['bmef', 'smea'], true)) {
+            throw ValidationException::withMessages([
+                'type' => 'Download type must be either bmef or smea.',
+            ]);
+        }
+
+        $path = $this->filePathForType($submission, $fileType);
+        $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
+        if (! is_string($path) || trim($path) === '' || ! Storage::disk('local')->exists($path)) {
+            abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
+        }
+
+        $fallbackFilename = basename($path);
+        $downloadFilename = is_string($originalFilename) && trim($originalFilename) !== ''
+            ? trim($originalFilename)
+            : $fallbackFilename;
+
+        return Storage::disk('local')->download($path, $downloadFilename);
+    }
+
     public function submit(Request $request, IndicatorSubmission $submission): JsonResponse
     {
         $user = $this->requireUser($request);
@@ -337,6 +487,23 @@ class IndicatorSubmissionController extends Controller
         ], true)) {
             throw ValidationException::withMessages([
                 'submission' => 'Only draft or returned indicator submissions can be submitted.',
+            ]);
+        }
+
+        $missingRequirements = [];
+        if (! $submission->hasImetaFormData()) {
+            $missingRequirements[] = 'I-META form data';
+        }
+        if (! $submission->hasBmefFile()) {
+            $missingRequirements[] = 'BMEF file';
+        }
+        if (! $submission->hasSmeaFile()) {
+            $missingRequirements[] = 'SMEA file';
+        }
+
+        if ($missingRequirements !== []) {
+            throw ValidationException::withMessages([
+                'submission' => 'Submission is incomplete. Missing: ' . implode(', ', $missingRequirements) . '.',
             ]);
         }
 
@@ -425,7 +592,7 @@ class IndicatorSubmissionController extends Controller
             ->with('roles')
             ->where('school_id', $submission->school_id);
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $schoolHeadsQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -436,14 +603,12 @@ class IndicatorSubmissionController extends Controller
 
         $schoolHeads = $schoolHeadsQuery->get();
 
-        foreach ($schoolHeads as $schoolHead) {
-            $schoolHead->notify(new IndicatorReviewOutcomeNotification(
-                $submission,
-                $user,
-                $decision,
-                $notes,
-            ));
-        }
+        Notification::send($schoolHeads, new IndicatorReviewOutcomeNotification(
+            $submission,
+            $user,
+            $decision,
+            $notes,
+        ));
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'indicators',
@@ -494,9 +659,70 @@ class IndicatorSubmissionController extends Controller
 
     private function syncRollingIndicatorYears(): void
     {
-        app(RollingIndicatorYearWindow::class)->sync();
+        if ($this->hasFreshRollingIndicatorYearSyncMarker()) {
+            return;
+        }
+
+        $cacheStore = Cache::getStore();
+        if (! ($cacheStore instanceof LockProvider)) {
+            $this->runRollingIndicatorYearSync();
+
+            return;
+        }
+
+        $lock = Cache::lock(self::ROLLING_YEAR_SYNC_LOCK_KEY, self::ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS);
+        if (! $lock->get()) {
+            return;
+        }
+
+        try {
+            if ($this->hasFreshRollingIndicatorYearSyncMarker()) {
+                return;
+            }
+
+            $this->runRollingIndicatorYearSync();
+        } finally {
+            $lock->release();
+        }
     }
 
+    private function hasFreshRollingIndicatorYearSyncMarker(): bool
+    {
+        $lastSyncedAt = Cache::get(self::ROLLING_YEAR_SYNC_CACHE_KEY);
+        if (! is_string($lastSyncedAt)) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($lastSyncedAt)
+                ->greaterThan(now()->subMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES));
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function runRollingIndicatorYearSync(): void
+    {
+        app(RollingIndicatorYearWindow::class)->sync();
+        Cache::put(
+            self::ROLLING_YEAR_SYNC_CACHE_KEY,
+            now()->toISOString(),
+            now()->addMinutes(self::ROLLING_YEAR_SYNC_TTL_MINUTES),
+        );
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
     private function applyVisibilityScope(Builder $query, User $user): void
     {
         if ($this->isSchoolHead($user)) {
@@ -508,27 +734,43 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanReview($user);
     }
 
-    private function applyCommonFilters(Builder $query, Request $request): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildIndicatorFilters(Request $request): array
     {
-        if ($request->filled('school_id')) {
-            $query->where('school_id', $request->integer('school_id'));
-        }
-
-        if ($request->filled('academic_year_id')) {
-            $query->where('academic_year_id', $request->integer('academic_year_id'));
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->string('status')->toString());
-        }
+        $filters = $this->filterService->extract($request);
 
         if ($request->has('reporting_period')) {
             $reportingPeriod = trim((string) $request->input('reporting_period'));
-            if ($reportingPeriod === '') {
-                $query->whereNull('reporting_period');
-            } else {
-                $query->where('reporting_period', $reportingPeriod);
-            }
+            $filters['reporting_period'] = $reportingPeriod === '' ? null : $reportingPeriod;
+        }
+
+        return $filters;
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     */
+    private function applyIndicatorFilters(Builder $query, array $filters): void
+    {
+        $this->filterService->apply($query, $filters, [
+            'date_column' => 'submitted_at',
+            'search_columns' => ['reporting_period', 'notes'],
+        ]);
+
+        if (! array_key_exists('reporting_period', $filters)) {
+            return;
+        }
+
+        if ($filters['reporting_period'] === null) {
+            $query->whereNull('reporting_period');
+            return;
+        }
+
+        $reportingPeriod = trim((string) $filters['reporting_period']);
+        if ($reportingPeriod !== '') {
+            $query->where('reporting_period', $reportingPeriod);
         }
     }
 
@@ -552,6 +794,24 @@ class IndicatorSubmissionController extends Controller
         }
 
         abort(Response::HTTP_FORBIDDEN, 'Only the assigned School Head can submit this indicator package.');
+    }
+
+    private function filePathForType(IndicatorSubmission $submission, string $type): ?string
+    {
+        return match ($type) {
+            'bmef' => $submission->bmef_file_path,
+            'smea' => $submission->smea_file_path,
+            default => null,
+        };
+    }
+
+    private function fileOriginalNameForType(IndicatorSubmission $submission, string $type): ?string
+    {
+        return match ($type) {
+            'bmef' => $submission->bmef_original_filename,
+            'smea' => $submission->smea_original_filename,
+            default => null,
+        };
     }
 
     private function assertCanReview(User $user): void
@@ -1123,31 +1383,6 @@ class IndicatorSubmissionController extends Controller
         }
 
         return min($perPage, $max);
-    }
-
-    private function buildFiltersKey(Request $request): string
-    {
-        $schoolIdKey = $request->filled('school_id')
-            ? 'school_id:' . $request->integer('school_id')
-            : 'school_id:any';
-        $academicYearKey = $request->filled('academic_year_id')
-            ? 'academic_year_id:' . $request->integer('academic_year_id')
-            : 'academic_year_id:any';
-        $statusKey = $request->filled('status')
-            ? 'status:' . $request->string('status')->toString()
-            : 'status:any';
-        $reportingPeriodKey = 'reporting_period:any';
-        if ($request->has('reporting_period')) {
-            $raw = trim((string) $request->input('reporting_period'));
-            $reportingPeriodKey = $raw === '' ? 'reporting_period:null' : 'reporting_period:' . $raw;
-        }
-
-        return implode('|', [
-            $schoolIdKey,
-            $academicYearKey,
-            $statusKey,
-            $reportingPeriodKey,
-        ]);
     }
 
     /**

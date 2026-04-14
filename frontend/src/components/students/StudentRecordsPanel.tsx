@@ -4,7 +4,7 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { isApiError } from "@/lib/api";
-import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload, StudentStatusHistoryEntry } from "@/types";
+import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload, StudentStatusHistoryEntry, TeacherRecord } from "@/types";
 
 interface StudentRecordsPanelProps {
   editable: boolean;
@@ -29,12 +29,6 @@ interface StudentFormState {
   trackedFromLevel: string;
   status: StudentEnrollmentStatus;
   riskLevel: "none" | "low" | "medium" | "high";
-}
-
-interface TeacherSelectOption {
-  value: string;
-  label: string;
-  isLegacy: boolean;
 }
 
 const STATUS_OPTIONS: Array<{ value: StudentEnrollmentStatus; label: string }> = [
@@ -99,16 +93,6 @@ function statusTone(status: string): string {
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
-function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
-  const code = schoolCode?.trim().toLowerCase();
-  if (code) return `code:${code}`;
-
-  const name = schoolName?.trim().toLowerCase();
-  if (name) return `name:${name}`;
-
-  return "unknown";
-}
-
 function extractSchoolCodes(filterKeys: Set<string> | null | undefined): string[] {
   if (!filterKeys || filterKeys.size === 0) {
     return [];
@@ -142,7 +126,8 @@ export function StudentRecordsPanel({
     error,
     lastSyncedAt,
     dataVersion,
-    listStudents,
+    refreshStudents,
+    queryStudents,
     listStudentHistory,
     addStudent,
     updateStudent,
@@ -150,10 +135,12 @@ export function StudentRecordsPanel({
     deleteStudents,
   } = useStudentData();
   const { academicYears } = useIndicatorData();
-  const { teachers } = useTeacherData();
+  const { listTeachers } = useTeacherData();
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const debouncedTeacherSearch = useDebouncedValue(teacherSearch, SEARCH_DEBOUNCE_MS);
   const [statusFilter, setStatusFilter] = useState<StudentEnrollmentStatus | "all">("all");
   const [academicYearFilter, setAcademicYearFilter] = useState<string>(defaultAcademicYearFilter);
   const [showForm, setShowForm] = useState(false);
@@ -170,6 +157,8 @@ export function StudentRecordsPanel({
   const [totalPages, setTotalPages] = useState(1);
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [pageError, setPageError] = useState("");
+  const [teacherResults, setTeacherResults] = useState<TeacherRecord[]>([]);
+  const [isTeacherResultsLoading, setIsTeacherResultsLoading] = useState(false);
   const scopedSchoolCodes = useMemo(() => extractSchoolCodes(schoolFilterKeys), [schoolFilterKeys]);
   const studentDataVersionRef = useRef(0);
   const pageRequestIdRef = useRef(0);
@@ -177,6 +166,7 @@ export function StudentRecordsPanel({
   const historyRefreshedVersionRef = useRef(0);
   const pageAbortRef = useRef<AbortController | null>(null);
   const historyAbortRef = useRef<AbortController | null>(null);
+  const teacherSearchAbortRef = useRef<AbortController | null>(null);
   const [historyStudent, setHistoryStudent] = useState<StudentRecord | null>(null);
   const [historyEntries, setHistoryEntries] = useState<StudentStatusHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -209,7 +199,7 @@ export function StudentRecordsPanel({
         setPagedStudents([]);
         setTotalStudents(0);
         setTotalPages(1);
-        setPageError("");
+        setPageError("This school scope is missing a supported school code.");
         if (nextPage !== 1) {
           setPage(1);
         }
@@ -229,7 +219,7 @@ export function StudentRecordsPanel({
       setPageError("");
 
       try {
-        const result = await listStudents({
+        const result = await queryStudents({
           page: nextPage,
           perPage: STUDENT_PAGE_SIZE,
           search: debouncedSearch.trim() || null,
@@ -268,70 +258,87 @@ export function StudentRecordsPanel({
         }
       }
     },
-    [listStudents, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, statusFilter, academicYearFilter],
+    [queryStudents, schoolFilterKeys, scopedSchoolCodes, debouncedSearch, statusFilter, academicYearFilter],
   );
 
-  const scopedTeachers = useMemo(() => {
-    if (!schoolFilterKeys) {
-      return teachers;
+  useEffect(() => {
+    if (!editable || !showForm) {
+      teacherSearchAbortRef.current?.abort();
+      teacherSearchAbortRef.current = null;
+      setTeacherResults([]);
+      setIsTeacherResultsLoading(false);
+      return;
     }
 
-    if (schoolFilterKeys.size === 0) {
-      return [];
+    if (schoolFilterKeys && schoolFilterKeys.size > 0 && scopedSchoolCodes.length === 0) {
+      teacherSearchAbortRef.current?.abort();
+      teacherSearchAbortRef.current = null;
+      setTeacherResults([]);
+      setIsTeacherResultsLoading(false);
+      return;
     }
 
-    return teachers.filter((teacher) =>
-      schoolFilterKeys.has(
-        normalizeSchoolKey(teacher.school?.schoolCode ?? null, teacher.school?.name ?? null),
-      ),
-    );
-  }, [teachers, schoolFilterKeys]);
+    teacherSearchAbortRef.current?.abort();
+    const controller = new AbortController();
+    teacherSearchAbortRef.current = controller;
 
-  const teacherOptions = useMemo(() => {
-    const byName = new Map<string, { name: string; sex: "male" | "female" | null }>();
+    const loadTeacherResults = async () => {
+      setIsTeacherResultsLoading(true);
 
-    for (const teacher of scopedTeachers) {
+      try {
+        const result = await listTeachers({
+          page: 1,
+          perPage: 20,
+          search: debouncedTeacherSearch.trim() || null,
+          schoolCodes: schoolFilterKeys ? scopedSchoolCodes : null,
+          signal: controller.signal,
+        });
+
+        if (!controller.signal.aborted) {
+          setTeacherResults(result.data);
+        }
+      } catch (err) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setTeacherResults([]);
+      } finally {
+        if (teacherSearchAbortRef.current === controller) {
+          teacherSearchAbortRef.current = null;
+        }
+
+        if (!controller.signal.aborted) {
+          setIsTeacherResultsLoading(false);
+        }
+      }
+    };
+
+    void loadTeacherResults();
+
+    return () => {
+      controller.abort();
+      if (teacherSearchAbortRef.current === controller) {
+        teacherSearchAbortRef.current = null;
+      }
+    };
+  }, [debouncedTeacherSearch, editable, listTeachers, schoolFilterKeys, scopedSchoolCodes, showForm]);
+
+  const teacherSearchOptions = useMemo(() => {
+    const byName = new Map<string, TeacherRecord>();
+
+    for (const teacher of teacherResults) {
       const normalizedName = teacher.name.trim();
       if (!normalizedName) continue;
 
       const key = normalizedName.toLowerCase();
       if (!byName.has(key)) {
-        byName.set(key, {
-          name: normalizedName,
-          sex: teacher.sex ?? null,
-        });
+        byName.set(key, teacher);
       }
     }
 
     return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [scopedTeachers]);
-
-  const teacherSelectOptions = useMemo<TeacherSelectOption[]>(() => {
-    const options: TeacherSelectOption[] = teacherOptions.map((teacher) => ({
-      value: teacher.name,
-      label: teacher.sex ? `${teacher.name} (${teacher.sex === "male" ? "M" : "F"})` : teacher.name,
-      isLegacy: false,
-    }));
-
-    const selectedTeacher = form.teacher.trim();
-    if (!selectedTeacher) {
-      return options;
-    }
-
-    const exists = options.some((option) => option.value.toLowerCase() === selectedTeacher.toLowerCase());
-    if (exists) {
-      return options;
-    }
-
-    return [
-      {
-        value: selectedTeacher,
-        label: `${selectedTeacher} (existing assignment)`,
-        isLegacy: true,
-      },
-      ...options,
-    ];
-  }, [teacherOptions, form.teacher]);
+  }, [teacherResults]);
 
   const safePage = Math.max(1, Math.min(page, totalPages));
   const paginatedStudents = pagedStudents;
@@ -473,6 +480,7 @@ export function StudentRecordsPanel({
   useEffect(() => () => {
     pageAbortRef.current?.abort();
     historyAbortRef.current?.abort();
+    teacherSearchAbortRef.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -483,6 +491,11 @@ export function StudentRecordsPanel({
   const resetForm = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setTeacherSearch("");
+    setTeacherResults([]);
+    setIsTeacherResultsLoading(false);
+    teacherSearchAbortRef.current?.abort();
+    teacherSearchAbortRef.current = null;
     setFormError("");
     setFormMessage("");
   };
@@ -508,6 +521,9 @@ export function StudentRecordsPanel({
       status: (student.status as StudentEnrollmentStatus) ?? "enrolled",
       riskLevel: (student.riskLevel as "none" | "low" | "medium" | "high") ?? "low",
     });
+    setTeacherSearch(student.teacher ?? "");
+    setTeacherResults([]);
+    setIsTeacherResultsLoading(false);
     setFormError("");
     setFormMessage("");
     setShowForm(true);
@@ -887,7 +903,14 @@ export function StudentRecordsPanel({
   const handleRefresh = async () => {
     setFormError("");
     setFormMessage("");
-    await loadStudentsPage(page, true);
+    setPageError("");
+
+    try {
+      await refreshStudents();
+      await loadStudentsPage(page, true);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to refresh student records.");
+    }
   };
 
   return (
@@ -1029,8 +1052,15 @@ export function StudentRecordsPanel({
       )}
 
       {editable && showForm && (
-        <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <>
+          <button
+            type="button"
+            aria-label="Close student form"
+            onClick={closeForm}
+            className="fixed inset-0 z-[88] bg-slate-900/40 md:hidden"
+          />
+          <section className="fixed inset-x-0 bottom-0 z-[89] max-h-[88dvh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-2xl mobile-safe-bottom md:relative md:z-auto md:mx-5 md:mt-4 md:max-h-none md:overflow-hidden md:rounded-sm md:shadow-none">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 md:static">
             <h3 className="text-sm font-bold text-slate-900">{editingId ? "Edit Student" : "Add Student"}</h3>
             <button
               type="button"
@@ -1053,21 +1083,89 @@ export function StudentRecordsPanel({
             </select>
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" type="date" value={form.birthDate} onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value }))} />
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" placeholder="Section" value={form.section} onChange={(event) => setForm((current) => ({ ...current, section: event.target.value }))} />
-            <select
-              className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm"
-              value={form.teacher}
-              onChange={(event) => setForm((current) => ({ ...current, teacher: event.target.value }))}
-            >
-              <option value="">Teacher</option>
-              {teacherSelectOptions.map((option) => (
-                <option
-                  key={`${option.value.toLowerCase()}-${option.isLegacy ? "legacy" : "record"}`}
-                  value={option.value}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2 xl:col-span-2">
+              <div className="flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  className="w-full border-none bg-transparent text-sm outline-none"
+                  placeholder="Search teacher"
+                  value={teacherSearch}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setTeacherSearch(value);
+                    setForm((current) => {
+                      const selectedTeacher = current.teacher.trim();
+                      if (!selectedTeacher) {
+                        return current;
+                      }
+
+                      if (value.trim().toLowerCase() === selectedTeacher.toLowerCase()) {
+                        return current;
+                      }
+
+                      return {
+                        ...current,
+                        teacher: "",
+                      };
+                    });
+                  }}
+                />
+                {form.teacher.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTeacherSearch("");
+                      setForm((current) => ({ ...current, teacher: "" }));
+                    }}
+                    className="rounded-sm border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              <div className="max-h-40 overflow-y-auto rounded-sm border border-slate-200 bg-white">
+                {isTeacherResultsLoading ? (
+                  <p className="px-3 py-2 text-xs text-slate-500">Loading teachers...</p>
+                ) : teacherSearchOptions.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-slate-500">
+                    {teacherSearch.trim()
+                      ? "No teachers found for this search."
+                      : "Start typing to search teachers, or browse the first matches here."}
+                  </p>
+                ) : (
+                  teacherSearchOptions.map((teacher) => {
+                    const normalizedName = teacher.name.trim();
+                    const selected = normalizedName.length > 0 && normalizedName.toLowerCase() === form.teacher.trim().toLowerCase();
+
+                    return (
+                      <button
+                        key={teacher.id}
+                        type="button"
+                        onClick={() => {
+                          setForm((current) => ({ ...current, teacher: normalizedName }));
+                          setTeacherSearch(normalizedName);
+                        }}
+                        className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm transition last:border-b-0 ${
+                          selected ? "bg-primary-50 text-primary-700" : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="font-medium">{normalizedName}</span>
+                        {teacher.sex ? (
+                          <span className="ml-2 text-xs text-slate-500">
+                            {teacher.sex === "male" ? "M" : "F"}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                {form.teacher.trim()
+                  ? `Selected teacher: ${form.teacher.trim()}`
+                  : "Select a teacher from the search results, or leave this blank."}
+              </p>
+            </div>
             <input className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" placeholder="Current Level / Grade" value={form.currentLevel} onChange={(event) => setForm((current) => ({ ...current, currentLevel: event.target.value }))} />
             <select className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm" value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as StudentEnrollmentStatus }))}>
               {STATUS_OPTIONS.map((option) => (
@@ -1087,14 +1185,15 @@ export function StudentRecordsPanel({
               <button
                 type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70 md:w-auto"
               >
                 <Save className="h-4 w-4" />
                 {isSaving ? "Saving..." : editingId ? "Save Student" : "Create Student"}
               </button>
             </div>
           </form>
-        </section>
+          </section>
+        </>
       )}
 
       {(isLoading || isPageLoading) && paginatedStudents.length === 0 ? (
@@ -1334,15 +1433,16 @@ export function StudentRecordsPanel({
       )}
 
       {historyStudent && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-3">
+        <div className="fixed inset-0 z-[90] flex items-end justify-center p-0 md:items-center md:p-3">
           <button
             type="button"
             aria-label="Close student history"
             onClick={closeHistory}
             className="absolute inset-0 bg-slate-900/40"
           />
-          <section className="relative z-[91] w-full max-w-3xl overflow-hidden rounded-sm border border-slate-200 bg-white shadow-2xl">
-            <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <section className="relative z-[91] flex h-[85dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl mobile-safe-bottom md:h-auto md:max-w-3xl md:rounded-sm">
+            <header className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Student Record History</h3>
                 <p className="text-xs text-slate-600">
@@ -1352,12 +1452,12 @@ export function StudentRecordsPanel({
                   {historySyncedAt ? `Synced ${new Date(historySyncedAt).toLocaleTimeString()}` : "Not synced yet"}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => void loadStudentHistoryPage(historyStudent, historyPage, false)}
                   disabled={historyLoading}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Refresh
@@ -1365,11 +1465,12 @@ export function StudentRecordsPanel({
                 <button
                   type="button"
                   onClick={closeHistory}
-                  className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  className="inline-flex items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   <X className="h-3.5 w-3.5" />
                   Close
                 </button>
+              </div>
               </div>
             </header>
 
@@ -1379,7 +1480,7 @@ export function StudentRecordsPanel({
               </div>
             )}
 
-            <div className="max-h-[60vh] overflow-y-auto px-4 py-3">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 md:max-h-[60vh]">
               {historyLoading && historyEntries.length === 0 ? (
                 <div className="space-y-2">
                   <div className="skeleton-line h-10 w-full" />
@@ -1420,17 +1521,17 @@ export function StudentRecordsPanel({
               )}
             </div>
 
-            <footer className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
+            <footer className="flex flex-col gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-slate-600">
                 Page <span className="font-semibold text-slate-900">{historyPage}</span> of{" "}
                 <span className="font-semibold text-slate-900">{historyTotalPages}</span>
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
                 <button
                   type="button"
                   onClick={() => void loadStudentHistoryPage(historyStudent, Math.max(1, historyPage - 1), false)}
                   disabled={historyPage <= 1 || historyLoading}
-                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   Previous
                 </button>
@@ -1438,7 +1539,7 @@ export function StudentRecordsPanel({
                   type="button"
                   onClick={() => void loadStudentHistoryPage(historyStudent, Math.min(historyTotalPages, historyPage + 1), false)}
                   disabled={historyPage >= historyTotalPages || historyLoading}
-                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   Next
                 </button>

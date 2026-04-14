@@ -43,16 +43,6 @@ function formatDateTime(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
-function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
-  const code = schoolCode?.trim().toLowerCase();
-  if (code) return `code:${code}`;
-
-  const name = schoolName?.trim().toLowerCase();
-  if (name) return `name:${name}`;
-
-  return "unknown";
-}
-
 function extractSchoolCodes(filterKeys: Set<string> | null | undefined): string[] {
   if (!filterKeys || filterKeys.size === 0) {
     return [];
@@ -121,7 +111,7 @@ export function TeacherRecordsPanel({
         setPagedTeachers([]);
         setTotalTeachers(0);
         setTotalPages(1);
-        setPageError("");
+        setPageError("This school scope is missing a supported school code.");
         if (nextPage !== 1) {
           setPage(1);
         }
@@ -424,8 +414,15 @@ export function TeacherRecordsPanel({
       )}
 
       {editable && showForm && (
-        <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <>
+          <button
+            type="button"
+            aria-label="Close teacher form"
+            onClick={closeForm}
+            className="fixed inset-0 z-[88] bg-slate-900/40 md:hidden"
+          />
+          <section className="fixed inset-x-0 bottom-0 z-[89] max-h-[88dvh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white shadow-2xl mobile-safe-bottom md:relative md:z-auto md:mx-5 md:mt-4 md:max-h-none md:overflow-hidden md:rounded-sm md:shadow-none">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 md:static">
             <h3 className="text-sm font-bold text-slate-900">{editingId ? "Edit Teacher" : "Add Teacher"}</h3>
             <button
               type="button"
@@ -456,14 +453,15 @@ export function TeacherRecordsPanel({
               <button
                 type="submit"
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70 md:w-auto"
               >
                 <Save className="h-4 w-4" />
                 {isSaving ? "Saving..." : editingId ? "Save Teacher" : "Create Teacher"}
               </button>
             </div>
           </form>
-        </section>
+          </section>
+        </>
       )}
 
       {(isLoading || isPageLoading) && paginatedTeachers.length === 0 ? (

@@ -7,7 +7,6 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureActiveAccount
@@ -28,25 +27,17 @@ class EnsureActiveAccount
         }
 
         try {
-            $user->currentAccessToken()?->delete();
+            $user->tokens()->delete();
         } catch (\Throwable) {
-            // Ignore token revocation failures.
+            // Ignore token cleanup failures.
         }
 
         try {
-            $user->tokens()->delete();
+            DB::table('sessions')
+                ->where('user_id', $user->id)
+                ->delete();
         } catch (\Throwable) {
-            // Ignore token revocation failures.
-        }
-
-        if (Schema::hasTable('sessions')) {
-            try {
-                DB::table('sessions')
-                    ->where('user_id', $user->id)
-                    ->delete();
-            } catch (\Throwable) {
-                // Ignore session cleanup failures.
-            }
+            // Ignore session cleanup failures.
         }
 
         Auth::guard('web')->logout();
@@ -62,4 +53,3 @@ class EnsureActiveAccount
         ], Response::HTTP_FORBIDDEN);
     }
 }
-

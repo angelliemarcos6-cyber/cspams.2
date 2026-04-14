@@ -30,7 +30,7 @@ class MonitorMfaAuthTest extends TestCase
         Notification::fake();
 
         /** @var User $monitor */
-        $monitor = User::query()->where('email', 'monitor@cspams.local')->firstOrFail();
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
 
         $response = $this->postJson('/api/auth/login', $this->monitorLoginPayload());
 
@@ -98,7 +98,7 @@ class MonitorMfaAuthTest extends TestCase
 
         $this->assertSame('lockout', data_get($lockoutAudit->metadata, 'outcome'));
         $this->assertSame('monitor', data_get($lockoutAudit->metadata, 'role'));
-        $this->assertSame('monitor@cspams.local', data_get($lockoutAudit->metadata, 'identifier'));
+        $this->assertSame('cspamsmonitor@gmail.com', data_get($lockoutAudit->metadata, 'identifier'));
     }
 
     /**
@@ -108,8 +108,8 @@ class MonitorMfaAuthTest extends TestCase
     {
         return [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
-            'password' => $this->demoPasswordForLogin('monitor', 'monitor@cspams.local'),
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
         ];
     }
 
@@ -120,9 +120,10 @@ class MonitorMfaAuthTest extends TestCase
     {
         return [
             'role' => 'monitor',
-            'login' => 'monitor@cspams.local',
+            'login' => 'cspamsmonitor@gmail.com',
             'challenge_id' => $challengeId,
             'code' => $code,
         ];
     }
 }
+

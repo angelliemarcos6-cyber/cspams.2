@@ -13,16 +13,21 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Artisan::command('indicators:sync-year-window', function (): void {
+Artisan::command('cspams:sync-rolling-years', function (): int {
     $result = app(RollingIndicatorYearWindow::class)->sync();
 
     $this->info('Indicator school-year window synchronized.');
     $this->line('Years: ' . implode(', ', $result['years']));
     $this->line('Metric schemas updated: ' . $result['metricsUpdated']);
     $this->line('Submission matrix rows pruned: ' . $result['itemsUpdated']);
-})->purpose('Synchronize rolling 5-year indicator matrix window and purge out-of-window values.');
+    return self::SUCCESS;
+})->purpose('Synchronize rolling academic-year windows and purge out-of-window indicator data.');
 
-Schedule::command('indicators:sync-year-window')
+Artisan::command('indicators:sync-year-window', function (): int {
+    return $this->call('cspams:sync-rolling-years');
+})->purpose('Alias for cspams:sync-rolling-years.');
+
+Schedule::command('cspams:sync-rolling-years')
     ->dailyAt('00:05');
 
 Artisan::command('accounts:sync-school-head-account-type', function (): void {

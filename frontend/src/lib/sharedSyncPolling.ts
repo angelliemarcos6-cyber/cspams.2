@@ -3,11 +3,12 @@ export type SharedSyncTrigger = "interval" | "focus" | "online" | "realtime";
 export interface SharedSyncPayload {
   entity?: string;
   schoolId?: string | number;
+  schoolCode?: string;
 }
 
 type SharedSyncListener = (trigger: SharedSyncTrigger, payload?: SharedSyncPayload) => void;
 
-const DEFAULT_SYNC_INTERVAL_MS = 12_000;
+const DEFAULT_SYNC_INTERVAL_MS = 60_000;
 
 let nextListenerId = 1;
 const listeners = new Map<number, SharedSyncListener>();

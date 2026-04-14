@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Domain\FormSubmissionStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class IndicatorSubmission extends Model
 {
     use AuditsActivity;
+    use Filterable;
     use HasFactory;
 
     public const FORM_TYPE = 'indicator';
@@ -26,6 +28,15 @@ class IndicatorSubmission extends Model
         'version',
         'status',
         'notes',
+        // BMEF/SMEA upload support added per redesign doc
+        'bmef_file_path',
+        'bmef_original_filename',
+        'bmef_uploaded_at',
+        'bmef_file_size',
+        'smea_file_path',
+        'smea_original_filename',
+        'smea_uploaded_at',
+        'smea_file_size',
         'created_by',
         'submitted_by',
         'submitted_at',
@@ -35,12 +46,26 @@ class IndicatorSubmission extends Model
     ];
 
     /**
+     * @var list<string>
+     */
+    protected array $filterableSearchColumns = [
+        'reporting_period',
+        'notes',
+    ];
+
+    protected ?string $filterableDateColumn = 'submitted_at';
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
             'status' => FormSubmissionStatus::class,
+            'bmef_uploaded_at' => 'datetime',
+            'bmef_file_size' => 'integer',
+            'smea_uploaded_at' => 'datetime',
+            'smea_file_size' => 'integer',
             'submitted_at' => 'datetime',
             'reviewed_at' => 'datetime',
         ];
@@ -75,5 +100,31 @@ class IndicatorSubmission extends Model
     {
         return $this->hasMany(IndicatorSubmissionItem::class)
             ->orderBy('id');
+    }
+
+    public function hasImetaFormData(): bool
+    {
+        if ($this->relationLoaded('items')) {
+            return $this->items->isNotEmpty();
+        }
+
+        return $this->items()->exists();
+    }
+
+    public function hasBmefFile(): bool
+    {
+        return is_string($this->bmef_file_path) && trim($this->bmef_file_path) !== '';
+    }
+
+    public function hasSmeaFile(): bool
+    {
+        return is_string($this->smea_file_path) && trim($this->smea_file_path) !== '';
+    }
+
+    public function isCompleteSubmissionPackage(): bool
+    {
+        return $this->hasImetaFormData()
+            && $this->hasBmefFile()
+            && $this->hasSmeaFile();
     }
 }

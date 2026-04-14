@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
-import type { FormSubmissionHistoryEntry, IndicatorSubmission, SchoolRecord } from "@/types";
+import type { FormSubmissionHistoryEntry, IndicatorSubmission, IndicatorSubmissionFileType, SchoolRecord } from "@/types";
 
 interface MonitorIndicatorPanelProps {
   schoolFilterKeys?: Set<string> | null;
@@ -40,7 +40,10 @@ type DistrictRegionFilter = "all" | `district:${string}` | `region:${string}`;
 type AssignedReviewerFilter = "all" | "unassigned" | string;
 type ReviewDecisionAction = "validated" | "returned" | "clarification" | "escalated";
 type ReviewSavedView = "needs_action" | "my_queue" | "unassigned" | "overdue_72h" | "returned_today";
-type DetailTab = "overview" | "checklist" | "history";
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+type DetailTab = "overview" | "imeta" | "bmef" | "smea" | "history";
 type QueueDensity = "comfortable" | "compact";
 
 interface ReviewQueueRow {
@@ -187,6 +190,13 @@ function formatHours(value: number | null): string {
 
 function formatDays(value: number): string {
   return `${value} day${value === 1 ? "" : "s"}`;
+}
+
+function formatFileSize(sizeBytes: number | null): string {
+  if (!sizeBytes || sizeBytes <= 0) return "N/A";
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function normalizeSchoolKey(schoolCode: string | null | undefined, schoolName: string | null | undefined): string {
@@ -398,14 +408,17 @@ export function MonitorIndicatorPanel({
 }: MonitorIndicatorPanelProps) {
   const { username } = useAuth();
   const {
-    submissions,
+    submissions: submissionSnapshot,
+    allSubmissions,
     isLoading,
+    isAllSubmissionsLoading,
     isSaving,
     error,
     lastSyncedAt,
     refreshSubmissions,
     reviewSubmission,
     loadHistory,
+    downloadSubmissionFile,
   } = useIndicatorData();
 
   const [actionMessage, setActionMessage] = useState("");
@@ -440,6 +453,8 @@ export function MonitorIndicatorPanel({
   const [activeSavedView, setActiveSavedView] = useState<ReviewSavedView | null>(null);
   const [queueDensity, setQueueDensity] = useState<QueueDensity>("comfortable");
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
+  const [detailFileDownloadError, setDetailFileDownloadError] = useState("");
+  const [downloadingFileType, setDownloadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
   const filteredRowsRef = useRef<ReviewQueueRow[]>([]);
 
   useEffect(() => {
@@ -480,6 +495,11 @@ export function MonitorIndicatorPanel({
     setBatchReviewer(username.trim());
   }, [batchReviewer, username]);
 
+  const submissions = useMemo(
+    () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
+    [allSubmissions, submissionSnapshot],
+  );
+  const isSubmissionDataLoading = isLoading || isAllSubmissionsLoading;
   const selectedIdSet = useMemo(() => new Set(selectedSubmissionIds), [selectedSubmissionIds]);
 
   const visibleSubmissions = useMemo(() => {
@@ -917,6 +937,25 @@ export function MonitorIndicatorPanel({
       onSchoolFocusChange?.(row.schoolKey, row.schoolName);
     }
     void ensureHistoryLoaded(row.submission.id);
+  };
+
+  useEffect(() => {
+    setDetailFileDownloadError("");
+  }, [detailSubmissionId, detailTab]);
+
+  const handleDownloadDetailFile = async (submissionId: string, type: IndicatorSubmissionFileType) => {
+    setDetailFileDownloadError("");
+    setDownloadingFileType(type);
+
+    try {
+      await downloadSubmissionFile(submissionId, type);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`;
+      setDetailFileDownloadError(message);
+      onToast?.(message, "warning");
+    } finally {
+      setDownloadingFileType(null);
+    }
   };
 
   useEffect(() => {
@@ -1832,7 +1871,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => void runBulkReviewAction("validated")}
-                      disabled={isBulkActionRunning || isSaving || isLoading || selectedActionableRows.length === 0}
+                      disabled={isBulkActionRunning || isSaving || isSubmissionDataLoading || selectedActionableRows.length === 0}
                       className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1841,7 +1880,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => void runBulkReviewAction("returned")}
-                      disabled={isBulkActionRunning || isSaving || isLoading || selectedActionableRows.length === 0}
+                      disabled={isBulkActionRunning || isSaving || isSubmissionDataLoading || selectedActionableRows.length === 0}
                       className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
@@ -1961,7 +2000,7 @@ export function MonitorIndicatorPanel({
                             <button
                               type="button"
                               onClick={() => openReviewAction(row.submission, "validated")}
-                              disabled={isSaving || isLoading}
+                              disabled={isSaving || isSubmissionDataLoading}
                               className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               <CheckCircle2 className="h-3 w-3" />
@@ -1972,7 +2011,7 @@ export function MonitorIndicatorPanel({
                                 <button
                                   type="button"
                                   onClick={() => openReviewAction(row.submission, "returned")}
-                                  disabled={isSaving || isLoading}
+                                  disabled={isSaving || isSubmissionDataLoading}
                                   className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
                                 >
                                   <RotateCcw className="h-3 w-3" />
@@ -1981,7 +2020,7 @@ export function MonitorIndicatorPanel({
                                 <button
                                   type="button"
                                   onClick={() => openReviewAction(row.submission, "clarification")}
-                                  disabled={isSaving || isLoading}
+                                  disabled={isSaving || isSubmissionDataLoading}
                                   className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
                                 >
                                   <AlertCircle className="h-3 w-3" />
@@ -1990,7 +2029,7 @@ export function MonitorIndicatorPanel({
                                 <button
                                   type="button"
                                   onClick={() => openReviewAction(row.submission, "escalated")}
-                                  disabled={isSaving || isLoading}
+                                  disabled={isSaving || isSubmissionDataLoading}
                                   className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
                                 >
                                   <Send className="h-3 w-3" />
@@ -2010,10 +2049,10 @@ export function MonitorIndicatorPanel({
                         </button>
                         <button
                           type="button"
-                          onClick={() => openDetails(row, "checklist")}
+                          onClick={() => openDetails(row, "imeta")}
                           className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
                         >
-                          Checklist
+                          I-META
                         </button>
                         {isSubmitted && !isSelected && (
                           <span className="text-[10px] font-medium text-slate-500">Select row for more actions</span>
@@ -2074,6 +2113,9 @@ export function MonitorIndicatorPanel({
 
             <div className="border-b border-slate-200 px-5 py-3">
               <div className="flex flex-wrap items-center gap-2">
+                {/* NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET */}
+                {/* 4-tab layout (School Achievements | Key Performance | BMEF | SMEA) */}
+                {/* Monitor & School Head views updated for DepEd standards */}
                 <button
                   type="button"
                   onClick={() => setDetailTab("overview")}
@@ -2087,14 +2129,36 @@ export function MonitorIndicatorPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDetailTab("checklist")}
+                  onClick={() => setDetailTab("imeta")}
                   className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                    detailTab === "checklist"
+                    detailTab === "imeta"
                       ? "border-primary-200 bg-primary-50 text-primary-700"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                   }`}
                 >
-                  Checklist
+                  I-META
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("bmef")}
+                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    detailTab === "bmef"
+                      ? "border-primary-200 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  BMEF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("smea")}
+                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                    detailTab === "smea"
+                      ? "border-primary-200 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  SMEA
                 </button>
                 <button
                   type="button"
@@ -2216,10 +2280,10 @@ export function MonitorIndicatorPanel({
               </>
             )}
 
-            {detailTab === "checklist" && (
+            {detailTab === "imeta" && (
               <div className="px-5 py-4">
                 <article className="rounded-sm border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Indicator Checklist</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">I-META Indicator Checklist</p>
                   <p className="mt-1 text-xs text-slate-500">
                     Submitted indicators: <span className="font-semibold text-slate-700">{detailRow.metIndicatorCount}/{detailRow.indicatorCount}</span> met
                     {" "}({detailRow.complianceRatePercent.toFixed(2)}% compliance)
@@ -2283,6 +2347,70 @@ export function MonitorIndicatorPanel({
               </div>
             )}
 
+            {(detailTab === "bmef" || detailTab === "smea") && (() => {
+              const fileType: IndicatorSubmissionFileType = detailTab === "bmef" ? "bmef" : "smea";
+              const fileLabel = fileType === "bmef" ? "BMEF" : "SMEA";
+              const fileEntry = detailRow.submission.files?.[fileType] ?? null;
+              const isUploaded = Boolean(fileEntry?.uploaded);
+              const isDownloading = downloadingFileType === fileType;
+
+              return (
+                <div className="px-5 py-4">
+                  <article className="rounded-sm border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{fileLabel} Document</p>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          isUploaded
+                            ? "border border-primary-300 bg-primary-50 text-primary-700"
+                            : "border border-amber-300 bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {isUploaded ? "Submitted" : "Not Submitted"}
+                      </span>
+                    </div>
+
+                    {isUploaded ? (
+                      <div className="mt-2 rounded-sm border border-primary-200 bg-primary-50/50 p-3">
+                        <p className="text-xs font-semibold text-slate-900">{fileEntry?.originalFilename || `${fileLabel} file`}</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Uploaded: {formatDateTime(fileEntry?.uploadedAt ?? null)} | Size: {formatFileSize(fileEntry?.sizeBytes ?? null)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadDetailFile(detailRow.submission.id, fileType)}
+                          disabled={isSaving || isSubmissionDataLoading || isDownloading}
+                          className="mt-2 inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          {isDownloading ? "Downloading..." : `Download ${fileLabel}`}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        No {fileLabel} file uploaded for this package yet.
+                      </p>
+                    )}
+
+                    {detailFileDownloadError && (
+                      <p className="mt-2 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                        {detailFileDownloadError}
+                      </p>
+                    )}
+                  </article>
+
+                  <article className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Review Notes</p>
+                    <p className="mt-2 text-xs text-slate-700">
+                      {detailRow.submission.reviewNotes?.trim().length
+                        ? detailRow.submission.reviewNotes
+                        : "No review notes recorded yet for this package."}
+                    </p>
+                  </article>
+                </div>
+              );
+            })()}
+
             {detailTab === "history" && (
               <div className="px-5 py-4">
                 <article className="rounded-sm border border-slate-200 bg-white p-3">
@@ -2330,7 +2458,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => void sendDetailReminder()}
-                      disabled={isDetailReminderSending || isSaving || isLoading}
+                      disabled={isDetailReminderSending || isSaving || isSubmissionDataLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <Mail className="h-3 w-3" />
@@ -2339,7 +2467,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => openReviewAction(detailRow.submission, "returned")}
-                      disabled={detailRow.status !== "submitted" || isSaving || isLoading}
+                      disabled={detailRow.status !== "submitted" || isSaving || isSubmissionDataLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <RotateCcw className="h-3 w-3" />
@@ -2348,7 +2476,7 @@ export function MonitorIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => openReviewAction(detailRow.submission, "validated")}
-                      disabled={detailRow.status !== "submitted" || isSaving || isLoading}
+                      disabled={detailRow.status !== "submitted" || isSaving || isSubmissionDataLoading}
                       className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <CheckCircle2 className="h-3 w-3" />
@@ -2462,7 +2590,7 @@ export function MonitorIndicatorPanel({
                 <button
                   type="button"
                   onClick={() => void runReviewAction()}
-                  disabled={isReviewActionRunning || isSaving || isLoading}
+                  disabled={isReviewActionRunning || isSaving || isSubmissionDataLoading}
                   className="inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isReviewActionRunning ? (

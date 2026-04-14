@@ -16,10 +16,13 @@ use App\Models\Student;
 use App\Models\User;
 use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolSubmissionReminderNotification;
+use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
-use App\Support\Auth\SchoolHeadAccountSetupService;
+use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
+use App\Support\Domain\SchoolStatus;
+use App\Support\Domain\StudentStatus;
 use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
 use Carbon\Carbon;
@@ -27,7 +30,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -35,8 +40,13 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SchoolRecordController extends Controller
 {
+    private static ?bool $usersHaveDeleteRecordFlagsCache = null;
+
+    private static ?bool $usersHaveAccountTypeColumnCache = null;
+
     public function __construct(
-        private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
+        private readonly SchoolHeadAccountLifecycleService $schoolHeadAccountLifecycleService,
+        private readonly FilterService $filterService,
     ) {
     }
 
@@ -49,6 +59,7 @@ class SchoolRecordController extends Controller
 
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
+        $filters = $this->filterService->extract($request);
 
         $scope = $isSchoolHead ? 'school' : 'division';
         $scopeKey = $scope === 'division' ? 'division:all' : 'school:unassigned';
@@ -64,6 +75,13 @@ class SchoolRecordController extends Controller
         } elseif (! $isMonitor) {
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
+
+        $this->filterService->apply($baseQuery, $filters, [
+            'school_column' => 'id',
+            'date_column' => 'submitted_at',
+            'search_columns' => ['school_code', 'name', 'level', 'district', 'address', 'region', 'type'],
+        ]);
+        $scopeKey .= '|' . $this->filterService->buildCacheKey($filters);
 
         $syncFingerprint = $this->buildSyncFingerprint(clone $baseQuery);
         $recordCount = $syncFingerprint['recordCount'];
@@ -105,16 +123,12 @@ class SchoolRecordController extends Controller
                     'flagged_reason',
                 ];
 
-                if (Schema::hasColumn('users', 'delete_record_flagged_at')) {
+                if ($this->usersHaveDeleteRecordFlags()) {
                     $columns[] = 'delete_record_flagged_at';
                     $columns[] = 'delete_record_flag_reason';
                 }
 
                 $query->select($columns);
-
-                if (Schema::hasTable('account_setup_tokens')) {
-                    $query->with('latestAccountSetupToken');
-                }
             }])
             ->withCount('students')
             ->orderByDesc('submitted_at')
@@ -303,10 +317,6 @@ class SchoolRecordController extends Controller
                     'flagged_at',
                     'flagged_reason',
                 ]);
-
-                if (Schema::hasTable('account_setup_tokens')) {
-                    $query->with('latestAccountSetupToken');
-                }
             }])
             ->withCount('students')
             ->orderByDesc('deleted_at')
@@ -361,15 +371,14 @@ class SchoolRecordController extends Controller
             );
         }
 
-        foreach ($schoolHeads as $schoolHead) {
-            $schoolHead->notify(
-                new SchoolSubmissionReminderNotification(
-                    $school,
-                    $monitor,
-                    $notes !== '' ? $notes : null,
-                ),
-            );
-        }
+        Notification::send(
+            $schoolHeads,
+            new SchoolSubmissionReminderNotification(
+                $school,
+                $monitor,
+                $notes !== '' ? $notes : null,
+            ),
+        );
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -427,13 +436,28 @@ class SchoolRecordController extends Controller
         $skipped = 0;
         $failed = 0;
         $results = [];
+        $upsertRows = [];
+
+        $normalizedSchoolCodes = [];
+        foreach ($rows as $row) {
+            $candidate = trim((string) ($row['schoolId'] ?? ''));
+            if (preg_match('/^\d{6}$/', $candidate) === 1) {
+                $normalizedSchoolCodes[strtolower($candidate)] = true;
+            }
+        }
+
+        $existingSchoolsByCode = collect();
+        if ($normalizedSchoolCodes !== []) {
+            $existingSchoolsByCode = School::withTrashed()
+                ->whereIn('school_code_normalized', array_keys($normalizedSchoolCodes))
+                ->get()
+                ->keyBy(static fn (School $school): string => (string) $school->school_code_normalized);
+        }
 
         foreach ($rows as $index => $row) {
             try {
                 $schoolCode = $this->normalizeSchoolCode((string) ($row['schoolId'] ?? ''));
-                $school = School::withTrashed()
-                    ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
-                    ->first();
+                $school = $existingSchoolsByCode->get(strtolower($schoolCode));
 
                 $action = 'created';
                 if ($school) {
@@ -449,7 +473,6 @@ class SchoolRecordController extends Controller
                             continue;
                         }
 
-                        $school->restore();
                         $restored++;
                         $action = 'restored';
                     } elseif (! $updateExisting) {
@@ -470,12 +493,16 @@ class SchoolRecordController extends Controller
                     $created++;
                 }
 
-                $this->applyArrayPayload($school, $row, $user);
+                $upsertRows[$schoolCode] = $this->schoolAttributesFromArrayPayload(
+                    $row,
+                    $user,
+                    $school?->getRawOriginal('created_at'),
+                );
 
                 $results[] = [
                     'row' => $index + 1,
                     'schoolId' => $schoolCode,
-                    'schoolName' => (string) $school->name,
+                    'schoolName' => (string) ($upsertRows[$schoolCode]['name'] ?? ''),
                     'action' => $action,
                 ];
             } catch (\Throwable $exception) {
@@ -487,6 +514,39 @@ class SchoolRecordController extends Controller
                     'message' => $exception->getMessage(),
                 ];
             }
+        }
+
+        if ($upsertRows !== []) {
+            School::query()->upsert(
+                array_values($upsertRows),
+                ['school_code_normalized'],
+                [
+                    'school_code',
+                    'name',
+                    'level',
+                    'type',
+                    'address',
+                    'district',
+                    'region',
+                    'status',
+                    'reported_student_count',
+                    'reported_teacher_count',
+                    'submitted_by',
+                    'submitted_at',
+                    'deleted_at',
+                    'updated_at',
+                ],
+            );
+
+            $affectedSchoolIds = School::query()
+                ->whereIn(
+                    'school_code_normalized',
+                    array_map(static fn (string $code): string => strtolower($code), array_keys($upsertRows)),
+                )
+                ->pluck('id')
+                ->all();
+
+            $this->syncSchoolStudentCounts($affectedSchoolIds);
         }
 
         $syncMeta = $this->buildSyncMetadataForUser($user);
@@ -556,8 +616,15 @@ class SchoolRecordController extends Controller
     private function storeAsMonitor(UpsertSchoolRecordRequest $request, User $user): JsonResponse
     {
         $schoolCode = $this->normalizeSchoolCode($request->string('schoolId')->toString());
+
+        if ($request->filled('schoolHeadAccount') && ! $this->schoolHeadAccountLifecycleService->storageAvailable()) {
+            throw ValidationException::withMessages([
+                'schoolHeadAccount' => 'Account setup link storage is unavailable. Check database migrations and cache configuration before provisioning a School Head account.',
+            ]);
+        }
+
         $existing = School::withTrashed()
-            ->whereRaw('UPPER(school_code) = ?', [$schoolCode])
+            ->where('school_code_normalized', strtolower($schoolCode))
             ->first();
 
         if ($existing && ! $existing->trashed()) {
@@ -586,12 +653,23 @@ class SchoolRecordController extends Controller
 
     private function applyPayload(School $school, UpsertSchoolRecordRequest $request, User $user): void
     {
+        $currentStatus = is_string($school->status) && $school->status !== ''
+            ? $school->status
+            : SchoolStatus::ACTIVE->value;
+
         $school->fill([
-            'status' => $request->string('status')->toString(),
-            'reported_teacher_count' => $request->integer('teacherCount'),
+            'status' => $request->filled('status')
+                ? $request->string('status')->toString()
+                : $currentStatus,
             'submitted_by' => $user->id,
             'submitted_at' => now(),
         ]);
+
+        if ($request->has('teacherCount')) {
+            $school->reported_teacher_count = $request->integer('teacherCount');
+        } elseif (! $school->exists && $school->reported_teacher_count === null) {
+            $school->reported_teacher_count = 0;
+        }
 
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
 
@@ -639,7 +717,20 @@ class SchoolRecordController extends Controller
     /**
      * @param array<string, mixed> $payload
      */
-    private function applyArrayPayload(School $school, array $payload, User $user): void
+    private function applyArrayPayload(School $school, array $payload, User $user, bool $syncStudentCount = true): void
+    {
+        $this->fillSchoolFromArrayPayload($school, $payload, $user);
+        $school->save();
+
+        if ($syncStudentCount) {
+            $this->syncSchoolStudentCount($school);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function fillSchoolFromArrayPayload(School $school, array $payload, User $user): void
     {
         $schoolCode = $this->normalizeSchoolCode((string) ($payload['schoolId'] ?? ''));
         $schoolName = trim((string) ($payload['schoolName'] ?? ''));
@@ -661,8 +752,38 @@ class SchoolRecordController extends Controller
         $school->reported_teacher_count = (int) ($payload['teacherCount'] ?? 0);
         $school->submitted_by = $user->id;
         $school->submitted_at = now();
-        $school->save();
-        $this->syncSchoolStudentCount($school);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private function schoolAttributesFromArrayPayload(array $payload, User $user, mixed $createdAt = null): array
+    {
+        $school = new School();
+        $this->fillSchoolFromArrayPayload($school, $payload, $user);
+        $timestamp = now();
+        $schoolCode = (string) $school->school_code;
+
+        return [
+            'school_code' => $schoolCode,
+            'school_code_normalized' => strtolower($schoolCode),
+            'name' => (string) $school->name,
+            'level' => (string) $school->level,
+            'type' => (string) $school->type,
+            'address' => (string) $school->address,
+            'district' => (string) $school->district,
+            'region' => (string) $school->region,
+            'status' => (string) $school->status,
+            'reported_student_count' => 0,
+            'reported_teacher_count' => (int) $school->reported_teacher_count,
+            'submitted_by' => $user->id,
+            'submitted_at' => $school->submitted_at,
+            'deleted_at' => null,
+            'created_at' => $createdAt ?? $timestamp,
+            'updated_at' => $timestamp,
+        ];
     }
 
     private function createSchoolHeadAccountIfRequested(School $school, UpsertSchoolRecordRequest $request): ?array
@@ -688,28 +809,15 @@ class SchoolRecordController extends Controller
             return null;
         }
 
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            abort(
-                Response::HTTP_SERVICE_UNAVAILABLE,
-                'Account setup token storage is unavailable. Run database migrations first.',
-            );
-        }
-
         if (User::query()->where('email_normalized', $email)->exists()) {
             throw ValidationException::withMessages([
                 'schoolHeadAccount.email' => 'A user account with this email already exists.',
             ]);
         }
 
-        $duplicateQuery = User::query()->where('school_id', $school->id);
-        if (Schema::hasColumn('users', 'account_type')) {
-            $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
-        } else {
-            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
-            $duplicateQuery->whereHas('roles', static function ($builder) use ($aliases): void {
-                $builder->whereIn('name', $aliases);
-            });
-        }
+        $duplicateQuery = $this->schoolHeadAccountLifecycleService
+            ->schoolHeadCandidatesQuery()
+            ->where('school_id', $school->id);
 
         if ($duplicateQuery->exists()) {
             throw ValidationException::withMessages([
@@ -725,18 +833,25 @@ class SchoolRecordController extends Controller
         $account->password_changed_at = null;
         $account->account_status = AccountStatus::PENDING_SETUP->value;
         $account->school_id = $school->id;
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
         $account->save();
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
+        $this->schoolHeadAccountLifecycleService->synchronizeSchoolHeadIdentity($account);
 
-        $issuedSetup = $this->schoolHeadAccountSetupService->issue(
+        $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
             $account,
             $monitor,
             $request->ip(),
             $request->userAgent(),
         );
+
+        if (($issuedSetup['status'] ?? null) !== 'issued') {
+            throw ValidationException::withMessages([
+                'schoolHeadAccount' => 'Account setup link storage is unavailable. Check database migrations and cache configuration before provisioning a School Head account.',
+            ]);
+        }
 
         $deliveryStatus = 'sent';
         $deliveryMessage = 'Setup link sent to the School Head email.';
@@ -749,8 +864,8 @@ class SchoolRecordController extends Controller
             $account->notify(
                 new SchoolHeadAccountSetupNotification(
                     $school,
-                    $issuedSetup['setupUrl'],
-                    CarbonImmutable::parse($issuedSetup['expiresAt']),
+                    $issuedSetup['setup']['setupUrl'],
+                    CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
                 ),
             );
         } catch (\Throwable $exception) {
@@ -773,7 +888,7 @@ class SchoolRecordController extends Controller
                 'account_status' => $account->accountStatus()->value,
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
-                'setup_link_expires_at' => $issuedSetup['expiresAt'],
+                'setup_link_expires_at' => $issuedSetup['setup']['expiresAt'],
                 'delivery_status' => $deliveryStatus,
                 'delivery_message' => $deliveryMessage,
                 'reason' => 'account_created',
@@ -789,7 +904,7 @@ class SchoolRecordController extends Controller
             'email' => $account->email,
             'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
+            'setupLinkExpiresAt' => $issuedSetup['setup']['expiresAt'],
             'setupLinkDelivery' => $deliveryStatus,
             'setupLinkDeliveryMessage' => $deliveryMessage,
         ];
@@ -872,10 +987,6 @@ class SchoolRecordController extends Controller
                         'flagged_at',
                         'flagged_reason',
                     ]);
-
-                    if (Schema::hasTable('account_setup_tokens')) {
-                        $query->with('latestAccountSetupToken');
-                    }
                 },
             ])))->resolve(),
             'meta' => array_merge([
@@ -1087,6 +1198,52 @@ class SchoolRecordController extends Controller
     }
 
     /**
+     * @param array<int, int|string> $schoolIds
+     */
+    private function syncSchoolStudentCounts(array $schoolIds): void
+    {
+        $normalizedIds = collect($schoolIds)
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($normalizedIds->isEmpty()) {
+            return;
+        }
+
+        $countsBySchoolId = Student::query()
+            ->selectRaw('school_id, COUNT(*) as aggregate_count')
+            ->whereIn('school_id', $normalizedIds->all())
+            ->groupBy('school_id')
+            ->pluck('aggregate_count', 'school_id');
+
+        $normalizedIds->chunk(100)->each(function ($chunk) use ($countsBySchoolId): void {
+            $cases = [];
+            $bindings = [];
+            $chunkIds = $chunk->all();
+
+            foreach ($chunkIds as $schoolId) {
+                $cases[] = 'WHEN ? THEN ?';
+                $bindings[] = $schoolId;
+                $bindings[] = (int) $countsBySchoolId->get($schoolId, 0);
+            }
+
+            $placeholders = implode(', ', array_fill(0, count($chunkIds), '?'));
+            foreach ($chunkIds as $schoolId) {
+                $bindings[] = $schoolId;
+            }
+
+            DB::update(
+                'UPDATE schools SET reported_student_count = CASE id '
+                . implode(' ', $cases)
+                . ' END WHERE id IN (' . $placeholders . ')',
+                $bindings,
+            );
+        });
+    }
+
+    /**
      * @param array<string, int|float|null|string> $targetsMet
      *
      * @return array<int, array<string, int|float|string|null>>
@@ -1216,6 +1373,7 @@ class SchoolRecordController extends Controller
      *     sectionCount: int,
      *     studentCount: int,
      *     indicatorSubmissionCount: int,
+     *     studentStatusSignature: string,
      *     latestAt: ?Carbon
      * }
      */
@@ -1233,6 +1391,7 @@ class SchoolRecordController extends Controller
         $sectionCount = 0;
         $studentCount = 0;
         $indicatorSubmissionCount = 0;
+        $studentStatusSignature = '';
         $latestSectionUpdatedAt = null;
         $latestStudentUpdatedAt = null;
         $latestStudentStatusAt = null;
@@ -1260,6 +1419,19 @@ class SchoolRecordController extends Controller
             $studentCount = (int) ($studentProbe?->aggregate_count ?? 0);
             $latestStudentUpdatedAt = $studentProbe?->latest_updated_at;
             $latestStudentStatusAt = $studentProbe?->latest_status_changed_at;
+            $studentStatusSignature = Student::query()
+                ->whereIn('school_id', $schoolIds)
+                ->selectRaw('status, COUNT(*) as aggregate_count')
+                ->groupBy('status')
+                ->orderBy('status')
+                ->get()
+                ->map(static function (object $row): string {
+                    $status = $row->status;
+                    $statusValue = $status instanceof StudentStatus ? $status->value : (string) $status;
+
+                    return sprintf('%s:%d', $statusValue, (int) $row->aggregate_count);
+                })
+                ->implode(',');
 
             $indicatorProbe = IndicatorSubmission::query()
                 ->whereIn('school_id', $schoolIds)
@@ -1291,6 +1463,7 @@ class SchoolRecordController extends Controller
             'sectionCount' => $sectionCount,
             'studentCount' => $studentCount,
             'indicatorSubmissionCount' => $indicatorSubmissionCount,
+            'studentStatusSignature' => $studentStatusSignature,
             'latestAt' => $latestAt,
         ];
     }
@@ -1301,6 +1474,7 @@ class SchoolRecordController extends Controller
      *     sectionCount: int,
      *     studentCount: int,
      *     indicatorSubmissionCount: int,
+     *     studentStatusSignature: string,
      *     latestAt: ?Carbon
      * } $syncFingerprint
      */
@@ -1313,6 +1487,7 @@ class SchoolRecordController extends Controller
             (string) $syncFingerprint['sectionCount'],
             (string) $syncFingerprint['studentCount'],
             (string) $syncFingerprint['indicatorSubmissionCount'],
+            (string) $syncFingerprint['studentStatusSignature'],
             $syncFingerprint['latestAt']?->format('U.u') ?? '0',
         ]));
     }
@@ -1326,6 +1501,32 @@ class SchoolRecordController extends Controller
         }
 
         return min($perPage, $max);
+    }
+
+    private function usersHaveDeleteRecordFlags(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'delete_record_flagged_at');
+        }
+
+        if (self::$usersHaveDeleteRecordFlagsCache === null) {
+            self::$usersHaveDeleteRecordFlagsCache = Schema::hasColumn('users', 'delete_record_flagged_at');
+        }
+
+        return self::$usersHaveDeleteRecordFlagsCache;
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHaveAccountTypeColumnCache === null) {
+            self::$usersHaveAccountTypeColumnCache = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHaveAccountTypeColumnCache;
     }
 
     private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon

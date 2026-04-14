@@ -7,7 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { stopRealtimeBridge } from "@/lib/realtime";
+import { clearClientSessionArtifacts } from "@/lib/sessionCleanup";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
 
 interface LoginInput {
@@ -67,7 +69,7 @@ interface CompleteMonitorMfaResetInput {
   approvalToken: string;
 }
 
-interface CompleteMonitorMfaResetResponse {
+interface CompleteMonitorMfaResetResponse extends BearerTokenAuthPayload {
   user: SessionUser;
   backupCodes?: string[];
   message?: string;
@@ -93,13 +95,24 @@ interface LoginResultMfaRequired {
 
 type LoginResult = LoginResultAuthenticated | LoginResultMfaRequired;
 
+interface BearerTokenAuthPayload {
+  token?: string | null;
+  tokenType?: string | null;
+  expiresAt?: string | null;
+  refreshAfter?: string | null;
+}
+
 interface AuthContextType {
   role: UserRole;
   username: string;
   user: SessionUser | null;
+  authError: string;
+  authErrorCode: number | null;
+  accountStatus: string | null;
   isLoading: boolean;
   isAuthenticating: boolean;
   isLoggingOut: boolean;
+  clearAuthError: () => void;
   login: (input: LoginInput) => Promise<LoginResult>;
   verifyMfa: (input: VerifyMonitorMfaInput) => Promise<void>;
   requestMonitorPasswordReset: (
@@ -109,7 +122,7 @@ interface AuthContextType {
   resetMonitorPassword: (input: ResetMonitorPasswordInput) => Promise<ResetMonitorPasswordResponse>;
   requestMonitorMfaReset: (input: RequestMonitorMfaResetInput) => Promise<RequestMonitorMfaResetResponse>;
   completeMonitorMfaReset: (input: CompleteMonitorMfaResetInput) => Promise<CompleteMonitorMfaResetResult>;
-  completeAccountSetup: (input: CompleteAccountSetupInput) => Promise<void>;
+  completeAccountSetup: (input: CompleteAccountSetupInput) => Promise<string>;
   resetRequiredPassword: (input: LoginInput & { newPassword: string; confirmPassword: string }) => Promise<void>;
   logout: (options?: { force?: boolean }) => Promise<void>;
   listActiveSessions: () => Promise<ActiveSessionDevice[]>;
@@ -117,7 +130,7 @@ interface AuthContextType {
   revokeOtherSessions: () => Promise<{ revokedTokenCount: number; revokedWebSessionCount: number }>;
 }
 
-interface AuthenticatedResponse {
+interface AuthenticatedResponse extends BearerTokenAuthPayload {
   user: SessionUser;
 }
 
@@ -138,12 +151,10 @@ interface MeResponse {
   user: SessionUser;
 }
 
-interface ResetRequiredPasswordResponse {
-  user: SessionUser;
-}
+type ResetRequiredPasswordResponse = AuthenticatedResponse;
 
 interface CompleteAccountSetupResponse {
-  user: SessionUser;
+  message?: string;
 }
 
 interface ActiveSessionsResponse {
@@ -158,6 +169,10 @@ interface RevokeOtherSessionsResponse {
     revokedTokenCount?: number;
     revokedWebSessionCount?: number;
   };
+}
+
+interface AuthErrorPayload {
+  accountStatus?: string;
 }
 
 function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequiredResponse {
@@ -182,11 +197,38 @@ function normalizeUser(user: SessionUser): SessionUser {
   };
 }
 
+function assertCookieSessionAuthResponse(payload: BearerTokenAuthPayload, operationLabel: string): void {
+  if (typeof payload.token === "string" && payload.token.trim().length > 0) {
+    throw new Error(
+      `Backend returned bearer-token auth during ${operationLabel}. This frontend expects Sanctum cookie-session auth. Check VITE_API_BASE_URL, SANCTUM_STATEFUL_DOMAINS, CORS_ALLOWED_ORIGINS, and session cookie settings.`,
+    );
+  }
+}
+
+function finalizeClientLogout(
+  setUser: (user: SessionUser | null) => void,
+  clearAuthError: () => void,
+): void {
+  stopRealtimeBridge();
+  clearClientSessionArtifacts();
+  setUser(null);
+  clearAuthError();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [authError, setAuthError] = useState("");
+  const [authErrorCode, setAuthErrorCode] = useState<number | null>(null);
+  const [accountStatus, setAccountStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const clearAuthError = useCallback(() => {
+    setAuthError("");
+    setAuthErrorCode(null);
+    setAccountStatus(null);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -197,16 +239,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const payload = await apiRequest<MeResponse>("/api/auth/me", {
           token: COOKIE_SESSION_TOKEN,
           signal: controller.signal,
+          timeoutMs: 30_000,
         });
 
         if (!active) return;
         setUser(normalizeUser(payload.user));
+        clearAuthError();
       } catch (err) {
         if (!active) return;
-        if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-          setUser(null);
+        if (isApiError(err)) {
+          if (err.status === 401) {
+            setUser(null);
+            setAuthError("");
+            setAuthErrorCode(401);
+            setAccountStatus(null);
+          } else if (err.status === 403) {
+            setUser(null);
+            setAuthError(err.message || "Your account cannot access the system right now.");
+            setAuthErrorCode(403);
+
+            const payload = err.payload as AuthErrorPayload | null;
+            setAccountStatus(typeof payload?.accountStatus === "string" ? payload.accountStatus : null);
+          } else {
+            setUser(null);
+            setAuthError(err.message || "Unable to restore your session.");
+            setAuthErrorCode(err.status);
+            setAccountStatus(null);
+          }
         } else if (!(err instanceof DOMException && err.name === "AbortError")) {
           setUser(null);
+          setAuthError("Unable to restore your session.");
+          setAuthErrorCode(null);
+          setAccountStatus(null);
         }
       } finally {
         if (active) {
@@ -221,7 +285,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [clearAuthError]);
 
   const login = useCallback(async ({ role, login: loginValue, password }: LoginInput): Promise<LoginResult> => {
     setIsAuthenticating(true);
@@ -229,6 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const payload = await apiRequest<LoginResponse>("/api/auth/login", {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
+        timeoutMs: 30_000,
         body: {
           role,
           login: loginValue,
@@ -251,8 +316,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
+      assertCookieSessionAuthResponse(payload, "login");
       const normalizedUser = normalizeUser(payload.user);
       setUser(normalizedUser);
+      clearAuthError();
 
       return {
         status: "authenticated",
@@ -261,7 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const verifyMfa = useCallback(async ({ role, login: loginValue, challengeId, code }: VerifyMonitorMfaInput) => {
     setIsAuthenticating(true);
@@ -277,11 +344,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
+      assertCookieSessionAuthResponse(payload, "MFA verification");
       setUser(normalizeUser(payload.user));
+      clearAuthError();
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const resetRequiredPassword = useCallback(
     async ({
@@ -305,12 +374,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        assertCookieSessionAuthResponse(payload, "required password reset");
         setUser(normalizeUser(payload.user));
+        clearAuthError();
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearAuthError],
   );
 
   const requestMonitorPasswordReset = useCallback(async (email: string, role: Exclude<UserRole, null> = "monitor") => {
@@ -332,7 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const resetMonitorPassword = useCallback(
     async ({ role, email, token, password, confirmPassword }: ResetMonitorPasswordInput) => {
@@ -411,7 +482,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        assertCookieSessionAuthResponse(payload, "MFA reset completion");
         setUser(normalizeUser(payload.user));
+        clearAuthError();
 
         return {
           backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
@@ -421,7 +494,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearAuthError],
   );
 
   const completeAccountSetup = useCallback(
@@ -438,30 +511,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        setUser(normalizeUser(payload.user));
+        clearAuthError();
+
+        return payload.message?.trim() || "Account setup completed. Await Division Monitor approval before sign-in.";
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [],
+    [clearAuthError],
   );
 
   const logout = useCallback(async (options?: { force?: boolean }) => {
     setIsLoggingOut(true);
     try {
-      await apiRequest<void>("/api/auth/logout", {
+      await apiRequestVoid("/api/auth/logout", {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
       });
-      setUser(null);
+      finalizeClientLogout(setUser, clearAuthError);
     } catch (err) {
       if (isApiError(err) && err.status === 401) {
-        setUser(null);
+        finalizeClientLogout(setUser, clearAuthError);
         return;
       }
 
       if (options?.force) {
-        setUser(null);
+        finalizeClientLogout(setUser, clearAuthError);
         return;
       }
 
@@ -469,7 +544,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoggingOut(false);
     }
-  }, []);
+  }, [clearAuthError]);
 
   const listActiveSessions = useCallback(async (): Promise<ActiveSessionDevice[]> => {
     if (!user) {
@@ -492,7 +567,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      await apiRequest<void>(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
+      await apiRequestVoid(`/api/auth/sessions/${encodeURIComponent(normalized)}`, {
         method: "DELETE",
         token: COOKIE_SESSION_TOKEN,
       });
@@ -521,9 +596,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: user?.role ?? null,
       username: user?.name ?? "",
       user,
+      authError,
+      authErrorCode,
+      accountStatus,
       isLoading,
       isAuthenticating,
       isLoggingOut,
+      clearAuthError,
       login,
       verifyMfa,
       requestMonitorPasswordReset,
@@ -539,9 +618,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
+      authError,
+      authErrorCode,
+      accountStatus,
       isLoading,
       isAuthenticating,
       isLoggingOut,
+      clearAuthError,
       login,
       verifyMfa,
       requestMonitorPasswordReset,

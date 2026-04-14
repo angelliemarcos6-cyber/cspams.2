@@ -93,7 +93,7 @@ class DemoDataSeeder extends Seeder
             );
         }
 
-        $monitor = User::query()->firstOrNew(['email' => 'monitor@cspams.local']);
+        $monitor = User::query()->firstOrNew(['email' => 'cspamsmonitor@gmail.com']);
         $monitorWasRecentlyCreated = ! $monitor->exists;
         $monitor->name = 'Division Monitor';
         $monitor->account_status = AccountStatus::ACTIVE->value;
@@ -114,13 +114,21 @@ class DemoDataSeeder extends Seeder
             $head->name = 'School Head ' . ($index + 1);
             $head->school_id = $school->id;
             $head->account_type = UserRoleResolver::SCHOOL_HEAD;
+
+            // School 900001 is kept active as a quick demo shortcut.
+            // All other School Head accounts start at pending_setup and must complete
+            // the full lifecycle: pending_setup → pending_verification → active.
             $head->account_status = AccountStatus::ACTIVE->value;
 
             if ($headWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
                 $head->password = Hash::make($this->demoPasswordForKey('school:' . strtoupper((string) $school->school_code)));
+
                 $head->must_reset_password = false;
                 $head->password_changed_at = now();
                 $head->email_verified_at = now();
+                $head->verified_by_user_id = $monitor->id;
+                $head->verified_at = now();
+                $head->verification_notes = 'Seeded demo account approved by Division Monitor.';
             }
 
             $head->save();

@@ -38,7 +38,7 @@ interface NotificationContextType {
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
-const AUTO_SYNC_INTERVAL_MS = 20_000;
+const AUTO_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_PER_PAGE = 40;
 
 function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications: AppNotification[]): AppNotificationListMeta {
@@ -55,7 +55,7 @@ function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications:
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -63,17 +63,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [isSyncActive, setIsSyncActive] = useState(false);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
-      if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout({ force: true });
-        return;
+      if (isApiError(err)) {
+        if (err.status === 401) {
+          setError("Authentication check failed. Please refresh and sign in again if needed.");
+          return;
+        }
+
+        if (err.status === 403) {
+          setError(err.message || "You do not have permission to access notifications.");
+          return;
+        }
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [logout],
+    [],
   );
 
   const syncNotifications = useCallback(
@@ -84,6 +92,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setError("");
         setLastSyncedAt(null);
         setIsLoading(false);
+        setIsSyncActive(false);
         return;
       }
 
@@ -114,6 +123,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 
   const refreshNotifications = useCallback(async () => {
+    setIsSyncActive(true);
     await syncNotifications(false);
   }, [syncNotifications]);
 
@@ -160,13 +170,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [token, handleApiError]);
 
   useEffect(() => {
-    void syncNotifications(false);
-  }, [syncNotifications]);
-
-  useEffect(() => {
-    if (!token) return;
+    if (!token || !isSyncActive) return;
 
     const interval = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       void syncNotifications(true);
     }, AUTO_SYNC_INTERVAL_MS);
 
@@ -193,7 +202,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", syncOnFocus);
       window.removeEventListener("cspams:update", syncOnRealtime);
     };
-  }, [token, syncNotifications]);
+  }, [isSyncActive, token, syncNotifications]);
 
   const value = useMemo<NotificationContextType>(
     () => ({

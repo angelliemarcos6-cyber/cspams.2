@@ -44,6 +44,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    private static ?bool $usersHasAccountTypeColumn = null;
+
+    private static ?bool $sessionsTableExistsCache = null;
+
+    private static ?bool $mfaResetTicketsTableExistsCache = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
     ) {
@@ -481,16 +487,50 @@ class AuthController extends Controller
             );
         }
 
-        if (! $user->canAuthenticate() && ! $user->must_reset_password) {
-            if (($inactiveResponse = $this->rejectInactiveAccount(
+        $status = null;
+
+        if (! $user->canAuthenticate()) {
+            $status = $user->accountStatus();
+            $canCompleteForcedResetWhileInactive = $user->must_reset_password
+                && in_array($status, [AccountStatus::SUSPENDED, AccountStatus::LOCKED], true);
+
+            if ($canCompleteForcedResetWhileInactive) {
+                $status = null;
+            }
+        }
+
+        if ($status instanceof AccountStatus) {
+
+            $resetMessage = match ($status) {
+                AccountStatus::PENDING_SETUP => 'This account has not completed setup yet. Use the setup link sent by your Division Monitor.',
+                AccountStatus::PENDING_VERIFICATION => 'This account is waiting for Division Monitor activation. Password reset is not available until activation.',
+                default => $this->inactiveAccountMessage($status),
+            };
+
+            AuthAuditLogger::record(
                 $request,
+                'auth.reset_password.failed',
+                'failure',
                 $user,
                 $role,
                 $email,
-                'auth.reset_password.failed',
-            )) instanceof JsonResponse) {
-                return $inactiveResponse;
+                [
+                    'reason' => 'account_not_active',
+                    'account_status' => $status->value,
+                ],
+            );
+
+            $payload = ['message' => $resetMessage, 'accountStatus' => $status->value];
+
+            if ($status === AccountStatus::PENDING_SETUP) {
+                $payload['requiresAccountSetup'] = true;
             }
+
+            if ($status === AccountStatus::PENDING_VERIFICATION) {
+                $payload['requiresMonitorApproval'] = true;
+            }
+
+            return response()->json($payload, Response::HTTP_FORBIDDEN);
         }
 
         $revocationSummary = ['revokedTokens' => 0, 'revokedWebSessions' => 0];
@@ -813,7 +853,7 @@ class AuthController extends Controller
         $user = $setupToken->user()->with('school')->first();
         $supportsAccountSetup = false;
         if ($user) {
-            if (Schema::hasColumn('users', 'account_type')) {
+            if ($this->usersHaveAccountTypeColumn()) {
                 $supportsAccountSetup = $user->account_type === $role;
             } else {
                 $supportsAccountSetup = UserRoleResolver::has($user, $role);
@@ -912,7 +952,10 @@ class AuthController extends Controller
                 'must_reset_password' => false,
                 'password_changed_at' => now(),
                 'email_verified_at' => now(),
-                'account_status' => AccountStatus::ACTIVE->value,
+                'account_status' => AccountStatus::PENDING_VERIFICATION->value,
+                'verified_by_user_id' => null,
+                'verified_at' => null,
+                'verification_notes' => null,
             ])->save();
 
             return $this->revokeUserSessionsAndTokens($user);
@@ -935,16 +978,6 @@ class AuthController extends Controller
             );
         }
 
-        if ($request->hasSession()) {
-            Auth::guard('web')->login($user);
-            $request->session()->regenerate();
-        }
-
-        $tokenPayload = $this->shouldIssueBearerToken($request)
-            ? $this->issueDashboardToken($user, $role, $request, false)
-            : null;
-        $this->recordSuccessfulLoginTelemetry($user, $request);
-
         AuthAuditLogger::record(
             $request,
             'auth.account_setup.completed',
@@ -954,28 +987,14 @@ class AuthController extends Controller
             $identifier !== '' ? $identifier : null,
             [
                 'previous_account_status' => $previousStatus,
-                'new_account_status' => AccountStatus::ACTIVE->value,
-                'token_expires_at' => $tokenPayload['expiresAt'] ?? null,
-                'token_refresh_after' => $tokenPayload['refreshAfter'] ?? null,
+                'new_account_status' => AccountStatus::PENDING_VERIFICATION->value,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
         );
 
-        if ($tokenPayload === null) {
-            return response()->json([
-                'user' => $this->serializeUser($user->fresh('school'), $role),
-                'message' => 'Account setup completed successfully.',
-            ]);
-        }
-
         return response()->json([
-            'token' => $tokenPayload['token'],
-            'tokenType' => 'Bearer',
-            'expiresAt' => $tokenPayload['expiresAt'],
-            'refreshAfter' => $tokenPayload['refreshAfter'],
-            'user' => $this->serializeUser($user->fresh('school'), $role),
-            'message' => 'Account setup completed successfully.',
+            'message' => 'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
         ]);
     }
 
@@ -1360,7 +1379,7 @@ class AuthController extends Controller
         $login = strtolower(trim($request->string('login')->toString()));
         $password = $request->string('password')->toString();
         $requestId = (int) $request->integer('request_id');
-        $approvalToken = $this->normalizeBackupCode($request->string('approval_token')->toString());
+        $approvalToken = $this->normalizeApprovalToken($request->string('approval_token')->toString());
 
         $user = $this->resolveUserForLogin($role, $login);
         if (! $user || ! Hash::check($password, $user->password)) {
@@ -1613,10 +1632,42 @@ class AuthController extends Controller
         }
 
         $role = $this->resolveRoleForUser($user);
-        $tokenPayload = $this->issueDashboardToken($user, $role, $request, false);
+        $tokenPayload = DB::transaction(function () use ($user, $role, $request, $currentToken): ?array {
+            $lockedCurrentToken = PersonalAccessToken::query()
+                ->lockForUpdate()
+                ->whereKey($currentToken->getKey())
+                ->where('tokenable_type', User::class)
+                ->where('tokenable_id', $user->id)
+                ->first();
 
-        // Rotate by revoking the old token immediately after issuing a replacement.
-        $currentToken->delete();
+            if (! $lockedCurrentToken instanceof PersonalAccessToken) {
+                return null;
+            }
+
+            $payload = $this->issueDashboardToken($user, $role, $request, false);
+
+            // Rotate by revoking the old token immediately after issuing a replacement.
+            $lockedCurrentToken->delete();
+
+            return $payload;
+        });
+
+        if ($tokenPayload === null) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.token_refresh.failed',
+                'failure',
+                $user,
+                $role,
+                $user->email,
+                ['reason' => 'token_already_rotated'],
+            );
+
+            return response()->json(
+                ['message' => 'This token was already refreshed. Please retry with your latest session or sign in again.'],
+                Response::HTTP_UNAUTHORIZED,
+            );
+        }
 
         AuthAuditLogger::record(
             $request,
@@ -1768,7 +1819,7 @@ class AuthController extends Controller
         }
 
         if (str_starts_with($identifier, 'web_')) {
-            if (! Schema::hasTable('sessions')) {
+            if (! $this->sessionsTableExists()) {
                 return response()->json(
                     ['message' => 'Session storage is not configured for device revocation.'],
                     Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -1932,7 +1983,7 @@ class AuthController extends Controller
                 })
                 ->orderByDesc('id');
 
-            if (Schema::hasColumn('users', 'account_type')) {
+            if ($this->usersHaveAccountTypeColumn()) {
                 return $baseQuery
                     ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
                     ->first();
@@ -2042,16 +2093,16 @@ class AuthController extends Controller
 
     private function isSuspiciousLoginAttempt(Request $request, User $user): bool
     {
-        $previousIp = $this->normalizeIpAddress($user->last_login_ip);
-        $previousAgent = $this->normalizeUserAgentString($user->last_login_user_agent);
-        $currentIp = $this->normalizeIpAddress($request->ip());
-        $currentAgent = $this->normalizeUserAgentString($request->userAgent());
+        $previousIp = $this->comparableIpAddress($user->last_login_ip);
+        $previousAgent = $this->userAgentFingerprint($user->last_login_user_agent);
+        $currentIp = $this->comparableIpAddress($request->ip());
+        $currentAgent = $this->userAgentFingerprint($request->userAgent());
 
         if ($previousIp === null || $previousAgent === null || $currentIp === null || $currentAgent === null) {
             return false;
         }
 
-        return $previousIp !== $currentIp || $previousAgent !== $currentAgent;
+        return $previousIp !== $currentIp && $previousAgent !== $currentAgent;
     }
 
     private function recordSuccessfulLoginTelemetry(User $user, Request $request): void
@@ -2097,7 +2148,7 @@ class AuthController extends Controller
 
     private function revokeUserWebSessions(User $user, ?string $exceptSessionId = null): int
     {
-        if (! Schema::hasTable('sessions')) {
+        if (! $this->sessionsTableExists()) {
             return 0;
         }
 
@@ -2127,7 +2178,7 @@ class AuthController extends Controller
         $entries = [];
         $includedCurrent = false;
 
-        if (Schema::hasTable('sessions')) {
+        if ($this->sessionsTableExists()) {
             $rows = DB::table('sessions')
                 ->where('user_id', $user->id)
                 ->orderByDesc('last_activity')
@@ -2211,6 +2262,25 @@ class AuthController extends Controller
         return $normalized !== '' ? $normalized : null;
     }
 
+    private function comparableIpAddress(mixed $value): ?string
+    {
+        $normalized = $this->normalizeIpAddress($value);
+        if ($normalized === null) {
+            return null;
+        }
+
+        return $this->isLoopbackIpAddress($normalized) ? 'loopback' : $normalized;
+    }
+
+    private function isLoopbackIpAddress(string $value): bool
+    {
+        if ($value === '::1') {
+            return true;
+        }
+
+        return str_starts_with($value, '127.');
+    }
+
     private function normalizeUserAgentString(mixed $value): ?string
     {
         $normalized = trim((string) $value);
@@ -2219,6 +2289,52 @@ class AuthController extends Controller
         }
 
         return Str::limit($normalized, 500, '');
+    }
+
+    private function userAgentFingerprint(mixed $value): ?string
+    {
+        $normalized = $this->normalizeUserAgentString($value);
+        if ($normalized === null) {
+            return null;
+        }
+
+        $agent = strtolower($normalized);
+
+        $browser = match (true) {
+            str_contains($agent, 'edg/') => 'edge',
+            str_contains($agent, 'opr/'), str_contains($agent, 'opera') => 'opera',
+            str_contains($agent, 'chrome/') => 'chrome',
+            str_contains($agent, 'firefox/') => 'firefox',
+            str_contains($agent, 'safari/') => 'safari',
+            str_contains($agent, 'trident/'), str_contains($agent, 'msie') => 'ie',
+            default => $this->fallbackUserAgentFamily($agent),
+        };
+
+        $platform = match (true) {
+            str_contains($agent, 'windows') => 'windows',
+            str_contains($agent, 'android') => 'android',
+            str_contains($agent, 'iphone'), str_contains($agent, 'ipad'), str_contains($agent, 'ios') => 'ios',
+            str_contains($agent, 'mac os x'), str_contains($agent, 'macintosh') => 'mac',
+            str_contains($agent, 'linux') => 'linux',
+            default => 'other',
+        };
+
+        $device = match (true) {
+            str_contains($agent, 'ipad'), str_contains($agent, 'tablet') => 'tablet',
+            str_contains($agent, 'mobile'), str_contains($agent, 'iphone'), str_contains($agent, 'android') => 'mobile',
+            default => 'desktop',
+        };
+
+        return implode('|', [$browser, $platform, $device]);
+    }
+
+    private function fallbackUserAgentFamily(string $agent): string
+    {
+        if (preg_match('/([a-z0-9]+)[\\/\\s]/', $agent, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return 'other';
     }
 
     private function rejectInactiveAccount(
@@ -2256,6 +2372,10 @@ class AuthController extends Controller
             $payload['requiresAccountSetup'] = true;
         }
 
+        if ($status === AccountStatus::PENDING_VERIFICATION) {
+            $payload['requiresMonitorApproval'] = true;
+        }
+
         return response()->json(
             $payload,
             Response::HTTP_FORBIDDEN,
@@ -2266,6 +2386,7 @@ class AuthController extends Controller
     {
         return match ($status) {
             AccountStatus::PENDING_SETUP => 'Your account setup is not complete yet. Use your one-time setup link to activate your account.',
+            AccountStatus::PENDING_VERIFICATION => 'Your account setup is complete, but your Division Monitor has not activated your access yet.',
             AccountStatus::SUSPENDED => 'Your account is suspended. Please contact your administrator.',
             AccountStatus::LOCKED => 'Your account is locked. Please contact your administrator.',
             AccountStatus::ARCHIVED => 'Your account is archived and can no longer sign in.',
@@ -2537,30 +2658,38 @@ class AuthController extends Controller
 
     private function consumeMonitorBackupCode(User $user, string $normalizedCode): bool
     {
-        $stored = $user->mfa_backup_codes;
-        if (! is_array($stored) || $stored === []) {
+        return DB::transaction(function () use ($user, $normalizedCode): bool {
+            /** @var User|null $freshUser */
+            $freshUser = User::query()->lockForUpdate()->find($user->id);
+            if (! $freshUser) {
+                return false;
+            }
+
+            $stored = $freshUser->mfa_backup_codes;
+            if (! is_array($stored) || $stored === []) {
+                return false;
+            }
+
+            foreach ($stored as $index => $hash) {
+                if (! is_string($hash) || $hash === '') {
+                    continue;
+                }
+
+                if (! Hash::check($normalizedCode, $hash)) {
+                    continue;
+                }
+
+                unset($stored[$index]);
+
+                $freshUser->forceFill([
+                    'mfa_backup_codes' => array_values($stored),
+                ])->save();
+
+                return true;
+            }
+
             return false;
-        }
-
-        foreach ($stored as $index => $hash) {
-            if (! is_string($hash) || $hash === '') {
-                continue;
-            }
-
-            if (! Hash::check($normalizedCode, $hash)) {
-                continue;
-            }
-
-            unset($stored[$index]);
-
-            $user->forceFill([
-                'mfa_backup_codes' => array_values($stored),
-            ])->save();
-
-            return true;
-        }
-
-        return false;
+        });
     }
 
     private function monitorBackupCodeCount(User $user): int
@@ -2574,6 +2703,16 @@ class AuthController extends Controller
     }
 
     private function normalizeBackupCode(string $value): ?string
+    {
+        $compact = preg_replace('/[^a-zA-Z0-9]/', '', strtoupper(trim($value)));
+        if (! is_string($compact) || strlen($compact) !== 8) {
+            return null;
+        }
+
+        return substr($compact, 0, 4) . '-' . substr($compact, 4, 4);
+    }
+
+    private function normalizeApprovalToken(string $value): ?string
     {
         $compact = preg_replace('/[^a-zA-Z0-9]/', '', strtoupper(trim($value)));
         if (! is_string($compact) || strlen($compact) !== 8) {
@@ -2605,7 +2744,7 @@ class AuthController extends Controller
             return null;
         }
 
-        return $this->normalizeBackupCode($configured);
+        return $this->normalizeApprovalToken($configured);
     }
 
     private function monitorMfaResetApprovalToken(): string
@@ -2640,7 +2779,7 @@ class AuthController extends Controller
 
     private function monitorMfaResetStorageAvailable(): bool
     {
-        return Schema::hasTable('monitor_mfa_reset_tickets');
+        return $this->mfaResetTicketsTableExists();
     }
 
     private function monitorMfaResetStorageUnavailableResponse(
@@ -2694,13 +2833,52 @@ class AuthController extends Controller
         return $frontend . '/#/reset-password?' . $query;
     }
 
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
+
+    private function sessionsTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('sessions');
+        }
+
+        if (self::$sessionsTableExistsCache === null) {
+            self::$sessionsTableExistsCache = Schema::hasTable('sessions');
+        }
+
+        return self::$sessionsTableExistsCache;
+    }
+
+    private function mfaResetTicketsTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('monitor_mfa_reset_tickets');
+        }
+
+        if (self::$mfaResetTicketsTableExistsCache === null) {
+            self::$mfaResetTicketsTableExistsCache = Schema::hasTable('monitor_mfa_reset_tickets');
+        }
+
+        return self::$mfaResetTicketsTableExistsCache;
+    }
+
     private function resolvePasswordResetRoleForUser(?User $user, ?string $roleHint = null): ?string
     {
         if (! $user) {
             return null;
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $accountType = is_string($user->account_type)
                 ? trim($user->account_type)
                 : null;
@@ -2748,7 +2926,7 @@ class AuthController extends Controller
             }
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $accountType = is_string($user->account_type)
                 ? trim($user->account_type)
                 : null;

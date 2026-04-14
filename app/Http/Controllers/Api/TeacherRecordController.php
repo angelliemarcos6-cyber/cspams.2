@@ -9,9 +9,9 @@ use App\Http\Resources\TeacherRecordResource;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
-use App\Support\Database\BuildsEscapedLikePatterns;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -21,7 +21,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class TeacherRecordController extends Controller
 {
-    use BuildsEscapedLikePatterns;
+    public function __construct(
+        private readonly FilterService $filterService,
+    ) {
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -41,6 +44,9 @@ class TeacherRecordController extends Controller
         $scopeKey = $isSchoolHead
             ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
             : 'division:all';
+        $filters = $this->filterService->extract($request, ['status' => 'sex']);
+        $schoolCode = trim((string) $request->query('schoolCode', ''));
+        $schoolCodes = $this->parseSchoolCodes($request);
 
         $query = Teacher::query()
             ->with('school:id,school_code,name')
@@ -55,36 +61,36 @@ class TeacherRecordController extends Controller
             }
         }
 
-        $schoolCode = trim((string) $request->query('schoolCode', ''));
         if ($schoolCode !== '' && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCode): void {
                 $builder->where('school_code_normalized', strtolower($schoolCode));
             });
         }
 
-        $schoolCodes = $this->parseSchoolCodes($request);
         if ($schoolCodes->isNotEmpty() && $isMonitor) {
             $query->whereHas('school', function (Builder $builder) use ($schoolCodes): void {
                 $builder->whereIn('school_code_normalized', $schoolCodes->all());
             });
         }
 
-        $sex = trim((string) $request->query('sex', ''));
-        if ($sex !== '' && in_array(strtolower($sex), ['male', 'female'], true)) {
-            $query->where('sex', strtolower($sex));
+        if (array_key_exists('status', $filters)) {
+            $sex = strtolower(trim((string) $filters['status']));
+            if (! in_array($sex, ['male', 'female'], true)) {
+                unset($filters['status']);
+            } else {
+                $filters['status'] = $sex;
+            }
         }
 
-        $search = trim((string) $request->query('search', ''));
-        if ($search !== '') {
-            $query->where(function (Builder $builder) use ($search): void {
-                $this->whereLikeContains($builder, 'name', $search);
-                $this->whereLikeContains($builder, 'sex', $search, 'or');
-                $builder->orWhereHas('school', function (Builder $schoolQuery) use ($search): void {
-                    $this->whereLikeContains($schoolQuery, 'school_code', $search);
-                    $this->whereLikeContains($schoolQuery, 'name', $search, 'or');
-                });
-            });
-        }
+        $this->filterService->apply($query, $filters, [
+            'status_column' => 'sex',
+            'search_columns' => ['name', 'sex'],
+            'search_relations' => ['school' => ['school_code', 'name']],
+        ]);
+
+        $scopeKey .= '|' . $this->filterService->buildCacheKey($filters);
+        $scopeKey .= '|school_code:' . ($schoolCode !== '' ? strtolower($schoolCode) : 'any');
+        $scopeKey .= '|school_codes:' . ($schoolCodes->isNotEmpty() ? $schoolCodes->implode(',') : 'any');
 
         $perPage = $this->resolvePerPage($request);
         $page = max(1, $request->integer('page', 1));

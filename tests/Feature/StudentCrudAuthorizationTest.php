@@ -30,7 +30,7 @@ class StudentCrudAuthorizationTest extends TestCase
 
         $tokenOne = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadOne));
         $tokenTwo = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadTwo));
-        $monitorToken = $this->loginToken('monitor', 'monitor@cspams.local');
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
 
         $payload = [
             'lrn' => '9900000' . (string) random_int(1000, 9999),
@@ -574,3 +574,4 @@ class StudentCrudAuthorizationTest extends TestCase
         return (string) $user->school?->school_code;
     }
 }
+

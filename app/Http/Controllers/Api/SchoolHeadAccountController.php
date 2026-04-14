@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\ActivateSchoolHeadAccountRequest;
 use App\Http\Requests\Api\IssueSchoolHeadAccountActionVerificationCodeRequest;
 use App\Http\Requests\Api\IssueSchoolHeadPasswordResetLinkRequest;
 use App\Http\Requests\Api\IssueSchoolHeadSetupLinkRequest;
@@ -22,6 +23,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Mail\MailDelivery;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,10 +31,19 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolHeadAccountController extends Controller
 {
+    private static ?bool $usersHasAccountTypeColumn = null;
+
+    private static ?bool $usersHasDeleteRecordFlags = null;
+
+    private static ?bool $sessionsTableExists = null;
+
+    private static ?bool $accountSetupTokensTableExists = null;
+
     public function __construct(
         private readonly SchoolHeadAccountSetupService $schoolHeadAccountSetupService,
         private readonly MonitorActionVerificationService $monitorActionVerificationService,
@@ -167,15 +178,20 @@ class SchoolHeadAccountController extends Controller
                 );
             }
 
+            $normalizedEmail = strtolower(trim($email));
             $updates = [
                 'name' => $name,
-                'email' => $email,
+                'email' => $normalizedEmail,
+                'email_normalized' => $normalizedEmail,
             ];
 
             if ($emailChanged) {
                 $updates['email_verified_at'] = null;
                 $updates['must_reset_password'] = true;
                 $updates['password_changed_at'] = null;
+                $updates['verified_by_user_id'] = null;
+                $updates['verified_at'] = null;
+                $updates['verification_notes'] = null;
             }
 
             if ($reissueAllowed) {
@@ -293,7 +309,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         $duplicateQuery = User::query()->where('school_id', $school->id);
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         } else {
             $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
@@ -316,11 +332,25 @@ class SchoolHeadAccountController extends Controller
         $account->must_reset_password = true;
         $account->password_changed_at = null;
         $account->account_status = AccountStatus::PENDING_SETUP->value;
+        $account->verified_by_user_id = null;
+        $account->verified_at = null;
+        $account->verification_notes = null;
         $account->school_id = $school->id;
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
-        $account->save();
+        try {
+            $account->save();
+        } catch (QueryException $exception) {
+            if ($this->isUniqueConstraintViolation($exception)) {
+                return response()->json(
+                    ['message' => 'A School Head account is already linked to this school. Update it instead of creating a new one.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY,
+                );
+            }
+
+            throw $exception;
+        }
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
 
         $issuedSetup = $this->schoolHeadAccountSetupService->issue(
@@ -396,6 +426,89 @@ class SchoolHeadAccountController extends Controller
         ], Response::HTTP_CREATED);
     }
 
+    public function activate(
+        ActivateSchoolHeadAccountRequest $request,
+        School $school,
+    ): JsonResponse {
+        $monitor = $this->requireMonitor($request);
+        $account = $this->resolveSchoolHeadAccount($school);
+        if (! $account) {
+            return response()->json(
+                ['message' => 'No School Head account is linked to this school.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $status = $account->accountStatus();
+        if ($status !== AccountStatus::PENDING_VERIFICATION) {
+            return response()->json(
+                ['message' => 'Only accounts awaiting monitor verification can be activated.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (
+            $account->must_reset_password
+            || $account->password_changed_at === null
+            || $account->email_verified_at === null
+        ) {
+            return response()->json(
+                ['message' => 'Account setup is not complete yet.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $reason = trim($request->string('reason')->toString());
+
+        $account->forceFill([
+            'account_status' => AccountStatus::ACTIVE->value,
+            'verified_by_user_id' => $monitor->id,
+            'verified_at' => now(),
+            'verification_notes' => $reason !== '' ? $reason : null,
+        ])->save();
+
+        $this->loadLatestAccountSetupToken($account);
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account.activated',
+            'auditable_type' => User::class,
+            'auditable_id' => $account->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'target_user_id' => $account->id,
+                'target_email' => $account->email,
+                'target_role' => UserRoleResolver::SCHOOL_HEAD,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'previous_status' => $status->value,
+                'new_status' => $account->accountStatus()->value,
+                'reason' => $reason !== '' ? $reason : null,
+                'verified_at' => $account->verified_at?->toISOString(),
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_head_account.activated',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'accountStatus' => $account->accountStatus()->value,
+        ]));
+
+        return response()->json([
+            'data' => [
+                'account' => $this->serializeSchoolHeadAccount($account),
+                'message' => 'School Head account activated.',
+            ],
+        ]);
+    }
+
     public function update(
         UpdateSchoolHeadAccountStatusRequest $request,
         School $school,
@@ -412,9 +525,7 @@ class SchoolHeadAccountController extends Controller
         $previousStatus = $account->accountStatus();
         $previousFlagged = $account->flagged_at !== null;
         $deleteRecordFlagRequested = $request->has('deleteRecordFlagged');
-        $deleteRecordFlagAvailable = Schema::hasColumn('users', 'delete_record_flagged_at')
-            && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
-            && Schema::hasColumn('users', 'delete_record_flag_reason');
+        $deleteRecordFlagAvailable = $this->usersHaveDeleteRecordFlags();
 
         if ($deleteRecordFlagRequested && ! $deleteRecordFlagAvailable) {
             return response()->json(
@@ -446,9 +557,21 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
+        // Block reactivation only when the account has never had a password set.
+        // must_reset_password=true on a suspended/locked account means "force a
+        // password change at next login" — not that the account lacks a password.
+        // Allowing reactivation in that case is safe: canAuthenticate() returns true
+        // for active accounts, and the forced reset is enforced at login.
+        if ($statusChanged && $previousStatus === AccountStatus::PENDING_VERIFICATION && $nextStatus === AccountStatus::ACTIVE->value) {
+            return response()->json(
+                ['message' => 'Use the Activate Account action after reviewing this setup.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
         if (
             $nextStatus === AccountStatus::ACTIVE->value &&
-            ($account->must_reset_password || $account->password_changed_at === null)
+            $account->password_changed_at === null
         ) {
             $message = $previousStatus === AccountStatus::PENDING_SETUP
                 ? 'This account has not completed setup yet. Reissue the setup link instead.'
@@ -639,31 +762,69 @@ class SchoolHeadAccountController extends Controller
         $removedCount = 0;
         $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
         $revocationSummaries = [];
+        $accountIdInts = $accounts
+            ->map(static fn (User $account): int => (int) $account->id)
+            ->values()
+            ->all();
 
-        DB::transaction(function () use ($accounts, $setupTokenStorageAvailable, &$removedCount, &$revocationSummaries): void {
+        $tokenRevocationsByUserId = collect();
+        if ($accountIdInts !== []) {
+            $tokenRevocationsByUserId = PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->selectRaw('tokenable_id, COUNT(*) as aggregate_count')
+                ->groupBy('tokenable_id')
+                ->pluck('aggregate_count', 'tokenable_id');
+
+            PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->delete();
+        }
+
+        $sessionRevocationsByUserId = collect();
+        if ($this->sessionsTableExists() && $accountIdInts !== []) {
+            $sessionRevocationsByUserId = DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->selectRaw('user_id, COUNT(*) as aggregate_count')
+                ->groupBy('user_id')
+                ->pluck('aggregate_count', 'user_id');
+
+            DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        if ($setupTokenStorageAvailable && $accountIdInts !== []) {
+            DB::table('account_setup_tokens')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        DB::transaction(function () use ($accounts, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
             foreach ($accounts as $account) {
-                $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
-
-                if ($setupTokenStorageAvailable) {
-                    $account->accountSetupTokens()->delete();
-                }
-
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
 
+                $archivedEmail = 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid';
+
                 $account->forceFill([
-                    'email' => 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid',
+                    'email' => $archivedEmail,
+                    'email_normalized' => $archivedEmail,
                     'account_status' => AccountStatus::ARCHIVED->value,
                     'must_reset_password' => true,
                     'password_changed_at' => null,
                     'email_verified_at' => null,
+                    'verified_by_user_id' => null,
+                    'verified_at' => null,
+                    'verification_notes' => null,
                     'school_id' => null,
                 ])->save();
 
                 $revocationSummaries[] = [
                     'user_id' => (int) $account->id,
-                    'revoked_tokens' => $revocationSummary['revokedTokens'],
-                    'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
+                    'revoked_tokens' => (int) ($tokenRevocationsByUserId->get((int) $account->id, 0)),
+                    'revoked_web_sessions' => (int) ($sessionRevocationsByUserId->get((int) $account->id, 0)),
                 ];
 
                 $removedCount += 1;
@@ -749,6 +910,9 @@ class SchoolHeadAccountController extends Controller
             'must_reset_password' => true,
             'password_changed_at' => null,
             'email_verified_at' => null,
+            'verified_by_user_id' => null,
+            'verified_at' => null,
+            'verification_notes' => null,
         ])->save();
 
         $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
@@ -847,6 +1011,20 @@ class SchoolHeadAccountController extends Controller
         if ($status === AccountStatus::PENDING_SETUP) {
             return response()->json(
                 ['message' => 'School Head accounts pending setup should use setup links instead of password reset links.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if ($status === AccountStatus::PENDING_VERIFICATION) {
+            return response()->json(
+                ['message' => 'This account is waiting for Division Monitor activation. Activate the account before sending a password reset link.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if (! in_array($status, [AccountStatus::ACTIVE, AccountStatus::LOCKED], true)) {
+            return response()->json(
+                ['message' => 'Password reset links can only be issued for active School Head accounts.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -977,9 +1155,9 @@ class SchoolHeadAccountController extends Controller
             $query->with('latestAccountSetupToken');
         }
 
-        if (Schema::hasColumn('users', 'account_type')) {
+        if ($this->usersHaveAccountTypeColumn()) {
             return $query
-                ->with('roles')
+                ->with(['roles', 'verifiedBy'])
                 ->where('account_type', UserRoleResolver::SCHOOL_HEAD)
                 ->first();
         }
@@ -987,7 +1165,7 @@ class SchoolHeadAccountController extends Controller
         $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
 
         return $query
-            ->with('roles')
+            ->with(['roles', 'verifiedBy'])
             ->whereHas('roles', static function ($builder) use ($aliases): void {
                 $builder->whereIn('name', $aliases);
             })
@@ -1000,6 +1178,7 @@ class SchoolHeadAccountController extends Controller
     private function serializeSchoolHeadAccount(User $account): array
     {
         $status = $account->accountStatus();
+        $account->load('verifiedBy');
         $setupToken = null;
         if ($this->accountSetupTokensAvailable()) {
             $this->loadLatestAccountSetupToken($account);
@@ -1019,6 +1198,10 @@ class SchoolHeadAccountController extends Controller
             'lastLoginAt' => $account->last_login_at?->toISOString(),
             'accountStatus' => $status->value,
             'mustResetPassword' => (bool) $account->must_reset_password,
+            'verifiedAt' => $account->verified_at?->toISOString(),
+            'verifiedByUserId' => $account->verified_by_user_id ? (string) $account->verified_by_user_id : null,
+            'verifiedByName' => $account->verifiedBy?->name,
+            'verificationNotes' => $account->verification_notes,
             'flagged' => $account->flagged_at !== null,
             'flaggedAt' => $account->flagged_at?->toISOString(),
             'flagReason' => $account->flagged_reason,
@@ -1037,7 +1220,7 @@ class SchoolHeadAccountController extends Controller
         $revokedTokens = $account->tokens()->delete();
 
         $revokedWebSessions = 0;
-        if (Schema::hasTable('sessions')) {
+        if ($this->sessionsTableExists()) {
             $revokedWebSessions = DB::table('sessions')
                 ->where('user_id', $account->id)
                 ->delete();
@@ -1051,13 +1234,73 @@ class SchoolHeadAccountController extends Controller
 
     private function accountSetupTokensAvailable(): bool
     {
-        return Schema::hasTable('account_setup_tokens');
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('account_setup_tokens');
+        }
+
+        if (self::$accountSetupTokensTableExists === null) {
+            self::$accountSetupTokensTableExists = Schema::hasTable('account_setup_tokens');
+        }
+
+        return self::$accountSetupTokensTableExists;
+    }
+
+    private function usersHaveAccountTypeColumn(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'account_type');
+        }
+
+        if (self::$usersHasAccountTypeColumn === null) {
+            self::$usersHasAccountTypeColumn = Schema::hasColumn('users', 'account_type');
+        }
+
+        return self::$usersHasAccountTypeColumn;
+    }
+
+    private function usersHaveDeleteRecordFlags(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasColumn('users', 'delete_record_flagged_at')
+                && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
+                && Schema::hasColumn('users', 'delete_record_flag_reason');
+        }
+
+        if (self::$usersHasDeleteRecordFlags === null) {
+            self::$usersHasDeleteRecordFlags = Schema::hasColumn('users', 'delete_record_flagged_at')
+                && Schema::hasColumn('users', 'delete_record_flagged_by_user_id')
+                && Schema::hasColumn('users', 'delete_record_flag_reason');
+        }
+
+        return self::$usersHasDeleteRecordFlags;
+    }
+
+    private function sessionsTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('sessions');
+        }
+
+        if (self::$sessionsTableExists === null) {
+            self::$sessionsTableExists = Schema::hasTable('sessions');
+        }
+
+        return self::$sessionsTableExists;
+    }
+
+    private function isUniqueConstraintViolation(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'unique constraint failed')
+            || str_contains($message, 'duplicate entry')
+            || str_contains($message, 'integrity constraint violation');
     }
 
     private function loadLatestAccountSetupToken(User $account): void
     {
         if ($this->accountSetupTokensAvailable()) {
-            $account->loadMissing('latestAccountSetupToken');
+            $account->load('latestAccountSetupToken');
         }
     }
 

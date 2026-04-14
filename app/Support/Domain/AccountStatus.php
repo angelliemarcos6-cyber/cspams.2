@@ -6,9 +6,11 @@ enum AccountStatus: string
 {
     case ACTIVE = 'active';
     case PENDING_SETUP = 'pending_setup';
+    case PENDING_VERIFICATION = 'pending_verification';
     case SUSPENDED = 'suspended';
     case LOCKED = 'locked';
     case ARCHIVED = 'archived';
+    case DELETED = 'deleted';
 
     /**
      * @return array<string, string>
@@ -18,9 +20,11 @@ enum AccountStatus: string
         return [
             self::ACTIVE->value => 'Active',
             self::PENDING_SETUP->value => 'Pending Setup',
+            self::PENDING_VERIFICATION->value => 'Pending Verification',
             self::SUSPENDED->value => 'Suspended',
             self::LOCKED->value => 'Locked',
             self::ARCHIVED->value => 'Archived',
+            self::DELETED->value => 'Deleted',
         ];
     }
 

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ClipboardList, RefreshCw, ShieldCheck, X } from "lucide-react";
-import { apiRequest, isApiError } from "@/lib/api";
+import { apiRequest, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 
 interface MonitorMfaResetRequester {
   id: number | null;
@@ -42,11 +42,15 @@ interface RecentApproval {
 
 interface MonitorMfaResetApprovalsDialogProps {
   open: boolean;
-  token: string;
+  isAuthenticated: boolean;
   onClose: () => void;
 }
 
-export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: MonitorMfaResetApprovalsDialogProps) {
+export function MonitorMfaResetApprovalsDialog({
+  open,
+  isAuthenticated,
+  onClose,
+}: MonitorMfaResetApprovalsDialogProps) {
   const [items, setItems] = useState<MonitorMfaResetTicket[]>([]);
   const [recentApprovals, setRecentApprovals] = useState<RecentApproval[]>([]);
   const [notesById, setNotesById] = useState<Record<number, string>>({});
@@ -55,7 +59,7 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
-  const canCallApi = useMemo(() => token.trim().length > 0, [token]);
+  const canCallApi = isAuthenticated;
 
   const loadRequests = async () => {
     if (!canCallApi) {
@@ -67,7 +71,9 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
     setError("");
 
     try {
-      const payload = await apiRequest<MonitorMfaResetRequestsResponse>("/api/auth/mfa/reset/requests", { token });
+      const payload = await apiRequest<MonitorMfaResetRequestsResponse>("/api/auth/mfa/reset/requests", {
+        token: COOKIE_SESSION_TOKEN,
+      });
       setItems(Array.isArray(payload.data) ? payload.data : []);
     } catch (err) {
       if (isApiError(err)) {
@@ -94,7 +100,7 @@ export function MonitorMfaResetApprovalsDialog({ open, token, onClose }: Monitor
         `/api/auth/mfa/reset/requests/${encodeURIComponent(String(ticket.id))}/approve`,
         {
           method: "POST",
-          token,
+          token: COOKIE_SESSION_TOKEN,
           body: {
             notes: notesById[ticket.id]?.trim() || undefined,
           },
