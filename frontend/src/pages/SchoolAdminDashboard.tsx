@@ -90,6 +90,74 @@ function selectedYearLabel(
 
 const MOBILE_BREAKPOINT = 768;
 
+const SCHOOL_ACHIEVEMENT_ROWS: string[] = [
+  "NAME OF SCHOOL HEAD",
+  "TOTAL NUMBER OF ENROLMENT",
+  "SBM LEVEL OF PRACTICE",
+  "Pupil/Student Classroom Ratio (Kindergarten)",
+  "Pupil/Student Classroom Ratio (Grades 1–3)",
+  "Pupil/Student Classroom Ratio (Grades 4–6)",
+  "Pupil/Student Classroom Ratio (Grades 7–10)",
+  "Pupil/Student Classroom Ratio (Grades 11–12)",
+  "Water and Sanitation facility to pupil ratio",
+  "Number of Comfort rooms",
+  "a. Toilet bowl",
+  "b. Urinal",
+  "Handwashing Facilities",
+  "Ideal learning materials to learner ratio",
+  "Pupil/student seat ratio (Overall)",
+  "a. Kindergarten",
+  "b. Grades 1–6",
+  "c. Grades 7–10",
+  "d. Grades 11–12",
+  "ICT Package/E-classroom package to sections ratio",
+  "a. ICT Laboratory",
+  "Science Laboratory",
+  "Do you have internet access?",
+  "Do you have electricity?",
+  "Do you have a complete fence/gate?",
+  "No. of Teachers (Total)",
+  "a. Male",
+  "b. Female",
+  "Teachers with Physical Disability (Total)",
+  "a. Male",
+  "b. Female",
+  "Functional SGC",
+  "School-Based Feeding Program Beneficiaries",
+  "School-Managed Canteen (Annual income)",
+  "Teachers Cooperative Managed Canteen (Annual income)",
+  "Security and Safety (Contingency Plan)",
+  "a. Earthquake",
+  "b. Typhoon",
+  "c. COVID-19",
+  "d. Power interruption",
+  "e. In-person classes",
+  "No. of Teachers trained on Psychological First Aid (PFA)",
+  "No. of Teachers trained on Occupational First Aid",
+];
+
+const KEY_PERFORMANCE_ROWS: string[] = [
+  "Net Enrollment Rate (NER)",
+  "Retention Rate (RR)",
+  "Drop-out Rate (DR)",
+  "Transition Rate (TR)",
+  "Net Intake Rate (NIR)",
+  "Participation Rate (PR)",
+  "ALS Completion Rate",
+  "Gender Parity Index (GPI)",
+  "Interquartile Ratio (IQR)",
+  "Completion Rate (CR)",
+  "Cohort Survival Rate (CSR)",
+  "Learning Mastery: Nearly Proficient",
+  "Learning Mastery: Proficient",
+  "Learning Mastery: Highly Proficient",
+  "A&E Test Pass Rate",
+  "Learners Reporting School Violence",
+  "Learner Satisfaction",
+  "Learners Aware of Education Rights",
+  "Schools/LCs Manifesting RBE Indicators",
+];
+
 /* ── Component ── */
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
@@ -542,54 +610,34 @@ export function SchoolAdminDashboard() {
               file: smeaFile,
             },
           ]).map((report) => {
-            const hasFile = Boolean(report.file?.uploaded && report.file?.originalFilename);
-            const badgeTone = uploadChipTone(hasFile);
-            const buttonLabel = hasFile
-              ? `View ${report.type.toUpperCase()} Report`
-              : `Upload ${report.type.toUpperCase()} Report`;
+            const buttonLabel = `View ${report.type.toUpperCase()} Report`;
 
             return (
               <article key={report.type} className="flex-1 rounded-sm border border-slate-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{report.title}</h3>
-                  <span className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[11px] font-semibold ${badgeTone}`}>
-                    {hasFile ? "Submitted" : "Not Submitted"}
-                  </span>
                 </div>
 
                 <dl className="mt-4 space-y-2">
                   <div className="flex items-start gap-2 text-sm">
                     <dt className="w-28 shrink-0 font-semibold text-slate-500">File</dt>
-                    <dd className="truncate font-semibold text-slate-900">{report.file?.originalFilename ?? "- (none)"}</dd>
+                    <dd className="truncate font-semibold text-slate-900">—</dd>
                   </div>
                   <div className="flex items-start gap-2 text-sm">
                     <dt className="w-28 shrink-0 font-semibold text-slate-500">Date</dt>
-                    <dd className="font-semibold text-slate-900">
-                      {report.file?.uploadedAt ? new Date(report.file.uploadedAt).toLocaleDateString() : "-"}
-                    </dd>
+                    <dd className="font-semibold text-slate-900">—</dd>
                   </div>
                 </dl>
 
                 <div className="mt-4">
-                  {hasFile ? (
-                    <button
-                      type="button"
-                      onClick={() => openReportModal(report.type)}
-                      className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      {buttonLabel}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => scrollToSection("imeta-compliance")}
-                      className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      <Upload className="h-3.5 w-3.5" />
-                      {buttonLabel}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => openReportModal(report.type)}
+                    className="inline-flex w-full items-center justify-center gap-1 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    {buttonLabel}
+                  </button>
                 </div>
               </article>
             );
@@ -597,66 +645,63 @@ export function SchoolAdminDashboard() {
         </div>
 
         <section className="mt-5 rounded-sm border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
-              Submitted Indicators Summary (SY {activeSchoolYearLabel})
-            </h3>
+          <div className="border-b border-slate-200 px-4 py-3 text-center">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-800">TARGETS-MET</h3>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                  <th className="px-3 py-2 text-left">Indicator</th>
-                  <th className="px-3 py-2 text-right">Target</th>
-                  <th className="px-3 py-2 text-right">Actual</th>
-                  <th className="px-3 py-2 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {submittedIndicatorRows.length > 0 ? (
-                  submittedIndicatorRows.map((item) => {
-                    const status = String(item.complianceStatus ?? "").toLowerCase();
-                    const tone =
-                      status === "met"
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                        : status === "below_target"
-                          ? "border-amber-300 bg-amber-50 text-amber-700"
-                          : "border-slate-300 bg-slate-50 text-slate-700";
-
-                    return (
-                      <tr key={item.id} className="border-b border-slate-100 text-sm text-slate-800">
-                        <td className="px-3 py-2">
-                          <p className="font-semibold text-slate-900">{item.metric?.name ?? "Untitled indicator"}</p>
-                          <p className="text-xs text-slate-500">{item.metric?.code ?? "N/A"}</p>
-                        </td>
-                        <td className="px-3 py-2 text-right font-semibold">{item.targetDisplay ?? item.targetValue ?? "-"}</td>
-                        <td className="px-3 py-2 text-right font-semibold">{item.actualDisplay ?? item.actualValue ?? "-"}</td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={`inline-flex rounded-sm border px-2 py-0.5 text-[11px] font-semibold ${tone}`}>
-                            {status === "met" ? "Met" : status === "below_target" ? "Below Target" : "Pending"}
-                          </span>
-                        </td>
+          <div className="grid gap-4 p-4 md:grid-cols-2">
+            {/* LEFT: School's Achievement */}
+            <div className="rounded-sm border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
+                <h4 className="text-xs font-bold text-slate-700">School's Achievement (SY 2025-2026)</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 text-left">
+                      <th className="px-3 py-1.5 font-semibold text-slate-600">Metric</th>
+                      <th className="px-3 py-1.5 font-semibold text-slate-600">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SCHOOL_ACHIEVEMENT_ROWS.map((label, idx) => (
+                      <tr key={idx} className="border-t border-slate-100">
+                        <td className="px-3 py-1.5 text-slate-700">{label}</td>
+                        <td className="px-3 py-1.5 text-slate-500">—</td>
                       </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="px-3 py-4">
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                        <p className="text-sm font-semibold text-slate-700">No indicators submitted yet for this academic year.</p>
-                        <button
-                          type="button"
-                          onClick={() => scrollToSection("imeta-compliance")}
-                          className="mt-2 inline-flex items-center rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
-                        >
-                          Go to School Achievements
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* RIGHT: Key Performance Indicators */}
+            <div className="rounded-sm border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
+                <h4 className="text-xs font-bold text-slate-700">Key Performance Indicators (SY 2025-2026 only)</h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 text-left">
+                      <th className="px-3 py-1.5 font-semibold text-slate-600">Indicator</th>
+                      <th className="px-3 py-1.5 font-semibold text-slate-600">Target</th>
+                      <th className="px-3 py-1.5 font-semibold text-slate-600">Actual</th>
+                      <th className="px-3 py-1.5 font-semibold text-slate-600">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {KEY_PERFORMANCE_ROWS.map((label, idx) => (
+                      <tr key={idx} className="border-t border-slate-100">
+                        <td className="px-3 py-1.5 text-slate-700">{label}</td>
+                        <td className="px-3 py-1.5 text-slate-500">—</td>
+                        <td className="px-3 py-1.5 text-slate-500">—</td>
+                        <td className="px-3 py-1.5 text-slate-500">—</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
       </section>
