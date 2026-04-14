@@ -124,6 +124,8 @@ export interface SchoolHeadAccountProfileUpsertResult {
   expiresAt?: string | null;
   delivery?: "sent" | "failed" | string | null;
   deliveryMessage?: string | null;
+  setupLink?: string | null;
+  resetLink?: string | null;
 }
 
 export interface SchoolHeadAccountRemovalResult {
@@ -140,6 +142,7 @@ export interface SchoolHeadAccountProvisioningReceipt {
   setupLinkExpiresAt: string;
   setupLinkDelivery: "sent" | "failed" | string;
   setupLinkDeliveryMessage: string;
+  setupLink?: string | null;
 }
 
 export interface SessionUser {
