@@ -597,11 +597,11 @@ export function SchoolAdminDashboard() {
         </div>
 
         <div className="mt-8">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-700">TARGETS-MET</h2>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* School's Achievement table */}
-            <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700 mb-3">TARGETS-MET</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* School's Achievement Table */}
+            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
                 <h3 className="text-sm font-semibold text-slate-800">School's Achievement (SY 2025-2026)</h3>
               </div>
               <table className="w-full text-xs">
@@ -612,63 +612,56 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {[
-                    "NAME OF SCHOOL HEAD",
-                    "TOTAL NUMBER OF ENROLMENT",
-                    "SBM LEVEL OF PRACTICE",
-                    "Pupil/Student Classroom Ratio (Kindergarten)",
-                    "Pupil/Student Classroom Ratio (Grades 1-3)",
-                    "Pupil/Student Classroom Ratio (Grades 4-6)",
-                    "Pupil/Student Classroom Ratio (Grades 7-10)",
-                    "Pupil/Student Classroom Ratio (Grades 11-12)",
-                    "Water and Sanitation facility to pupil ratio",
-                    "Number of Comfort rooms",
-                    "a. Toilet bowl",
-                    "b. Urinal",
-                    "Handwashing Facilities",
-                    "Ideal learning materials to learner ratio",
-                    "Pupil/student seat ratio (Overall)",
-                    "a. Kindergarten",
-                    "b. Grades 1-6",
-                    "c. Grades 7-10",
-                    "d. Grades 11-12",
-                    "ICT to learner ratio",
-                    "ICT Laboratory",
-                    "Science Laboratory",
-                    "Internet Access",
-                    "Electricity",
-                    "Fence Status",
-                    "Total Number of Teachers",
-                    "Male Teachers",
-                    "Female Teachers",
-                    "Total PWD Teachers",
-                    "Male PWD Teachers",
-                    "Female PWD Teachers",
-                    "Functional SGC",
-                    "Feeding Beneficiaries",
-                    "Canteen Income",
-                    "Teacher Cooperative Income",
-                    "School Safety Plan",
-                    "Earthquake Drill",
-                    "Typhoon Drill",
-                    "COVID Protocol",
-                    "Power Interruption Protocol",
-                    "In-Person Safety",
-                    "Teachers Trained in PFA",
-                    "Teachers Trained in Occupational First Aid",
-                  ].map((label) => (
-                    <tr key={label} className="text-slate-700">
-                      <td className="px-4 py-2">{label}</td>
-                      <td className="px-4 py-2 text-right">—</td>
-                    </tr>
-                  ))}
+                  <tr><td className="px-4 py-2">NAME OF SCHOOL HEAD</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">TOTAL NUMBER OF ENROLMENT</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">SBM LEVEL OF PRACTICE</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Kindergarten)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 1 to 3)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 4 to 6)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 7 to 10)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 11 to 12)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Water and Sanitation facility to pupil ratio</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Number of Comfort rooms</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">a. Toilet bowl</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">b. Urinal</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Handwashing Facilities</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Ideal learning materials to learner ratio</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Pupil/student seat ratio (Overall)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">a. Kindergarten</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">b. Grades 1 - 6</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">c. Grades 7 - 10</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">d. Grades 11 - 12</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">ICT Package/E-classroom package to sections ratio</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">a. ICT Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Science Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Do you have internet access? (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Do you have electricity (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Do you have a complete fence/gate? (Evident/Partially/Not Evident)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">No. of Teachers</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Teachers with Physical Disability</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Functional SGC</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">School-Based Feeding Program Beneficiaries</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">School-Managed Canteen (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Teachers Cooperative Managed Canteen - if there is (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">Security and Safety (Contingency Plan)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">a. Earthquake</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">b. Typhoon</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">c. COVID-19</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">d. Power interruption</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">e. In-person classes</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">No. of Teachers trained on Psychological First Aid (PFA)</td><td className="px-4 py-2 text-right">-</td></tr>
+                  <tr><td className="px-4 py-2">No. of Teachers trained on Occupational First Aid</td><td className="px-4 py-2 text-right">-</td></tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Key Performance Indicators table */}
-            <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+            {/* Key Performance Indicators Table */}
+            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
                 <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY 2025-2026 only)</h3>
               </div>
               <table className="w-full text-xs">
@@ -681,32 +674,25 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {[
-                    "Net Enrollment Rate (NER)",
-                    "Retention Rate (RR)",
-                    "Drop-out Rate (DR)",
-                    "Transition Rate (TR)",
-                    "Net Intake Rate (NIR)",
-                    "Participation Rate (PR)",
-                    "ALS Completion Rate",
-                    "Gender Parity Index (GPI)",
-                    "Interquartile Ratio (IQR)",
-                    "Completion Rate (CR)",
-                    "Cohort Survival Rate (CSR)",
-                    "Learning Mastery: Nearly Proficient",
-                    "Learning Mastery: Proficient",
-                    "Learning Mastery: Highly Proficient",
-                    "A&E Test Pass Rate",
-                    "Learners Reporting School Violence",
-                    "Learner Satisfaction",
-                  ].map((label) => (
-                    <tr key={label} className="text-slate-700">
-                      <td className="px-4 py-2">{label}</td>
-                      <td className="px-4 py-2 text-center">—</td>
-                      <td className="px-4 py-2 text-center">—</td>
-                      <td className="px-4 py-2 text-center">—</td>
-                    </tr>
-                  ))}
+                  <tr><td className="px-4 py-2">Net Enrollment Rate (NER)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Retention Rate (RR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Drop-out Rate (DR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Transition Rate (TR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Net Intake Rate (NIR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Participation Rate (PR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">ALS Completion Rate</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Gender Parity Index (GPI)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Interquartile Ratio (IQR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Completion Rate (CR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Cohort Survival Rate (CSR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Learning Mastery: Nearly Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Learning Mastery: Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Learning Mastery: Highly Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">A&amp;E Test Pass Rate</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Learners Reporting School Violence</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Learner Satisfaction</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Learners Aware of Education Rights</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  <tr><td className="px-4 py-2">Schools/LCs Manifesting RBE Indicators</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
                 </tbody>
               </table>
             </div>
