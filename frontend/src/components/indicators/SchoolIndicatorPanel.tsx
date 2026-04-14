@@ -3314,67 +3314,7 @@ export function SchoolIndicatorPanel({
 
       <div className="border-t border-slate-100 px-4 py-4">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700 mb-3">TARGETS-MET</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* School's Achievement Table */}
-          <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
-            <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-              <h3 className="text-sm font-semibold text-slate-800">School's Achievement (SY 2025-2026)</h3>
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-2 text-left font-medium text-slate-600">Metric</th>
-                  <th className="px-4 py-2 text-right font-medium text-slate-600">Value</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                <tr><td className="px-4 py-2">NAME OF SCHOOL HEAD</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">TOTAL NUMBER OF ENROLMENT</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">SBM LEVEL OF PRACTICE</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Kindergarten)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 1 to 3)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 4 to 6)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 7 to 10)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 11 to 12)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Water and Sanitation facility to pupil ratio</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Number of Comfort rooms</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">a. Toilet bowl</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">b. Urinal</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Handwashing Facilities</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Ideal learning materials to learner ratio</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Pupil/student seat ratio (Overall)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">a. Kindergarten</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">b. Grades 1 - 6</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">c. Grades 7 - 10</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">d. Grades 11 - 12</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">ICT Package/E-classroom package to sections ratio</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">a. ICT Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Science Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Do you have internet access? (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Do you have electricity (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Do you have a complete fence/gate? (Evident/Partially/Not Evident)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">No. of Teachers</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Teachers with Physical Disability</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Functional SGC</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">School-Based Feeding Program Beneficiaries</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">School-Managed Canteen (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Teachers Cooperative Managed Canteen - if there is (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">Security and Safety (Contingency Plan)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">a. Earthquake</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">b. Typhoon</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">c. COVID-19</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">d. Power interruption</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">e. In-person classes</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">No. of Teachers trained on Psychological First Aid (PFA)</td><td className="px-4 py-2 text-right">-</td></tr>
-                <tr><td className="px-4 py-2">No. of Teachers trained on Occupational First Aid</td><td className="px-4 py-2 text-right">-</td></tr>
-              </tbody>
-            </table>
-          </div>
-
+        <div>
           {/* Key Performance Indicators Table */}
           <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
             <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
