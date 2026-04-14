@@ -1,0 +1,383 @@
+@import url("https://fonts.googleapis.com/css2?family=Commissioner:wght@700&family=Inter:wght@400;500&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    "Inter", "Commissioner", "Segoe UI", "Helvetica Neue", "Arial",
+    ui-sans-serif, system-ui, sans-serif;
+  --font-display:
+    "Commissioner", "Inter", "Segoe UI", "Helvetica Neue", "Arial",
+    ui-sans-serif, system-ui, sans-serif;
+
+  --color-page-bg: #edf3f9;
+  --color-primary: #04508c;
+  --color-primary-50: #e8f1fa;
+  --color-primary-100: #c7ddf2;
+  --color-primary-200: #97bee5;
+  --color-primary-300: #649dd8;
+  --color-primary-400: #2f7dc4;
+  --color-primary-500: #04508c;
+  --color-primary-600: #034477;
+  --color-primary-700: #033a66;
+  --color-primary-800: #022e50;
+  --color-primary-900: #011e34;
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+body {
+  min-height: 100vh;
+  background-color: #e8eef6;
+  color: #0f172a;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.section-title,
+.dashboard-card-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+button,
+input,
+select,
+textarea,
+th,
+td {
+  font-family: var(--font-sans);
+}
+
+button,
+th {
+  font-weight: 500;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.transition:not([class*="duration-"]),
+.transition-colors:not([class*="duration-"]),
+.transition-opacity:not([class*="duration-"]),
+.transition-shadow:not([class*="duration-"]),
+.transition-transform:not([class*="duration-"]),
+.transition-all:not([class*="duration-"]) {
+  transition-duration: 120ms;
+}
+
+@keyframes fadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-slide {
+  animation: fadeSlide 200ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -240px 0;
+  }
+  100% {
+    background-position: calc(240px + 100%) 0;
+  }
+}
+
+.surface-panel {
+  border: 1px solid rgb(203 213 225 / 0.72);
+  background: #ffffff;
+  box-shadow: 0 18px 36px -30px rgb(2 46 80 / 0.36);
+  transition:
+    box-shadow 110ms ease,
+    border-color 110ms ease,
+    transform 110ms ease;
+}
+
+.surface-panel:hover {
+  border-color: rgb(148 163 184 / 0.8);
+  box-shadow: 0 22px 40px -30px rgb(2 46 80 / 0.38);
+}
+
+.table-head-sticky th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  box-shadow: inset 0 -1px 0 #e2e8f0;
+}
+
+.review-queue-table-compact th,
+.review-queue-table-compact td {
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+}
+
+.review-queue-table-compact td p {
+  margin-block: 0;
+}
+
+.skeleton-line {
+  border-radius: 0.5rem;
+  background: #e2e8f0;
+}
+
+.surface-chart {
+  border: 1px solid rgb(186 203 220 / 0.78);
+  background: #ffffff;
+  box-shadow: 0 18px 34px -30px rgb(2 46 80 / 0.42);
+}
+
+.dashboard-shell {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(148 163 184 / 0.34);
+  background: #ffffff;
+  box-shadow: 0 20px 38px -32px rgb(15 23 42 / 0.44);
+}
+
+.dashboard-shell::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 2px;
+  width: 100%;
+  background: rgb(191 219 254);
+  pointer-events: none;
+}
+
+.dashboard-shell-visible {
+  overflow: visible;
+}
+
+.dashboard-nav-shell {
+  position: sticky;
+  top: var(--shell-sticky-top, 10rem);
+  z-index: 40;
+}
+
+.dashboard-nav-button {
+  border: 1px solid rgb(203 213 225 / 0.9);
+  background: rgb(255 255 255 / 0.92);
+  color: rgb(51 65 85);
+  letter-spacing: 0.05em;
+  transition:
+    border-color 110ms ease,
+    background-color 110ms ease,
+    color 110ms ease,
+    transform 110ms ease;
+}
+
+.dashboard-nav-button:hover {
+  border-color: rgb(148 163 184 / 0.9);
+  background: rgb(248 250 252 / 0.98);
+  color: rgb(15 23 42);
+  transform: translateY(-1px);
+}
+
+.dashboard-nav-button-active {
+  border-color: rgb(2 132 199 / 0.45);
+  background: rgb(232 241 250);
+  color: rgb(8 47 73);
+  box-shadow: inset 0 0 0 1px rgb(125 211 252 / 0.6);
+}
+
+.dashboard-subtle-panel {
+  border: 1px solid rgb(203 213 225 / 0.68);
+  background: rgb(248 250 252);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.75);
+  transition:
+    border-color 110ms ease,
+    transform 110ms ease,
+    box-shadow 110ms ease;
+}
+
+.dashboard-subtle-panel:hover {
+  border-color: rgb(148 163 184 / 0.85);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.8),
+    0 14px 26px -30px rgb(15 23 42 / 0.45);
+  transform: translateY(-1px);
+}
+
+.dashboard-table-row:nth-child(even) {
+  background: rgb(248 250 252 / 0.74);
+}
+
+.dashboard-table-row {
+  transition:
+    background-color 90ms ease,
+    transform 90ms ease;
+}
+
+.dashboard-table-row:hover {
+  background: rgb(241 245 249 / 0.98);
+  transform: translateX(1px);
+}
+
+.dashboard-workflow-hero {
+  border: 1px solid rgb(147 197 253 / 0.62);
+  background: rgb(245 249 254);
+  box-shadow: 0 20px 38px -30px rgb(2 46 80 / 0.5);
+}
+
+.dashboard-workflow-step {
+  border: 1px solid rgb(147 197 253 / 0.7);
+  background: rgb(232 241 250);
+}
+
+.dashboard-workflow-chip {
+  letter-spacing: 0.01em;
+}
+
+.dashboard-workflow-tile {
+  border: 1px solid rgb(186 203 220 / 0.75);
+  background: #ffffff;
+  transition:
+    border-color 110ms ease,
+    transform 110ms ease,
+    box-shadow 110ms ease;
+}
+
+.dashboard-workflow-tile:hover {
+  border-color: rgb(147 197 253 / 0.85);
+  box-shadow: 0 16px 24px -24px rgb(2 46 80 / 0.48);
+  transform: translateY(-1px);
+}
+
+.dashboard-side-rail {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(2 46 80 / 0.65);
+  background: rgb(2 46 80);
+  box-shadow:
+    0 22px 32px -24px rgb(2 46 80 / 0.65),
+    inset 0 1px 0 rgb(125 211 252 / 0.2);
+}
+
+.dashboard-side-rail::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: none;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-left-layout {
+    min-height: calc(100dvh - var(--shell-header-height, 12rem));
+  }
+
+  .dashboard-side-rail {
+    height: 100%;
+  }
+
+  .dashboard-side-rail-sticky {
+    position: sticky;
+    top: var(--shell-sticky-top, 10rem);
+    max-height: calc(100dvh - var(--shell-sticky-top, 10rem) - 0.5rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
+.dashboard-quick-jump-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid rgb(203 213 225 / 0.9);
+  background: #ffffff;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgb(51 65 85);
+  transition:
+    border-color 110ms ease,
+    color 110ms ease,
+    transform 110ms ease,
+    box-shadow 110ms ease;
+}
+
+.dashboard-quick-jump-btn:hover {
+  border-color: rgb(147 197 253 / 0.85);
+  color: rgb(3 58 102);
+  box-shadow: 0 12px 22px -20px rgb(2 46 80 / 0.6);
+  transform: translateY(-1px);
+}
+
+@keyframes focusPulse {
+  0% {
+    box-shadow:
+      0 0 0 0 rgb(37 99 235 / 0.45),
+      0 10px 22px -18px rgb(29 78 216 / 0.45);
+  }
+  70% {
+    box-shadow:
+      0 0 0 8px rgb(37 99 235 / 0),
+      0 14px 28px -20px rgb(29 78 216 / 0.34);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgb(37 99 235 / 0),
+      0 10px 22px -18px rgb(29 78 216 / 0.28);
+  }
+}
+
+.dashboard-focus-glow {
+  border-color: rgb(59 130 246 / 0.68) !important;
+  box-shadow:
+    0 0 0 2px rgb(59 130 246 / 0.26),
+    0 0 0 6px rgb(147 197 253 / 0.24),
+    0 16px 32px -24px rgb(29 78 216 / 0.52);
+  animation: focusPulse 420ms ease-out 2;
+}
+
+.login-grid-overlay {
+  background: none;
+}
+
+.login-glass-card {
+  border: 1px solid rgb(147 197 253 / 0.45);
+  background: #ffffff;
+  box-shadow: 0 28px 60px -42px rgb(2 46 80 / 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,62 @@
+import { MapPinned } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+
+interface RegionCardProps {
+  region: string;
+  schools: number;
+  activeSchools: number;
+  students: number;
+  teachers: number;
+}
+
+export function RegionCard({ region, schools, activeSchools, students, teachers }: RegionCardProps) {
+  const inactiveSchools = Math.max(schools - activeSchools, 0);
+  const activePercent = schools > 0 ? Math.round((activeSchools / schools) * 100) : 0;
+
+  const chartData = [
+    { name: "Active", value: activeSchools, color: "#04508C" },
+    { name: "Inactive", value: inactiveSchools, color: "#CBD5E1" },
+  ];
+
+  return (
+    <article className="surface-panel border p-4 transition duration-[120ms] hover:-translate-y-0.5 hover:shadow-[0_20px_30px_-28px_rgba(2,46,80,0.55)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <MapPinned className="h-4 w-4 text-primary-600" />
+            {region}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">{activeSchools} of {schools} schools active</p>
+        </div>
+
+        <div className="relative h-16 w-16 shrink-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={chartData} dataKey="value" innerRadius={21} outerRadius={30} startAngle={90} endAngle={-270}>
+                {chartData.map((entry) => (
+                  <Cell key={entry.name} fill={entry.color} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 grid place-items-center text-xs font-bold text-slate-900">{activePercent}%</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
+        <div>
+          <p className="text-lg font-bold leading-none text-slate-900">{schools}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Schools</p>
+        </div>
+        <div>
+          <p className="text-lg font-bold leading-none text-slate-900">{students.toLocaleString()}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Students</p>
+        </div>
+        <div>
+          <p className="text-lg font-bold leading-none text-slate-900">{teachers.toLocaleString()}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Teachers</p>
+        </div>
+      </div>
+    </article>
+  );
+}
