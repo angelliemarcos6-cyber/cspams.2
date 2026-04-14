@@ -2,15 +2,15 @@
 
 echo "Starting Laravel application on Render..."
 
-# Run composer install if needed
-composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+# Install dependencies if needed
+composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader || true
 
-# Cache config and routes
-php artisan config:cache
-php artisan route:cache
+# Cache config and routes (ignore errors)
+php artisan config:cache || true
+php artisan route:cache || true
 
-# Run migrations
-php artisan migrate --force
+# Run migrations (ignore errors on first deploy if DB is not ready)
+php artisan migrate --force || echo "Migration skipped or failed - continuing..."
 
 # Start the server using Render's assigned port
 php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
