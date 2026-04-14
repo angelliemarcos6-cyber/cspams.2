@@ -1,5 +1,11 @@
 export type UserRole = "school_head" | "monitor" | null;
-export type AccountStatus = "active" | "pending_setup" | "suspended" | "locked" | "archived";
+export type AccountStatus =
+  | "active"
+  | "pending_setup"
+  | "pending_verification"
+  | "suspended"
+  | "locked"
+  | "archived";
 
 export type SchoolStatus = "active" | "inactive" | "pending";
 export type WorkflowStatus = "draft" | "submitted" | "validated" | "returned";
@@ -57,6 +63,10 @@ export interface SchoolHeadAccountSummary {
   lastLoginAt: string | null;
   accountStatus: AccountStatus | string;
   mustResetPassword: boolean;
+  verifiedAt?: string | null;
+  verifiedByUserId?: string | null;
+  verifiedByName?: string | null;
+  verificationNotes?: string | null;
   flagged: boolean;
   flaggedAt: string | null;
   flagReason: string | null;
@@ -80,9 +90,13 @@ export interface SchoolHeadAccountStatusUpdateResult {
   message: string;
 }
 
+export interface SchoolHeadAccountActivationResult {
+  account: SchoolHeadAccountSummary;
+  message: string;
+}
+
 export interface SchoolHeadSetupLinkResult {
   account: SchoolHeadAccountSummary;
-  setupLink: string | null;
   expiresAt: string;
   delivery: "sent" | "failed" | string;
   deliveryMessage: string;
@@ -90,7 +104,6 @@ export interface SchoolHeadSetupLinkResult {
 
 export interface SchoolHeadPasswordResetLinkResult {
   account: SchoolHeadAccountSummary;
-  resetLink: string | null;
   expiresAt: string;
   delivery: "sent" | "failed" | string;
   deliveryMessage: string;
@@ -108,7 +121,6 @@ export interface SchoolHeadAccountActionVerificationCodeResult {
 export interface SchoolHeadAccountProfileUpsertResult {
   account: SchoolHeadAccountSummary;
   message?: string | null;
-  setupLink?: string | null;
   expiresAt?: string | null;
   delivery?: "sent" | "failed" | string | null;
   deliveryMessage?: string | null;
@@ -125,7 +137,6 @@ export interface SchoolHeadAccountProvisioningReceipt {
   email: string;
   mustResetPassword: boolean;
   accountStatus: AccountStatus | string;
-  setupLink: string | null;
   setupLinkExpiresAt: string;
   setupLinkDelivery: "sent" | "failed" | string;
   setupLinkDeliveryMessage: string;
@@ -161,10 +172,10 @@ export interface SchoolRecordPayload {
   schoolId?: string;
   schoolName?: string;
   level?: string | null;
-  studentCount: number;
-  teacherCount: number;
+  studentCount?: number;
+  teacherCount?: number;
   region?: string;
-  status: SchoolStatus;
+  status?: SchoolStatus;
   district?: string | null;
   address?: string | null;
   type?: "public" | "private" | null;
@@ -396,6 +407,26 @@ export interface IndicatorSubmissionItem {
   remarks: string | null;
 }
 
+// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
+// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
+// Monitor & School Head views updated for DepEd standards
+export type IndicatorSubmissionFileType = "bmef" | "smea";
+
+export interface IndicatorSubmissionFileEntry {
+  type: IndicatorSubmissionFileType;
+  uploaded: boolean;
+  path: string | null;
+  originalFilename: string | null;
+  sizeBytes: number | null;
+  uploadedAt: string | null;
+  downloadUrl: string | null;
+}
+
+export interface IndicatorSubmissionFiles {
+  bmef: IndicatorSubmissionFileEntry;
+  smea: IndicatorSubmissionFileEntry;
+}
+
 export interface IndicatorTypedValuePayload {
   value?: string | number | boolean | null;
   amount?: number | string | null;
@@ -429,6 +460,13 @@ export interface IndicatorSubmission {
   notes: string | null;
   reviewNotes: string | null;
   summary: IndicatorSubmissionSummary;
+  files?: IndicatorSubmissionFiles;
+  completion?: {
+    hasImetaFormData: boolean;
+    hasBmefFile: boolean;
+    hasSmeaFile: boolean;
+    isComplete: boolean;
+  };
   indicators: IndicatorSubmissionItem[];
   createdBy?: {
     id: string;
