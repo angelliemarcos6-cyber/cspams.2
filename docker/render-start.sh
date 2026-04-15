@@ -1,30 +1,53 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
-. /var/www/html/docker/common-env.sh
+echo "========== RENDER START DEBUG =========="
+echo "Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "User: $(whoami)"
+echo "PWD: $(pwd)"
+echo "PORT: ${PORT:-10000}"
+echo "APP_ENV: ${APP_ENV:-not-set}"
+echo "----------------------------------------"
+echo "[DEBUG] ls -la (current dir)"
+ls -la
+echo "----------------------------------------"
 
-echo "CSPAMS web container starting..."
-sanitize_runtime_environment
+echo "[DEBUG] Checking Laravel critical paths..."
+for p in artisan public public/index.php bootstrap/cache storage; do
+  if [ -e "$p" ]; then
+    echo "OK: $p exists"
+  else
+    echo "ERROR: $p is missing"
+  fi
+done
+echo "----------------------------------------"
 
-export PORT="${PORT:-10000}"
+if [ ! -d public ]; then
+  echo "FATAL: Directory 'public' does not exist in $(pwd)"
+  echo "[DEBUG] /var/www listing:"
+  ls -la /var/www || true
+  echo "[DEBUG] /var/www/html listing:"
+  ls -la /var/www/html || true
+  exit 1
+fi
 
-mkdir -p \
-  /run/nginx \
-  /var/lib/nginx/tmp/client_body \
-  /var/lib/nginx/tmp/fastcgi \
-  /var/lib/nginx/tmp/proxy \
-  /var/lib/nginx/tmp/scgi \
-  /var/lib/nginx/tmp/uwsgi \
-  /var/log/supervisor \
-  /var/www/html/storage/logs \
-  /var/www/html/bootstrap/cache
+echo "[1/6] Prepare writable dirs"
+mkdir -p storage/framework/{cache,sessions,views} bootstrap/cache
+chmod -R ug+rw storage bootstrap/cache || true
 
-chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+echo "[2/6] Install composer dependencies (safe rerun)"
+composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
-envsubst '${PORT}' < /etc/nginx/http.d/default.conf.template > /etc/nginx/http.d/default.conf
+echo "[3/6] Clear Laravel caches first"
+php artisan optimize:clear || true
 
-php artisan optimize:clear
-php artisan config:cache
-php artisan route:cache
+echo "[4/6] Rebuild caches"
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
 
-exec /usr/bin/supervisord -c /etc/supervisord.conf
+echo "[5/6] Run database migrations"
+php artisan migrate --force || true
+
+echo "[6/6] Starting PHP server"
+exec php -S 0.0.0.0:${PORT:-10000} -t public public/index.php
