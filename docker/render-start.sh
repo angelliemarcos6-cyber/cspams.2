@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
 
 echo "=========================================="
-echo "Starting Laravel application on Render..."
+echo "🚀 Starting Laravel application on Render..."
 echo "Current PORT: ${PORT:-8000}"
+echo "Current working directory: $(pwd)"
 echo "=========================================="
 
-# Install dependencies (safe)
+# Install dependencies safely
+echo "Running composer install..."
 composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader || true
 
-# Cache (safe)
+# Cache config and routes safely
+echo "Caching config..."
 php artisan config:cache || true
+
+echo "Caching routes..."
 php artisan route:cache || true
 
-# Migrations (safe)
-php artisan migrate --force || echo "Migration failed or skipped - continuing..."
+# Run migrations safely
+echo "Running migrations..."
+php artisan migrate --force || echo "⚠️ Migration failed or skipped - continuing..."
 
-echo "Starting PHP built-in server on port ${PORT:-8000}..."
+echo "✅ All setup completed. Starting server..."
 
-# Most reliable way on Render
+# Final command - most reliable way on Render
+echo "Starting PHP built-in server on 0.0.0.0:${PORT:-8000}..."
 exec php -S 0.0.0.0:${PORT:-8000} -t public
