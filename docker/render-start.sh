@@ -5,17 +5,14 @@ echo "Starting Laravel application on Render..."
 echo "Current PORT: ${PORT:-8000}"
 echo "=========================================="
 
-# Install dependencies if needed
 composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader || true
 
-# Cache config and routes (ignore failures)
 php artisan config:cache || true
 php artisan route:cache || true
 
-# Run migrations (ignore failures - important for first deploy)
-php artisan migrate --force || echo "Migration failed or skipped - continuing..."
+php artisan migrate --force || echo "Migrations skipped or failed - continuing..."
 
-echo "Starting PHP Artisan Serve on port ${PORT:-8000}..."
+echo "Starting server on port ${PORT:-8000}..."
 
-# Final command - use exec so it stays in foreground
-exec php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
+# Use php built-in server with exec to keep process in foreground
+exec php -S 0.0.0.0:${PORT:-8000} -t public
