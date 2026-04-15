@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 echo "=========================================="
-echo "🚀 Starting Laravel application on Render..."
-echo "Current PORT: ${PORT:-8000}"
-echo "Current directory: $(pwd)"
+echo "Starting Laravel application on Render"
+echo "Port: ${PORT:-8000}"
+echo "Directory: $(pwd)"
 echo "=========================================="
 
-# Install dependencies safely
-composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader || true
+echo "[1/5] Clearing Laravel caches"
+php artisan optimize:clear
+php artisan config:clear
+php artisan route:clear
+php artisan cache:clear
+php artisan view:clear
 
-# Cache config and routes safely
-php artisan config:cache || true
-php artisan route:cache || true
+echo "[2/5] Installing PHP dependencies"
+composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
-# Run migrations safely
-php artisan migrate --force || echo "⚠️ Migration failed or skipped - continuing..."
+echo "[3/5] Rebuilding fresh caches"
+php artisan config:cache
+php artisan route:cache
 
-echo "✅ Setup completed. Starting server on port ${PORT:-8000}..."
+echo "[4/5] Running database migrations"
+php artisan migrate --force
 
-# Most reliable way on Render (php built-in server)
+echo "[5/5] Starting PHP server"
 exec php -S 0.0.0.0:${PORT:-8000} -t public
