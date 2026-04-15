@@ -13,6 +13,26 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
+Route::options('/{any}', static function (Request $request) {
+    $allowedOrigins = array_values(array_filter(config('cors.allowed_origins', []), static fn ($origin) => is_string($origin) && $origin !== ''));
+    $requestOrigin = $request->headers->get('Origin');
+
+    $allowOrigin = '*';
+    if ($requestOrigin && in_array($requestOrigin, $allowedOrigins, true)) {
+        $allowOrigin = $requestOrigin;
+    } elseif (! empty($allowedOrigins)) {
+        $allowOrigin = $allowedOrigins[0];
+    }
+
+    return response('', 204, [
+        'Access-Control-Allow-Origin' => $allowOrigin,
+        'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers' => 'Origin, Content-Type, Accept, Authorization, X-Requested-With, X-CSRF-TOKEN',
+        'Access-Control-Allow-Credentials' => 'true',
+        'Vary' => 'Origin',
+    ]);
+})->where('any', '.*');
+
 Route::prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:auth-forgot-password');
