@@ -51,7 +51,10 @@ php artisan route:cache || true
 php artisan view:cache || true
 
 echo "[5/6] Run database migrations"
-php artisan migrate --force || true
+if ! php artisan migrate --force; then
+  echo "FATAL: database migrations failed"
+  exit 1
+fi
 
 echo "[6/6] Starting PHP server"
 exec php -S 0.0.0.0:${PORT:-10000} -t public public/index.php
