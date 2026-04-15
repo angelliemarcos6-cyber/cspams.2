@@ -14,21 +14,22 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 Route::options('/{any}', static function (Request $request) {
-    $allowedOrigins = array_values(array_filter(config('cors.allowed_origins', []), static fn ($origin) => is_string($origin) && $origin !== ''));
-    $requestOrigin = $request->headers->get('Origin');
+    $allowedOrigins = [
+        'https://cspams-2.vercel.app',
+        'https://cspams-2-d3oyautzp-angelliemarcos6-cybers-projects.vercel.app',
+    ];
 
-    $allowOrigin = '*';
-    if ($requestOrigin && in_array($requestOrigin, $allowedOrigins, true)) {
-        $allowOrigin = $requestOrigin;
-    } elseif (! empty($allowedOrigins)) {
-        $allowOrigin = $allowedOrigins[0];
+    $requestOrigin = $request->headers->get('Origin');
+    if (! $requestOrigin || ! in_array($requestOrigin, $allowedOrigins, true)) {
+        return response('', 403, ['Vary' => 'Origin']);
     }
 
-    return response('', 204, [
-        'Access-Control-Allow-Origin' => $allowOrigin,
+    return response()->noContent(204)->withHeaders([
+        'Access-Control-Allow-Origin' => $requestOrigin,
         'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         'Access-Control-Allow-Headers' => 'Origin, Content-Type, Accept, Authorization, X-Requested-With, X-CSRF-TOKEN',
         'Access-Control-Allow-Credentials' => 'true',
+        'Access-Control-Max-Age' => '86400',
         'Vary' => 'Origin',
     ]);
 })->where('any', '.*');
