@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
 
 echo "========== RENDER START DEBUG =========="
 echo "Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -32,7 +32,11 @@ if [ ! -d public ]; then
 fi
 
 echo "[1/6] Prepare writable dirs"
-mkdir -p storage/framework/{cache,sessions,views} bootstrap/cache
+mkdir -p \
+  storage/framework/cache \
+  storage/framework/sessions \
+  storage/framework/views \
+  bootstrap/cache
 chmod -R ug+rw storage bootstrap/cache || true
 
 echo "[2/6] Install composer dependencies (safe rerun)"
