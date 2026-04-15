@@ -140,7 +140,7 @@ export function SchoolAdminDashboard() {
     () =>
       effectiveAcademicYearId === "all"
         ? indicatorSubmissions
-        : indicatorSubmissions.filter((submission) => submission.academicYear?.id === effectiveAcademicYearId),
+        : indicatorSubmissions.filter((submission: IndicatorSubmission) => submission.academicYear?.id === effectiveAcademicYearId),
     [effectiveAcademicYearId, indicatorSubmissions],
   );
   const latestIndicators: IndicatorSubmission | null = useMemo(
@@ -150,7 +150,7 @@ export function SchoolAdminDashboard() {
   const latestSubmittedIndicators: IndicatorSubmission | null = useMemo(
     () =>
       latestSubmission(
-        filteredIndicatorsByYear.filter((submission) => {
+        filteredIndicatorsByYear.filter((submission: IndicatorSubmission) => {
           const status = String(submission.status ?? "").toLowerCase();
           return status === "submitted" || status === "validated";
         }),
