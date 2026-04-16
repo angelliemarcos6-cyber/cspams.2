@@ -7,6 +7,7 @@ import {
   Database,
   Download,
   Eye,
+  FilterX,
   LayoutDashboard,
   RefreshCw,
   X,
@@ -21,6 +22,21 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType } from "@/types";
+
+/* ── Quick-jump targets ── */
+interface QuickJumpItem {
+  id: string;
+  label: string;
+  targetId: string;
+}
+
+const QUICK_JUMPS: QuickJumpItem[] = [
+  { id: "today_focus", label: "Today Focus", targetId: "compact-kpi" },
+  { id: "school_info", label: "School Info", targetId: "school-info" },
+  { id: "task_kpis", label: "Task KPIs", targetId: "compact-kpi" },
+  { id: "summary_inputs", label: "Summary Inputs", targetId: "file-reports" },
+  { id: "indicator_workflow", label: "Indicator Workflow", targetId: "imeta-compliance" },
+];
 
 /* ── Helpers ── */
 function latestSubmission<T extends { updatedAt: string | null; createdAt: string | null }>(entries: T[]): T | null {
@@ -87,7 +103,9 @@ export function SchoolAdminDashboard() {
 
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
-  const contextWorkflowStatus: "all" | "draft" | "submitted" | "returned" | "validated" = "all";
+  const [contextWorkflowStatus, setContextWorkflowStatus] = useState<
+    "all" | "draft" | "submitted" | "returned" | "validated"
+  >("all");
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
@@ -162,6 +180,8 @@ export function SchoolAdminDashboard() {
     [latestSubmittedIndicators],
   );
 
+  const hasContextOverrides = contextAcademicYearId !== "all" || contextWorkflowStatus !== "all";
+
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
     async () => runRefreshBatches([[refreshRecords], [refreshSubmissions]]),
@@ -205,6 +225,33 @@ export function SchoolAdminDashboard() {
     setContextAcademicYearId(currentAcademicYearOption.id);
     initialAcademicYearAppliedRef.current = true;
   }, [currentAcademicYearOption]);
+
+  /* ── Context presets ── */
+  const applyContextPreset = (preset: "current_year" | "needs_revision" | "all_submission") => {
+    if (preset === "current_year") {
+      if (currentAcademicYearOption) setContextAcademicYearId(currentAcademicYearOption.id);
+      return;
+    }
+    if (preset === "needs_revision") {
+      setContextWorkflowStatus("returned");
+      return;
+    }
+    setContextAcademicYearId("all");
+    setContextWorkflowStatus("all");
+  };
+
+  const isPresetActive = (preset: "current_year" | "needs_revision" | "all_submission") => {
+    if (preset === "current_year")
+      return Boolean(currentAcademicYearOption && contextAcademicYearId === currentAcademicYearOption.id);
+    if (preset === "needs_revision") return contextWorkflowStatus === "returned";
+    return !hasContextOverrides;
+  };
+
+  const clearTopContext = () => {
+    setContextAcademicYearId("all");
+    setContextWorkflowStatus("all");
+    setFocusedSectionId(null);
+  };
 
   /* ── Quick-jump scroll ── */
   const scrollToSection = (sectionId: string) => {
@@ -270,6 +317,13 @@ export function SchoolAdminDashboard() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [activeReportModalType, closeReportModal]);
 
+  const presetBtnCls = (active: boolean) =>
+    `rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+      active
+        ? "border-primary-300 bg-primary-50 text-primary-700"
+        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+    }`;
+
   /* ── Render ── */
   return (
     <Shell
@@ -316,8 +370,90 @@ export function SchoolAdminDashboard() {
 
       <DashboardHelpDialog open={showHelpDialog} variant="school_head" onClose={() => setShowHelpDialog(false)} />
 
+      {/* ── Merged Control Bar ── */}
+      <section className="mb-4 rounded-sm border border-slate-200 bg-white/95">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+          <div className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 p-0.5">
+            <button type="button" onClick={() => applyContextPreset("current_year")} className={presetBtnCls(isPresetActive("current_year"))}>
+              Current
+            </button>
+            <button type="button" onClick={() => applyContextPreset("needs_revision")} className={presetBtnCls(isPresetActive("needs_revision"))}>
+              Revision
+            </button>
+            <button type="button" onClick={() => applyContextPreset("all_submission")} className={presetBtnCls(isPresetActive("all_submission"))}>
+              All
+            </button>
+          </div>
+
+          <label className="inline-flex items-center gap-1.5 text-xs">
+            <span className="font-semibold text-slate-600">Year:</span>
+            <select
+              value={contextAcademicYearId}
+              onChange={(e) => setContextAcademicYearId(e.target.value)}
+              className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            >
+              <option value="all">All years</option>
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name}
+                  {year.isCurrent ? " (Current)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="inline-flex items-center gap-1.5 text-xs">
+            <span className="font-semibold text-slate-600">Status:</span>
+            <select
+              value={contextWorkflowStatus}
+              onChange={(e) =>
+                setContextWorkflowStatus(e.target.value as typeof contextWorkflowStatus)
+              }
+              className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            >
+              <option value="all">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="submitted">Submitted</option>
+              <option value="returned">Needs Revision</option>
+              <option value="validated">Validated</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            onClick={clearTopContext}
+            disabled={!hasContextOverrides}
+            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <FilterX className="h-3 w-3" />
+            Clear
+          </button>
+        </div>
+
+        {/* Quick Navigation */}
+        <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-2">
+          <span className="shrink-0 text-[11px] font-semibold text-slate-500">Quick Navigation {"->"}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_JUMPS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => scrollToSection(item.targetId)}
+                className={`inline-flex items-center rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
+                  focusedSectionId === item.targetId
+                    ? "border-primary-300 bg-primary-50 text-primary-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Compact KPI Row ── */}
-      <section id="compact-kpi" className={`mb-5 pt-1 ${focusCls("compact-kpi")}`}>
+      <section id="compact-kpi" className={`mb-4 ${focusCls("compact-kpi")}`}>
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${statusChipTone(latestIndicators?.status)}`}
