@@ -295,6 +295,13 @@ function metricDataType(metric: IndicatorMetric): MetricDataType {
   return "number";
 }
 
+function normalizeMetricCode(code: string | null | undefined): string {
+  return String(code ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+}
+
 function metricYears(metric: IndicatorMetric): string[] {
   return Array.isArray(metric.inputSchema?.years) ? metric.inputSchema?.years ?? [] : [];
 }
@@ -306,7 +313,7 @@ function resolveMetricYearsInScope(metric: IndicatorMetric, scopeYears: string[]
 }
 
 function metricDisplayLabel(metric: IndicatorMetric): string {
-  return METRIC_LABEL_OVERRIDES[metric.code] ?? metric.name;
+  return METRIC_LABEL_OVERRIDES[normalizeMetricCode(metric.code)] ?? metric.name;
 }
 
 function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
@@ -314,7 +321,7 @@ function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
 }
 
 function metricUsesSyncedLockedTotals(metric: IndicatorMetric): boolean {
-  return SYNC_LOCKED_METRIC_CODES.has(metric.code);
+  return SYNC_LOCKED_METRIC_CODES.has(normalizeMetricCode(metric.code));
 }
 
 function categoryTabLabel(category: ComplianceCategory): string {
@@ -575,7 +582,7 @@ function collectMissingFieldsForMetric(
     return [];
   }
 
-  const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+  const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code));
   const metricLabel = metricDisplayLabel(metric);
   const missingTargets: MissingFieldTarget[] = [];
 
@@ -718,11 +725,11 @@ export function SchoolIndicatorPanel({
   const smeaInputRef = useRef<HTMLInputElement | null>(null);
 
   const complianceMetrics = useMemo(
-    () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(metric.code)),
+    () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(normalizeMetricCode(metric.code))),
     [metrics],
   );
   const complianceMetricsByCode = useMemo(
-    () => new Map(complianceMetrics.map((metric) => [metric.code, metric])),
+    () => new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric])),
     [complianceMetrics],
   );
   const categoryMetrics = useMemo(
@@ -730,7 +737,7 @@ export function SchoolIndicatorPanel({
       COMPLIANCE_CATEGORIES.map((category) => ({
         ...category,
         metrics: category.metricCodes
-          .map((metricCode) => complianceMetricsByCode.get(metricCode))
+          .map((metricCode) => complianceMetricsByCode.get(normalizeMetricCode(metricCode)))
           .filter((metric): metric is IndicatorMetric => Boolean(metric)),
       })),
     [complianceMetricsByCode],
@@ -1196,7 +1203,7 @@ export function SchoolIndicatorPanel({
         continue;
       }
 
-      const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+      const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code));
 
       const isComplete =
         requiredYears.length === 0 ||
@@ -1835,7 +1842,7 @@ export function SchoolIndicatorPanel({
           };
         }
 
-        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code));
         let targetPayload: IndicatorTypedValuePayload | undefined;
         let actualPayload: IndicatorTypedValuePayload | undefined;
         let targetValue: number | undefined;
@@ -2098,7 +2105,7 @@ export function SchoolIndicatorPanel({
         };
         const years = metricYears(metric);
         const timelineYears = years.length > 0 ? years : schoolYears;
-        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code));
 
         for (let index = 1; index < timelineYears.length; index += 1) {
           const previousYear = timelineYears[index - 1];
@@ -2181,7 +2188,7 @@ export function SchoolIndicatorPanel({
         };
         const years = metricYears(metric);
         const effectiveYears = years.length > 0 ? years : schoolYears;
-        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(metric.code);
+        const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code));
 
         for (const year of effectiveYears) {
           if (!activeSchoolYears.includes(year)) {
