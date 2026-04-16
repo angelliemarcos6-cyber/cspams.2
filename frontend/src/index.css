@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Commissioner:wght@700&family=Inter:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Commissioner:wght@700&family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -25,6 +25,10 @@
 
 :root {
   color-scheme: light;
+}
+
+html {
+  font-family: var(--font-sans);
 }
 
 * {
@@ -405,6 +409,22 @@ th {
   border: 1px solid rgb(147 197 253 / 0.45);
   background: #ffffff;
   box-shadow: 0 28px 60px -42px rgb(2 46 80 / 0.7);
+}
+
+.school-head-dashboard {
+  font-family: var(--font-sans);
+}
+
+.school-head-dashboard h1,
+.school-head-dashboard h2,
+.school-head-dashboard h3,
+.school-head-dashboard h4,
+.school-head-dashboard h5,
+.school-head-dashboard h6,
+.school-head-dashboard .section-title,
+.school-head-dashboard .dashboard-card-title {
+  font-family: var(--font-display);
+  font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {

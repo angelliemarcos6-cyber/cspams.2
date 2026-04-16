@@ -362,6 +362,7 @@ export function SchoolAdminDashboard() {
         </div>
       }
     >
+      <div className="school-head-dashboard">
       {error && (
         <section className="mb-5 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
@@ -825,6 +826,7 @@ export function SchoolAdminDashboard() {
           academicYearFilter={effectiveAcademicYearId}
         />
       </section>
+      </div>
     </Shell>
   );
 }
