@@ -2522,7 +2522,6 @@ export function SchoolIndicatorPanel({
       <div className="border-b border-slate-200 bg-white px-4 py-4">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
-            <h2 className="text-base font-bold uppercase tracking-wide text-slate-900">I-META COMPLIANCE INDICATORS</h2>
           </div>
 
           <div className="w-full md:w-auto md:min-w-[340px]">
