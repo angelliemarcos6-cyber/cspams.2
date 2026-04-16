@@ -1,4 +1,4 @@
-import { Download, Upload } from "lucide-react";
+import { Download, Eye, Upload } from "lucide-react";
 
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
@@ -14,9 +14,11 @@ interface FileUploadFieldProps {
   description: string;
   file: UploadFileMetadata | null;
   submitted: boolean;
+  canViewReport?: boolean;
   isUploading: boolean;
   disabled: boolean;
   onUploadClick: () => void;
+  onViewClick?: () => void;
   onDownloadClick: () => void;
   error?: string;
 }
@@ -40,9 +42,11 @@ export function FileUploadField({
   description,
   file,
   submitted,
+  canViewReport = false,
   isUploading,
   disabled,
   onUploadClick,
+  onViewClick,
   onDownloadClick,
   error = "",
 }: FileUploadFieldProps) {
@@ -68,33 +72,37 @@ export function FileUploadField({
 
       {submitted ? (
         <div className="rounded-xl border border-primary-200 bg-primary-50/40 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-900">{file?.filename || `${label} file`}</p>
-              <p className="mt-1 text-xs text-slate-600">
-                Size: {formatFileSize(file?.sizeBytes ?? null)} | Uploaded: {formatUploadedAt(file?.uploadedAt ?? null)}
-              </p>
+          <div className="space-y-2">
+            <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 text-sm">
+              <p className="font-semibold text-slate-700">File</p>
+              <p className="truncate font-semibold text-slate-900">{file?.filename || "—"}</p>
+              <p className="font-semibold text-slate-700">Date</p>
+              <p className="text-slate-700">{file?.uploadedAt ? formatUploadedAt(file.uploadedAt) : "—"}</p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onUploadClick}
-                disabled={disabled}
-                className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={onViewClick}
+                disabled={disabled || !canViewReport}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Upload className="h-3.5 w-3.5" />
-                {isUploading ? "Uploading..." : "Replace"}
+                <Eye className="h-3.5 w-3.5" />
+                {`View ${label} Report`}
               </button>
               <button
                 type="button"
                 onClick={onDownloadClick}
                 disabled={isDownloadDisabled}
-                className="inline-flex items-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex shrink-0 items-center justify-center rounded-sm border border-primary-300 bg-white p-1.5 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={`Download ${label} report`}
+                title={`Download ${label} report`}
               >
                 <Download className="h-3.5 w-3.5" />
-                Download
               </button>
             </div>
+            <p className="text-[11px] text-slate-500">
+              Size: {formatFileSize(file?.sizeBytes ?? null)}
+            </p>
           </div>
         </div>
       ) : (

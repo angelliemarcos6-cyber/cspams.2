@@ -2553,6 +2553,38 @@ export function SchoolIndicatorPanel({
     }
   }, [downloadSubmissionFile, selectedSubmissionForUploads]);
 
+  const handleViewUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
+    setSubmitError("");
+    setSaveMessage("");
+    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+
+    if (!selectedSubmissionForUploads) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "No draft package is available for viewing.",
+      }));
+      return;
+    }
+
+    const entry = type === "bmef"
+      ? selectedSubmissionForUploads.files?.bmef ?? null
+      : selectedSubmissionForUploads.files?.smea ?? null;
+
+    if (entry?.downloadUrl) {
+      window.open(entry.downloadUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    try {
+      await downloadSubmissionFile(selectedSubmissionForUploads.id, type);
+    } catch (err) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: err instanceof Error ? err.message : `Unable to open ${type.toUpperCase()} report.`,
+      }));
+    }
+  }, [downloadSubmissionFile, selectedSubmissionForUploads]);
+
   const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
     if (type === "bmef") {
       bmefInputRef.current?.click();
@@ -2923,9 +2955,11 @@ export function SchoolIndicatorPanel({
                         }
                         : null}
                       submitted={uploaded}
+                      canViewReport={uploaded}
                       isUploading={isUploading}
                       disabled={uploadDisabled}
                       onUploadClick={() => openUploadPicker(activeUploadType)}
+                      onViewClick={() => void handleViewUploadedFile(activeUploadType)}
                       onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
                       error={uploadError}
                     />
