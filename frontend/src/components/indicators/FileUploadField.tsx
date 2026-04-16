@@ -1,4 +1,4 @@
-import { Eye } from "lucide-react";
+import { Eye, Upload } from "lucide-react";
 
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
@@ -24,9 +24,9 @@ interface FileUploadFieldProps {
 }
 
 function formatUploadedAt(value: string | null): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return "-";
   return parsed.toLocaleDateString();
 }
 
@@ -41,10 +41,11 @@ export function FileUploadField({
   onViewClick,
   error = "",
 }: FileUploadFieldProps) {
-  const fileLabel = file?.filename?.trim() || "—";
-  const dateLabel = file?.uploadedAt ? formatUploadedAt(file.uploadedAt) : "—";
+  const fileLabel = file?.filename?.trim() || "- (none)";
+  const dateLabel = file?.uploadedAt ? formatUploadedAt(file.uploadedAt) : "-";
   const canOpenReport = canViewReport && submitted;
   const isPrimaryDisabled = disabled;
+
   const handlePrimaryAction = () => {
     if (canOpenReport) {
       onViewClick?.();
@@ -74,10 +75,14 @@ export function FileUploadField({
         type="button"
         onClick={handlePrimaryAction}
         disabled={isPrimaryDisabled}
-        className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+        className={`mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+          canOpenReport
+            ? "border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100"
+            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+        }`}
       >
-        <Eye className="h-3.5 w-3.5" />
-        {isUploading ? "Uploading..." : `View ${label} Report`}
+        {canOpenReport ? <Eye className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
+        {canOpenReport ? `View ${label} Report` : (isUploading ? "Uploading..." : `Upload ${label} Report`)}
       </button>
 
       {error && (
