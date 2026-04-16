@@ -224,7 +224,7 @@ function parseDownloadFilename(contentDisposition: string | null): string | null
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
-  const { user, logout, isLoggingOut } = useAuth();
+  const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -280,9 +280,6 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       if (isApiError(err)) {
         if (err.status === 401) {
           setError("Your session expired. Please sign in again.");
-          if (!isLoggingOut) {
-            await logout({ force: true });
-          }
           return;
         }
 
@@ -294,7 +291,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [isLoggingOut, logout],
+    [],
   );
 
   const listSubmissions = useCallback(

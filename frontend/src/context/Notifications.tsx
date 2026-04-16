@@ -55,7 +55,7 @@ function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications:
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { user, logout, isLoggingOut } = useAuth();
+  const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -70,9 +70,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (isApiError(err)) {
         if (err.status === 401) {
           setError("Your session expired. Please sign in again.");
-          if (!isLoggingOut) {
-            await logout({ force: true });
-          }
           return;
         }
 
@@ -84,7 +81,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [isLoggingOut, logout],
+    [],
   );
 
   const syncNotifications = useCallback(

@@ -312,7 +312,7 @@ function emitTeacherUpdateEvent(detailInput: { schoolId?: unknown; schoolCode?: 
 }
 
 export function TeacherDataProvider({ children }: { children: ReactNode }) {
-  const { user, role, logout, isLoggingOut } = useAuth();
+  const { user, role } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -379,9 +379,6 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       if (isApiError(err)) {
         if (err.status === 401) {
           setError("Your session expired. Please sign in again.");
-          if (!isLoggingOut) {
-            await logout({ force: true });
-          }
           return;
         }
 
@@ -393,7 +390,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [isLoggingOut, logout],
+    [],
   );
 
   const requestTeachers = useCallback(

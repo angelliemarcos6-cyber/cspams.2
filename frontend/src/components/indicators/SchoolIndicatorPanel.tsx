@@ -13,7 +13,6 @@ import {
 } from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target, XCircle } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
-import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
@@ -765,7 +764,6 @@ export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
 }: SchoolIndicatorPanelProps) {
-  const { user, logout, isLoggingOut } = useAuth();
   const { records } = useData();
   const { totalCount: syncedStudentCount } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
@@ -836,15 +834,6 @@ export function SchoolIndicatorPanel({
 
   const normalizedSubmitError = useMemo(() => normalizeSessionMessage(submitError), [submitError]);
   const normalizedIndicatorError = useMemo(() => normalizeSessionMessage(error), [error]);
-
-  useEffect(() => {
-    const hasSessionError = isSessionExpiredMessage(submitError) || isSessionExpiredMessage(error);
-    if (!hasSessionError || !user || isLoggingOut) {
-      return;
-    }
-
-    void logout({ force: true });
-  }, [error, isLoggingOut, logout, submitError, user]);
 
   const metricCatalog = useMemo(
     () => (metrics.length > 0 ? metrics : buildFallbackComplianceMetrics()),
