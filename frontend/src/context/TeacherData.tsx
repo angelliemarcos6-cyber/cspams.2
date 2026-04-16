@@ -290,8 +290,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   const handleApiError = useCallback(
     (err: unknown) => {
       if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        setError("Session expired. Please sign in again.");
-        return;
+        return; // Auth.tsx heartbeat handles session expiry.
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");

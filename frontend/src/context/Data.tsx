@@ -248,11 +248,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const handleApiError = useCallback(
     (err: unknown) => {
       if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        // Background pollers must not force-logout — the shared poller fires
-        // every 12 s and on every tab focus. A transient 401 would silently
-        // kick the user out. Auth context is the authoritative session check.
-        setError("Session expired. Please sign in again.");
-        setSyncStatus("error");
+        // Auth.tsx heartbeat is the authoritative session checker — ignore here.
         return;
       }
 

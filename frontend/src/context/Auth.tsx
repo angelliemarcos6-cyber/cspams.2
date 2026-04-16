@@ -205,9 +205,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         if (isApiError(err) && (err.status === 401 || err.status === 403)) {
           setUser(null);
-        } else if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setUser(null);
         }
+        // Network timeouts, 500s, and abort errors are not authoritative —
+        // do not clear user state. The heartbeat below catches real expiry.
       } finally {
         if (active) {
           setIsLoading(false);
@@ -222,6 +222,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       controller.abort();
     };
   }, []);
+
+  // Heartbeat: verify session every 5 minutes and on tab focus while logged in.
+  // This is the single authoritative path for detecting real session expiry.
+  useEffect(() => {
+    if (!user) return;
+
+    const controller = new AbortController();
+    let active = true;
+
+    const checkSession = async () => {
+      try {
+        await apiRequest<MeResponse>("/api/auth/me", {
+          token: COOKIE_SESSION_TOKEN,
+          signal: controller.signal,
+        });
+      } catch (err) {
+        if (!active) return;
+        if (isApiError(err) && (err.status === 401 || err.status === 403)) {
+          setUser(null);
+        }
+        // Network/abort errors are transient — ignore.
+      }
+    };
+
+    const HEARTBEAT_MS = 5 * 60 * 1000;
+    const interval = window.setInterval(() => { void checkSession(); }, HEARTBEAT_MS);
+    const onFocus = () => { void checkSession(); };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [user]);
 
   const login = useCallback(async ({ role, login: loginValue, password }: LoginInput): Promise<LoginResult> => {
     setIsAuthenticating(true);

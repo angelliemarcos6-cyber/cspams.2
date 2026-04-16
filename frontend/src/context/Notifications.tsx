@@ -67,11 +67,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const handleApiError = useCallback(
     (err: unknown) => {
       if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        // Background pollers must not force-logout — transient 401s on cross-origin
-        // requests (focus/online syncs) would otherwise kick users out randomly.
-        // The Auth context is the authoritative source of session state.
-        setError("Session expired. Please sign in again.");
-        return;
+        return; // Auth.tsx heartbeat handles session expiry.
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
