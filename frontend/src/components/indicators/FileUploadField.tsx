@@ -23,13 +23,6 @@ interface FileUploadFieldProps {
   error?: string;
 }
 
-function formatFileSize(sizeBytes: number | null): string {
-  if (!sizeBytes || sizeBytes <= 0) return "N/A";
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatUploadedAt(value: string | null): string {
   if (!value) return "N/A";
   const parsed = new Date(value);
@@ -71,38 +64,32 @@ export function FileUploadField({
       </div>
 
       {submitted ? (
-        <div className="rounded-xl border border-primary-200 bg-primary-50/40 p-3">
-          <div className="space-y-2">
-            <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 text-sm">
-              <p className="font-semibold text-slate-700">File</p>
-              <p className="truncate font-semibold text-slate-900">{file?.filename || "—"}</p>
-              <p className="font-semibold text-slate-700">Date</p>
-              <p className="text-slate-700">{file?.uploadedAt ? formatUploadedAt(file.uploadedAt) : "—"}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onViewClick}
-                disabled={disabled || !canViewReport}
-                className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Eye className="h-3.5 w-3.5" />
-                {`View ${label} Report`}
-              </button>
-              <button
-                type="button"
-                onClick={onDownloadClick}
-                disabled={isDownloadDisabled}
-                className="inline-flex shrink-0 items-center justify-center rounded-sm border border-primary-300 bg-white p-1.5 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
-                aria-label={`Download ${label} report`}
-                title={`Download ${label} report`}
-              >
-                <Download className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              Size: {formatFileSize(file?.sizeBytes ?? null)}
-            </p>
+        <div className="rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-8 text-center">
+          <p className="text-sm font-semibold text-slate-700">{label} Report has been submitted.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {file?.filename || `${label} report`}
+            {file?.uploadedAt ? ` | ${formatUploadedAt(file.uploadedAt)}` : ""}
+          </p>
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={onViewClick}
+              disabled={disabled || !canViewReport}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              {`View ${label} Report`}
+            </button>
+            <button
+              type="button"
+              onClick={onDownloadClick}
+              disabled={isDownloadDisabled}
+              className="inline-flex shrink-0 items-center justify-center rounded-sm border border-primary-300 bg-white p-1.5 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label={`Download ${label} report`}
+              title={`Download ${label} report`}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
       ) : (
