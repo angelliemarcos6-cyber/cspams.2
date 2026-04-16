@@ -7,7 +7,6 @@ import {
   Database,
   Download,
   Eye,
-  FilterX,
   LayoutDashboard,
   RefreshCw,
   X,
@@ -69,9 +68,6 @@ export function SchoolAdminDashboard() {
 
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
-  const [contextWorkflowStatus, setContextWorkflowStatus] = useState<
-    "all" | "draft" | "submitted" | "returned" | "validated"
-  >("all");
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
@@ -144,8 +140,6 @@ export function SchoolAdminDashboard() {
     [latestSubmittedIndicators],
   );
 
-  const hasContextOverrides = contextAcademicYearId !== "all" || contextWorkflowStatus !== "all";
-
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
     async () => runRefreshBatches([[refreshRecords], [refreshSubmissions]]),
@@ -190,32 +184,6 @@ export function SchoolAdminDashboard() {
     initialAcademicYearAppliedRef.current = true;
   }, [currentAcademicYearOption]);
 
-  /* ── Context presets ── */
-  const applyContextPreset = (preset: "current_year" | "needs_revision" | "all_submission") => {
-    if (preset === "current_year") {
-      if (currentAcademicYearOption) setContextAcademicYearId(currentAcademicYearOption.id);
-      return;
-    }
-    if (preset === "needs_revision") {
-      setContextWorkflowStatus("returned");
-      return;
-    }
-    setContextAcademicYearId("all");
-    setContextWorkflowStatus("all");
-  };
-
-  const isPresetActive = (preset: "current_year" | "needs_revision" | "all_submission") => {
-    if (preset === "current_year")
-      return Boolean(currentAcademicYearOption && contextAcademicYearId === currentAcademicYearOption.id);
-    if (preset === "needs_revision") return contextWorkflowStatus === "returned";
-    return !hasContextOverrides;
-  };
-
-  const clearTopContext = () => {
-    setContextAcademicYearId("all");
-    setContextWorkflowStatus("all");
-    setFocusedSectionId(null);
-  };
 
   /* ── Quick-jump scroll ── */
   const scrollToSection = (sectionId: string) => {
@@ -281,12 +249,6 @@ export function SchoolAdminDashboard() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [activeReportModalType, closeReportModal]);
 
-  const presetBtnCls = (active: boolean) =>
-    `rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-      active
-        ? "border-primary-300 bg-primary-50 text-primary-700"
-        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-    }`;
 
   /* ── Render ── */
   return (
@@ -334,66 +296,6 @@ export function SchoolAdminDashboard() {
 
       <DashboardHelpDialog open={showHelpDialog} variant="school_head" onClose={() => setShowHelpDialog(false)} />
 
-      {/* ── Merged Control Bar ── */}
-      <section className="mb-4 rounded-sm border border-slate-200 bg-white/95">
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-          <div className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-slate-50 p-0.5">
-            <button type="button" onClick={() => applyContextPreset("current_year")} className={presetBtnCls(isPresetActive("current_year"))}>
-              Current
-            </button>
-            <button type="button" onClick={() => applyContextPreset("needs_revision")} className={presetBtnCls(isPresetActive("needs_revision"))}>
-              Revision
-            </button>
-            <button type="button" onClick={() => applyContextPreset("all_submission")} className={presetBtnCls(isPresetActive("all_submission"))}>
-              All
-            </button>
-          </div>
-
-          <label className="inline-flex items-center gap-1.5 text-xs">
-            <span className="font-semibold text-slate-600">Year:</span>
-            <select
-              value={contextAcademicYearId}
-              onChange={(e) => setContextAcademicYearId(e.target.value)}
-              className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            >
-              <option value="all">All years</option>
-              {academicYears.map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                  {year.isCurrent ? " (Current)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="inline-flex items-center gap-1.5 text-xs">
-            <span className="font-semibold text-slate-600">Status:</span>
-            <select
-              value={contextWorkflowStatus}
-              onChange={(e) =>
-                setContextWorkflowStatus(e.target.value as typeof contextWorkflowStatus)
-              }
-              className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-            >
-              <option value="all">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="submitted">Submitted</option>
-              <option value="returned">Needs Revision</option>
-              <option value="validated">Validated</option>
-            </select>
-          </label>
-
-          <button
-            type="button"
-            onClick={clearTopContext}
-            disabled={!hasContextOverrides}
-            className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FilterX className="h-3 w-3" />
-            Clear
-          </button>
-        </div>
-      </section>
 
       {/* ── School Info ── */}
       <section id="school-info" className={`mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4 ${focusCls("school-info")}`}>
@@ -711,7 +613,7 @@ export function SchoolAdminDashboard() {
           </div>
         </div>
         <SchoolIndicatorPanel
-          statusFilter={contextWorkflowStatus}
+          statusFilter="all"
           academicYearFilter={effectiveAcademicYearId}
         />
       </section>
@@ -719,5 +621,8 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
+
+
 
 
