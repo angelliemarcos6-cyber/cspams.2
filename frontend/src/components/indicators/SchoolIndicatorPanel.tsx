@@ -2647,6 +2647,19 @@ export function SchoolIndicatorPanel({
     smeaInputRef.current?.click();
   }, []);
 
+  const handleRequestUpload = useCallback((type: IndicatorSubmissionFileType) => {
+    setSubmitError("");
+    setSaveMessage("");
+    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+
+    if (!selectedSubmissionForUploads) {
+      setSubmitError("Save the indicator draft first before uploading BMEF or SMEA files.");
+      return;
+    }
+
+    openUploadPicker(type);
+  }, [openUploadPicker, selectedSubmissionForUploads]);
+
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
       <div className="border-b border-slate-200 bg-white px-4 py-4">
@@ -2992,7 +3005,7 @@ export function SchoolIndicatorPanel({
                 const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = !selectedSubmissionForUploads || isSaving || isSubmissionDataLoading || isUploading;
+                const uploadDisabled = isSaving || isSubmissionDataLoading || isUploading;
                 const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (
@@ -3011,7 +3024,7 @@ export function SchoolIndicatorPanel({
                       canViewReport={uploaded}
                       isUploading={isUploading}
                       disabled={uploadDisabled}
-                      onUploadClick={() => openUploadPicker(activeUploadType)}
+                      onUploadClick={() => handleRequestUpload(activeUploadType)}
                       onViewClick={() => void handleViewUploadedFile(activeUploadType)}
                       onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
                       error={uploadError}
