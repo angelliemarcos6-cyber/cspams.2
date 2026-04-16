@@ -27,7 +27,7 @@ Route::options('/{any}', static function (Request $request) {
     return response()->noContent(204)->withHeaders([
         'Access-Control-Allow-Origin' => $requestOrigin,
         'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers' => 'Origin, Content-Type, Accept, Authorization, X-Requested-With, X-CSRF-TOKEN',
+        'Access-Control-Allow-Headers' => 'Origin, Content-Type, Accept, Authorization, X-Requested-With, X-CSRF-TOKEN, X-XSRF-TOKEN',
         'Access-Control-Allow-Credentials' => 'true',
         'Access-Control-Max-Age' => '86400',
         'Vary' => 'Origin',
