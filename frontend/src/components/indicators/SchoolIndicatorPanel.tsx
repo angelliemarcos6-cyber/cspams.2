@@ -13,6 +13,7 @@ import {
 } from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target, XCircle } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
+import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
@@ -737,10 +738,34 @@ function buildMissingReason(
   return `${missingCount} missing required cells. Most are in ${top.categoryLabel} (${top.count}).`;
 }
 
+function isSessionExpiredMessage(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "").toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    normalized.includes("authentication check failed")
+    || normalized.includes("please refresh and sign in again")
+    || normalized.includes("session expired")
+    || normalized.includes("signed out")
+    || normalized.includes("unauthenticated")
+  );
+}
+
+function normalizeSessionMessage(value: string | null | undefined): string {
+  if (!isSessionExpiredMessage(value)) {
+    return String(value ?? "");
+  }
+
+  return "Your session expired. Please sign in again.";
+}
+
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
 }: SchoolIndicatorPanelProps) {
+  const { user, logout, isLoggingOut } = useAuth();
   const { records } = useData();
   const { totalCount: syncedStudentCount } = useStudentData();
   const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
@@ -808,6 +833,18 @@ export function SchoolIndicatorPanel({
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
   const bmefInputRef = useRef<HTMLInputElement | null>(null);
   const smeaInputRef = useRef<HTMLInputElement | null>(null);
+
+  const normalizedSubmitError = useMemo(() => normalizeSessionMessage(submitError), [submitError]);
+  const normalizedIndicatorError = useMemo(() => normalizeSessionMessage(error), [error]);
+
+  useEffect(() => {
+    const hasSessionError = isSessionExpiredMessage(submitError) || isSessionExpiredMessage(error);
+    if (!hasSessionError || !user || isLoggingOut) {
+      return;
+    }
+
+    void logout({ force: true });
+  }, [error, isLoggingOut, logout, submitError, user]);
 
   const metricCatalog = useMemo(
     () => (metrics.length > 0 ? metrics : buildFallbackComplianceMetrics()),
@@ -3511,11 +3548,11 @@ export function SchoolIndicatorPanel({
           )}
         </div>
 
-        {submitError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{submitError}</p>}
+        {normalizedSubmitError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{normalizedSubmitError}</p>}
         {saveMessage && (
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">{saveMessage}</p>
         )}
-        {error && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{error}</p>}
+        {normalizedIndicatorError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{normalizedIndicatorError}</p>}
         {editingSubmissionId && (
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
             Editing package #{editingSubmissionId}. Save draft to update this package.
