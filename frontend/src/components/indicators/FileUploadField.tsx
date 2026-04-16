@@ -1,4 +1,4 @@
-import { Eye, Upload } from "lucide-react";
+import { Download, Eye, Upload } from "lucide-react";
 
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
@@ -24,14 +24,15 @@ interface FileUploadFieldProps {
 }
 
 function formatUploadedAt(value: string | null): string {
-  if (!value) return "-";
+  if (!value) return "N/A";
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "-";
-  return parsed.toLocaleDateString();
+  if (!Number.isFinite(parsed.getTime())) return "N/A";
+  return parsed.toLocaleString();
 }
 
 export function FileUploadField({
   label,
+  description,
   file,
   submitted,
   canViewReport = false,
@@ -39,51 +40,76 @@ export function FileUploadField({
   disabled,
   onUploadClick,
   onViewClick,
+  onDownloadClick,
   error = "",
 }: FileUploadFieldProps) {
-  const fileLabel = file?.filename?.trim() || "- (none)";
-  const dateLabel = file?.uploadedAt ? formatUploadedAt(file.uploadedAt) : "-";
-  const canOpenReport = canViewReport && submitted;
-  const isPrimaryDisabled = disabled;
-
-  const handlePrimaryAction = () => {
-    if (canOpenReport) {
-      onViewClick?.();
-      return;
-    }
-
-    onUploadClick();
-  };
+  const isDownloadDisabled = disabled || !submitted;
 
   return (
-    <article className="rounded-sm border border-slate-200 bg-white p-3">
-      <div className="space-y-2">
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{label} REPORT</h3>
-        <div className="space-y-1 text-sm text-slate-700">
-          <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
-            <span className="text-[12px] font-semibold text-slate-700">File</span>
-            <span className="truncate text-sm font-semibold text-slate-500">{fileLabel}</span>
-          </div>
-          <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
-            <span className="text-[12px] font-semibold text-slate-700">Date</span>
-            <span className="text-sm font-semibold text-slate-500">{dateLabel}</span>
-          </div>
+    <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{label}</h3>
+          <p className="mt-1 text-xs text-slate-500">{description}</p>
         </div>
+        <span
+          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+            submitted
+              ? "border border-emerald-300 bg-emerald-50 text-emerald-700"
+              : "border border-amber-300 bg-amber-50 text-amber-700"
+          }`}
+        >
+          {submitted ? "Submitted" : "Not Submitted"}
+        </span>
       </div>
 
-      <button
-        type="button"
-        onClick={handlePrimaryAction}
-        disabled={isPrimaryDisabled}
-        className={`mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-          canOpenReport
-            ? "border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100"
-            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-        }`}
-      >
-        {canOpenReport ? <Eye className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
-        {canOpenReport ? `View ${label} Report` : (isUploading ? "Uploading..." : `Upload ${label} Report`)}
-      </button>
+      {submitted ? (
+        <div className="rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-8 text-center">
+          <p className="text-sm font-semibold text-slate-700">
+            {label} Report has been submitted. You can view or download the file anytime.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {file?.filename || `${label} report`}
+            {file?.uploadedAt ? ` | ${formatUploadedAt(file.uploadedAt)}` : ""}
+          </p>
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={onViewClick}
+              disabled={disabled || !canViewReport}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              {`View ${label} Report`}
+            </button>
+            <button
+              type="button"
+              onClick={onDownloadClick}
+              disabled={isDownloadDisabled}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-primary-300 bg-white px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label={`Download ${label} report`}
+              title={`Download ${label} report`}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Download
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+          <p className="text-sm font-semibold text-slate-700">{label} file not submitted yet.</p>
+          <p className="mt-1 text-xs text-slate-500">Upload to mark this requirement as submitted.</p>
+          <button
+            type="button"
+            onClick={onUploadClick}
+            disabled={disabled}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {isUploading ? "Uploading..." : `Upload ${label}`}
+          </button>
+        </div>
+      )}
 
       {error && (
         <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">

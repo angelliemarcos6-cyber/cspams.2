@@ -3068,7 +3068,7 @@ export function SchoolIndicatorPanel({
           )}
 
           {activeUploadType && (
-            <div className="rounded-sm border border-slate-200 bg-slate-100 p-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <input
                 ref={bmefInputRef}
                 type="file"
@@ -3084,48 +3084,43 @@ export function SchoolIndicatorPanel({
                 onChange={(event) => void handleFileInputChange("smea", event)}
               />
 
-              <h3 className="px-1 pb-2 text-2xl font-bold text-slate-800">Reports</h3>
-              <div className="grid gap-3 md:grid-cols-2">
-                <FileUploadField
-                  label="BMEF"
-                  description="Upload-only section. Accepted formats: PDF, DOCX, XLSX (max 10MB)."
-                  file={bmefFileEntry
-                    ? {
-                      filename: bmefFileEntry.originalFilename,
-                      sizeBytes: bmefFileEntry.sizeBytes,
-                      uploadedAt: bmefFileEntry.uploadedAt,
-                    }
-                    : null}
-                  submitted={bmefSubmitted}
-                  canViewReport={bmefSubmitted}
-                  isUploading={uploadingFileType === "bmef"}
-                  disabled={isSaving || uploadingFileType === "bmef"}
-                  onUploadClick={() => handleRequestUpload("bmef")}
-                  onViewClick={() => void handleViewUploadedFile("bmef")}
-                  onDownloadClick={() => void handleDownloadUploadedFile("bmef")}
-                  error={uploadErrorByType.bmef}
-                />
+              {(() => {
+                const fileEntry = activeUploadType === "bmef" ? bmefFileEntry : smeaFileEntry;
+                const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
+                const uploadError = uploadErrorByType[activeUploadType];
+                const isUploading = uploadingFileType === activeUploadType;
+                const uploadDisabled = isSaving || isUploading;
+                const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
-                <FileUploadField
-                  label="SMEA"
-                  description="Upload-only section. Accepted formats: PDF, DOCX, XLSX (max 10MB)."
-                  file={smeaFileEntry
-                    ? {
-                      filename: smeaFileEntry.originalFilename,
-                      sizeBytes: smeaFileEntry.sizeBytes,
-                      uploadedAt: smeaFileEntry.uploadedAt,
-                    }
-                    : null}
-                  submitted={smeaSubmitted}
-                  canViewReport={smeaSubmitted}
-                  isUploading={uploadingFileType === "smea"}
-                  disabled={isSaving || uploadingFileType === "smea"}
-                  onUploadClick={() => handleRequestUpload("smea")}
-                  onViewClick={() => void handleViewUploadedFile("smea")}
-                  onDownloadClick={() => void handleDownloadUploadedFile("smea")}
-                  error={uploadErrorByType.smea}
-                />
-              </div>
+                return (
+                  <div className="space-y-3">
+                    <FileUploadField
+                      label={uploadTypeLabel}
+                      description="Upload-only section. Accepted formats: PDF, DOCX, XLSX (max 10MB)."
+                      file={fileEntry
+                        ? {
+                          filename: fileEntry.originalFilename,
+                          sizeBytes: fileEntry.sizeBytes,
+                          uploadedAt: fileEntry.uploadedAt,
+                        }
+                        : null}
+                      submitted={uploaded}
+                      canViewReport={uploaded}
+                      isUploading={isUploading}
+                      disabled={uploadDisabled}
+                      onUploadClick={() => handleRequestUpload(activeUploadType)}
+                      onViewClick={() => void handleViewUploadedFile(activeUploadType)}
+                      onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
+                      error={uploadError}
+                    />
+                    {!selectedSubmissionForUploads && (
+                      <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                        Save the indicator draft first to enable file upload.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
