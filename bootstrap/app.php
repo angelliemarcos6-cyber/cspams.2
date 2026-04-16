@@ -17,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
+        $middleware->validateCsrfTokens(except: [
+            'api/auth/*',
+            'api/broadcasting/auth',
+        ]);
         $middleware->throttleApi('api');
         $middleware->redirectGuestsTo(static function (Request $request): ?string {
             if ($request->expectsJson() || $request->is('api/*')) {
