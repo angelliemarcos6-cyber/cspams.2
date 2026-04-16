@@ -334,6 +334,21 @@ function formatDateTime(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+function hasUploadedReportFile(entry: IndicatorSubmissionFileEntry | null | undefined): boolean {
+  if (!entry) {
+    return false;
+  }
+
+  return Boolean(
+    entry.uploaded
+    || entry.downloadUrl
+    || entry.path
+    || entry.originalFilename
+    || entry.uploadedAt
+    || ((entry.sizeBytes ?? 0) > 0),
+  );
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1470,8 +1485,6 @@ export function SchoolIndicatorPanel({
   }, [academicYearId, editingSubmission, latestServerDraft, sortedSubmissions]);
   const bmefFileEntry = selectedSubmissionForUploads?.files?.bmef ?? null;
   const smeaFileEntry = selectedSubmissionForUploads?.files?.smea ?? null;
-  const bmefSubmitted = Boolean(bmefFileEntry?.uploaded);
-  const smeaSubmitted = Boolean(smeaFileEntry?.uploaded);
   const activeFormSubmission = useMemo(
     () =>
       (editingSubmissionId
@@ -1479,6 +1492,8 @@ export function SchoolIndicatorPanel({
         : selectedSubmissionForUploads) ?? null,
     [editingSubmissionId, selectedSubmissionForUploads, sortedSubmissions],
   );
+  const bmefSubmitted = hasUploadedReportFile(bmefFileEntry) || Boolean(activeFormSubmission?.completion?.hasBmefFile);
+  const smeaSubmitted = hasUploadedReportFile(smeaFileEntry) || Boolean(activeFormSubmission?.completion?.hasSmeaFile);
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
   const isFormSubmitted = activeFormStatus === "submitted" || activeFormStatus === "validated";
