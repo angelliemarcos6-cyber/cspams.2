@@ -187,7 +187,7 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -246,16 +246,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [sessionKey]);
 
   const handleApiError = useCallback(
-    async (err: unknown) => {
+    (err: unknown) => {
       if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout({ force: true });
+        // Background pollers must not force-logout — the shared poller fires
+        // every 12 s and on every tab focus. A transient 401 would silently
+        // kick the user out. Auth context is the authoritative session check.
+        setError("Session expired. Please sign in again.");
+        setSyncStatus("error");
         return;
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
       setSyncStatus("error");
     },
-    [logout],
+    [],
   );
 
   const syncRecords = useCallback(

@@ -229,7 +229,7 @@ function normalizeMeta(meta: TeacherSyncMeta | undefined, params: NormalizedTeac
 }
 
 export function TeacherDataProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -288,15 +288,15 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   }, [sessionKey]);
 
   const handleApiError = useCallback(
-    async (err: unknown) => {
+    (err: unknown) => {
       if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout({ force: true });
+        setError("Session expired. Please sign in again.");
         return;
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [logout],
+    [],
   );
 
   const requestTeachers = useCallback(
