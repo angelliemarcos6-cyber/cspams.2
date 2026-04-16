@@ -53,6 +53,77 @@ function selectedYearLabel(
 }
 
 const MOBILE_BREAKPOINT = 768;
+const SCHOOL_ACHIEVEMENT_ROWS = [
+  "NAME OF SCHOOL HEAD",
+  "TOTAL NUMBER OF ENROLMENT",
+  "SBM LEVEL OF PRACTICE",
+  "Pupil/Student Classroom Ratio (Kindergarten)",
+  "Pupil/Student Classroom Ratio (Grades 1 to 3)",
+  "Pupil/Student Classroom Ratio (Grades 4 to 6)",
+  "Pupil/Student Classroom Ratio (Grades 7 to 10)",
+  "Pupil/Student Classroom Ratio (Grades 11 to 12)",
+  "Water and Sanitation facility to pupil ratio",
+  "Number of Comfort rooms",
+  "a. Toilet bowl",
+  "b. Urinal",
+  "Handwashing Facilities",
+  "Ideal learning materials to learner ratio",
+  "Pupil/student seat ratio (Overall)",
+  "a. Kindergarten",
+  "b. Grades 1 - 6",
+  "c. Grades 7 - 10",
+  "d. Grades 11 - 12",
+  "ICT Package/E-classroom package to sections ratio",
+  "a. ICT Laboratory",
+  "Science Laboratory",
+  "Do you have internet access? (Y/N)",
+  "Do you have electricity (Y/N)",
+  "Do you have a complete fence/gate? (Evident/Partially/Not Evident)",
+  "No. of Teachers",
+  "a. Male",
+  "b. Female",
+  "Teachers with Physical Disability",
+  "a. Male",
+  "b. Female",
+  "Functional SGC",
+  "School-Based Feeding Program Beneficiaries",
+  "School-Managed Canteen (Annual income)",
+  "Teachers Cooperative Managed Canteen - if there is (Annual income)",
+  "Security and Safety (Contingency Plan)",
+  "a. Earthquake",
+  "b. Typhoon",
+  "c. COVID-19",
+  "d. Power interruption",
+  "e. In-person classes",
+  "No. of Teachers trained on Psychological First Aid (PFA)",
+  "No. of Teachers trained on Occupational First Aid",
+];
+
+const KPI_ROWS = [
+  "Net Enrollment Rate (NER)",
+  "Retention Rate (RR)",
+  "Drop-out Rate (DR)",
+  "Transition Rate (TR)",
+  "Net Intake Rate (NIR)",
+  "Participation Rate (PR)",
+  "ALS Completion Rate",
+  "Gender Parity Index (GPI)",
+  "Interquartile Ratio (IQR)",
+  "Completion Rate (CR)",
+  "Cohort Survival Rate (CSR)",
+  "Learning Mastery: Nearly Proficient",
+  "Learning Mastery: Proficient",
+  "Learning Mastery: Highly Proficient",
+  "A&E Test Pass Rate",
+  "Learners Reporting School Violence",
+  "Learner Satisfaction",
+  "Learners Aware of Education Rights",
+  "Schools/LCs Manifesting RBE Indicators",
+];
+
+function isSubItemMetric(label: string): boolean {
+  return /^[a-e]\.\s/i.test(label);
+}
 
 /* ── Component ── */
 export function SchoolAdminDashboard() {
@@ -287,7 +358,7 @@ export function SchoolAdminDashboard() {
         </div>
       }
     >
-      <div className="school-head-dashboard">
+      <div className="school-head-dashboard mx-auto w-full max-w-[1180px] text-[14px]">
       {error && (
         <section className="mb-5 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
@@ -298,26 +369,26 @@ export function SchoolAdminDashboard() {
 
 
       {/* ── School Info ── */}
-      <section id="school-info" className={`mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4 ${focusCls("school-info")}`}>
-        <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Assigned School</p>
-          <p className="text-sm font-bold text-slate-900">{schoolName}</p>
+      <section id="school-info" className={`mb-8 grid gap-3 md:grid-cols-2 xl:grid-cols-4 ${focusCls("school-info")}`}>
+        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Assigned School</p>
+          <p className="mt-1 text-base font-semibold text-slate-900">{schoolName}</p>
         </article>
-        <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">School Code</p>
-          <p className="text-sm font-bold text-slate-900">{schoolCode}</p>
+        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">School Code</p>
+          <p className="mt-1 text-base font-semibold text-slate-900">{schoolCode}</p>
         </article>
-        <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Region</p>
-          <p className="text-sm font-bold text-slate-900">{schoolRegion}</p>
+        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Region</p>
+          <p className="mt-1 text-base font-semibold text-slate-900">{schoolRegion}</p>
         </article>
-        <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Academic Year</p>
-          <div className="mt-1 relative">
+        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Academic Year</p>
+          <div className="mt-1.5 relative">
             <select
               value={effectiveAcademicYearId}
               onChange={(event) => setContextAcademicYearId(event.target.value)}
-              className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               aria-label="Academic year filter"
             >
               <option value="all">All years</option>
@@ -333,8 +404,8 @@ export function SchoolAdminDashboard() {
       </section>
 
       {/* ── File Reports ── */}
-      <section id="file-reports" className={`mb-5 ${focusCls("file-reports")}`}>
-        <h2 className="mb-4 text-lg font-semibold text-slate-900">Reports</h2>
+      <section id="file-reports" className={`mb-8 ${focusCls("file-reports")}`}>
+        <h2 className="mb-3 text-[18px] font-semibold text-slate-900">Reports</h2>
 
         <div className="flex flex-col gap-4 md:flex-row">
           {([
@@ -353,19 +424,19 @@ export function SchoolAdminDashboard() {
             const buttonLabel = `View ${report.type.toUpperCase()} Report`;
 
             return (
-              <article key={report.type} className="flex-1 rounded-sm border border-slate-200 bg-white p-4">
+              <article key={report.type} className="flex-1 rounded-sm border border-slate-200 bg-white px-6 py-5">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{report.title}</h3>
                 </div>
 
                 <dl className="mt-4 space-y-2">
-                  <div className="flex items-start gap-2 text-sm">
-                    <dt className="w-28 shrink-0 font-semibold text-slate-500">File</dt>
-                    <dd className="truncate font-semibold text-slate-900">{report.file?.originalFilename ?? "- (none)"}</dd>
+                  <div className="flex items-start gap-2">
+                    <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
+                    <dd className="truncate text-sm font-normal text-slate-900">{report.file?.originalFilename ?? "- (none)"}</dd>
                   </div>
-                  <div className="flex items-start gap-2 text-sm">
-                    <dt className="w-28 shrink-0 font-semibold text-slate-500">Date</dt>
-                    <dd className="font-semibold text-slate-900">
+                  <div className="flex items-start gap-2">
+                    <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">Date</dt>
+                    <dd className="text-sm font-normal text-slate-900">
                       {report.file?.uploadedAt ? new Date(report.file.uploadedAt).toLocaleDateString() : "-"}
                     </dd>
                   </div>
@@ -375,7 +446,7 @@ export function SchoolAdminDashboard() {
                   <button
                     type="button"
                     onClick={() => (hasFile ? openReportModal(report.type) : scrollToSection("imeta-compliance"))}
-                    className="inline-flex w-full items-center justify-center gap-1 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     {buttonLabel}
@@ -386,67 +457,32 @@ export function SchoolAdminDashboard() {
           })}
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
-          <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-center text-sm font-bold uppercase tracking-wide text-slate-800">
-            TARGETS-MET
+        <div className="mt-8 overflow-hidden rounded-sm border border-slate-200 bg-white">
+          <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
+            <span className="inline-block border-l-[3px] border-primary-600 pl-3">TARGETS-MET</span>
           </h2>
-          <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
             {/* School's Achievement Table */}
             <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
                 <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY 2025-2026)</h3>
               </div>
-              <table className="w-full text-xs text-slate-700">
+              <table className="w-full text-[13px] text-slate-900">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">Metric</th>
-                    <th className="px-3 py-2 text-right font-medium text-slate-600">Value</th>
+                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
+                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  <tr><td className="px-3 py-1.5">NAME OF SCHOOL HEAD</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">TOTAL NUMBER OF ENROLMENT</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">SBM LEVEL OF PRACTICE</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Pupil/Student Classroom Ratio (Kindergarten)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Pupil/Student Classroom Ratio (Grades 1 to 3)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Pupil/Student Classroom Ratio (Grades 4 to 6)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Pupil/Student Classroom Ratio (Grades 7 to 10)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Pupil/Student Classroom Ratio (Grades 11 to 12)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Water and Sanitation facility to pupil ratio</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Number of Comfort rooms</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">a. Toilet bowl</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">b. Urinal</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Handwashing Facilities</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Ideal learning materials to learner ratio</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Pupil/student seat ratio (Overall)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">a. Kindergarten</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">b. Grades 1 - 6</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">c. Grades 7 - 10</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">d. Grades 11 - 12</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">ICT Package/E-classroom package to sections ratio</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">a. ICT Laboratory</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Science Laboratory</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Do you have internet access? (Y/N)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Do you have electricity (Y/N)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Do you have a complete fence/gate? (Evident/Partially/Not Evident)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">No. of Teachers</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">a. Male</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">b. Female</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Teachers with Physical Disability</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">a. Male</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">b. Female</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Functional SGC</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">School-Based Feeding Program Beneficiaries</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">School-Managed Canteen (Annual income)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Teachers Cooperative Managed Canteen - if there is (Annual income)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Security and Safety (Contingency Plan)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">a. Earthquake</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">b. Typhoon</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">c. COVID-19</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">d. Power interruption</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">e. In-person classes</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">No. of Teachers trained on Psychological First Aid (PFA)</td><td className="px-3 py-1.5 text-right">-</td></tr>
-                  <tr><td className="px-3 py-1.5">No. of Teachers trained on Occupational First Aid</td><td className="px-3 py-1.5 text-right">-</td></tr>
+                <tbody className="divide-y divide-[#E5E7EB]">
+                  {SCHOOL_ACHIEVEMENT_ROWS.map((label) => (
+                    <tr key={label}>
+                      <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
+                        {label}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-400">-</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -456,35 +492,24 @@ export function SchoolAdminDashboard() {
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
                 <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY 2025-2026 only)</h3>
               </div>
-              <table className="w-full text-xs text-slate-700">
+              <table className="w-full text-[13px] text-slate-900">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="px-3 py-2 text-left font-medium text-slate-600">Indicator</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-600">Target</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-600">Actual</th>
-                    <th className="px-3 py-2 text-center font-medium text-slate-600">Status</th>
+                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
+                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
+                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
+                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  <tr><td className="px-3 py-1.5">Net Enrollment Rate (NER)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Retention Rate (RR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Drop-out Rate (DR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Transition Rate (TR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Net Intake Rate (NIR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Participation Rate (PR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">ALS Completion Rate</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Gender Parity Index (GPI)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Interquartile Ratio (IQR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Completion Rate (CR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Cohort Survival Rate (CSR)</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Learning Mastery: Nearly Proficient</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Learning Mastery: Proficient</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Learning Mastery: Highly Proficient</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">A&amp;E Test Pass Rate</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Learners Reporting School Violence</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Learner Satisfaction</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Learners Aware of Education Rights</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
-                  <tr><td className="px-3 py-1.5">Schools/LCs Manifesting RBE Indicators</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td><td className="px-3 py-1.5 text-center">-</td></tr>
+                <tbody className="divide-y divide-[#E5E7EB]">
+                  {KPI_ROWS.map((label) => (
+                    <tr key={label}>
+                      <td className="px-4 py-2.5 text-slate-900">{label}</td>
+                      <td className="px-4 py-2.5 text-center text-slate-400">-</td>
+                      <td className="px-4 py-2.5 text-center text-slate-400">-</td>
+                      <td className="px-4 py-2.5 text-center text-slate-400">-</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
