@@ -12,6 +12,13 @@ $allowedOrigins = array_values(array_filter(array_map(
     explode(',', (string) env('CORS_ALLOWED_ORIGINS', $defaultAllowedOrigins)),
 )));
 
+$frontendOrigin = trim((string) env('FRONTEND_URL', ''));
+if ($frontendOrigin !== '') {
+    $allowedOrigins[] = $frontendOrigin;
+}
+
+$allowedOrigins = array_values(array_unique(array_filter($allowedOrigins)));
+
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 

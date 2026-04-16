@@ -15,18 +15,47 @@ return [
     |
     */
 
-    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', implode(',', [
-        'localhost',
-        'localhost:3000',
-        'localhost:5173',
-        'localhost:4173',
-        '127.0.0.1',
-        '127.0.0.1:8000',
-        '127.0.0.1:5173',
-        '127.0.0.1:4173',
-        '::1',
-        Sanctum::currentApplicationUrlWithPort(),
-    ]))),
+    'stateful' => (static function (): array {
+        $default = [
+            'localhost',
+            'localhost:3000',
+            'localhost:5173',
+            'localhost:4173',
+            '127.0.0.1',
+            '127.0.0.1:8000',
+            '127.0.0.1:5173',
+            '127.0.0.1:4173',
+            '::1',
+            Sanctum::currentApplicationUrlWithPort(),
+        ];
+
+        $configured = array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            explode(',', (string) env('SANCTUM_STATEFUL_DOMAINS', '')),
+        ));
+
+        $derivedFromUrls = [];
+        foreach ([(string) env('FRONTEND_URL', ''), (string) env('APP_URL', '')] as $url) {
+            $url = trim($url);
+            if ($url === '') {
+                continue;
+            }
+
+            $host = parse_url($url, PHP_URL_HOST);
+            if (! is_string($host) || trim($host) === '') {
+                continue;
+            }
+
+            $port = parse_url($url, PHP_URL_PORT);
+            $derivedFromUrls[] = $port ? sprintf('%s:%d', $host, $port) : $host;
+        }
+
+        return array_values(array_unique(array_filter([
+            ...$default,
+            ...$configured,
+            ...$derivedFromUrls,
+        ])));
+    })(),
 
     /*
     |--------------------------------------------------------------------------

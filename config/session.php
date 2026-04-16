@@ -178,7 +178,15 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN'),
+    'domain' => (static function (): ?string {
+        $configured = trim((string) env('SESSION_DOMAIN', ''));
+
+        if ($configured === '' || strtolower($configured) === 'null') {
+            return null;
+        }
+
+        return $configured;
+    })(),
 
     /*
     |--------------------------------------------------------------------------
@@ -191,7 +199,15 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => (static function (): bool {
+        $explicit = env('SESSION_SECURE_COOKIE');
+        if ($explicit !== null) {
+            return filter_var($explicit, FILTER_VALIDATE_BOOL);
+        }
+
+        $environment = strtolower(trim((string) env('APP_ENV', 'production')));
+        return in_array($environment, ['production', 'staging'], true);
+    })(),
 
     /*
     |--------------------------------------------------------------------------
@@ -221,7 +237,22 @@ return [
     |
     */
 
-    'same_site' => env('SESSION_SAME_SITE', 'lax'),
+    'same_site' => (static function (): string {
+        $configured = strtolower(trim((string) env('SESSION_SAME_SITE', '')));
+        if (in_array($configured, ['lax', 'strict', 'none'], true)) {
+            return $configured;
+        }
+
+        $apiHost = parse_url((string) env('APP_URL', ''), PHP_URL_HOST);
+        $frontendHost = parse_url((string) env('FRONTEND_URL', ''), PHP_URL_HOST);
+
+        // Cross-origin SPA requests require SameSite=None (+ secure cookies).
+        if (is_string($apiHost) && is_string($frontendHost) && $apiHost !== '' && $frontendHost !== '' && strcasecmp($apiHost, $frontendHost) !== 0) {
+            return 'none';
+        }
+
+        return 'lax';
+    })(),
 
     /*
     |--------------------------------------------------------------------------
