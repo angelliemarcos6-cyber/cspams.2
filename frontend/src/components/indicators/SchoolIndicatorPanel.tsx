@@ -787,6 +787,10 @@ export function SchoolIndicatorPanel({
   const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [isSubmittedEditMode, setIsSubmittedEditMode] = useState(false);
+  const [optimisticSubmittedByType, setOptimisticSubmittedByType] = useState<{
+    bmef: boolean;
+    smea: boolean;
+  }>({ bmef: false, smea: false });
   const [uploadErrorByType, setUploadErrorByType] = useState<Record<IndicatorSubmissionFileType, string>>({
     bmef: "",
     smea: "",
@@ -1492,11 +1496,19 @@ export function SchoolIndicatorPanel({
         : selectedSubmissionForUploads) ?? null,
     [editingSubmissionId, selectedSubmissionForUploads, sortedSubmissions],
   );
-  const bmefSubmitted = hasUploadedReportFile(bmefFileEntry) || Boolean(activeFormSubmission?.completion?.hasBmefFile);
-  const smeaSubmitted = hasUploadedReportFile(smeaFileEntry) || Boolean(activeFormSubmission?.completion?.hasSmeaFile);
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
   const isFormSubmitted = activeFormStatus === "submitted" || activeFormStatus === "validated";
+  const bmefSubmitted = optimisticSubmittedByType.bmef
+    || (isFormSubmitted && (
+      hasUploadedReportFile(bmefFileEntry)
+      || Boolean(activeFormSubmission?.completion?.hasBmefFile)
+    ));
+  const smeaSubmitted = optimisticSubmittedByType.smea
+    || (isFormSubmitted && (
+      hasUploadedReportFile(smeaFileEntry)
+      || Boolean(activeFormSubmission?.completion?.hasSmeaFile)
+    ));
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
     ?? activeFormSubmission?.createdBy?.name
@@ -1547,10 +1559,24 @@ export function SchoolIndicatorPanel({
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
   useEffect(() => {
+    const serverBmefSubmitted = isFormSubmitted && (
+      hasUploadedReportFile(bmefFileEntry)
+      || Boolean(activeFormSubmission?.completion?.hasBmefFile)
+    );
+    const serverSmeaSubmitted = isFormSubmitted && (
+      hasUploadedReportFile(smeaFileEntry)
+      || Boolean(activeFormSubmission?.completion?.hasSmeaFile)
+    );
+
+    setOptimisticSubmittedByType({
+      bmef: serverBmefSubmitted,
+      smea: serverSmeaSubmitted,
+    });
+
     if (!isFormSubmitted) {
       setIsSubmittedEditMode(false);
     }
-  }, [activeFormSubmissionId, isFormSubmitted]);
+  }, [activeFormSubmission?.completion?.hasBmefFile, activeFormSubmission?.completion?.hasSmeaFile, activeFormSubmissionId, bmefFileEntry, isFormSubmitted, smeaFileEntry]);
 
   const filteredActiveMetrics = useMemo(() => {
     if (!activeCategory) return [];
@@ -2432,6 +2458,10 @@ export function SchoolIndicatorPanel({
     try {
       const result = await persistDraftPayload(prepared.payload, "manual");
       await submitSubmission(result.id);
+      setOptimisticSubmittedByType({
+        bmef: hasUploadedReportFile(bmefFileEntry),
+        smea: hasUploadedReportFile(smeaFileEntry),
+      });
       await refreshSubmissions();
       setIsSubmittedEditMode(false);
       setSaveMessage(`Package #${result.id} submitted to monitor.`);
@@ -2452,6 +2482,10 @@ export function SchoolIndicatorPanel({
 
     try {
       await submitSubmission(submission.id);
+      setOptimisticSubmittedByType({
+        bmef: hasUploadedReportFile(bmefFileEntry),
+        smea: hasUploadedReportFile(smeaFileEntry),
+      });
       await refreshSubmissions();
       setIsSubmittedEditMode(false);
       setSaveMessage(`Package #${submission.id} submitted to monitor.`);
@@ -2463,6 +2497,7 @@ export function SchoolIndicatorPanel({
   const handleConfirmEditSubmittedReport = () => {
     setShowEditConfirmModal(false);
     setIsSubmittedEditMode(true);
+    setOptimisticSubmittedByType({ bmef: false, smea: false });
     setSaveMessage("Editing mode enabled for submitted report.");
     setSubmitError("");
   };
