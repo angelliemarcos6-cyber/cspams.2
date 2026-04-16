@@ -2432,6 +2432,7 @@ export function SchoolIndicatorPanel({
     try {
       const result = await persistDraftPayload(prepared.payload, "manual");
       await submitSubmission(result.id);
+      await refreshSubmissions();
       setIsSubmittedEditMode(false);
       setSaveMessage(`Package #${result.id} submitted to monitor.`);
     } catch (err) {
@@ -2451,6 +2452,7 @@ export function SchoolIndicatorPanel({
 
     try {
       await submitSubmission(submission.id);
+      await refreshSubmissions();
       setIsSubmittedEditMode(false);
       setSaveMessage(`Package #${submission.id} submitted to monitor.`);
     } catch (err) {
@@ -2520,6 +2522,7 @@ export function SchoolIndicatorPanel({
     setUploadingFileType(type);
     try {
       const updated = await uploadSubmissionFile(selectedSubmissionForUploads.id, type, file);
+      await refreshSubmissions();
       setSaveMessage(`${type.toUpperCase()} file uploaded for package #${updated.id}.`);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     } catch (err) {
@@ -2530,7 +2533,7 @@ export function SchoolIndicatorPanel({
     } finally {
       setUploadingFileType(null);
     }
-  }, [selectedSubmissionForUploads, uploadSubmissionFile]);
+  }, [refreshSubmissions, selectedSubmissionForUploads, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -3478,3 +3481,5 @@ export function SchoolIndicatorPanel({
     </section>
   );
 }
+
+
