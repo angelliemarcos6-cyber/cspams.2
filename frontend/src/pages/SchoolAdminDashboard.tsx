@@ -24,20 +24,6 @@ import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType } from "@/types";
 
 /* ── Quick-jump targets ── */
-interface QuickJumpItem {
-  id: string;
-  label: string;
-  targetId: string;
-}
-
-const QUICK_JUMPS: QuickJumpItem[] = [
-  { id: "today_focus", label: "Today Focus", targetId: "compact-kpi" },
-  { id: "school_info", label: "School Info", targetId: "school-info" },
-  { id: "task_kpis", label: "Task KPIs", targetId: "compact-kpi" },
-  { id: "summary_inputs", label: "Summary Inputs", targetId: "file-reports" },
-  { id: "indicator_workflow", label: "Indicator Workflow", targetId: "imeta-compliance" },
-];
-
 /* ── Helpers ── */
 function latestSubmission<T extends { updatedAt: string | null; createdAt: string | null }>(entries: T[]): T | null {
   if (entries.length === 0) return null;
@@ -47,26 +33,6 @@ function latestSubmission<T extends { updatedAt: string | null; createdAt: strin
     return bDate - aDate;
   });
   return sorted[0] ?? null;
-}
-
-function submissionStatusLabel(status: string | null | undefined): string {
-  if (status === "validated") return "Validated";
-  if (status === "submitted") return "Submitted";
-  if (status === "returned") return "Needs Revision";
-  return "Draft";
-}
-
-function statusChipTone(status: string | null | undefined): string {
-  if (status === "validated") return "border-emerald-300 bg-emerald-50 text-emerald-700";
-  if (status === "submitted") return "border-primary-300 bg-primary-50 text-primary-700";
-  if (status === "returned") return "border-amber-300 bg-amber-50 text-amber-700";
-  return "border-slate-300 bg-slate-50 text-slate-600";
-}
-
-function uploadChipTone(uploaded: boolean): string {
-  return uploaded
-    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-    : "border-slate-300 bg-slate-50 text-slate-600";
 }
 
 function normalizeFileExtension(filename: string | null | undefined): string {
@@ -159,8 +125,6 @@ export function SchoolAdminDashboard() {
 
   const bmefFile = latestIndicators?.files?.bmef ?? null;
   const smeaFile = latestIndicators?.files?.smea ?? null;
-  const bmefUploaded = bmefFile?.uploaded === true;
-  const smeaUploaded = smeaFile?.uploaded === true;
 
   const completedIndicators = latestIndicators?.summary?.metIndicators ?? 0;
   const totalIndicators = latestIndicators?.summary?.totalIndicators ?? 0;
@@ -428,65 +392,6 @@ export function SchoolAdminDashboard() {
             <FilterX className="h-3 w-3" />
             Clear
           </button>
-        </div>
-
-        {/* Quick Navigation */}
-        <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-2">
-          <span className="shrink-0 text-[11px] font-semibold text-slate-500">Quick Navigation {"->"}</span>
-          <div className="flex flex-wrap gap-1.5">
-            {QUICK_JUMPS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => scrollToSection(item.targetId)}
-                className={`inline-flex items-center rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                  focusedSectionId === item.targetId
-                    ? "border-primary-300 bg-primary-50 text-primary-700"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Compact KPI Row ── */}
-      <section id="compact-kpi" className={`mb-4 ${focusCls("compact-kpi")}`}>
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${statusChipTone(latestIndicators?.status)}`}
-          >
-            School Achievements
-            <span className="rounded-sm bg-white/60 px-1 py-0.5 text-[10px]">
-              {submissionStatusLabel(latestIndicators?.status)}
-            </span>
-          </span>
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${statusChipTone(latestIndicators?.status)}`}
-          >
-            Key Performance
-            <span className="rounded-sm bg-white/60 px-1 py-0.5 text-[10px]">
-              {submissionStatusLabel(latestIndicators?.status)}
-            </span>
-          </span>
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${uploadChipTone(bmefUploaded)}`}
-          >
-            BMEF
-            <span className="rounded-sm bg-white/60 px-1 py-0.5 text-[10px]">
-              {bmefUploaded ? "Uploaded" : "Pending"}
-            </span>
-          </span>
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${uploadChipTone(smeaUploaded)}`}
-          >
-            SMEA
-            <span className="rounded-sm bg-white/60 px-1 py-0.5 text-[10px]">
-              {smeaUploaded ? "Uploaded" : "Pending"}
-            </span>
-          </span>
         </div>
       </section>
 
@@ -814,4 +719,5 @@ export function SchoolAdminDashboard() {
     </Shell>
   );
 }
+
 
