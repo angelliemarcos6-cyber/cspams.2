@@ -598,6 +598,25 @@ export function SchoolAdminDashboard() {
         </div>
 
         <div className="mt-8">
+          <section id="imeta-compliance" className={`mb-6 ${focusCls("imeta-compliance")}`}>
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">
+                  I-META Compliance Indicators
+                </h2>
+                {totalIndicators > 0 && (
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {completedIndicators}/{totalIndicators} complete
+                  </p>
+                )}
+              </div>
+            </div>
+            <SchoolIndicatorPanel
+              statusFilter={contextWorkflowStatus}
+              academicYearFilter={effectiveAcademicYearId}
+            />
+          </section>
+
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700 mb-3">TARGETS-MET</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* School's Achievement Table */}
@@ -808,24 +827,6 @@ export function SchoolAdminDashboard() {
           </section>
         </>
       )}
-      <section id="imeta-compliance" className={focusCls("imeta-compliance")}>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">
-              I-META Compliance Indicators
-            </h2>
-            {totalIndicators > 0 && (
-              <p className="mt-0.5 text-xs text-slate-500">
-                {completedIndicators}/{totalIndicators} complete
-              </p>
-            )}
-          </div>
-        </div>
-        <SchoolIndicatorPanel
-          statusFilter={contextWorkflowStatus}
-          academicYearFilter={effectiveAcademicYearId}
-        />
-      </section>
       </div>
     </Shell>
   );
