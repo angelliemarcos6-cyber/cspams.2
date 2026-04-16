@@ -24,6 +24,7 @@ import type {
   IndicatorSubmission,
   IndicatorSubmissionItem,
   IndicatorSubmissionPayload,
+  IndicatorSubmissionFileEntry,
   IndicatorSubmissionFileType,
   IndicatorTypedValuePayload,
   MetricInputSchema,
@@ -347,6 +348,11 @@ function hasUploadedReportFile(entry: IndicatorSubmissionFileEntry | null | unde
     || entry.uploadedAt
     || ((entry.sizeBytes ?? 0) > 0),
   );
+}
+
+function isSubmittedWorkflowStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").toLowerCase();
+  return normalized === "submitted" || normalized === "validated";
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -1480,15 +1486,54 @@ export function SchoolIndicatorPanel({
 
     return summary;
   }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, requiredSchoolYearSet, schoolYearByAcademicYearId, schoolYears, sortedSubmissions]);
-  const selectedSubmissionForUploads = useMemo(() => {
-    const scopedByYear = academicYearId && academicYearId !== ALL_RECORDS_YEAR_ID
+  const scopedSubmissionsForYear = useMemo(
+    () => (academicYearId && academicYearId !== ALL_RECORDS_YEAR_ID
       ? sortedSubmissions.filter((submission) => submission.academicYear?.id === academicYearId)
-      : sortedSubmissions;
+      : sortedSubmissions),
+    [academicYearId, sortedSubmissions],
+  );
+  const selectedSubmissionForUploads = useMemo(() => {
+    const latestScopedDraft = scopedSubmissionsForYear.find((submission) => {
+      const status = String(submission.status ?? "").toLowerCase();
+      return status === "draft" || status === "returned";
+    }) ?? null;
 
-    return editingSubmission ?? latestServerDraft ?? scopedByYear[0] ?? null;
-  }, [academicYearId, editingSubmission, latestServerDraft, sortedSubmissions]);
-  const bmefFileEntry = selectedSubmissionForUploads?.files?.bmef ?? null;
-  const smeaFileEntry = selectedSubmissionForUploads?.files?.smea ?? null;
+    return editingSubmission ?? latestScopedDraft ?? scopedSubmissionsForYear[0] ?? latestServerDraft ?? null;
+  }, [editingSubmission, latestServerDraft, scopedSubmissionsForYear]);
+  const latestSubmittedInScope = useMemo(
+    () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
+    [scopedSubmissionsForYear],
+  );
+  const bmefReportSubmission = useMemo(
+    () =>
+      scopedSubmissionsForYear.find((submission) => (
+        isSubmittedWorkflowStatus(submission.status)
+        && (
+          hasUploadedReportFile(submission.files?.bmef ?? null)
+          || Boolean(submission.completion?.hasBmefFile)
+        )
+      ))
+      ?? latestSubmittedInScope
+      ?? selectedSubmissionForUploads
+      ?? null,
+    [latestSubmittedInScope, scopedSubmissionsForYear, selectedSubmissionForUploads],
+  );
+  const smeaReportSubmission = useMemo(
+    () =>
+      scopedSubmissionsForYear.find((submission) => (
+        isSubmittedWorkflowStatus(submission.status)
+        && (
+          hasUploadedReportFile(submission.files?.smea ?? null)
+          || Boolean(submission.completion?.hasSmeaFile)
+        )
+      ))
+      ?? latestSubmittedInScope
+      ?? selectedSubmissionForUploads
+      ?? null,
+    [latestSubmittedInScope, scopedSubmissionsForYear, selectedSubmissionForUploads],
+  );
+  const bmefFileEntry = bmefReportSubmission?.files?.bmef ?? null;
+  const smeaFileEntry = smeaReportSubmission?.files?.smea ?? null;
   const activeFormSubmission = useMemo(
     () =>
       (editingSubmissionId
@@ -1498,16 +1543,20 @@ export function SchoolIndicatorPanel({
   );
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
-  const isFormSubmitted = activeFormStatus === "submitted" || activeFormStatus === "validated";
+  const isFormSubmitted = isSubmittedWorkflowStatus(activeFormStatus);
+  const bmefSubmissionStatus = String(bmefReportSubmission?.status ?? "").toLowerCase();
+  const smeaSubmissionStatus = String(smeaReportSubmission?.status ?? "").toLowerCase();
+  const isBmefSubmissionSubmitted = isSubmittedWorkflowStatus(bmefSubmissionStatus);
+  const isSmeaSubmissionSubmitted = isSubmittedWorkflowStatus(smeaSubmissionStatus);
   const bmefSubmitted = optimisticSubmittedByType.bmef
-    || (isFormSubmitted && (
+    || (isBmefSubmissionSubmitted && (
       hasUploadedReportFile(bmefFileEntry)
-      || Boolean(activeFormSubmission?.completion?.hasBmefFile)
+      || Boolean(bmefReportSubmission?.completion?.hasBmefFile)
     ));
   const smeaSubmitted = optimisticSubmittedByType.smea
-    || (isFormSubmitted && (
+    || (isSmeaSubmissionSubmitted && (
       hasUploadedReportFile(smeaFileEntry)
-      || Boolean(activeFormSubmission?.completion?.hasSmeaFile)
+      || Boolean(smeaReportSubmission?.completion?.hasSmeaFile)
     ));
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
@@ -1559,13 +1608,13 @@ export function SchoolIndicatorPanel({
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
   useEffect(() => {
-    const serverBmefSubmitted = isFormSubmitted && (
+    const serverBmefSubmitted = isBmefSubmissionSubmitted && (
       hasUploadedReportFile(bmefFileEntry)
-      || Boolean(activeFormSubmission?.completion?.hasBmefFile)
+      || Boolean(bmefReportSubmission?.completion?.hasBmefFile)
     );
-    const serverSmeaSubmitted = isFormSubmitted && (
+    const serverSmeaSubmitted = isSmeaSubmissionSubmitted && (
       hasUploadedReportFile(smeaFileEntry)
-      || Boolean(activeFormSubmission?.completion?.hasSmeaFile)
+      || Boolean(smeaReportSubmission?.completion?.hasSmeaFile)
     );
 
     setOptimisticSubmittedByType({
@@ -1576,7 +1625,16 @@ export function SchoolIndicatorPanel({
     if (!isFormSubmitted) {
       setIsSubmittedEditMode(false);
     }
-  }, [activeFormSubmission?.completion?.hasBmefFile, activeFormSubmission?.completion?.hasSmeaFile, activeFormSubmissionId, bmefFileEntry, isFormSubmitted, smeaFileEntry]);
+  }, [
+    activeFormSubmissionId,
+    bmefFileEntry,
+    bmefReportSubmission?.completion?.hasBmefFile,
+    isBmefSubmissionSubmitted,
+    isFormSubmitted,
+    isSmeaSubmissionSubmitted,
+    smeaFileEntry,
+    smeaReportSubmission?.completion?.hasSmeaFile,
+  ]);
 
   const filteredActiveMetrics = useMemo(() => {
     if (!activeCategory) return [];
@@ -2593,7 +2651,11 @@ export function SchoolIndicatorPanel({
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
-    if (!selectedSubmissionForUploads) {
+    const sourceSubmission = type === "bmef"
+      ? (bmefReportSubmission ?? selectedSubmissionForUploads)
+      : (smeaReportSubmission ?? selectedSubmissionForUploads);
+
+    if (!sourceSubmission) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: "No draft package is available for download.",
@@ -2602,21 +2664,25 @@ export function SchoolIndicatorPanel({
     }
 
     try {
-      await downloadSubmissionFile(selectedSubmissionForUploads.id, type);
+      await downloadSubmissionFile(sourceSubmission.id, type);
     } catch (err) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`,
       }));
     }
-  }, [downloadSubmissionFile, selectedSubmissionForUploads]);
+  }, [bmefReportSubmission, downloadSubmissionFile, selectedSubmissionForUploads, smeaReportSubmission]);
 
   const handleViewUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
-    if (!selectedSubmissionForUploads) {
+    const sourceSubmission = type === "bmef"
+      ? (bmefReportSubmission ?? selectedSubmissionForUploads)
+      : (smeaReportSubmission ?? selectedSubmissionForUploads);
+
+    if (!sourceSubmission) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: "No draft package is available for viewing.",
@@ -2625,8 +2691,8 @@ export function SchoolIndicatorPanel({
     }
 
     const entry = type === "bmef"
-      ? selectedSubmissionForUploads.files?.bmef ?? null
-      : selectedSubmissionForUploads.files?.smea ?? null;
+      ? sourceSubmission.files?.bmef ?? null
+      : sourceSubmission.files?.smea ?? null;
 
     if (entry?.downloadUrl) {
       window.open(entry.downloadUrl, "_blank", "noopener,noreferrer");
@@ -2634,14 +2700,14 @@ export function SchoolIndicatorPanel({
     }
 
     try {
-      await downloadSubmissionFile(selectedSubmissionForUploads.id, type);
+      await downloadSubmissionFile(sourceSubmission.id, type);
     } catch (err) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: err instanceof Error ? err.message : `Unable to open ${type.toUpperCase()} report.`,
       }));
     }
-  }, [downloadSubmissionFile, selectedSubmissionForUploads]);
+  }, [bmefReportSubmission, downloadSubmissionFile, selectedSubmissionForUploads, smeaReportSubmission]);
 
   const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
     if (type === "bmef") {
@@ -2802,7 +2868,7 @@ export function SchoolIndicatorPanel({
                   aria-label="Collapse optional note"
                   title="Collapse"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <XCircle className="h-3.5 w-3.5" />
                 </button>
               </div>
               <textarea
