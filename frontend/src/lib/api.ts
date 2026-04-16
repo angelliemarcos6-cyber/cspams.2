@@ -254,9 +254,8 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   const requestTimeoutMs =
     typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : DEFAULT_REQUEST_TIMEOUT_MS;
 
-  // For Sanctum cookie-session auth, always bootstrap cookie state first.
-  // This prevents edge cases where the app starts without a valid session context.
-  if (useCookieSession) {
+  // For Sanctum cookie-session auth, bootstrap CSRF state on mutating requests.
+  if (mutating && useCookieSession) {
     await ensureCsrfCookie();
   }
 
