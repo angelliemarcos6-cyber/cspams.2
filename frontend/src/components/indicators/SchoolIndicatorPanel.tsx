@@ -2550,7 +2550,12 @@ export function SchoolIndicatorPanel({
     }
 
     if (!selectedSubmissionForUploads) {
-      setSubmitError("Save the indicator draft first before uploading BMEF or SMEA files.");
+      const message = "Save the indicator draft first before uploading BMEF or SMEA files.";
+      setSubmitError(message);
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: message,
+      }));
       return;
     }
 
@@ -2653,7 +2658,12 @@ export function SchoolIndicatorPanel({
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
     if (!selectedSubmissionForUploads) {
-      setSubmitError("Save the indicator draft first before uploading BMEF or SMEA files.");
+      const message = "Save the indicator draft first before uploading BMEF or SMEA files.";
+      setSubmitError(message);
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: message,
+      }));
       return;
     }
 
@@ -3005,7 +3015,7 @@ export function SchoolIndicatorPanel({
                 const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isSaving || isSubmissionDataLoading || isUploading;
+                const uploadDisabled = isSaving || isUploading;
                 const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (
@@ -3529,5 +3539,3 @@ export function SchoolIndicatorPanel({
     </section>
   );
 }
-
-
