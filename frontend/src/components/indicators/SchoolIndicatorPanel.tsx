@@ -1987,7 +1987,10 @@ export function SchoolIndicatorPanel({
     return () => window.removeEventListener("keydown", handleMissingShortcuts);
   }, [handleJumpToNextMissing, handleJumpToPreviousMissing]);
 
-  const buildSubmissionPayload = useCallback((): { payload: IndicatorSubmissionPayload | null; reason: string; fingerprint: string } => {
+  const buildSubmissionPayload = useCallback((
+    options: { allowIncomplete?: boolean } = {},
+  ): { payload: IndicatorSubmissionPayload | null; reason: string; fingerprint: string } => {
+    const allowIncomplete = options.allowIncomplete === true;
     if (!academicYearId) {
       return { payload: null, reason: "Select an academic year.", fingerprint: "" };
     }
@@ -1995,7 +1998,7 @@ export function SchoolIndicatorPanel({
       return { payload: null, reason: "Select a specific academic year to save. Use All records for viewing only.", fingerprint: "" };
     }
 
-    if (missingFieldTargets.length > 0) {
+    if (!allowIncomplete && missingFieldTargets.length > 0) {
       return {
         payload: null,
         reason: submitBlockedReason || "Complete all required indicator cells before saving.",
@@ -2141,7 +2144,7 @@ export function SchoolIndicatorPanel({
       return { payload: null, reason: "No required compliance indicators are available for this school.", fingerprint: "" };
     }
 
-    const invalidEntry = entries.find((entry) => {
+    const invalidEntry = allowIncomplete ? null : entries.find((entry) => {
       if (entry.isAutoCalculated || entry.isSyncedLocked || !entry.isRequired) {
         return false;
       }
@@ -2233,7 +2236,7 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const prepared = buildSubmissionPayload();
+    const prepared = buildSubmissionPayload({ allowIncomplete: true });
     if (!prepared.payload) {
       return;
     }
@@ -2468,7 +2471,7 @@ export function SchoolIndicatorPanel({
     setSubmitError("");
     setSaveMessage("");
 
-    const prepared = buildSubmissionPayload();
+    const prepared = buildSubmissionPayload({ allowIncomplete: true });
     if (!prepared.payload) {
       if (missingFieldTargets.length > 0) {
         setSubmitError("");
@@ -2584,6 +2587,27 @@ export function SchoolIndicatorPanel({
     }
   };
 
+  const ensureUploadSubmission = useCallback(async (): Promise<IndicatorSubmission | null> => {
+    if (selectedSubmissionForUploads) {
+      return selectedSubmissionForUploads;
+    }
+
+    const prepared = buildSubmissionPayload({ allowIncomplete: true });
+    if (!prepared.payload) {
+      setSubmitError(prepared.reason);
+      return null;
+    }
+
+    try {
+      const created = await persistDraftPayload(prepared.payload, "manual");
+      await refreshSubmissions();
+      return created;
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to create a draft for file upload.");
+      return null;
+    }
+  }, [buildSubmissionPayload, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads]);
+
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     setSubmitError("");
     setSaveMessage("");
@@ -2607,19 +2631,14 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    if (!selectedSubmissionForUploads) {
-      const message = "Save the indicator draft first before uploading BMEF or SMEA files.";
-      setSubmitError(message);
-      setUploadErrorByType((current) => ({
-        ...current,
-        [type]: message,
-      }));
+    const submissionForUpload = await ensureUploadSubmission();
+    if (!submissionForUpload) {
       return;
     }
 
     setUploadingFileType(type);
     try {
-      const updated = await uploadSubmissionFile(selectedSubmissionForUploads.id, type, file);
+      const updated = await uploadSubmissionFile(submissionForUpload.id, type, file);
       await refreshSubmissions();
       setSaveMessage(`${type.toUpperCase()} file uploaded for package #${updated.id}.`);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
@@ -2631,7 +2650,7 @@ export function SchoolIndicatorPanel({
     } finally {
       setUploadingFileType(null);
     }
-  }, [refreshSubmissions, selectedSubmissionForUploads, uploadSubmissionFile]);
+  }, [ensureUploadSubmission, refreshSubmissions, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -2722,19 +2741,8 @@ export function SchoolIndicatorPanel({
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
-
-    if (!selectedSubmissionForUploads) {
-      const message = "Save the indicator draft first before uploading BMEF or SMEA files.";
-      setSubmitError(message);
-      setUploadErrorByType((current) => ({
-        ...current,
-        [type]: message,
-      }));
-      return;
-    }
-
     openUploadPicker(type);
-  }, [openUploadPicker, selectedSubmissionForUploads]);
+  }, [openUploadPicker]);
 
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
@@ -3105,11 +3113,6 @@ export function SchoolIndicatorPanel({
                       onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
                       error={uploadError}
                     />
-                    {!selectedSubmissionForUploads && (
-                      <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                        Save the indicator draft first to enable file upload.
-                      </p>
-                    )}
                   </div>
                 );
               })()}
