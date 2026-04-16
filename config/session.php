@@ -18,7 +18,18 @@ return [
     |
     */
 
-    'driver' => env('SESSION_DRIVER', 'database'),
+    'driver' => (static function (): string {
+        $configuredDriver = strtolower(trim((string) env('SESSION_DRIVER', 'database')));
+        $environment = strtolower(trim((string) env('APP_ENV', 'production')));
+        $isDeployed = in_array($environment, ['production', 'staging'], true);
+
+        // File-backed sessions are volatile in container platforms and can cause random sign-outs.
+        if ($isDeployed && $configuredDriver === 'file') {
+            return 'database';
+        }
+
+        return $configuredDriver !== '' ? $configuredDriver : 'database';
+    })(),
 
     /*
     |--------------------------------------------------------------------------
@@ -32,7 +43,18 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 525600),
+    'lifetime' => (static function (): int {
+        $environment = strtolower(trim((string) env('APP_ENV', 'production')));
+        $isDeployed = in_array($environment, ['production', 'staging'], true);
+        $defaultMinutes = $isDeployed ? 1440 : 525600;
+        $rawLifetime = (int) env('SESSION_LIFETIME', $defaultMinutes);
+
+        if ($isDeployed) {
+            return max(1, min($rawLifetime, 1440));
+        }
+
+        return max(1, $rawLifetime);
+    })(),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 
