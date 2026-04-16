@@ -26,6 +26,7 @@ import type {
   IndicatorSubmissionPayload,
   IndicatorSubmissionFileType,
   IndicatorTypedValuePayload,
+  MetricInputSchema,
   MetricDataType,
 } from "@/types";
 
@@ -248,6 +249,63 @@ const METRIC_LABEL_OVERRIDES: Record<string, string> = {
   RIGHTS_AWARENESS: "Learners Aware of Education Rights",
   RBE_MANIFEST: "Schools/LCs Manifesting RBE Indicators",
 };
+
+const FALLBACK_TEXT_METRIC_CODES = new Set<string>(["IMETA_HEAD_NAME"]);
+const FALLBACK_YES_NO_METRIC_CODES = new Set<string>([
+  "INTERNET_ACCESS",
+  "ELECTRICITY",
+  "ICT_LAB",
+  "SCIENCE_LAB",
+]);
+const FALLBACK_ENUM_OPTIONS_BY_CODE: Record<string, string[]> = {
+  IMETA_SBM_LEVEL: ["Level I", "Level II", "Level III"],
+  FENCE_STATUS: ["Evident", "Partially Evident", "Not Evident"],
+};
+
+function buildFallbackComplianceMetrics(): IndicatorMetric[] {
+  let syntheticId = 900000;
+
+  return COMPLIANCE_CATEGORIES.flatMap((category) =>
+    category.metricCodes.map((metricCode) => {
+      const normalizedCode = normalizeMetricCode(metricCode);
+      const enumOptions = FALLBACK_ENUM_OPTIONS_BY_CODE[normalizedCode];
+      const dataType: MetricDataType =
+        TARGET_ACTUAL_METRIC_CODES.has(normalizedCode)
+          ? "number"
+          : enumOptions
+            ? "enum"
+            : FALLBACK_YES_NO_METRIC_CODES.has(normalizedCode)
+              ? "yes_no"
+              : FALLBACK_TEXT_METRIC_CODES.has(normalizedCode)
+                ? "text"
+                : "number";
+
+      const inputSchema: MetricInputSchema | null =
+        dataType === "enum"
+          ? { options: enumOptions }
+          : dataType === "yes_no"
+            ? { valueType: "yes_no" }
+            : dataType === "number"
+              ? { valueType: "number" }
+              : null;
+
+      syntheticId += 1;
+
+      return {
+        id: String(syntheticId),
+        code: normalizedCode,
+        name: METRIC_LABEL_OVERRIDES[normalizedCode] ?? normalizedCode,
+        category: category.id,
+        framework: "imeta",
+        dataType,
+        inputSchema,
+        unit: null,
+        sortOrder: syntheticId,
+        isAutoCalculated: false,
+      } satisfies IndicatorMetric;
+    }),
+  );
+}
 
 function workflowTone(status: string): string {
   if (status === "validated") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
@@ -724,9 +782,13 @@ export function SchoolIndicatorPanel({
   const bmefInputRef = useRef<HTMLInputElement | null>(null);
   const smeaInputRef = useRef<HTMLInputElement | null>(null);
 
-  const complianceMetrics = useMemo(
-    () => metrics.filter((metric) => COMPLIANCE_METRIC_CODES.has(normalizeMetricCode(metric.code))),
+  const metricCatalog = useMemo(
+    () => (metrics.length > 0 ? metrics : buildFallbackComplianceMetrics()),
     [metrics],
+  );
+  const complianceMetrics = useMemo(
+    () => metricCatalog.filter((metric) => COMPLIANCE_METRIC_CODES.has(normalizeMetricCode(metric.code))),
+    [metricCatalog],
   );
   const complianceMetricsByCode = useMemo(
     () => new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric])),
