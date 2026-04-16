@@ -55,7 +55,7 @@ function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications:
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const token = user ? COOKIE_SESSION_TOKEN : "";
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -65,15 +65,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   const handleApiError = useCallback(
-    async (err: unknown) => {
+    (err: unknown) => {
       if (isApiError(err) && (err.status === 401 || err.status === 403)) {
-        await logout({ force: true });
+        // Background pollers must not force-logout — transient 401s on cross-origin
+        // requests (focus/online syncs) would otherwise kick users out randomly.
+        // The Auth context is the authoritative source of session state.
+        setError("Session expired. Please sign in again.");
         return;
       }
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [logout],
+    [],
   );
 
   const syncNotifications = useCallback(
@@ -103,7 +106,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         setUnreadCount(meta.unreadCount);
         setLastSyncedAt(new Date().toISOString());
       } catch (err) {
-        await handleApiError(err);
+        handleApiError(err);
       } finally {
         if (!silent) {
           setIsLoading(false);
@@ -135,7 +138,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           await syncNotifications(true);
         }
       } catch (err) {
-        await handleApiError(err);
+        handleApiError(err);
       }
     },
     [token, syncNotifications, handleApiError],
@@ -155,7 +158,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       );
       setUnreadCount(0);
     } catch (err) {
-      await handleApiError(err);
+      handleApiError(err);
     }
   }, [token, handleApiError]);
 
