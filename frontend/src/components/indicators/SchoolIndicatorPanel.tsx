@@ -770,6 +770,8 @@ export function SchoolIndicatorPanel({
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [teacherSexCounts, setTeacherSexCounts] = useState<{ male: number; female: number }>({ male: 0, female: 0 });
   const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
+  const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
+  const [isSubmittedEditMode, setIsSubmittedEditMode] = useState(false);
   const [uploadErrorByType, setUploadErrorByType] = useState<Record<IndicatorSubmissionFileType, string>>({
     bmef: "",
     smea: "",
@@ -1470,6 +1472,25 @@ export function SchoolIndicatorPanel({
   const smeaFileEntry = selectedSubmissionForUploads?.files?.smea ?? null;
   const bmefSubmitted = Boolean(bmefFileEntry?.uploaded);
   const smeaSubmitted = Boolean(smeaFileEntry?.uploaded);
+  const activeFormSubmission = useMemo(
+    () =>
+      (editingSubmissionId
+        ? sortedSubmissions.find((submission) => submission.id === editingSubmissionId) ?? null
+        : selectedSubmissionForUploads) ?? null,
+    [editingSubmissionId, selectedSubmissionForUploads, sortedSubmissions],
+  );
+  const activeFormSubmissionId = activeFormSubmission?.id ?? null;
+  const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
+  const isFormSubmitted = activeFormStatus === "submitted" || activeFormStatus === "validated";
+  const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
+  const submittedByLabel = activeFormSubmission?.submittedBy?.name
+    ?? activeFormSubmission?.createdBy?.name
+    ?? null;
+  const submittedAtLabel = activeFormSubmission?.submittedAt
+    ?? activeFormSubmission?.updatedAt
+    ?? null;
+  const schoolAchievementsSubmitted = isFormSubmitted && !isSubmittedEditMode;
+  const keyPerformanceSubmitted = isFormSubmitted && !isSubmittedEditMode;
   // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
   // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
   // Monitor & School Head views updated for DepEd standards
@@ -1506,9 +1527,16 @@ export function SchoolIndicatorPanel({
       : null),
     [activeTab, visibleCategoryMetrics],
   );
+  const isActiveCategoryLocked = Boolean(activeCategory && isFormLocked);
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
+  useEffect(() => {
+    if (!isFormSubmitted) {
+      setIsSubmittedEditMode(false);
+    }
+  }, [activeFormSubmissionId, isFormSubmitted]);
+
   const filteredActiveMetrics = useMemo(() => {
     if (!activeCategory) return [];
 
@@ -2334,6 +2362,10 @@ export function SchoolIndicatorPanel({
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isActiveCategoryLocked) {
+      setSubmitError("This submitted report is read-only. Click Edit to continue.");
+      return;
+    }
     setSubmitError("");
     setSaveMessage("");
 
@@ -2360,6 +2392,10 @@ export function SchoolIndicatorPanel({
   };
 
   const handleCreateAndSubmit = async () => {
+    if (isActiveCategoryLocked) {
+      setSubmitError("This submitted report is read-only. Click Edit to continue.");
+      return;
+    }
     setSubmitError("");
     setSaveMessage("");
 
@@ -2381,6 +2417,7 @@ export function SchoolIndicatorPanel({
     try {
       const result = await persistDraftPayload(prepared.payload, "manual");
       await submitSubmission(result.id);
+      setIsSubmittedEditMode(false);
       setSaveMessage(`Package #${result.id} submitted to monitor.`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
@@ -2399,10 +2436,18 @@ export function SchoolIndicatorPanel({
 
     try {
       await submitSubmission(submission.id);
+      setIsSubmittedEditMode(false);
       setSaveMessage(`Package #${submission.id} submitted to monitor.`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
     }
+  };
+
+  const handleConfirmEditSubmittedReport = () => {
+    setShowEditConfirmModal(false);
+    setIsSubmittedEditMode(true);
+    setSaveMessage("Editing mode enabled for submitted report.");
+    setSubmitError("");
   };
 
   const handleToggleDetails = async (submission: IndicatorSubmission) => {
@@ -2527,6 +2572,24 @@ export function SchoolIndicatorPanel({
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span
                   className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    schoolAchievementsSubmitted
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-600"
+                  }`}
+                >
+                  School Achievements: {schoolAchievementsSubmitted ? "Submitted" : (isSubmittedEditMode ? "Editing" : "Draft")}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    keyPerformanceSubmitted
+                      ? "border-primary-300 bg-primary-50 text-primary-700"
+                      : "border-slate-300 bg-white text-slate-600"
+                  }`}
+                >
+                  Key Performance: {keyPerformanceSubmitted ? "Submitted" : (isSubmittedEditMode ? "Editing" : "Draft")}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                     bmefSubmitted
                       ? "border-primary-300 bg-primary-50 text-primary-700"
                       : "border-amber-300 bg-amber-50 text-amber-700"
@@ -2544,6 +2607,11 @@ export function SchoolIndicatorPanel({
                   SMEA: {smeaSubmitted ? "Submitted" : "Not Submitted"}
                 </span>
               </div>
+              {isFormSubmitted && submittedAtLabel && (
+                <p className="mt-1 text-[11px] font-medium text-slate-500">
+                  Submitted by {submittedByLabel ?? "Unknown"} • {formatDateTime(submittedAtLabel)}
+                </p>
+              )}
             </div>
 
             <div className="w-full md:w-[320px]">
@@ -2577,6 +2645,7 @@ export function SchoolIndicatorPanel({
                 value={academicYearId}
                 onChange={(event) => setAcademicYearId(event.target.value)}
                 aria-label="School year"
+                disabled={isActiveCategoryLocked}
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
                 <option value={ALL_RECORDS_YEAR_ID}>All records</option>
@@ -2600,6 +2669,7 @@ export function SchoolIndicatorPanel({
                 value={reportingPeriod}
                 onChange={() => undefined}
                 aria-label="Reporting period"
+                disabled={isActiveCategoryLocked}
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
                 <option value="ANNUAL">Annual</option>
@@ -2619,6 +2689,7 @@ export function SchoolIndicatorPanel({
                 <button
                   type="button"
                   onClick={() => setShowOptionalNotes(false)}
+                  disabled={isActiveCategoryLocked}
                   className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                   aria-label="Collapse optional note"
                   title="Collapse"
@@ -2632,6 +2703,7 @@ export function SchoolIndicatorPanel({
                 onChange={(event) => setNotes(event.target.value)}
                 rows={3}
                 placeholder="Add optional note"
+                disabled={isActiveCategoryLocked}
                 className="w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               />
             </div>
@@ -2639,6 +2711,7 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={() => setShowOptionalNotes(true)}
+              disabled={isActiveCategoryLocked}
               className="text-xs font-semibold text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline"
             >
               + Add optional note
@@ -2652,7 +2725,7 @@ export function SchoolIndicatorPanel({
               <button
                 type="button"
                 onClick={() => handleSlideCategory(-1)}
-                disabled={complianceTabs.length <= 1}
+                disabled={isActiveCategoryLocked || complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories left"
                 aria-label="Slide categories left"
@@ -2674,6 +2747,13 @@ export function SchoolIndicatorPanel({
                     const uploadSubmitted = tab.kind === "upload"
                       ? (tab.uploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
                       : null;
+                    const categorySubmitted = tab.kind === "category"
+                      ? (tab.id === "school_achievements_learning_outcomes"
+                        ? schoolAchievementsSubmitted
+                        : tab.id === "key_performance_indicators"
+                          ? keyPerformanceSubmitted
+                          : false)
+                      : false;
 
                     return (
                       <button
@@ -2681,6 +2761,7 @@ export function SchoolIndicatorPanel({
                         data-category-id={tab.id}
                         type="button"
                         onClick={() => handleSelectCategory(tab.id)}
+                        disabled={isActiveCategoryLocked}
                         className={`inline-flex min-w-[188px] items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-left transition ${
                           isActive
                             ? "border-primary-300 bg-primary-50 text-primary-700"
@@ -2693,7 +2774,11 @@ export function SchoolIndicatorPanel({
                           </span>
                           {tab.kind === "category" && progress ? (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
-                              {progress.complete}/{progress.total} complete
+                              {categorySubmitted
+                                ? "Submitted"
+                                : isSubmittedEditMode
+                                  ? "Editing"
+                                  : `${progress.complete}/${progress.total} complete`}
                             </span>
                           ) : (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
@@ -2704,16 +2789,22 @@ export function SchoolIndicatorPanel({
                         <span
                           className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
                             tab.kind === "category"
-                              ? (missingCount && missingCount > 0
-                                ? "border-amber-300 bg-amber-50 text-amber-700"
-                                : "border-primary-300 bg-primary-50 text-primary-700")
+                              ? (categorySubmitted
+                                ? "border-primary-300 bg-primary-50 text-primary-700"
+                                : (missingCount && missingCount > 0
+                                  ? "border-amber-300 bg-amber-50 text-amber-700"
+                                  : "border-primary-300 bg-primary-50 text-primary-700"))
                               : (uploadSubmitted
                                 ? "border-primary-300 bg-primary-50 text-primary-700"
                                 : "border-amber-300 bg-amber-50 text-amber-700")
                           }`}
                         >
                           {tab.kind === "category"
-                            ? `Missing ${missingCount ?? 0}`
+                            ? (categorySubmitted
+                              ? "Submitted"
+                              : isSubmittedEditMode
+                                ? "Editing"
+                                : `Missing ${missingCount ?? 0}`)
                             : uploadSubmitted
                               ? "Submitted"
                               : "Not Submitted"}
@@ -2727,7 +2818,7 @@ export function SchoolIndicatorPanel({
               <button
                 type="button"
                 onClick={() => handleSlideCategory(1)}
-                disabled={complianceTabs.length <= 1}
+                disabled={isActiveCategoryLocked || complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories right"
                 aria-label="Slide categories right"
@@ -2745,11 +2836,13 @@ export function SchoolIndicatorPanel({
               value={indicatorSearch}
               onChange={(event) => setIndicatorSearch(event.target.value)}
               placeholder="Search indicator"
+              disabled={isActiveCategoryLocked}
               className="w-full rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
             <button
               type="button"
               onClick={() => setShowOnlyMissingRows((current) => !current)}
+              disabled={isActiveCategoryLocked}
               className={`rounded-sm border px-3 py-1 text-xs font-semibold transition ${
                 showOnlyMissingRows
                   ? "border-amber-300 bg-amber-50 text-amber-700"
@@ -2770,6 +2863,7 @@ export function SchoolIndicatorPanel({
                     <button
                       key={target.key}
                       type="button"
+                      disabled={isActiveCategoryLocked}
                       onClick={() => {
                         focusMissingTarget(target, (index + 1) % missingFieldTargets.length);
                         setShowMissingFields(false);
@@ -2854,6 +2948,7 @@ export function SchoolIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => slideIndicatorTable(-1)}
+                      disabled={isActiveCategoryLocked}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100"
                       title="Slide table left"
                       aria-label="Slide table left"
@@ -2863,6 +2958,7 @@ export function SchoolIndicatorPanel({
                     <button
                       type="button"
                       onClick={() => slideIndicatorTable(1)}
+                      disabled={isActiveCategoryLocked}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100"
                       title="Slide table right"
                       aria-label="Slide table right"
@@ -3079,6 +3175,7 @@ export function SchoolIndicatorPanel({
                                       id={valueCellId}
                                       value={current.actualMatrix[year] ?? ""}
                                       onChange={(event) => setMetricMatrixValue(metric, year, "single", event.target.value)}
+                                      disabled={isActiveCategoryLocked}
                                       className={valueInputClass}
                                     >
                                       <option value="">Select</option>
@@ -3097,6 +3194,7 @@ export function SchoolIndicatorPanel({
                                       placeholder={placeholder}
                                       value={current.actualMatrix[year] ?? ""}
                                       onChange={(event) => setMetricMatrixValue(metric, year, "single", event.target.value)}
+                                      disabled={isActiveCategoryLocked}
                                       className={valueInputClass}
                                     />
                                   )}
@@ -3122,6 +3220,7 @@ export function SchoolIndicatorPanel({
                                       id={targetCellId}
                                       value={current.targetMatrix[year] ?? ""}
                                       onChange={(event) => setMetricMatrixValue(metric, year, "target", event.target.value)}
+                                      disabled={isActiveCategoryLocked}
                                       className={targetInputClass}
                                     >
                                       <option value="">Select</option>
@@ -3140,6 +3239,7 @@ export function SchoolIndicatorPanel({
                                       placeholder={placeholder}
                                       value={current.targetMatrix[year] ?? ""}
                                       onChange={(event) => setMetricMatrixValue(metric, year, "target", event.target.value)}
+                                      disabled={isActiveCategoryLocked}
                                       className={targetInputClass}
                                     />
                                   )}
@@ -3160,6 +3260,7 @@ export function SchoolIndicatorPanel({
                                       id={actualCellId}
                                       value={current.actualMatrix[year] ?? ""}
                                       onChange={(event) => setMetricMatrixValue(metric, year, "actual", event.target.value)}
+                                      disabled={isActiveCategoryLocked}
                                       className={actualInputClass}
                                     >
                                       <option value="">Select</option>
@@ -3178,6 +3279,7 @@ export function SchoolIndicatorPanel({
                                       placeholder={placeholder}
                                       value={current.actualMatrix[year] ?? ""}
                                       onChange={(event) => setMetricMatrixValue(metric, year, "actual", event.target.value)}
+                                      disabled={isActiveCategoryLocked}
                                       className={actualInputClass}
                                     />
                                   )}
@@ -3241,37 +3343,52 @@ export function SchoolIndicatorPanel({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="submit"
-            disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || academicYearId === ALL_RECORDS_YEAR_ID}
-            title={academicYearId === ALL_RECORDS_YEAR_ID ? "Select a specific academic year to save draft." : undefined}
-            className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <Target className="h-4 w-4" />
-            {isSaving ? "Saving..." : editingSubmissionId ? "Update Draft" : "Save Draft"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleCreateAndSubmit()}
-            disabled={
-              isSaving
-              || isSubmissionDataLoading
-              || complianceMetrics.length === 0
-              || academicYearId === ALL_RECORDS_YEAR_ID
-              || missingFieldTargets.length > 0
-            }
-            title={
-              academicYearId === ALL_RECORDS_YEAR_ID
-                ? "Select a specific academic year to submit."
-                : missingFieldTargets.length > 0
-                  ? submitBlockedReason || "Complete required fields before submitting."
-                  : "Save and submit to monitor"
-            }
-            className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <Send className="h-4 w-4" />
-            Submit
-          </button>
+          {!isActiveCategoryLocked && (
+            <>
+              <button
+                type="submit"
+                disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || academicYearId === ALL_RECORDS_YEAR_ID}
+                title={academicYearId === ALL_RECORDS_YEAR_ID ? "Select a specific academic year to save draft." : undefined}
+                className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <Target className="h-4 w-4" />
+                {isSaving ? "Saving..." : editingSubmissionId ? "Update Draft" : "Save Draft"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleCreateAndSubmit()}
+                disabled={
+                  isSaving
+                  || isSubmissionDataLoading
+                  || complianceMetrics.length === 0
+                  || academicYearId === ALL_RECORDS_YEAR_ID
+                  || missingFieldTargets.length > 0
+                }
+                title={
+                  academicYearId === ALL_RECORDS_YEAR_ID
+                    ? "Select a specific academic year to submit."
+                    : missingFieldTargets.length > 0
+                      ? submitBlockedReason || "Complete required fields before submitting."
+                      : "Save and submit to monitor"
+                }
+                className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <Send className="h-4 w-4" />
+                Submit
+              </button>
+            </>
+          )}
+          {isActiveCategoryLocked && (
+            <button
+              type="button"
+              onClick={() => setShowEditConfirmModal(true)}
+              disabled={isSaving || isSubmissionDataLoading}
+              className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <Edit2 className="h-4 w-4" />
+              Edit
+            </button>
+          )}
           {editingSubmissionId && (
             <button
               type="button"
@@ -3283,6 +3400,32 @@ export function SchoolIndicatorPanel({
           )}
         </div>
       </form>
+      {showEditConfirmModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-md rounded-sm border border-slate-200 bg-white p-4 shadow-2xl">
+            <h4 className="text-sm font-bold text-slate-900">Confirm Edit</h4>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to edit a submitted report?
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditConfirmModal(false)}
+                className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmEditSubmittedReport}
+                className="inline-flex items-center rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
