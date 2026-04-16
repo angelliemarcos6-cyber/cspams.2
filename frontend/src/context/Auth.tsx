@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, ensureCsrfCookie, isApiError } from "@/lib/api";
 import { stopRealtimeBridge } from "@/lib/realtime";
 import { clearClientSessionArtifacts } from "@/lib/sessionCleanup";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
@@ -187,6 +187,7 @@ function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequi
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_SESSION_KEEPALIVE_MS = 4 * 60 * 1000;
+const KEEPALIVE_CONSECUTIVE_401_LIMIT = 2;
 
 function normalizeRole(role: string): Exclude<UserRole, null> {
   return role === "monitor" ? "monitor" : "school_head";
@@ -226,6 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const keepAliveInFlightRef = useRef(false);
+  const keepAliveConsecutive401Ref = useRef(0);
 
   const clearAuthError = useCallback(() => {
     setAuthError("");
@@ -297,14 +299,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     keepAliveInFlightRef.current = true;
     try {
-      const payload = await apiRequest<MeResponse>("/api/auth/me", {
-        token: COOKIE_SESSION_TOKEN,
-        timeoutMs: 15_000,
-      });
+      let payload: MeResponse;
+      try {
+        payload = await apiRequest<MeResponse>("/api/auth/me", {
+          token: COOKIE_SESSION_TOKEN,
+          timeoutMs: 15_000,
+        });
+      } catch (err) {
+        // Retry once after refreshing CSRF/session bootstrap to avoid false session ejections.
+        if (!(isApiError(err) && err.status === 401)) {
+          throw err;
+        }
+
+        await ensureCsrfCookie(true);
+        payload = await apiRequest<MeResponse>("/api/auth/me", {
+          token: COOKIE_SESSION_TOKEN,
+          timeoutMs: 15_000,
+        });
+      }
+
+      keepAliveConsecutive401Ref.current = 0;
+      setAuthError("");
+      setAuthErrorCode(null);
+      setAccountStatus(null);
+
       setUser(normalizeUser(payload.user));
       clearAuthError();
     } catch (err) {
       if (isApiError(err) && err.status === 401) {
+        keepAliveConsecutive401Ref.current += 1;
+
+        // Only log out when the backend confirms unauthenticated state more than once in a row.
+        if (keepAliveConsecutive401Ref.current < KEEPALIVE_CONSECUTIVE_401_LIMIT) {
+          return;
+        }
+
         setAuthError("Your session expired. Please sign in again.");
         setAuthErrorCode(401);
         setAccountStatus(null);
@@ -314,6 +343,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       keepAliveInFlightRef.current = false;
     }
   }, [clearAuthError, isLoggingOut, user]);
+
+  useEffect(() => {
+    if (!user) {
+      keepAliveConsecutive401Ref.current = 0;
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -342,8 +377,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticating(true);
     try {
       const payload = await apiRequest<LoginResponse>("/api/auth/login", {
-        method: "POST",
         token: COOKIE_SESSION_TOKEN,
+        method: "POST",
         timeoutMs: 30_000,
         body: {
           role,
@@ -369,6 +404,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       assertCookieSessionAuthResponse(payload, "login");
       const normalizedUser = normalizeUser(payload.user);
+      keepAliveConsecutive401Ref.current = 0;
       setUser(normalizedUser);
       clearAuthError();
 
