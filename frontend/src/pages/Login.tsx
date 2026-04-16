@@ -71,7 +71,7 @@ export function Login() {
     accountStatus,
     clearAuthError,
   } = useAuth();
-  const appTagline = "Centralized School Performance and Monitoring System (CSPAMS) for DepEd SMM&E workflows";
+  const appTagline = "Centralized School Performance and Monitoring System ";
 
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
   const [loginId, setLoginId] = useState("");

@@ -1,4 +1,4 @@
-﻿<x-filament-panels::layout.base :title="__('Sign in')">
+<x-filament-panels::layout.base :title="__('Sign in')">
     @php
         $loginTabs = method_exists($this, 'getLoginTabs') ? $this->getLoginTabs() : [];
         $defaultLoginRole = method_exists($this, 'getDefaultLoginRole') ? $this->getDefaultLoginRole() : null;
@@ -365,7 +365,7 @@
                     </h1>
 
                     <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate-100">
-                        Centralized School Performance and Monitoring System (CSPAMS) for DepEd SMM&E workflows.
+                        Centralized School Performance and Monitoring System 
                     </p>
                 </div>
 
