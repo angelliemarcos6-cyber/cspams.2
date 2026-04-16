@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -185,6 +186,7 @@ function isMfaRequiredResponse(payload: LoginResponse): payload is LoginMfaRequi
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_SESSION_KEEPALIVE_MS = 4 * 60 * 1000;
 
 function normalizeRole(role: string): Exclude<UserRole, null> {
   return role === "monitor" ? "monitor" : "school_head";
@@ -223,6 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const keepAliveInFlightRef = useRef(false);
 
   const clearAuthError = useCallback(() => {
     setAuthError("");
@@ -286,6 +289,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       controller.abort();
     };
   }, [clearAuthError]);
+
+  const sendSessionKeepAlive = useCallback(async () => {
+    if (!user || isLoggingOut || keepAliveInFlightRef.current) {
+      return;
+    }
+
+    keepAliveInFlightRef.current = true;
+    try {
+      const payload = await apiRequest<MeResponse>("/api/auth/me", {
+        token: COOKIE_SESSION_TOKEN,
+        timeoutMs: 15_000,
+      });
+      setUser(normalizeUser(payload.user));
+      clearAuthError();
+    } catch (err) {
+      if (isApiError(err) && err.status === 401) {
+        setAuthError("Your session expired. Please sign in again.");
+        setAuthErrorCode(401);
+        setAccountStatus(null);
+        finalizeClientLogout(setUser, clearAuthError);
+      }
+    } finally {
+      keepAliveInFlightRef.current = false;
+    }
+  }, [clearAuthError, isLoggingOut, user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void sendSessionKeepAlive();
+    }, AUTH_SESSION_KEEPALIVE_MS);
+
+    const refreshOnFocus = () => {
+      void sendSessionKeepAlive();
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("online", refreshOnFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshOnFocus);
+      window.removeEventListener("online", refreshOnFocus);
+    };
+  }, [sendSessionKeepAlive, user]);
 
   const login = useCallback(async ({ role, login: loginValue, password }: LoginInput): Promise<LoginResult> => {
     setIsAuthenticating(true);
