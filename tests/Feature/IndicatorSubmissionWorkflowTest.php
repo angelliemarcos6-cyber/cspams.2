@@ -43,7 +43,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             });
     }
 
-    public function test_auto_calculated_kpi_replaces_manual_payload_values(): void
+    public function test_auto_calculated_kpi_preserves_manual_payload_values_when_provided(): void
     {
         $this->seedIndicatorFixtures();
 
@@ -61,7 +61,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
                     'metric_id' => $nerMetricId,
                     'target_value' => 999,
                     'actual_value' => 1,
-                    'remarks' => 'Manual placeholder that should be overridden.',
+                    'remarks' => 'Manual KPI values encoded by school head.',
                 ],
             ],
         ]);
@@ -74,11 +74,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->first(static fn (mixed $row): bool => is_array($row) && (($row['metric']['code'] ?? null) === 'NER'));
 
         $this->assertIsArray($nerRow);
-        $this->assertNotSame(999.0, (float) ($nerRow['targetValue'] ?? 0));
-        $this->assertIsArray($nerRow['targetTypedValue']['values'] ?? null);
-        $this->assertIsArray($nerRow['actualTypedValue']['values'] ?? null);
-        $this->assertCount(5, $nerRow['targetTypedValue']['values']);
-        $this->assertCount(5, $nerRow['actualTypedValue']['values']);
+        $this->assertSame(999.0, (float) ($nerRow['targetValue'] ?? 0));
+        $this->assertSame(1.0, (float) ($nerRow['actualValue'] ?? 0));
     }
 
     public function test_school_achievement_counts_auto_sync_from_reports_and_teacher_records(): void

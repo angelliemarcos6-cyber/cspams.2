@@ -396,6 +396,11 @@ function metricDisplayLabel(metric: IndicatorMetric): string {
 }
 
 function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
+  // Key Performance rows are operator-fillable in the School Head form.
+  // Even if backend metadata marks the metric as auto-calculated, keep UI editable.
+  if (TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code))) {
+    return false;
+  }
   return Boolean(metric.isAutoCalculated);
 }
 
