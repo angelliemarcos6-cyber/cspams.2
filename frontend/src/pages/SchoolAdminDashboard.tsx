@@ -457,70 +457,77 @@ export function SchoolAdminDashboard() {
 
       {/* ── File Reports ── */}
       <section id="file-reports" className={`mb-8 ${focusCls("file-reports")}`}>
-        <h2 className="mb-3 text-[18px] font-semibold text-slate-900">Reports</h2>
-        {isYearScopedLoading && (
-          <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
-        )}
-        {!isYearScopedLoading && !yearScopedSubmission && (
-          <p className="mb-3 text-xs font-medium text-slate-500">No submitted report package for the selected academic year.</p>
-        )}
+        <div className="rounded-sm border-2 border-primary-200 bg-primary-50/20 p-3 md:p-4">
+          <div className="mb-3 flex items-center justify-between gap-2 border-b border-primary-200 pb-2">
+            <h2 className="text-[18px] font-semibold text-slate-900">Reports</h2>
+            <span className="rounded-sm border border-primary-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.5px] text-primary-700">
+              Group A (Year-Scoped)
+            </span>
+          </div>
 
-        <div className="flex flex-col gap-4 md:flex-row">
-          {([
-            {
-              type: "bmef" as const,
-              title: "BMEF Report",
-              file: bmefFile,
-            },
-            {
-              type: "smea" as const,
-              title: "SMEA Report",
-              file: smeaFile,
-            },
-          ]).map((report) => {
-            const hasFile = Boolean(report.file?.uploaded && report.file?.originalFilename);
-            const buttonLabel = `View ${report.type.toUpperCase()} Report`;
+          {isYearScopedLoading && (
+            <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
+          )}
+          {!isYearScopedLoading && !yearScopedSubmission && (
+            <p className="mb-3 text-xs font-medium text-slate-500">No submitted report package for the selected academic year.</p>
+          )}
 
-            return (
-              <article key={report.type} className="flex-1 rounded-sm border border-slate-200 bg-white px-6 py-5">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{report.title}</h3>
-                </div>
+          <div className="flex flex-col gap-4 md:flex-row">
+            {([
+              {
+                type: "bmef" as const,
+                title: "BMEF Report",
+                file: bmefFile,
+              },
+              {
+                type: "smea" as const,
+                title: "SMEA Report",
+                file: smeaFile,
+              },
+            ]).map((report) => {
+              const hasFile = Boolean(report.file?.uploaded && report.file?.originalFilename);
+              const buttonLabel = `View ${report.type.toUpperCase()} Report`;
 
-                <dl className="mt-4 space-y-2">
-                  <div className="flex items-start gap-2">
-                    <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
-                    <dd className="truncate text-sm font-normal text-slate-900">{report.file?.originalFilename ?? "- (none)"}</dd>
+              return (
+                <article key={report.type} className="flex-1 rounded-sm border border-slate-200 bg-white px-6 py-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{report.title}</h3>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">Date</dt>
-                    <dd className="text-sm font-normal text-slate-900">
-                      {report.file?.uploadedAt ? new Date(report.file.uploadedAt).toLocaleDateString() : "-"}
-                    </dd>
+
+                  <dl className="mt-4 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
+                      <dd className="truncate text-sm font-normal text-slate-900">{report.file?.originalFilename ?? "- (none)"}</dd>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">Date</dt>
+                      <dd className="text-sm font-normal text-slate-900">
+                        {report.file?.uploadedAt ? new Date(report.file.uploadedAt).toLocaleDateString() : "-"}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={hasFile ? () => openReportModal(report.type) : undefined}
+                      disabled={!hasFile}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary-50"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      {buttonLabel}
+                    </button>
                   </div>
-                </dl>
+                </article>
+              );
+            })}
+          </div>
 
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={hasFile ? () => openReportModal(report.type) : undefined}
-                    disabled={!hasFile}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary-50"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    {buttonLabel}
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-
-        <div className="mt-8 overflow-hidden rounded-sm border border-slate-200 bg-white">
-          <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
-            <span className="inline-block border-l-[3px] border-primary-600 pl-3">TARGETS-MET</span>
-          </h2>
-          <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+          <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
+            <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
+              <span className="inline-block border-l-[3px] border-primary-600 pl-3">TARGETS-MET</span>
+            </h2>
+            <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
             {/* School's Achievement Table */}
             <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
@@ -589,6 +596,7 @@ export function SchoolAdminDashboard() {
               </table>
             </div>
           </div>
+        </div>
         </div>
       </section>
 
