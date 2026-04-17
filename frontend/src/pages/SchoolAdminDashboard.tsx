@@ -153,7 +153,7 @@ export function SchoolAdminDashboard() {
   } = useIndicatorData();
 
   const [showHelpDialog, setShowHelpDialog] = useState(false);
-  const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
+  const [contextAcademicYearId, setContextAcademicYearId] = useState("");
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
@@ -279,6 +279,11 @@ export function SchoolAdminDashboard() {
       setIsYearScopedLoading(false);
       return;
     }
+    if (!effectiveAcademicYearId) {
+      setYearScopedSubmission(null);
+      setIsYearScopedLoading(false);
+      return;
+    }
 
     const requestId = yearScopedRequestRef.current + 1;
     yearScopedRequestRef.current = requestId;
@@ -288,7 +293,7 @@ export function SchoolAdminDashboard() {
 
     void listSubmissions({
       schoolId: selectedSchoolId,
-      academicYearId: effectiveAcademicYearId === "all" ? undefined : effectiveAcademicYearId,
+      academicYearId: effectiveAcademicYearId,
       page: 1,
       perPage: 25,
     })
@@ -443,7 +448,6 @@ export function SchoolAdminDashboard() {
               className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2.5 pr-8 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               aria-label="Academic year filter"
             >
-              <option value="all">All years</option>
               {academicYears.map((year) => (
                 <option key={year.id} value={year.id}>
                   {year.name}
