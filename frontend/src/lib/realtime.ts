@@ -160,9 +160,12 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
     enabledTransports: ["ws", "wss"],
     authorizer: (channel) => ({
       authorize: (socketId, callback) => {
-        ensureCsrfCookie()
+        const useCookieSession = normalizedToken === COOKIE_SESSION_TOKEN;
+        const csrfBootstrap = useCookieSession ? ensureCsrfCookie() : Promise.resolve();
+
+        csrfBootstrap
           .then(async () => {
-            const xsrfToken = readXsrfToken();
+            const xsrfToken = useCookieSession ? readXsrfToken() : null;
             const controller = new AbortController();
             const timeoutId = window.setTimeout(() => controller.abort(), BROADCAST_AUTH_TIMEOUT_MS);
 
@@ -170,12 +173,12 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
             try {
               response = await fetch(`${getApiBaseUrl()}/api/broadcasting/auth`, {
                 method: "POST",
-                credentials: "include",
+                credentials: useCookieSession ? "include" : "omit",
                 signal: controller.signal,
                 headers: {
                   Accept: "application/json",
                   "Content-Type": "application/json",
-                  ...(normalizedToken && normalizedToken !== COOKIE_SESSION_TOKEN
+                  ...(!useCookieSession
                     ? { Authorization: `Bearer ${normalizedToken}` }
                     : {}),
                   ...(xsrfToken ? { "X-XSRF-TOKEN": xsrfToken } : {}),

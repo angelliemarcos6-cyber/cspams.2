@@ -2428,11 +2428,25 @@ class AuthController extends Controller
             : null;
 
         /** @var NewAccessToken $issuedToken */
-        $issuedToken = $user->createToken(
-            $this->dashboardTokenName($role),
-            ['role:' . $role],
-            $expiresAt,
-        );
+        $tokenFactory = new \ReflectionMethod($user, 'createToken');
+        if ($tokenFactory->getNumberOfParameters() >= 3) {
+            $issuedToken = $user->createToken(
+                $this->dashboardTokenName($role),
+                ['role:' . $role],
+                $expiresAt,
+            );
+        } else {
+            $issuedToken = $user->createToken(
+                $this->dashboardTokenName($role),
+                ['role:' . $role],
+            );
+
+            if ($expiresAt !== null) {
+                $issuedToken->accessToken->forceFill([
+                    'expires_at' => $expiresAt,
+                ])->save();
+            }
+        }
 
         $issuedToken->accessToken->forceFill([
             'ip_address' => $this->normalizeIpAddress($request->ip()),
