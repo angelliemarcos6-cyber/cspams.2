@@ -3,7 +3,7 @@
 
 @theme {
   --font-sans:
-    "Inter", "Commissioner", "Segoe UI", "Helvetica Neue", "Arial",
+    "Inter", "Segoe UI", "Helvetica Neue", "Arial",
     ui-sans-serif, system-ui, sans-serif;
   --font-display:
     "Commissioner", "Inter", "Segoe UI", "Helvetica Neue", "Arial",
@@ -59,7 +59,9 @@ h6 {
 }
 
 .section-title,
-.dashboard-card-title {
+.dashboard-card-title,
+.font-display,
+.display-heading {
   font-family: var(--font-display);
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -422,7 +424,9 @@ th {
 .school-head-dashboard h5,
 .school-head-dashboard h6,
 .school-head-dashboard .section-title,
-.school-head-dashboard .dashboard-card-title {
+.school-head-dashboard .dashboard-card-title,
+.school-head-dashboard .font-display,
+.school-head-dashboard .display-heading {
   font-family: var(--font-display);
   font-weight: 700;
 }
