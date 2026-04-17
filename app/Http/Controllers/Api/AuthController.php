@@ -38,7 +38,6 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\NewAccessToken;
-use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -1949,7 +1948,7 @@ class AuthController extends Controller
 
     private function shouldIssueBearerToken(Request $request): bool
     {
-        return ! EnsureFrontendRequestsAreStateful::fromFrontend($request);
+        return true;
     }
 
     private function resolveUserForLogin(string $role, string $login): ?User

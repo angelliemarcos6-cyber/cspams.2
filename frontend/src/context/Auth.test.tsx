@@ -23,6 +23,8 @@ describe("AuthProvider logout", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            token: "temporary-bearer-token",
+            tokenType: "Bearer",
             user: {
               id: 1,
               name: "Monitor User",
@@ -53,7 +55,15 @@ describe("AuthProvider logout", () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => {
-      expect(result.current.user?.email).toBe("monitor@cspams.local");
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      });
     });
 
     await act(async () => {
@@ -74,15 +84,67 @@ describe("AuthProvider logout", () => {
     expect(window.location.hash).toBe("#/monitor");
   });
 
-  it("captures restore-time 403 details without leaving a user session", async () => {
+  it("does not restore auth from sessionStorage token data", async () => {
+    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+      token: "restore-token",
+      tokenType: "Bearer",
+    }));
+
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+    expect(result.current.user).toBeNull();
+    expect(result.current.apiToken).toBe("");
+  });
+
+  it("does not fall back to cookie-session after bearer keepalive failure", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          message: "Your account is suspended.",
-          accountStatus: "suspended",
+          token: "token-before-keepalive",
+          tokenType: "Bearer",
+          user: {
+            id: 4,
+            name: "Monitor User",
+            email: "monitor@cspams.local",
+            role: "monitor",
+            schoolId: null,
+            schoolCode: null,
+            schoolName: null,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: "Unauthenticated.",
         }),
         {
-          status: 403,
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          message: "Unauthenticated.",
+        }),
+        {
+          status: 401,
           headers: {
             "Content-Type": "application/json",
           },
@@ -99,28 +161,33 @@ describe("AuthProvider logout", () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(result.current.user).toBeNull();
-    expect(result.current.authError).toBe("Your account is suspended.");
-    expect(result.current.authErrorCode).toBe(403);
-    expect(result.current.accountStatus).toBe("suspended");
+    await act(async () => {
+      await result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      });
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    const fallbackCookieCall = fetchMock.mock.calls.find(([, init]) => {
+      const typedInit = init as RequestInit | undefined;
+      return typedInit?.credentials === "include";
+    });
+    expect(fallbackCookieCall).toBeUndefined();
+    expect(result.current.user?.id).toBe(4);
   });
 
   it("accepts bearer-token login responses and keeps the authenticated user", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            message: "Unauthenticated.",
-          }),
-          {
-            status: 401,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          },
-        ),
-      )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -168,22 +235,65 @@ describe("AuthProvider logout", () => {
     expect(result.current.user?.email).toBe("monitor@cspams.local");
     expect(result.current.isAuthenticating).toBe(false);
     expect(result.current.apiToken).toBe("temporary-bearer-token-1");
-    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toContain("temporary-bearer-token-1");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes bearer tokens before keepalive when refreshAfter has elapsed", async () => {
-    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
-      token: "stale-token",
-      tokenType: "Bearer",
-      refreshAfter: "2000-01-01T00:00:00.000Z",
-    }));
-
+  it("fails login when backend does not return a bearer token", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await expect(result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      })).rejects.toThrow("Missing bearer token in login response.");
+    });
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.apiToken).toBe("");
+  });
+
+  it("refreshes bearer tokens before keepalive when refreshAfter has elapsed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            token: "stale-token",
+            tokenType: "Bearer",
+            refreshAfter: "2000-01-01T00:00:00.000Z",
             user: {
               id: 7,
               name: "Monitor User",
@@ -240,6 +350,17 @@ describe("AuthProvider logout", () => {
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      });
+    });
+
+    await waitFor(() => {
       expect(result.current.user?.id).toBe(7);
     });
 
@@ -248,24 +369,25 @@ describe("AuthProvider logout", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.apiToken).toBe("fresh-token");
+    expect(result.current.apiToken).toBe("fresh-token");
     });
 
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/refresh`);
     expect(fetchMock.mock.calls[2]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
+    const refreshInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    const refreshHeaders = new Headers(refreshInit?.headers as HeadersInit);
+    expect(refreshHeaders.get("Authorization")).toBe("Bearer stale-token");
+    expect(refreshInit?.credentials).toBe("omit");
   });
 
   it("does not force logout on a transient keepalive 401 when refresh succeeds", async () => {
-    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
-      token: "token-before-keepalive",
-      tokenType: "Bearer",
-    }));
-
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            token: "token-before-keepalive",
+            tokenType: "Bearer",
             user: {
               id: 9,
               name: "Monitor User",
@@ -329,6 +451,18 @@ describe("AuthProvider logout", () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 
     await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      });
+    });
+
+    await waitFor(() => {
       expect(result.current.user?.id).toBe(9);
     });
 
@@ -343,5 +477,10 @@ describe("AuthProvider logout", () => {
     });
 
     expect(result.current.user).not.toBeNull();
+    const fallbackCookieCall = fetchMock.mock.calls.find(([, init]) => {
+      const typedInit = init as RequestInit | undefined;
+      return typedInit?.credentials === "include";
+    });
+    expect(fallbackCookieCall).toBeUndefined();
   });
 });

@@ -51,4 +51,30 @@ describe("api request helpers", () => {
     expect(headers.get("Authorization")).toBe("Bearer sample-bearer-token");
     expect(requestInit?.credentials).toBe("omit");
   });
+
+  it("does not run cookie-session csrf recovery for bearer-token 419 responses", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: "Page Expired",
+        }),
+        {
+          status: 419,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      apiRequestVoid("/api/auth/logout", {
+        method: "POST",
+        token: "sample-bearer-token",
+      }),
+    ).rejects.toMatchObject({
+      status: 419,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

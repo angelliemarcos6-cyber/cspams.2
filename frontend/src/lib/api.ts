@@ -302,7 +302,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
 
   // Session-bound CSRF tokens can become stale after long idle periods.
   // Retry once with a fresh csrf-cookie before surfacing a 419 to the UI.
-  if (mutating && response.status === 419) {
+  if (mutating && useCookieSession && response.status === 419) {
     await ensureCsrfCookie(true);
     response = await fetchRequest();
   }
