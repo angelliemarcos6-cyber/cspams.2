@@ -45,16 +45,16 @@ composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 echo "[3/6] Clear Laravel caches first"
 php artisan optimize:clear || true
 
-echo "[4/6] Rebuild caches"
-php artisan config:cache || true
-php artisan route:cache || true
-php artisan view:cache || true
-
-echo "[5/6] Run database migrations"
+echo "[4/6] Run database migrations"
 if ! php artisan migrate --force; then
   echo "FATAL: database migrations failed"
   exit 1
 fi
+
+echo "[5/6] Rebuild caches"
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
 
 echo "[6/6] Starting PHP server"
 exec php -S 0.0.0.0:${PORT:-10000} -t public public/index.php
