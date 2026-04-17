@@ -369,26 +369,26 @@ export function SchoolAdminDashboard() {
 
 
       {/* ── School Info ── */}
-      <section id="school-info" className={`mb-8 grid gap-3 md:grid-cols-2 xl:grid-cols-4 ${focusCls("school-info")}`}>
-        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+      <section id="school-info" className={`mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4 ${focusCls("school-info")}`}>
+        <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Assigned School</p>
-          <p className="mt-1 text-base font-semibold text-slate-900">{schoolName}</p>
+          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolName}</p>
         </article>
-        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+        <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">School Code</p>
-          <p className="mt-1 text-base font-semibold text-slate-900">{schoolCode}</p>
+          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolCode}</p>
         </article>
-        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+        <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Region</p>
-          <p className="mt-1 text-base font-semibold text-slate-900">{schoolRegion}</p>
+          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolRegion}</p>
         </article>
-        <article className="rounded-sm border border-slate-200 bg-white px-5 py-4">
+        <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Academic Year</p>
-          <div className="mt-1.5 relative">
+          <div className="relative mt-2">
             <select
               value={effectiveAcademicYearId}
               onChange={(event) => setContextAcademicYearId(event.target.value)}
-              className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2.5 pr-8 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               aria-label="Academic year filter"
             >
               <option value="all">All years</option>
