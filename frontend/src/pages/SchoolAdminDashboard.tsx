@@ -20,7 +20,12 @@ import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
-import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType } from "@/types";
+import type {
+  IndicatorSubmission,
+  IndicatorSubmissionFileEntry,
+  IndicatorSubmissionFileType,
+  IndicatorSubmissionItem,
+} from "@/types";
 
 /* ── Quick-jump targets ── */
 /* ── Helpers ── */
@@ -38,6 +43,10 @@ function normalizeFileExtension(filename: string | null | undefined): string {
   const value = String(filename ?? "").trim().toLowerCase();
   if (!value.includes(".")) return "";
   return value.slice(value.lastIndexOf(".") + 1);
+}
+
+function normalizeMetricLookupKey(label: string | null | undefined): string {
+  return String(label ?? "").trim().toLowerCase();
 }
 
 function selectedYearLabel(
@@ -134,6 +143,7 @@ export function SchoolAdminDashboard() {
     allSubmissions,
     academicYears,
     downloadSubmissionFile,
+    listSubmissions,
     refreshSubmissions,
   } = useIndicatorData();
 
@@ -143,11 +153,14 @@ export function SchoolAdminDashboard() {
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
   const [reportZoomLevel, setReportZoomLevel] = useState(1);
+  const [yearScopedSubmission, setYearScopedSubmission] = useState<IndicatorSubmission | null>(null);
+  const [isYearScopedLoading, setIsYearScopedLoading] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
   const initialLoadStartedRef = useRef(false);
   const initialAcademicYearAppliedRef = useRef(false);
+  const yearScopedRequestRef = useRef(0);
 
   /* ── Derived data ── */
   const indicatorSubmissions = useMemo(
@@ -162,6 +175,7 @@ export function SchoolAdminDashboard() {
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
+  const selectedSchoolId = String(user?.schoolId ?? "").trim();
 
   const currentAcademicYearOption = useMemo(
     () => academicYears.find((y) => y.isCurrent) ?? academicYears[0] ?? null,
@@ -190,15 +204,15 @@ export function SchoolAdminDashboard() {
     [filteredIndicatorsByYear],
   );
 
-  const bmefFile = latestIndicators?.files?.bmef ?? null;
-  const smeaFile = latestIndicators?.files?.smea ?? null;
+  const bmefFile = yearScopedSubmission?.files?.bmef ?? null;
+  const smeaFile = yearScopedSubmission?.files?.smea ?? null;
 
   const completedIndicators = latestIndicators?.summary?.metIndicators ?? 0;
   const totalIndicators = latestIndicators?.summary?.totalIndicators ?? 0;
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
-    if (!activeReportModalType || !latestIndicators?.files) return null;
-    return latestIndicators.files[activeReportModalType] ?? null;
-  }, [activeReportModalType, latestIndicators]);
+    if (!activeReportModalType || !yearScopedSubmission?.files) return null;
+    return yearScopedSubmission.files[activeReportModalType] ?? null;
+  }, [activeReportModalType, yearScopedSubmission]);
   const activeReportFileName = activeReportFileEntry?.originalFilename ?? null;
   const activeReportExtension = normalizeFileExtension(activeReportFileName);
   const activeSchoolYearLabel = selectedYearLabel(
@@ -206,9 +220,25 @@ export function SchoolAdminDashboard() {
     academicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
   );
+  const targetsMetYearLabel = selectedYearLabel(
+    effectiveAcademicYearId,
+    academicYears.map((year) => ({ id: year.id, name: year.name })),
+    currentAcademicYearOption?.name ?? "N/A",
+  );
+  const selectedYearIndicators = useMemo<IndicatorSubmissionItem[]>(
+    () => yearScopedSubmission?.indicators ?? [],
+    [yearScopedSubmission],
+  );
+  const selectedYearIndicatorsByMetric = useMemo(() => {
+    const entries = selectedYearIndicators.map((item) => [
+      normalizeMetricLookupKey(item.metric?.name),
+      item,
+    ] as const);
+    return new Map<string, IndicatorSubmissionItem>(entries);
+  }, [selectedYearIndicators]);
   const submittedIndicatorRows = useMemo(
-    () => latestSubmittedIndicators?.indicators ?? [],
-    [latestSubmittedIndicators],
+    () => yearScopedSubmission?.indicators ?? [],
+    [yearScopedSubmission],
   );
 
   /* ── Refresh ── */
@@ -255,6 +285,39 @@ export function SchoolAdminDashboard() {
     initialAcademicYearAppliedRef.current = true;
   }, [currentAcademicYearOption]);
 
+  useEffect(() => {
+    if (!selectedSchoolId) {
+      setYearScopedSubmission(null);
+      setIsYearScopedLoading(false);
+      return;
+    }
+
+    const requestId = yearScopedRequestRef.current + 1;
+    yearScopedRequestRef.current = requestId;
+    setIsYearScopedLoading(true);
+    setYearScopedSubmission(null);
+    setActiveReportModalType(null);
+
+    void listSubmissions({
+      schoolId: selectedSchoolId,
+      academicYearId: effectiveAcademicYearId === "all" ? undefined : effectiveAcademicYearId,
+      page: 1,
+      perPage: 1,
+    })
+      .then((result) => {
+        if (yearScopedRequestRef.current !== requestId) return;
+        setYearScopedSubmission(result.data[0] ?? null);
+      })
+      .catch(() => {
+        if (yearScopedRequestRef.current !== requestId) return;
+        setYearScopedSubmission(null);
+      })
+      .finally(() => {
+        if (yearScopedRequestRef.current !== requestId) return;
+        setIsYearScopedLoading(false);
+      });
+  }, [effectiveAcademicYearId, listSubmissions, selectedSchoolId]);
+
 
   /* ── Quick-jump scroll ── */
   const scrollToSection = (sectionId: string) => {
@@ -274,11 +337,11 @@ export function SchoolAdminDashboard() {
 
   const openReportModal = useCallback(
     (type: IndicatorSubmissionFileType) => {
-      if (!latestIndicators?.files?.[type]?.uploaded) return;
+      if (!yearScopedSubmission?.files?.[type]?.uploaded) return;
       setActiveReportModalType(type);
       setReportZoomLevel(1);
     },
-    [latestIndicators],
+    [yearScopedSubmission],
   );
 
   const closeReportModal = useCallback(() => {
@@ -287,8 +350,8 @@ export function SchoolAdminDashboard() {
   }, []);
 
   const handleDownloadActiveReport = useCallback(async () => {
-    if (!activeReportModalType || !latestIndicators) return;
-    const activeFile = latestIndicators.files?.[activeReportModalType] ?? null;
+    if (!activeReportModalType || !yearScopedSubmission) return;
+    const activeFile = yearScopedSubmission.files?.[activeReportModalType] ?? null;
 
     if (activeFile?.downloadUrl) {
       const anchor = document.createElement("a");
@@ -304,8 +367,8 @@ export function SchoolAdminDashboard() {
       return;
     }
 
-    await downloadSubmissionFile(latestIndicators.id, activeReportModalType);
-  }, [activeReportModalType, downloadSubmissionFile, latestIndicators]);
+    await downloadSubmissionFile(yearScopedSubmission.id, activeReportModalType);
+  }, [activeReportModalType, downloadSubmissionFile, yearScopedSubmission]);
 
   useEffect(() => {
     if (!activeReportModalType || typeof window === "undefined") return;
@@ -406,6 +469,9 @@ export function SchoolAdminDashboard() {
       {/* ── File Reports ── */}
       <section id="file-reports" className={`mb-8 ${focusCls("file-reports")}`}>
         <h2 className="mb-3 text-[18px] font-semibold text-slate-900">Reports</h2>
+        {isYearScopedLoading && (
+          <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
+        )}
 
         <div className="flex flex-col gap-4 md:flex-row">
           {([
@@ -465,7 +531,7 @@ export function SchoolAdminDashboard() {
             {/* School's Achievement Table */}
             <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY 2025-2026)</h3>
+                <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {targetsMetYearLabel})</h3>
               </div>
               <table className="w-full text-[13px] text-slate-900">
                 <thead>
@@ -480,7 +546,11 @@ export function SchoolAdminDashboard() {
                       <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
                         {label}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-slate-400">-</td>
+                      <td className="px-4 py-2.5 text-right text-slate-900">
+                        {selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualDisplay ??
+                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualValue ??
+                          "-"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -490,7 +560,7 @@ export function SchoolAdminDashboard() {
             {/* Key Performance Indicators Table */}
             <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY 2025-2026 only)</h3>
+                <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {targetsMetYearLabel})</h3>
               </div>
               <table className="w-full text-[13px] text-slate-900">
                 <thead>
@@ -505,9 +575,21 @@ export function SchoolAdminDashboard() {
                   {KPI_ROWS.map((label) => (
                     <tr key={label}>
                       <td className="px-4 py-2.5 text-slate-900">{label}</td>
-                      <td className="px-4 py-2.5 text-center text-slate-400">-</td>
-                      <td className="px-4 py-2.5 text-center text-slate-400">-</td>
-                      <td className="px-4 py-2.5 text-center text-slate-400">-</td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        {selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.targetDisplay ??
+                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.targetValue ??
+                          "-"}
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        {selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualDisplay ??
+                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualValue ??
+                          "-"}
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        {String(
+                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.complianceStatus ?? "-",
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
