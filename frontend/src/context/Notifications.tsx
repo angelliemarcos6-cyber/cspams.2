@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequestRaw, isApiError } from "@/lib/api";
 import type { AppNotification, AppNotificationListMeta } from "@/types";
 
 interface NotificationListResponse {
@@ -55,8 +55,8 @@ function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications:
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const { user, apiToken } = useAuth();
+  const token = user ? apiToken : "";
 
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);

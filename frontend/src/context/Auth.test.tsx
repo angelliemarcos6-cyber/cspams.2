@@ -105,7 +105,7 @@ describe("AuthProvider logout", () => {
     expect(result.current.accountStatus).toBe("suspended");
   });
 
-  it("rejects login when the backend falls back to bearer-token auth", async () => {
+  it("accepts bearer-token login responses and keeps the authenticated user", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -124,8 +124,9 @@ describe("AuthProvider logout", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            token: "temporary-bearer-token",
+            token: "temporary-bearer-token-1",
             tokenType: "Bearer",
+            refreshAfter: new Date(Date.now() + 60_000).toISOString(),
             user: {
               id: 1,
               name: "Monitor User",
@@ -155,19 +156,192 @@ describe("AuthProvider logout", () => {
     });
 
     await act(async () => {
-      await expect(
-        result.current.login({
-          role: "monitor",
-          login: "monitor@cspams.local",
-          password: "Password123!",
-        }),
-      ).rejects.toThrow(
-        "Backend returned bearer-token auth during login. This frontend expects Sanctum cookie-session auth. Check VITE_API_BASE_URL, SANCTUM_STATEFUL_DOMAINS, CORS_ALLOWED_ORIGINS, and session cookie settings.",
-      );
+      await expect(result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      })).resolves.toMatchObject({
+        status: "authenticated",
+      });
     });
 
-    expect(result.current.user).toBeNull();
+    expect(result.current.user?.email).toBe("monitor@cspams.local");
     expect(result.current.isAuthenticating).toBe(false);
+    expect(result.current.apiToken).toBe("temporary-bearer-token-1");
+    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toContain("temporary-bearer-token-1");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes bearer tokens before keepalive when refreshAfter has elapsed", async () => {
+    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+      token: "stale-token",
+      tokenType: "Bearer",
+      refreshAfter: "2000-01-01T00:00:00.000Z",
+    }));
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            user: {
+              id: 7,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            token: "fresh-token",
+            tokenType: "Bearer",
+            refreshAfter: new Date(Date.now() + 60_000).toISOString(),
+            user: {
+              id: 7,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            user: {
+              id: 7,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.user?.id).toBe(7);
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => {
+      expect(result.current.apiToken).toBe("fresh-token");
+    });
+
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/refresh`);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
+  });
+
+  it("does not force logout on a transient keepalive 401 when refresh succeeds", async () => {
+    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+      token: "token-before-keepalive",
+      tokenType: "Bearer",
+    }));
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            user: {
+              id: 9,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Unauthenticated.",
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            token: "token-after-refresh",
+            tokenType: "Bearer",
+            refreshAfter: new Date(Date.now() + 60_000).toISOString(),
+            user: {
+              id: 9,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            user: {
+              id: 9,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.user?.id).toBe(9);
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => {
+      expect(result.current.user?.id).toBe(9);
+      expect(result.current.authError).toBe("");
+      expect(result.current.apiToken).toBeTruthy();
+    });
+
+    expect(result.current.user).not.toBeNull();
   });
 });

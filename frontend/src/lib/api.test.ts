@@ -31,4 +31,24 @@ describe("api request helpers", () => {
         status: 204,
     });
   });
+
+  it("attaches Authorization bearer headers for token-based requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ user: { id: 1 } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiRequest("/api/auth/me", {
+      token: "sample-bearer-token",
+    });
+
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const headers = new Headers(requestInit?.headers as HeadersInit);
+
+    expect(headers.get("Authorization")).toBe("Bearer sample-bearer-token");
+    expect(requestInit?.credentials).toBe("omit");
+  });
 });

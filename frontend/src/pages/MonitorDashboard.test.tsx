@@ -114,6 +114,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
         schoolCode: null,
         schoolName: null,
       },
+      apiToken: "test-bearer-token",
       authError: "",
       authErrorCode: null,
       accountStatus: null,

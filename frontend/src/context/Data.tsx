@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequestRaw, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { apiRequestRaw, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   SchoolHeadAccountActivationResult,
@@ -199,8 +199,8 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, role } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const { user, role, apiToken } = useAuth();
+  const token = user ? apiToken : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
   const [records, setRecords] = useState<SchoolRecord[]>([]);

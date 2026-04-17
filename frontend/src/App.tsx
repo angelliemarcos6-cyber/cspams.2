@@ -16,7 +16,6 @@ import { MonitorDashboard } from "@/pages/MonitorDashboard";
 import { ResetPassword } from "@/pages/ResetPassword";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 import { SetupAccount } from "@/pages/SetupAccount";
-import { COOKIE_SESSION_TOKEN } from "@/lib/api";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
 
 function FullscreenLoader() {
@@ -107,17 +106,17 @@ function AppRoutes() {
 }
 
 function RealtimeBridge() {
-  const { role, user } = useAuth();
-  const hasCookieSession = Boolean(user && role);
+  const { role, user, apiToken } = useAuth();
+  const hasSession = Boolean(user && role && apiToken);
   const schoolId = user?.schoolId ?? null;
 
   useEffect(() => {
-    if (!hasCookieSession || !role) {
+    if (!hasSession || !role) {
       stopRealtimeBridge();
       return;
     }
 
-    startRealtimeBridge(COOKIE_SESSION_TOKEN, {
+    startRealtimeBridge(apiToken, {
       role,
       schoolId,
     });
@@ -125,7 +124,7 @@ function RealtimeBridge() {
     return () => {
       stopRealtimeBridge();
     };
-  }, [hasCookieSession, role, schoolId]);
+  }, [apiToken, hasSession, role, schoolId]);
 
   return null;
 }

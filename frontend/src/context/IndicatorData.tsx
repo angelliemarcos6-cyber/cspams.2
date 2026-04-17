@@ -224,8 +224,8 @@ function parseDownloadFilename(contentDisposition: string | null): string | null
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  const token = user ? COOKIE_SESSION_TOKEN : "";
+  const { user, apiToken } = useAuth();
+  const token = user ? apiToken : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
   const [submissions, setSubmissions] = useState<IndicatorSubmission[]>([]);
