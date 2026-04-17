@@ -193,6 +193,10 @@ export function SchoolAdminDashboard() {
     () => latestSubmission(filteredIndicatorsByYear),
     [filteredIndicatorsByYear],
   );
+  const latestIndicatorsForImeta: IndicatorSubmission | null = useMemo(
+    () => latestSubmission(indicatorSubmissions),
+    [indicatorSubmissions],
+  );
   const latestSubmittedIndicators: IndicatorSubmission | null = useMemo(
     () =>
       latestSubmission(
@@ -207,8 +211,8 @@ export function SchoolAdminDashboard() {
   const bmefFile = yearScopedSubmission?.files?.bmef ?? null;
   const smeaFile = yearScopedSubmission?.files?.smea ?? null;
 
-  const completedIndicators = latestIndicators?.summary?.metIndicators ?? 0;
-  const totalIndicators = latestIndicators?.summary?.totalIndicators ?? 0;
+  const completedIndicators = latestIndicatorsForImeta?.summary?.metIndicators ?? 0;
+  const totalIndicators = latestIndicatorsForImeta?.summary?.totalIndicators ?? 0;
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
     if (!activeReportModalType || !yearScopedSubmission?.files) return null;
     return yearScopedSubmission.files[activeReportModalType] ?? null;
@@ -511,8 +515,9 @@ export function SchoolAdminDashboard() {
                 <div className="mt-4">
                   <button
                     type="button"
-                    onClick={() => (hasFile ? openReportModal(report.type) : scrollToSection("imeta-compliance"))}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100"
+                    onClick={hasFile ? () => openReportModal(report.type) : undefined}
+                    disabled={!hasFile}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary-50"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     {buttonLabel}
@@ -721,7 +726,6 @@ export function SchoolAdminDashboard() {
         </div>
         <SchoolIndicatorPanel
           statusFilter="all"
-          academicYearFilter={effectiveAcademicYearId}
         />
       </section>
       </div>
