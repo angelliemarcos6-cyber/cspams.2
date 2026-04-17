@@ -49,6 +49,11 @@ function normalizeMetricLookupKey(label: string | null | undefined): string {
   return String(label ?? "").trim().toLowerCase();
 }
 
+function isFinalizedSubmissionStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "submitted" || normalized === "validated";
+}
+
 function selectedYearLabel(
   yearId: string,
   years: Array<{ id: string; name: string }>,
@@ -182,30 +187,9 @@ export function SchoolAdminDashboard() {
     [academicYears],
   );
   const effectiveAcademicYearId = contextAcademicYearId;
-  const filteredIndicatorsByYear = useMemo(
-    () =>
-      effectiveAcademicYearId === "all"
-        ? indicatorSubmissions
-        : indicatorSubmissions.filter((submission: IndicatorSubmission) => submission.academicYear?.id === effectiveAcademicYearId),
-    [effectiveAcademicYearId, indicatorSubmissions],
-  );
-  const latestIndicators: IndicatorSubmission | null = useMemo(
-    () => latestSubmission(filteredIndicatorsByYear),
-    [filteredIndicatorsByYear],
-  );
   const latestIndicatorsForImeta: IndicatorSubmission | null = useMemo(
     () => latestSubmission(indicatorSubmissions),
     [indicatorSubmissions],
-  );
-  const latestSubmittedIndicators: IndicatorSubmission | null = useMemo(
-    () =>
-      latestSubmission(
-        filteredIndicatorsByYear.filter((submission: IndicatorSubmission) => {
-          const status = String(submission.status ?? "").toLowerCase();
-          return status === "submitted" || status === "validated";
-        }),
-      ),
-    [filteredIndicatorsByYear],
   );
 
   const bmefFile = yearScopedSubmission?.files?.bmef ?? null;
@@ -306,11 +290,12 @@ export function SchoolAdminDashboard() {
       schoolId: selectedSchoolId,
       academicYearId: effectiveAcademicYearId === "all" ? undefined : effectiveAcademicYearId,
       page: 1,
-      perPage: 1,
+      perPage: 25,
     })
       .then((result) => {
         if (yearScopedRequestRef.current !== requestId) return;
-        setYearScopedSubmission(result.data[0] ?? null);
+        const finalized = result.data.find((submission) => isFinalizedSubmissionStatus(submission.status));
+        setYearScopedSubmission(finalized ?? null);
       })
       .catch(() => {
         if (yearScopedRequestRef.current !== requestId) return;
@@ -475,6 +460,9 @@ export function SchoolAdminDashboard() {
         <h2 className="mb-3 text-[18px] font-semibold text-slate-900">Reports</h2>
         {isYearScopedLoading && (
           <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
+        )}
+        {!isYearScopedLoading && !yearScopedSubmission && (
+          <p className="mb-3 text-xs font-medium text-slate-500">No submitted report package for the selected academic year.</p>
         )}
 
         <div className="flex flex-col gap-4 md:flex-row">
