@@ -37,13 +37,19 @@ mkdir -p \
   storage/framework/sessions \
   storage/framework/views \
   bootstrap/cache
-chmod -R ug+rw storage bootstrap/cache || true
+if ! chmod -R ug+rw storage bootstrap/cache; then
+  echo "FATAL: failed to set writable permissions on storage/bootstrap cache dirs"
+  exit 1
+fi
 
 echo "[2/6] Install composer dependencies (safe rerun)"
 composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
 echo "[3/6] Clear Laravel caches first"
-php artisan optimize:clear || true
+if ! php artisan optimize:clear; then
+  echo "FATAL: failed to clear Laravel caches"
+  exit 1
+fi
 
 echo "[4/6] Run database migrations"
 if ! php artisan migrate --force; then
@@ -52,9 +58,18 @@ if ! php artisan migrate --force; then
 fi
 
 echo "[5/6] Rebuild caches"
-php artisan config:cache || true
-php artisan route:cache || true
-php artisan view:cache || true
+if ! php artisan config:cache; then
+  echo "FATAL: failed to rebuild config cache"
+  exit 1
+fi
+if ! php artisan route:cache; then
+  echo "FATAL: failed to rebuild route cache"
+  exit 1
+fi
+if ! php artisan view:cache; then
+  echo "FATAL: failed to rebuild view cache"
+  exit 1
+fi
 
 echo "[6/6] Starting PHP server"
 exec php -S 0.0.0.0:${PORT:-10000} -t public public/index.php
