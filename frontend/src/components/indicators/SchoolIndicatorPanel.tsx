@@ -1141,38 +1141,6 @@ export function SchoolIndicatorPanel({
   }, [academicYearId, eligibleAcademicYears]);
 
   useEffect(() => {
-    if (!academicYearFilter || eligibleAcademicYears.length === 0) {
-      return;
-    }
-    if (academicYearFilter === "all") {
-      if (academicYearId !== ALL_RECORDS_YEAR_ID) {
-        setAcademicYearId(ALL_RECORDS_YEAR_ID);
-      }
-      return;
-    }
-
-    const directMatch = eligibleAcademicYears.find((year) => year.id === academicYearFilter);
-    if (directMatch) {
-      if (academicYearId !== directMatch.id) {
-        setAcademicYearId(directMatch.id);
-      }
-      return;
-    }
-
-    const normalizedFilter = normalizeSchoolYearLabel(academicYearFilter);
-    if (!normalizedFilter) {
-      return;
-    }
-
-    const normalizedMatch = eligibleAcademicYears.find(
-      (year) => normalizeSchoolYearLabel(year.name) === normalizedFilter,
-    );
-    if (normalizedMatch && academicYearId !== normalizedMatch.id) {
-      setAcademicYearId(normalizedMatch.id);
-    }
-  }, [academicYearFilter, academicYearId, eligibleAcademicYears]);
-
-  useEffect(() => {
     if (!academicYearId || academicYearId === ALL_RECORDS_YEAR_ID) {
       return;
     }
