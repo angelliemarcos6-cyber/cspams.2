@@ -90,6 +90,7 @@ interface YearWorkspaceState {
   selectedAcademicYearId: string;
   selectedSchoolYearLabel: string | null;
   workspaceSchoolYears: string[];
+  editableSchoolYears: string[];
   requiredSchoolYears: string[];
   requiredYearsInScope: string[];
   lockedSchoolYears: string[];
@@ -617,8 +618,9 @@ function deriveYearWorkspaceState(params: {
     }
     return yearStart <= currentSchoolYearStartValue;
   });
+  const editableSchoolYears = requiredSchoolYears;
   const requiredYearsInScope = workspaceSchoolYears.filter((year) => requiredSchoolYears.includes(year));
-  const lockedSchoolYears = visibleSchoolYears.filter((year) => year !== selectedSchoolYearLabel);
+  const lockedSchoolYears = visibleSchoolYears.filter((year) => !editableSchoolYears.includes(year));
   const isWorkspaceReadOnly = !selectedSchoolYearLabel;
 
   return {
@@ -627,6 +629,7 @@ function deriveYearWorkspaceState(params: {
     selectedAcademicYearId: selectedAcademicYearInWindow,
     selectedSchoolYearLabel,
     workspaceSchoolYears,
+    editableSchoolYears,
     requiredSchoolYears,
     requiredYearsInScope,
     lockedSchoolYears,
@@ -1728,8 +1731,8 @@ export function SchoolIndicatorPanel({
   );
   const isActiveCategoryLocked = Boolean(activeCategory && isFormLocked);
   const isYearEditable = useCallback(
-    (yearLabel: string) => yearLabel === selectedSchoolYearLabel,
-    [selectedSchoolYearLabel],
+    (yearLabel: string) => yearWorkspaceState.editableSchoolYears.includes(yearLabel),
+    [yearWorkspaceState.editableSchoolYears],
   );
   const getYearLockReason = useCallback(
     (yearLabel: string): string => {
@@ -1737,7 +1740,7 @@ export function SchoolIndicatorPanel({
         return "Submitted package is locked. Click Edit to unlock this category.";
       }
       if (yearWorkspaceState.lockedSchoolYears.includes(yearLabel)) {
-        return "Only the selected academic year is editable. Other visible years are read-only.";
+        return "Only academic years in the active reporting scope are editable. Other visible years are read-only.";
       }
       return "Year is outside the editable workspace.";
     },
