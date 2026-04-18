@@ -902,10 +902,25 @@ export function SchoolIndicatorPanel({
   );
   const eligibleAcademicYears = useMemo(
     () =>
-      academicYears.filter((year) => {
-        const start = schoolYearStartValue(year.name);
-        return start === null || start >= BASE_SCHOOL_YEAR_START;
-      }),
+      [...academicYears]
+        .filter((year) => {
+          const start = schoolYearStartValue(year.name);
+          return start === null || start >= BASE_SCHOOL_YEAR_START;
+        })
+        .sort((a, b) => {
+          const aStart = schoolYearStartValue(a.name);
+          const bStart = schoolYearStartValue(b.name);
+          if (aStart !== null && bStart !== null) {
+            return aStart - bStart;
+          }
+          if (aStart !== null) {
+            return -1;
+          }
+          if (bStart !== null) {
+            return 1;
+          }
+          return String(a.name).localeCompare(String(b.name));
+        }),
     [academicYears],
   );
   const visibleSchoolYears = useMemo(() => {
@@ -2898,14 +2913,14 @@ export function SchoolIndicatorPanel({
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <label htmlFor="indicator-school-year" className="mb-1 block text-[12px] font-medium tracking-normal text-slate-500">
-              School year
+              Academic Year
             </label>
             <div className="relative">
               <select
                 id="indicator-school-year"
                 value={academicYearId}
                 onChange={(event) => setAcademicYearId(event.target.value)}
-                aria-label="School year"
+                aria-label="Academic Year"
                 disabled={isActiveCategoryLocked}
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
@@ -3264,7 +3279,7 @@ export function SchoolIndicatorPanel({
                           ))
                         ) : (
                           <th colSpan={visibleSchoolYears.length} className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-3 py-1.5 text-center">
-                            School Year
+                            Academic Year
                           </th>
                         )}
                       </tr>
