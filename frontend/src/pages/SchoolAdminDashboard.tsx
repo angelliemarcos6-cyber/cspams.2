@@ -66,6 +66,39 @@ function selectedYearLabel(
   return years.find((year) => year.id === yearId)?.name ?? fallback;
 }
 
+function academicYearStartValue(value: string | null | undefined): number | null {
+  const text = String(value ?? "").trim();
+  const match = text.match(/^(\d{4})\s*-\s*(\d{4})$/);
+  if (!match) {
+    return null;
+  }
+
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end !== start + 1) {
+    return null;
+  }
+
+  return start;
+}
+
+function compareAcademicYearsAscending(a: { name: string }, b: { name: string }): number {
+  const aStart = academicYearStartValue(a.name);
+  const bStart = academicYearStartValue(b.name);
+
+  if (aStart !== null && bStart !== null) {
+    return aStart - bStart;
+  }
+  if (aStart !== null) {
+    return -1;
+  }
+  if (bStart !== null) {
+    return 1;
+  }
+
+  return String(a.name).localeCompare(String(b.name));
+}
+
 const MOBILE_BREAKPOINT = 768;
 const SCHOOL_ACHIEVEMENT_ROWS = [
   "NAME OF SCHOOL HEAD",
@@ -175,6 +208,10 @@ export function SchoolAdminDashboard() {
         : indicatorSubmissionSnapshot,
     [allSubmissions, indicatorSubmissionSnapshot],
   );
+  const orderedAcademicYears = useMemo(
+    () => [...academicYears].sort(compareAcademicYearsAscending),
+    [academicYears],
+  );
 
   const assignedRecord = records[0] ?? null;
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
@@ -183,8 +220,8 @@ export function SchoolAdminDashboard() {
   const selectedSchoolId = String(user?.schoolId ?? "").trim();
 
   const currentAcademicYearOption = useMemo(
-    () => academicYears.find((y) => y.isCurrent) ?? academicYears[0] ?? null,
-    [academicYears],
+    () => orderedAcademicYears.find((y) => y.isCurrent) ?? orderedAcademicYears[0] ?? null,
+    [orderedAcademicYears],
   );
   const effectiveAcademicYearId = contextAcademicYearId;
   const latestIndicatorsForImeta: IndicatorSubmission | null = useMemo(
@@ -205,12 +242,12 @@ export function SchoolAdminDashboard() {
   const activeReportExtension = normalizeFileExtension(activeReportFileName);
   const activeSchoolYearLabel = selectedYearLabel(
     effectiveAcademicYearId,
-    academicYears.map((year) => ({ id: year.id, name: year.name })),
+    orderedAcademicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
   );
   const targetsMetYearLabel = selectedYearLabel(
     effectiveAcademicYearId,
-    academicYears.map((year) => ({ id: year.id, name: year.name })),
+    orderedAcademicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
   );
   const selectedYearIndicators = useMemo<IndicatorSubmissionItem[]>(
@@ -448,7 +485,7 @@ export function SchoolAdminDashboard() {
               className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2.5 pr-8 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               aria-label="Academic year filter"
             >
-              {academicYears.map((year) => (
+              {orderedAcademicYears.map((year) => (
                 <option key={year.id} value={year.id}>
                   {year.name}
                 </option>

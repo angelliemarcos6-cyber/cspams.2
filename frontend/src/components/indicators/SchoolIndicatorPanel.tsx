@@ -1348,7 +1348,10 @@ export function SchoolIndicatorPanel({
     [sortedSubmissions],
   );
   const visibleAcademicYears = yearWorkspaceState.visibleAcademicYears;
-  const dropdownAcademicYears = visibleAcademicYears;
+  const dropdownAcademicYears = useMemo(
+    () => [...visibleAcademicYears].sort(compareAcademicYearOptions),
+    [visibleAcademicYears],
+  );
   const visibleCategoryMetrics = categoryMetrics;
   const metricCompletionById = useMemo(() => {
     const map = new Map<string, boolean>();
