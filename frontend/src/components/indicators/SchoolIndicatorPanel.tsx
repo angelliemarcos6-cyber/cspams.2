@@ -874,6 +874,19 @@ export function SchoolIndicatorPanel({
 
     return map;
   }, [eligibleAcademicYears, visibleSchoolYears]);
+  const academicYearBySchoolYearLabel = useMemo(() => {
+    const map = new Map<string, AcademicYearOption>();
+
+    for (const year of eligibleAcademicYears) {
+      const normalized = normalizeSchoolYearLabel(year.name);
+      if (!normalized || map.has(normalized)) {
+        continue;
+      }
+      map.set(normalized, year);
+    }
+
+    return map;
+  }, [eligibleAcademicYears]);
   const workspaceSchoolYears = useMemo(() => {
     if (academicYearId === ALL_RECORDS_YEAR_ID) {
       return visibleSchoolYears;
@@ -1396,10 +1409,26 @@ export function SchoolIndicatorPanel({
 
     return unique.slice(0, 3);
   }, [academicYearId, eligibleAcademicYears, showAllAcademicYears]);
-  const dropdownAcademicYears = useMemo(
-    () => [...eligibleAcademicYears].sort(compareAcademicYearOptions),
-    [eligibleAcademicYears],
-  );
+  const dropdownAcademicYears = useMemo(() => {
+    const orderedFromWindow = visibleSchoolYears
+      .map((label) => academicYearBySchoolYearLabel.get(label))
+      .filter((year): year is AcademicYearOption => Boolean(year));
+
+    const seen = new Set<string>();
+    const uniqueOrdered = orderedFromWindow.filter((year) => {
+      if (seen.has(year.id)) {
+        return false;
+      }
+      seen.add(year.id);
+      return true;
+    });
+
+    const remaining = eligibleAcademicYears
+      .filter((year) => !seen.has(year.id))
+      .sort(compareAcademicYearOptions);
+
+    return [...uniqueOrdered, ...remaining];
+  }, [academicYearBySchoolYearLabel, eligibleAcademicYears, visibleSchoolYears]);
   const hiddenAcademicYearCount = Math.max(0, eligibleAcademicYears.length - compactAcademicYears.length);
   const visibleCategoryMetrics = categoryMetrics;
   const metricCompletionById = useMemo(() => {
