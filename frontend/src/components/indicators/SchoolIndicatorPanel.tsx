@@ -405,13 +405,22 @@ function metricDisplayLabel(metric: IndicatorMetric): string {
   return METRIC_LABEL_OVERRIDES[normalizeMetricCode(metric.code)] ?? metric.name;
 }
 
+function isForceManualMetric(metric: IndicatorMetric): boolean {
+  const normalizedCode = normalizeMetricCode(metric.code);
+  return Array.from(FORCE_MANUAL_METRIC_CODES).some((manualCode) => (
+    normalizedCode === manualCode
+    || normalizedCode.endsWith(`_${manualCode}`)
+    || normalizedCode.includes(manualCode)
+  ));
+}
+
 function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
   // Key Performance rows are operator-fillable in the School Head form.
   // Even if backend metadata marks the metric as auto-calculated, keep UI editable.
   const normalizedCode = normalizeMetricCode(metric.code);
   if (
     TARGET_ACTUAL_METRIC_CODES.has(normalizedCode)
-    || FORCE_MANUAL_METRIC_CODES.has(normalizedCode)
+    || isForceManualMetric(metric)
   ) {
     return false;
   }
@@ -419,10 +428,10 @@ function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
 }
 
 function metricUsesSyncedLockedTotals(metric: IndicatorMetric): boolean {
-  const normalizedCode = normalizeMetricCode(metric.code);
-  if (FORCE_MANUAL_METRIC_CODES.has(normalizedCode)) {
+  if (isForceManualMetric(metric)) {
     return false;
   }
+  const normalizedCode = normalizeMetricCode(metric.code);
   return SYNC_LOCKED_METRIC_CODES.has(normalizedCode);
 }
 
@@ -3250,8 +3259,7 @@ export function SchoolIndicatorPanel({
                             : [];
                       const useSelectInput = selectOptions.length > 0;
                       const isComplete = metricCompletionById.get(metric.id) ?? false;
-                      const normalizedMetricCode = normalizeMetricCode(metric.code);
-                      const forceManualMetric = FORCE_MANUAL_METRIC_CODES.has(normalizedMetricCode);
+                      const forceManualMetric = isForceManualMetric(metric);
                       const isAutoCalculated = forceManualMetric ? false : metricIsAutoCalculated(metric);
                       const isSyncedLockedMetric = forceManualMetric ? false : metricUsesSyncedLockedTotals(metric);
                       const baseRowTone =
