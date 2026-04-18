@@ -13,10 +13,7 @@ import {
 } from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target, XCircle } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
-import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
-import { useStudentData } from "@/context/StudentData";
-import { useTeacherData } from "@/context/TeacherData";
 import type {
   AcademicYearOption,
   FormSubmissionHistoryEntry,
@@ -182,12 +179,7 @@ const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
 
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
-const SYNC_LOCKED_METRIC_CODES = new Set([
-  "IMETA_ENROLL_TOTAL",
-  "TEACHERS_TOTAL",
-  "TEACHERS_MALE",
-  "TEACHERS_FEMALE",
-]);
+const SYNC_LOCKED_METRIC_CODES = new Set<string>();
 const BASE_SCHOOL_YEAR_START = 2025;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
@@ -898,9 +890,6 @@ export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
 }: SchoolIndicatorPanelProps) {
-  const { records } = useData();
-  const { totalCount: syncedStudentCount } = useStudentData();
-  const { listTeachers, totalCount: syncedTeacherCount } = useTeacherData();
   const {
     submissions: submissionSnapshot,
     allSubmissions,
@@ -945,7 +934,6 @@ export function SchoolIndicatorPanel({
   const [serverAutosaveAt, setServerAutosaveAt] = useState<string | null>(null);
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
-  const [teacherSexCounts, setTeacherSexCounts] = useState<{ male: number; female: number }>({ male: 0, female: 0 });
   const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [isSubmittedEditMode, setIsSubmittedEditMode] = useState(false);
@@ -1092,143 +1080,9 @@ export function SchoolIndicatorPanel({
 
     return schoolYearByAcademicYearId.get(currentAcademicYearId) ?? (visibleSchoolYears[visibleSchoolYears.length - 1] ?? null);
   }, [currentAcademicYearId, schoolYearByAcademicYearId, visibleSchoolYears]);
-  const autoSyncTargetYears = useMemo(() => {
-    // Keep auto-sync scoped to the current school year so historical/future
-    // year columns stay aligned with encoded submission values.
-    if (!currentSchoolYearLabel) {
-      return [] as string[];
-    }
-
-    if (activeAcademicYearId && activeAcademicYearId === currentAcademicYearId) {
-      return [currentSchoolYearLabel];
-    }
-
-    return [] as string[];
-  }, [activeAcademicYearId, currentAcademicYearId, currentSchoolYearLabel]);
-
-  const reportRecord = records[0] ?? null;
-  const reportStudentTotal = useMemo(() => {
-    const sourceValue = reportRecord?.studentCount ?? syncedStudentCount;
-    const parsed = Number(sourceValue ?? 0);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      return 0;
-    }
-    return Math.trunc(parsed);
-  }, [reportRecord?.studentCount, syncedStudentCount]);
-  const reportTeacherTotal = useMemo(() => {
-    const sourceValue = reportRecord?.teacherCount ?? syncedTeacherCount;
-    const parsed = Number(sourceValue ?? 0);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      return 0;
-    }
-    return Math.trunc(parsed);
-  }, [reportRecord?.teacherCount, syncedTeacherCount]);
-
   useEffect(() => {
     setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
   }, [complianceMetrics]);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    const syncTeacherSexTotals = async () => {
-      try {
-        const [maleResult, femaleResult] = await Promise.all([
-          listTeachers({ page: 1, perPage: 1, sex: "male" }),
-          listTeachers({ page: 1, perPage: 1, sex: "female" }),
-        ]);
-
-        if (isCancelled) {
-          return;
-        }
-
-        setTeacherSexCounts({
-          male: Math.max(0, Math.trunc(Number(maleResult.meta.total ?? 0))),
-          female: Math.max(0, Math.trunc(Number(femaleResult.meta.total ?? 0))),
-        });
-      } catch {
-        if (!isCancelled) {
-          setTeacherSexCounts({ male: 0, female: 0 });
-        }
-      }
-    };
-
-    void syncTeacherSexTotals();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [listTeachers, syncedTeacherCount]);
-
-  const autoSyncValueByCode = useMemo<Record<string, number>>(
-    () => ({
-      IMETA_ENROLL_TOTAL: reportStudentTotal,
-      TEACHERS_TOTAL: reportTeacherTotal,
-      TEACHERS_MALE: teacherSexCounts.male,
-      TEACHERS_FEMALE: teacherSexCounts.female,
-    }),
-    [reportStudentTotal, reportTeacherTotal, teacherSexCounts.female, teacherSexCounts.male],
-  );
-
-  useEffect(() => {
-    if (complianceMetrics.length === 0) {
-      return;
-    }
-    if (autoSyncTargetYears.length === 0) {
-      return;
-    }
-
-    setMetricEntries((current) => {
-      let changed = false;
-      const next = { ...current };
-
-      for (const metric of complianceMetrics) {
-        if (!Object.prototype.hasOwnProperty.call(autoSyncValueByCode, metric.code)) {
-          continue;
-        }
-
-        const syncedValue = autoSyncValueByCode[metric.code];
-        const normalizedValue = String(Math.max(0, Math.trunc(Number(syncedValue ?? 0))));
-        const metricScopedYears = metricYears(metric);
-        const years =
-          metricScopedYears.length > 0
-            ? metricScopedYears.filter((year) => autoSyncTargetYears.includes(year))
-            : autoSyncTargetYears;
-        if (years.length === 0) {
-          continue;
-        }
-
-        const previousEntry = next[metric.id] ?? buildDefaultEntry(metric);
-        const targetMatrix = { ...previousEntry.targetMatrix };
-        const actualMatrix = { ...previousEntry.actualMatrix };
-        let entryChanged = false;
-
-        for (const year of years) {
-          if (targetMatrix[year] !== normalizedValue) {
-            targetMatrix[year] = normalizedValue;
-            entryChanged = true;
-          }
-          if (actualMatrix[year] !== normalizedValue) {
-            actualMatrix[year] = normalizedValue;
-            entryChanged = true;
-          }
-        }
-
-        if (!entryChanged) {
-          continue;
-        }
-
-        next[metric.id] = {
-          ...previousEntry,
-          targetMatrix,
-          actualMatrix,
-        };
-        changed = true;
-      }
-
-      return changed ? next : current;
-    });
-  }, [autoSyncTargetYears, autoSyncValueByCode, complianceMetrics]);
 
   useEffect(() => {
     if (academicYearId || eligibleAcademicYears.length === 0) {
@@ -3430,7 +3284,6 @@ export function SchoolIndicatorPanel({
                             const valueMissing = missingFieldByCellId.get(valueCellId);
                             const targetMissing = missingFieldByCellId.get(targetCellId);
                             const actualMissing = missingFieldByCellId.get(actualCellId);
-                            const isLockedSyncedYear = isSyncedLockedMetric && autoSyncTargetYears.includes(year);
                             const autoTargetValue = String(current.targetMatrix[year] ?? "").trim();
                             const autoActualValue = String(current.actualMatrix[year] ?? "").trim();
                             const autoSingleValue = autoActualValue !== "" ? autoActualValue : autoTargetValue;
@@ -3472,33 +3325,6 @@ export function SchoolIndicatorPanel({
                                   <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
                                       {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "-")}
-                                    </span>
-                                  </td>
-                                </Fragment>
-                              );
-                            }
-
-                            if (isLockedSyncedYear) {
-                              if (activeCategory.mode !== "target_actual") {
-                                return (
-                                  <td key={`${metric.id}-${year}-synced`} title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
-                                    <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoSingleValue !== "" ? autoSingleValue : "Synced"}
-                                    </span>
-                                  </td>
-                                );
-                              }
-
-                              return (
-                                <Fragment key={`${metric.id}-${year}-synced`}>
-                                  <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
-                                    <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoTargetValue !== "" ? autoTargetValue : "Synced"}
-                                    </span>
-                                  </td>
-                                  <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
-                                    <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "Synced")}
                                     </span>
                                   </td>
                                 </Fragment>
