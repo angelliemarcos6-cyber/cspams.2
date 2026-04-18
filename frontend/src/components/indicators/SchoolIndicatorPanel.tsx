@@ -180,6 +180,12 @@ const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
 const SYNC_LOCKED_METRIC_CODES = new Set<string>();
+const MANUALLY_FILLABLE_SCHOOL_ACHIEVEMENT_CODES = new Set([
+  "IMETA_ENROLL_TOTAL",
+  "TEACHERS_TOTAL",
+  "TEACHERS_MALE",
+  "TEACHERS_FEMALE",
+]);
 const BASE_SCHOOL_YEAR_START = 2025;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
@@ -402,7 +408,11 @@ function metricDisplayLabel(metric: IndicatorMetric): string {
 function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
   // Key Performance rows are operator-fillable in the School Head form.
   // Even if backend metadata marks the metric as auto-calculated, keep UI editable.
-  if (TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code))) {
+  const normalizedCode = normalizeMetricCode(metric.code);
+  if (
+    TARGET_ACTUAL_METRIC_CODES.has(normalizedCode)
+    || MANUALLY_FILLABLE_SCHOOL_ACHIEVEMENT_CODES.has(normalizedCode)
+  ) {
     return false;
   }
   return Boolean(metric.isAutoCalculated);
