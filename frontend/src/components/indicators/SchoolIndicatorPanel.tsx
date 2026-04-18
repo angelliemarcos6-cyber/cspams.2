@@ -623,7 +623,7 @@ function deriveYearWorkspaceState(params: {
     if (yearStart === null) {
       return false;
     }
-    return yearStart <= currentSchoolYearStartValue;
+    return yearStart <= currentSchoolYearStartValue + 1;
   });
   const requiredYearsInScope = workspaceSchoolYears.filter((year) => requiredSchoolYears.includes(year));
   const lockedSchoolYears = visibleSchoolYears.filter((year) => !editableSchoolYears.includes(year));
@@ -1746,7 +1746,7 @@ export function SchoolIndicatorPanel({
         return "Submitted package is locked. Click Edit to unlock this category.";
       }
       if (yearWorkspaceState.lockedSchoolYears.includes(yearLabel)) {
-        return "Only academic years in the active reporting scope are editable. Other visible years are read-only.";
+        return "Only academic years in the active reporting scope (current and next) are editable. Other visible years are read-only.";
       }
       return "Year is outside the editable workspace.";
     },
