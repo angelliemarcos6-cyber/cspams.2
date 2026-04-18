@@ -501,9 +501,6 @@ export function SchoolAdminDashboard() {
         <div className="rounded-sm border-2 border-primary-200 bg-primary-50/20 p-3 md:p-4">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-primary-200 pb-2">
             <h2 className="text-[18px] font-semibold text-slate-900">Reports</h2>
-            <span className="rounded-sm border border-primary-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.5px] text-primary-700">
-              Group A (Year-Scoped)
-            </span>
           </div>
 
           {isYearScopedLoading && (
