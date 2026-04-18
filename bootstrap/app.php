@@ -16,11 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->statefulApi();
-        $middleware->validateCsrfTokens(except: [
-            'api/auth/*',
-            'api/broadcasting/auth',
-        ]);
+        // Keep CSRF protection on the web middleware group.
+        // API auth in this app is bearer-token based via auth:sanctum.
+        $middleware->validateCsrfTokens();
         $middleware->throttleApi('api');
         $middleware->redirectGuestsTo(static function (Request $request): ?string {
             if ($request->expectsJson() || $request->is('api/*')) {
