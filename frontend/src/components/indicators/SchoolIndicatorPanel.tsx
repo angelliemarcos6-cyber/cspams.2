@@ -808,10 +808,25 @@ export function SchoolIndicatorPanel({
   );
   const eligibleAcademicYears = useMemo(
     () =>
-      academicYears.filter((year) => {
-        const start = schoolYearStartValue(year.name);
-        return start === null || start >= BASE_SCHOOL_YEAR_START;
-      }),
+      [...academicYears]
+        .filter((year) => {
+          const start = schoolYearStartValue(year.name);
+          return start === null || start >= BASE_SCHOOL_YEAR_START;
+        })
+        .sort((a, b) => {
+          const aStart = schoolYearStartValue(a.name);
+          const bStart = schoolYearStartValue(b.name);
+          if (aStart !== null && bStart !== null) {
+            return aStart - bStart;
+          }
+          if (aStart !== null) {
+            return -1;
+          }
+          if (bStart !== null) {
+            return 1;
+          }
+          return String(a.name).localeCompare(String(b.name));
+        }),
     [academicYears],
   );
   const visibleSchoolYears = useMemo(() => {
