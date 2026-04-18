@@ -3460,12 +3460,12 @@ export function SchoolIndicatorPanel({
                                       className={valueInputClass}
                                     />
                                   )}
-                                  {valueMissing && (
+                                  {canEditYear && valueMissing && (
                                     <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
                                       Req
                                     </span>
                                   )}
-                                  {valueMissing && (
+                                  {canEditYear && valueMissing && (
                                     <p className="mt-1 text-[10px] font-medium text-amber-700">
                                       Required
                                     </p>
@@ -3522,12 +3522,12 @@ export function SchoolIndicatorPanel({
                                       className={targetInputClass}
                                     />
                                   )}
-                                  {targetMissing && (
+                                  {canEditYear && targetMissing && (
                                     <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
                                       Req
                                     </span>
                                   )}
-                                  {targetMissing && (
+                                  {canEditYear && targetMissing && (
                                     <p className="mt-1 text-[10px] font-medium text-amber-700">
                                       Required target
                                     </p>
@@ -3566,12 +3566,12 @@ export function SchoolIndicatorPanel({
                                       className={actualInputClass}
                                     />
                                   )}
-                                  {actualMissing && (
+                                  {canEditYear && actualMissing && (
                                     <span className="pointer-events-none absolute right-1 top-1 rounded-sm bg-amber-100 px-1 py-0 text-[9px] font-semibold text-amber-700">
                                       Req
                                     </span>
                                   )}
-                                  {actualMissing && (
+                                  {canEditYear && actualMissing && (
                                     <p className="mt-1 text-[10px] font-medium text-amber-700">
                                       Required actual
                                     </p>
