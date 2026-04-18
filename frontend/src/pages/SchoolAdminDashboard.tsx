@@ -171,7 +171,7 @@ export function SchoolAdminDashboard() {
   } = useIndicatorData();
 
   const [showHelpDialog, setShowHelpDialog] = useState(false);
-  const [contextAcademicYearId, setContextAcademicYearId] = useState("all");
+  const [contextAcademicYearId, setContextAcademicYearId] = useState("");
   const [contextWorkflowStatus, setContextWorkflowStatus] = useState<
     "all" | "draft" | "submitted" | "returned" | "validated"
   >("all");
@@ -206,8 +206,8 @@ export function SchoolAdminDashboard() {
   const effectiveAcademicYearId = contextAcademicYearId;
   const filteredIndicatorsByYear = useMemo(
     () =>
-      effectiveAcademicYearId === "all"
-        ? indicatorSubmissions
+      !effectiveAcademicYearId
+        ? []
         : indicatorSubmissions.filter((submission) => submission.academicYear?.id === effectiveAcademicYearId),
     [effectiveAcademicYearId, indicatorSubmissions],
   );
@@ -249,7 +249,7 @@ export function SchoolAdminDashboard() {
     [latestSubmittedIndicators],
   );
 
-  const hasContextOverrides = contextAcademicYearId !== "all" || contextWorkflowStatus !== "all";
+  const hasContextOverrides = contextWorkflowStatus !== "all";
 
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
@@ -296,7 +296,7 @@ export function SchoolAdminDashboard() {
   }, [currentAcademicYearOption]);
 
   /* ── Context presets ── */
-  const applyContextPreset = (preset: "current_year" | "needs_revision" | "all_submission") => {
+  const applyContextPreset = (preset: "current_year" | "needs_revision") => {
     if (preset === "current_year") {
       if (currentAcademicYearOption) setContextAcademicYearId(currentAcademicYearOption.id);
       return;
@@ -305,19 +305,19 @@ export function SchoolAdminDashboard() {
       setContextWorkflowStatus("returned");
       return;
     }
-    setContextAcademicYearId("all");
-    setContextWorkflowStatus("all");
   };
 
-  const isPresetActive = (preset: "current_year" | "needs_revision" | "all_submission") => {
+  const isPresetActive = (preset: "current_year" | "needs_revision") => {
     if (preset === "current_year")
       return Boolean(currentAcademicYearOption && contextAcademicYearId === currentAcademicYearOption.id);
     if (preset === "needs_revision") return contextWorkflowStatus === "returned";
-    return !hasContextOverrides;
+    return false;
   };
 
   const clearTopContext = () => {
-    setContextAcademicYearId("all");
+    if (currentAcademicYearOption?.id) {
+      setContextAcademicYearId(currentAcademicYearOption.id);
+    }
     setContextWorkflowStatus("all");
     setFocusedSectionId(null);
   };
@@ -448,9 +448,6 @@ export function SchoolAdminDashboard() {
             <button type="button" onClick={() => applyContextPreset("needs_revision")} className={presetBtnCls(isPresetActive("needs_revision"))}>
               Revision
             </button>
-            <button type="button" onClick={() => applyContextPreset("all_submission")} className={presetBtnCls(isPresetActive("all_submission"))}>
-              All
-            </button>
           </div>
 
           <label className="inline-flex items-center gap-1.5 text-xs">
@@ -460,7 +457,6 @@ export function SchoolAdminDashboard() {
               onChange={(e) => setContextAcademicYearId(e.target.value)}
               className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
             >
-              <option value="all">All years</option>
               {academicYears.map((year) => (
                 <option key={year.id} value={year.id}>
                   {year.name}
@@ -581,7 +577,6 @@ export function SchoolAdminDashboard() {
               className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 pr-8 text-xs font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               aria-label="Academic year filter"
             >
-              <option value="all">All years</option>
               {academicYears.map((year) => (
                 <option key={year.id} value={year.id}>
                   {year.name}
