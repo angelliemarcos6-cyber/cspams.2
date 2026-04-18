@@ -1089,20 +1089,7 @@ export function SchoolIndicatorPanel({
   );
   const activeAcademicYearId = yearWorkspaceState.selectedAcademicYearId;
   const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
-  const selectedWorkspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
-  const workspaceSchoolYears = useMemo(() => {
-    const visibleYearSet = new Set(yearWorkspaceState.visibleSchoolYears);
-    const scopedEditableYears = sortSchoolYearsAscending(
-      yearWorkspaceState.editableSchoolYears.filter((year) => visibleYearSet.has(year)),
-    );
-
-    if (scopedEditableYears.length > 0) {
-      return scopedEditableYears;
-    }
-
-    // Keep selected-year anchoring as a safe fallback when no editable year is in scope.
-    return selectedWorkspaceSchoolYears;
-  }, [selectedWorkspaceSchoolYears, yearWorkspaceState.editableSchoolYears, yearWorkspaceState.visibleSchoolYears]);
+  const workspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
   const requiredSchoolYears = useMemo(
     () => workspaceSchoolYears,
     [workspaceSchoolYears],
@@ -1629,23 +1616,26 @@ export function SchoolIndicatorPanel({
     [activeTab, visibleCategoryMetrics],
   );
   const isActiveCategoryLocked = Boolean(activeCategory && isFormLocked);
+  const isSelectedYearEditable = Boolean(
+    selectedSchoolYearLabel && yearWorkspaceState.editableSchoolYears.includes(selectedSchoolYearLabel),
+  );
   const isYearEditable = useCallback(
-    (yearLabel: string) => yearWorkspaceState.editableSchoolYears.includes(yearLabel),
-    [yearWorkspaceState.editableSchoolYears],
+    (yearLabel: string) => Boolean(selectedSchoolYearLabel && isSelectedYearEditable && yearLabel === selectedSchoolYearLabel),
+    [isSelectedYearEditable, selectedSchoolYearLabel],
   );
   const getYearLockReason = useCallback(
     (yearLabel: string): string => {
       if (isYearEditable(yearLabel) && isActiveCategoryLocked) {
         return "Submitted package is locked. Click Edit to unlock this category.";
       }
-      if (yearWorkspaceState.lockedSchoolYears.includes(yearLabel)) {
-        return "Only academic years in the active reporting scope (current and next) are editable. Other visible years are read-only.";
+      if (selectedSchoolYearLabel && yearLabel === selectedSchoolYearLabel && !isSelectedYearEditable) {
+        return "The selected academic year is outside the active reporting scope and is currently read-only.";
       }
-      return "Year is outside the editable workspace.";
+      return "Only the selected academic year workspace is editable.";
     },
-    [isActiveCategoryLocked, isYearEditable, yearWorkspaceState.lockedSchoolYears],
+    [isActiveCategoryLocked, isSelectedYearEditable, isYearEditable, selectedSchoolYearLabel],
   );
-  const isWorkspaceReadOnly = isActiveCategoryLocked || yearWorkspaceState.isWorkspaceReadOnly;
+  const isWorkspaceReadOnly = isActiveCategoryLocked || yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable;
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
@@ -3541,9 +3531,11 @@ export function SchoolIndicatorPanel({
             Editing package #{editingSubmissionId}. Save draft to update this package.
           </p>
         )}
-        {yearWorkspaceState.isWorkspaceReadOnly && (
+        {(yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable) && (
           <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
-            No editable academic year is available in the current 5-year window.
+            {yearWorkspaceState.isWorkspaceReadOnly
+              ? "No editable academic year is available in the current 5-year window."
+              : "This academic year is not yet open for encoding."}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -3551,8 +3543,8 @@ export function SchoolIndicatorPanel({
             <>
               <button
                 type="submit"
-                disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || yearWorkspaceState.isWorkspaceReadOnly}
-                title={yearWorkspaceState.isWorkspaceReadOnly ? "Select an editable academic year to save draft." : undefined}
+                disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || isWorkspaceReadOnly}
+                title={isWorkspaceReadOnly ? "Select an academic year that is open for encoding to save draft." : undefined}
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Target className="h-4 w-4" />
@@ -3565,12 +3557,12 @@ export function SchoolIndicatorPanel({
                   isSaving
                   || isSubmissionDataLoading
                   || complianceMetrics.length === 0
-                  || yearWorkspaceState.isWorkspaceReadOnly
+                  || isWorkspaceReadOnly
                   || missingFieldTargets.length > 0
                 }
                 title={
-                  yearWorkspaceState.isWorkspaceReadOnly
-                    ? "Select an editable academic year to submit."
+                  isWorkspaceReadOnly
+                    ? "Select an academic year that is open for encoding to submit."
                     : missingFieldTargets.length > 0
                       ? submitBlockedReason || "Complete required fields before submitting."
                       : "Save and submit to monitor"
