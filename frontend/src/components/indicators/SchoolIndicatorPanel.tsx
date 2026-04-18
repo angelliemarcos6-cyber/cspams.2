@@ -2738,14 +2738,14 @@ export function SchoolIndicatorPanel({
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <label htmlFor="indicator-school-year" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              School Year:
+              Academic Year:
             </label>
             <div className="relative">
               <select
                 id="indicator-school-year"
                 value={academicYearId}
                 onChange={(event) => setAcademicYearId(event.target.value)}
-                aria-label="School year"
+                aria-label="Academic Year"
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
                 <option value={ALL_RECORDS_YEAR_ID}>All records</option>
@@ -3150,7 +3150,7 @@ export function SchoolIndicatorPanel({
                           ))
                         ) : (
                           <th colSpan={activeSchoolYears.length} className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-3 py-1.5 text-center">
-                            School Year
+                            Academic Year
                           </th>
                         )}
                       </tr>

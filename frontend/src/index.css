@@ -1,9 +1,9 @@
-@import url("https://fonts.googleapis.com/css2?family=Commissioner:wght@700&family=Inter:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Commissioner:wght@700&family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
   --font-sans:
-    "Inter", "Commissioner", "Segoe UI", "Helvetica Neue", "Arial",
+    "Inter", "Segoe UI", "Helvetica Neue", "Arial",
     ui-sans-serif, system-ui, sans-serif;
   --font-display:
     "Commissioner", "Inter", "Segoe UI", "Helvetica Neue", "Arial",
@@ -55,7 +55,9 @@ h6 {
 }
 
 .section-title,
-.dashboard-card-title {
+.dashboard-card-title,
+.font-display,
+.display-heading {
   font-family: var(--font-display);
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -405,6 +407,42 @@ th {
   border: 1px solid rgb(147 197 253 / 0.45);
   background: #ffffff;
   box-shadow: 0 28px 60px -42px rgb(2 46 80 / 0.7);
+}
+
+.school-head-dashboard {
+  font-family: var(--font-sans);
+}
+
+.school-head-dashboard h1,
+.school-head-dashboard h2,
+.school-head-dashboard h3,
+.school-head-dashboard h4,
+.school-head-dashboard h5,
+.school-head-dashboard h6,
+.school-head-dashboard .section-title,
+.school-head-dashboard .dashboard-card-title,
+.school-head-dashboard .font-display,
+.school-head-dashboard .display-heading {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.login-page {
+  font-family: var(--font-sans);
+}
+
+.login-page h1,
+.login-page h2,
+.login-page h3,
+.login-page h4,
+.login-page h5,
+.login-page h6,
+.login-page .section-title,
+.login-page .dashboard-card-title,
+.login-page .font-display,
+.login-page .display-heading {
+  font-family: var(--font-display);
+  font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {
