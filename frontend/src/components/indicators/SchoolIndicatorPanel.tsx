@@ -538,6 +538,23 @@ function schoolYearStartValue(value: string | null | undefined): number | null {
   return start;
 }
 
+function compareAcademicYearOptions(a: AcademicYearOption, b: AcademicYearOption): number {
+  const aStart = schoolYearStartValue(a.name);
+  const bStart = schoolYearStartValue(b.name);
+
+  if (aStart !== null && bStart !== null) {
+    return aStart - bStart;
+  }
+  if (aStart !== null) {
+    return -1;
+  }
+  if (bStart !== null) {
+    return 1;
+  }
+
+  return String(a.name).localeCompare(String(b.name));
+}
+
 function sortSchoolYearsAscending(years: Iterable<string>): string[] {
   return [...new Set(Array.from(years, (year) => String(year).trim()).filter((year) => year.length > 0))]
     .sort((a, b) => {
@@ -1301,6 +1318,10 @@ export function SchoolIndicatorPanel({
 
     return unique.slice(0, 3);
   }, [academicYearId, showAllAcademicYears, visibleAcademicYears]);
+  const dropdownAcademicYears = useMemo(
+    () => [...visibleAcademicYears].sort(compareAcademicYearOptions),
+    [visibleAcademicYears],
+  );
   const hiddenAcademicYearCount = Math.max(0, visibleAcademicYears.length - compactAcademicYears.length);
   const visibleCategoryMetrics = categoryMetrics;
   const metricCompletionById = useMemo(() => {
@@ -2925,7 +2946,7 @@ export function SchoolIndicatorPanel({
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
                 <option value={ALL_RECORDS_YEAR_ID}>All records</option>
-                {visibleAcademicYears.map((year) => (
+                {dropdownAcademicYears.map((year) => (
                   <option key={year.id} value={year.id}>
                     {year.name}
                   </option>
