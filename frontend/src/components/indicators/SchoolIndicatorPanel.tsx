@@ -3456,7 +3456,7 @@ export function SchoolIndicatorPanel({
                                 return (
                                   <td key={`${metric.id}-${year}-auto`} title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoSingleValue !== "" ? autoSingleValue : "Auto"}
+                                      {autoSingleValue !== "" ? autoSingleValue : "-"}
                                     </span>
                                   </td>
                                 );
@@ -3466,12 +3466,12 @@ export function SchoolIndicatorPanel({
                                 <Fragment key={`${metric.id}-${year}-auto`}>
                                   <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoTargetValue !== "" ? autoTargetValue : "Auto"}
+                                      {autoTargetValue !== "" ? autoTargetValue : "-"}
                                     </span>
                                   </td>
                                   <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "Auto")}
+                                      {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "-")}
                                     </span>
                                   </td>
                                 </Fragment>
