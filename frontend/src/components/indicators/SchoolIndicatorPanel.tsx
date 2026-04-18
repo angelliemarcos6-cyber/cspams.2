@@ -1089,8 +1089,24 @@ export function SchoolIndicatorPanel({
   );
   const activeAcademicYearId = yearWorkspaceState.selectedAcademicYearId;
   const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
-  const workspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
-  const requiredSchoolYears = yearWorkspaceState.requiredSchoolYears;
+  const selectedWorkspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
+  const workspaceSchoolYears = useMemo(() => {
+    const visibleYearSet = new Set(yearWorkspaceState.visibleSchoolYears);
+    const scopedEditableYears = sortSchoolYearsAscending(
+      yearWorkspaceState.editableSchoolYears.filter((year) => visibleYearSet.has(year)),
+    );
+
+    if (scopedEditableYears.length > 0) {
+      return scopedEditableYears;
+    }
+
+    // Keep selected-year anchoring as a safe fallback when no editable year is in scope.
+    return selectedWorkspaceSchoolYears;
+  }, [selectedWorkspaceSchoolYears, yearWorkspaceState.editableSchoolYears, yearWorkspaceState.visibleSchoolYears]);
+  const requiredSchoolYears = useMemo(
+    () => workspaceSchoolYears,
+    [workspaceSchoolYears],
+  );
   const requiredSchoolYearSet = useMemo(() => new Set(requiredSchoolYears), [requiredSchoolYears]);
   const currentAcademicYearId = useMemo(
     () => eligibleAcademicYears.find((year) => year.isCurrent)?.id ?? "",
