@@ -405,6 +405,11 @@ function metricDisplayLabel(metric: IndicatorMetric): string {
   return METRIC_LABEL_OVERRIDES[normalizeMetricCode(metric.code)] ?? metric.name;
 }
 
+function formatReferenceCellValue(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : "—";
+}
+
 function isForceManualMetric(metric: IndicatorMetric): boolean {
   const normalizedCode = normalizeMetricCode(metric.code);
   return Array.from(FORCE_MANUAL_METRIC_CODES).some((manualCode) => (
@@ -3183,6 +3188,9 @@ export function SchoolIndicatorPanel({
                     </span>
                   </div>
                 </div>
+                <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-600">
+                  You can only edit data for the selected academic year. Other years are shown for reference.
+                </p>
                 <div
                   ref={indicatorTableRef}
                   tabIndex={0}
@@ -3353,32 +3361,41 @@ export function SchoolIndicatorPanel({
                             const valueMissing = missingFieldByCellId.get(valueCellId);
                             const targetMissing = missingFieldByCellId.get(targetCellId);
                             const actualMissing = missingFieldByCellId.get(actualCellId);
-                            const autoTargetValue = String(current.targetMatrix[year] ?? "").trim();
-                            const autoActualValue = String(current.actualMatrix[year] ?? "").trim();
-                            const autoSingleValue = autoActualValue !== "" ? autoActualValue : autoTargetValue;
+                            const autoTargetValue = formatReferenceCellValue(current.targetMatrix[year]);
+                            const autoActualValue = formatReferenceCellValue(current.actualMatrix[year]);
+                            const autoSingleValue = formatReferenceCellValue(
+                              String(current.actualMatrix[year] ?? "").trim() !== ""
+                                ? current.actualMatrix[year]
+                                : current.targetMatrix[year],
+                            );
+                            const referenceSingleValue = formatReferenceCellValue(
+                              String(current.actualMatrix[year] ?? "").trim() !== ""
+                                ? current.actualMatrix[year]
+                                : current.targetMatrix[year],
+                            );
 
                             const valueInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs outline-none transition ${
                               valueMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
-                            } ${isSelectedColumn ? "text-slate-900" : "bg-slate-100 text-slate-600"}`;
+                            } text-slate-900`;
                             const targetInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs outline-none transition ${
                               targetMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
-                            } ${isSelectedColumn ? "text-slate-900" : "bg-slate-100 text-slate-600"}`;
+                            } text-slate-900`;
                             const actualInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs outline-none transition ${
                               actualMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
-                            } ${isSelectedColumn ? "text-slate-900" : "bg-slate-100 text-slate-600"}`;
+                            } text-slate-900`;
 
                             if (isAutoCalculated) {
                               if (activeCategory.mode !== "target_actual") {
                                 return (
                                   <td key={`${metric.id}-${year}-auto`} title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoSingleValue !== "" ? autoSingleValue : "-"}
+                                      {autoSingleValue}
                                     </span>
                                   </td>
                                 );
@@ -3388,12 +3405,12 @@ export function SchoolIndicatorPanel({
                                 <Fragment key={`${metric.id}-${year}-auto`}>
                                   <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoTargetValue !== "" ? autoTargetValue : "-"}
+                                      {autoTargetValue}
                                     </span>
                                   </td>
                                   <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
-                                      {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "-")}
+                                      {autoActualValue}
                                     </span>
                                   </td>
                                 </Fragment>
@@ -3401,6 +3418,14 @@ export function SchoolIndicatorPanel({
                             }
 
                             if (activeCategory.mode !== "target_actual") {
+                              if (!isSelectedColumn) {
+                                return (
+                                  <td key={`${metric.id}-${year}`} title={yearLockReason} className="min-w-[170px] border border-slate-300 bg-slate-50/80 px-2 py-1.5 align-middle text-center text-xs font-medium text-slate-500">
+                                    {referenceSingleValue}
+                                  </td>
+                                );
+                              }
+
                               return (
                                 <td key={`${metric.id}-${year}`} title={yearLockReason} className={`relative min-w-[170px] border p-1 align-middle ${
                                   isSelectedColumn
@@ -3446,6 +3471,19 @@ export function SchoolIndicatorPanel({
                                     </p>
                                   )}
                                 </td>
+                              );
+                            }
+
+                            if (!isSelectedColumn) {
+                              return (
+                                <Fragment key={`${metric.id}-${year}`}>
+                                  <td title={yearLockReason} className="min-w-[150px] border border-slate-300 bg-slate-50/80 px-2 py-1.5 align-middle text-center text-xs font-medium text-slate-500">
+                                    {formatReferenceCellValue(current.targetMatrix[year])}
+                                  </td>
+                                  <td title={yearLockReason} className="min-w-[150px] border border-slate-300 bg-slate-50/80 px-2 py-1.5 align-middle text-center text-xs font-medium text-slate-500">
+                                    {formatReferenceCellValue(current.actualMatrix[year])}
+                                  </td>
+                                </Fragment>
                               );
                             }
 
