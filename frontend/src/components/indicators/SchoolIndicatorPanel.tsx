@@ -180,8 +180,7 @@ const COMPLIANCE_CATEGORIES: ComplianceCategory[] = [
 const COMPLIANCE_METRIC_CODES = new Set(COMPLIANCE_CATEGORIES.flatMap((category) => category.metricCodes));
 const TARGET_ACTUAL_METRIC_CODES = new Set(KEY_PERFORMANCE_METRIC_CODES);
 const SYNC_LOCKED_METRIC_CODES = new Set<string>();
-const MANUALLY_FILLABLE_SCHOOL_ACHIEVEMENT_CODES = new Set([
-  "IMETA_ENROLL_TOTAL",
+const FORCE_MANUAL_METRIC_CODES = new Set([
   "TEACHERS_TOTAL",
   "TEACHERS_MALE",
   "TEACHERS_FEMALE",
@@ -411,7 +410,7 @@ function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
   const normalizedCode = normalizeMetricCode(metric.code);
   if (
     TARGET_ACTUAL_METRIC_CODES.has(normalizedCode)
-    || MANUALLY_FILLABLE_SCHOOL_ACHIEVEMENT_CODES.has(normalizedCode)
+    || FORCE_MANUAL_METRIC_CODES.has(normalizedCode)
   ) {
     return false;
   }
@@ -419,7 +418,11 @@ function metricIsAutoCalculated(metric: IndicatorMetric): boolean {
 }
 
 function metricUsesSyncedLockedTotals(metric: IndicatorMetric): boolean {
-  return SYNC_LOCKED_METRIC_CODES.has(normalizeMetricCode(metric.code));
+  const normalizedCode = normalizeMetricCode(metric.code);
+  if (FORCE_MANUAL_METRIC_CODES.has(normalizedCode)) {
+    return false;
+  }
+  return SYNC_LOCKED_METRIC_CODES.has(normalizedCode);
 }
 
 function categoryTabLabel(category: ComplianceCategory): string {
@@ -3246,8 +3249,10 @@ export function SchoolIndicatorPanel({
                             : [];
                       const useSelectInput = selectOptions.length > 0;
                       const isComplete = metricCompletionById.get(metric.id) ?? false;
-                      const isAutoCalculated = metricIsAutoCalculated(metric);
-                      const isSyncedLockedMetric = metricUsesSyncedLockedTotals(metric);
+                      const normalizedMetricCode = normalizeMetricCode(metric.code);
+                      const forceManualMetric = FORCE_MANUAL_METRIC_CODES.has(normalizedMetricCode);
+                      const isAutoCalculated = forceManualMetric ? false : metricIsAutoCalculated(metric);
+                      const isSyncedLockedMetric = forceManualMetric ? false : metricUsesSyncedLockedTotals(metric);
                       const baseRowTone =
                         metric.code === "IMETA_HEAD_NAME"
                           ? "bg-primary-50"
