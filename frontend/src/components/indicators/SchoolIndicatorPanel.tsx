@@ -84,6 +84,18 @@ interface LocalDraftSnapshot {
   editingSubmissionId: string | null;
 }
 
+interface YearWorkspaceState {
+  visibleSchoolYears: string[];
+  visibleAcademicYears: AcademicYearOption[];
+  selectedAcademicYearId: string;
+  selectedSchoolYearLabel: string | null;
+  workspaceSchoolYears: string[];
+  requiredSchoolYears: string[];
+  requiredYearsInScope: string[];
+  lockedSchoolYears: string[];
+  isWorkspaceReadOnly: boolean;
+}
+
 const SCHOOL_ACHIEVEMENTS_METRIC_CODES = [
   "IMETA_HEAD_NAME",
   "IMETA_ENROLL_TOTAL",
@@ -179,7 +191,6 @@ const BASE_SCHOOL_YEAR_START = 2025;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
 const INDICATOR_DRAFT_STORAGE_KEY_PREFIX = "cspams.schoolhead.indicator.autosave";
-const ALL_RECORDS_YEAR_ID = "__all_records__";
 const BMEF_TAB_ID = "bmef_upload";
 const SMEA_TAB_ID = "smea_upload";
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
@@ -555,6 +566,74 @@ function compareAcademicYearOptions(a: AcademicYearOption, b: AcademicYearOption
   return String(a.name).localeCompare(String(b.name));
 }
 
+function deriveYearWorkspaceState(params: {
+  selectedAcademicYearId: string;
+  eligibleAcademicYears: AcademicYearOption[];
+  visibleSchoolYears: string[];
+  schoolYearByAcademicYearId: Map<string, string>;
+  academicYearBySchoolYearLabel: Map<string, AcademicYearOption>;
+  currentSchoolYearStartValue: number;
+}): YearWorkspaceState {
+  const {
+    selectedAcademicYearId,
+    eligibleAcademicYears,
+    visibleSchoolYears,
+    schoolYearByAcademicYearId,
+    academicYearBySchoolYearLabel,
+    currentSchoolYearStartValue,
+  } = params;
+
+  const orderedFromWindow = visibleSchoolYears
+    .map((label) => academicYearBySchoolYearLabel.get(label))
+    .filter((year): year is AcademicYearOption => Boolean(year));
+  const seen = new Set<string>();
+  const uniqueOrdered = orderedFromWindow.filter((year) => {
+    if (seen.has(year.id)) {
+      return false;
+    }
+    seen.add(year.id);
+    return true;
+  });
+  const remaining = eligibleAcademicYears
+    .filter((year) => {
+      const normalized = normalizeSchoolYearLabel(year.name);
+      return Boolean(normalized && visibleSchoolYears.includes(normalized) && !seen.has(year.id));
+    })
+    .sort(compareAcademicYearOptions);
+  const visibleAcademicYears = [...uniqueOrdered, ...remaining];
+
+  const fallbackAcademicYearId = visibleAcademicYears.find((year) => year.isCurrent)?.id
+    ?? visibleAcademicYears[0]?.id
+    ?? "";
+  const selectedAcademicYearInWindow = visibleAcademicYears.some((year) => year.id === selectedAcademicYearId)
+    ? selectedAcademicYearId
+    : fallbackAcademicYearId;
+  const selectedSchoolYearLabel = schoolYearByAcademicYearId.get(selectedAcademicYearInWindow) ?? null;
+  const workspaceSchoolYears = selectedSchoolYearLabel ? [selectedSchoolYearLabel] : [];
+  const requiredSchoolYears = visibleSchoolYears.filter((year) => {
+    const yearStart = schoolYearStartValue(year);
+    if (yearStart === null) {
+      return true;
+    }
+    return yearStart <= currentSchoolYearStartValue;
+  });
+  const requiredYearsInScope = workspaceSchoolYears.filter((year) => requiredSchoolYears.includes(year));
+  const lockedSchoolYears = visibleSchoolYears.filter((year) => year !== selectedSchoolYearLabel);
+  const isWorkspaceReadOnly = !selectedSchoolYearLabel;
+
+  return {
+    visibleSchoolYears,
+    visibleAcademicYears,
+    selectedAcademicYearId: selectedAcademicYearInWindow,
+    selectedSchoolYearLabel,
+    workspaceSchoolYears,
+    requiredSchoolYears,
+    requiredYearsInScope,
+    lockedSchoolYears,
+    isWorkspaceReadOnly,
+  };
+}
+
 function sortSchoolYearsAscending(years: Iterable<string>): string[] {
   return [...new Set(Array.from(years, (year) => String(year).trim()).filter((year) => year.length > 0))]
     .sort((a, b) => {
@@ -851,7 +930,6 @@ export function SchoolIndicatorPanel({
   const [pendingFocusCellId, setPendingFocusCellId] = useState<string | null>(null);
   const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
   const [autoMissingAppliedForSubmissionId, setAutoMissingAppliedForSubmissionId] = useState<string | null>(null);
-  const [showAllAcademicYears, setShowAllAcademicYears] = useState(false);
   const [showOptionalNotes, setShowOptionalNotes] = useState(false);
   const [pendingLocalDraft, setPendingLocalDraft] = useState<LocalDraftSnapshot | null>(null);
   const [restoreBannerDismissed, setRestoreBannerDismissed] = useState(false);
@@ -977,40 +1055,23 @@ export function SchoolIndicatorPanel({
 
     return map;
   }, [eligibleAcademicYears]);
-  const visibleAcademicYearIds = useMemo(
+  const yearWorkspaceState = useMemo(
     () =>
-      new Set(
-        eligibleAcademicYears
-          .filter((year) => {
-            const normalized = normalizeSchoolYearLabel(year.name);
-            return Boolean(normalized && visibleSchoolYears.some((label) => label === normalized));
-          })
-          .map((year) => year.id),
-      ),
-    [eligibleAcademicYears, visibleSchoolYears],
+      deriveYearWorkspaceState({
+        selectedAcademicYearId: academicYearId,
+        eligibleAcademicYears,
+        visibleSchoolYears,
+        schoolYearByAcademicYearId,
+        academicYearBySchoolYearLabel,
+        currentSchoolYearStartValue: currentSchoolYearStart(),
+      }),
+    [academicYearId, academicYearBySchoolYearLabel, eligibleAcademicYears, schoolYearByAcademicYearId, visibleSchoolYears],
   );
-  const isAllRecordsMode = academicYearId === ALL_RECORDS_YEAR_ID;
-  const selectedSchoolYearLabel = useMemo(() => schoolYearByAcademicYearId.get(academicYearId) ?? null, [academicYearId, schoolYearByAcademicYearId]);
-  const workspaceSchoolYears = useMemo(
-    () => (selectedSchoolYearLabel ? [selectedSchoolYearLabel] : []),
-    [selectedSchoolYearLabel],
-  );
-  const requiredSchoolYears = useMemo(() => {
-    const currentStart = currentSchoolYearStart();
-
-    return visibleSchoolYears.filter((year) => {
-      const yearStart = schoolYearStartValue(year);
-      if (yearStart === null) {
-        return true;
-      }
-      return yearStart <= currentStart;
-    });
-  }, [visibleSchoolYears]);
+  const activeAcademicYearId = yearWorkspaceState.selectedAcademicYearId;
+  const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
+  const workspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
+  const requiredSchoolYears = yearWorkspaceState.requiredSchoolYears;
   const requiredSchoolYearSet = useMemo(() => new Set(requiredSchoolYears), [requiredSchoolYears]);
-  const requiredYearsInScope = useMemo(
-    () => workspaceSchoolYears.filter((year) => requiredSchoolYearSet.has(year)),
-    [requiredSchoolYearSet, workspaceSchoolYears],
-  );
   const currentAcademicYearId = useMemo(
     () => eligibleAcademicYears.find((year) => year.isCurrent)?.id ?? "",
     [eligibleAcademicYears],
@@ -1029,21 +1090,12 @@ export function SchoolIndicatorPanel({
       return [] as string[];
     }
 
-    if (academicYearId && academicYearId === currentAcademicYearId) {
+    if (activeAcademicYearId && activeAcademicYearId === currentAcademicYearId) {
       return [currentSchoolYearLabel];
     }
 
     return [] as string[];
-  }, [academicYearId, currentAcademicYearId, currentSchoolYearLabel]);
-  const requiredYearsScopeLabel = useMemo(() => {
-    if (requiredYearsInScope.length === 0) {
-      return "Future years only";
-    }
-    if (requiredYearsInScope.length === 1) {
-      return requiredYearsInScope[0];
-    }
-    return `${requiredYearsInScope[0]} to ${requiredYearsInScope[requiredYearsInScope.length - 1]}`;
-  }, [requiredYearsInScope]);
+  }, [activeAcademicYearId, currentAcademicYearId, currentSchoolYearLabel]);
 
   const reportRecord = records[0] ?? null;
   const reportStudentTotal = useMemo(() => {
@@ -1174,37 +1226,29 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const currentYear = eligibleAcademicYears.find((year) => year.isCurrent);
-    setAcademicYearId(currentYear?.id ?? eligibleAcademicYears[0].id);
-  }, [academicYearId, eligibleAcademicYears]);
+    if (yearWorkspaceState.selectedAcademicYearId) {
+      setAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
+    }
+  }, [academicYearId, eligibleAcademicYears.length, yearWorkspaceState.selectedAcademicYearId]);
 
   useEffect(() => {
-    if (!academicYearId || academicYearId === ALL_RECORDS_YEAR_ID) {
+    if (!academicYearId || !yearWorkspaceState.selectedAcademicYearId) {
       return;
     }
 
-    const exists = visibleAcademicYearIds.has(academicYearId);
-    if (exists) {
-      return;
+    if (academicYearId !== yearWorkspaceState.selectedAcademicYearId) {
+      setAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
     }
-
-    const currentYear = eligibleAcademicYears.find((year) => year.isCurrent && visibleAcademicYearIds.has(year.id));
-    const fallback = currentYear?.id
-      ?? eligibleAcademicYears.find((year) => visibleAcademicYearIds.has(year.id))?.id
-      ?? "";
-    if (fallback && academicYearId !== fallback) {
-      setAcademicYearId(fallback);
-    }
-  }, [academicYearId, eligibleAcademicYears, visibleAcademicYearIds]);
+  }, [academicYearId, yearWorkspaceState.selectedAcademicYearId]);
 
   const autosaveKey = useMemo(
-    () => `${INDICATOR_DRAFT_STORAGE_KEY_PREFIX}.${academicYearId || "unselected"}`,
-    [academicYearId],
+    () => `${INDICATOR_DRAFT_STORAGE_KEY_PREFIX}.${activeAcademicYearId || "unselected"}`,
+    [activeAcademicYearId],
   );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!academicYearId || isAllRecordsMode) {
+    if (!activeAcademicYearId) {
       setPendingLocalDraft(null);
       return;
     }
@@ -1234,7 +1278,7 @@ export function SchoolIndicatorPanel({
       }
 
       setPendingLocalDraft({
-        academicYearId: persisted.academicYearId ?? academicYearId,
+        academicYearId: persisted.academicYearId ?? activeAcademicYearId,
         notes: typeof persisted.notes === "string" ? persisted.notes : "",
         metricEntries: persisted.metricEntries && typeof persisted.metricEntries === "object" ? persisted.metricEntries : {},
         savedAt: persisted.savedAt ?? null,
@@ -1246,19 +1290,19 @@ export function SchoolIndicatorPanel({
     } catch {
       setPendingLocalDraft(null);
     }
-  }, [academicYearId, autosaveKey, isAllRecordsMode]);
+  }, [activeAcademicYearId, autosaveKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (complianceMetrics.length === 0) return;
-    if (!academicYearId || isAllRecordsMode) return;
+    if (!activeAcademicYearId) return;
 
     const timer = window.setTimeout(() => {
       const savedAt = new Date().toISOString();
       try {
         localStorage.setItem(
           autosaveKey,
-          JSON.stringify({ academicYearId, notes, metricEntries, editingSubmissionId, savedAt }),
+          JSON.stringify({ academicYearId: activeAcademicYearId, notes, metricEntries, editingSubmissionId, savedAt }),
         );
         setAutosaveAt(savedAt);
       } catch {
@@ -1267,7 +1311,7 @@ export function SchoolIndicatorPanel({
     }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [academicYearId, autosaveKey, complianceMetrics.length, editingSubmissionId, isAllRecordsMode, metricEntries, notes]);
+  }, [activeAcademicYearId, autosaveKey, complianceMetrics.length, editingSubmissionId, metricEntries, notes]);
 
   const submissions = useMemo(
     () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
@@ -1303,55 +1347,8 @@ export function SchoolIndicatorPanel({
       ) ?? null,
     [sortedSubmissions],
   );
-  const visibleAcademicYears = useMemo(
-    () =>
-      eligibleAcademicYears.filter((year) => {
-        const normalized = normalizeSchoolYearLabel(year.name);
-        return Boolean(normalized && visibleSchoolYears.includes(normalized));
-      }),
-    [eligibleAcademicYears, visibleSchoolYears],
-  );
-  const compactAcademicYears = useMemo(() => {
-    if (showAllAcademicYears || visibleAcademicYears.length <= 3) {
-      return visibleAcademicYears;
-    }
-
-    const selectedYear = visibleAcademicYears.find((year) => year.id === academicYearId) ?? null;
-    const currentYear = visibleAcademicYears.find((year) => year.isCurrent) ?? null;
-    const candidates = [selectedYear, currentYear, ...visibleAcademicYears].filter(
-      (year): year is AcademicYearOption => Boolean(year),
-    );
-
-    const seen = new Set<string>();
-    const unique = candidates.filter((year) => {
-      if (seen.has(year.id)) return false;
-      seen.add(year.id);
-      return true;
-    });
-
-    return unique.slice(0, 3);
-  }, [academicYearId, showAllAcademicYears, visibleAcademicYears]);
-  const dropdownAcademicYears = useMemo(() => {
-    const orderedFromWindow = visibleSchoolYears
-      .map((label) => academicYearBySchoolYearLabel.get(label))
-      .filter((year): year is AcademicYearOption => Boolean(year));
-
-    const seen = new Set<string>();
-    const uniqueOrdered = orderedFromWindow.filter((year) => {
-      if (seen.has(year.id)) {
-        return false;
-      }
-      seen.add(year.id);
-      return true;
-    });
-
-    const remaining = visibleAcademicYears
-      .filter((year) => !seen.has(year.id))
-      .sort(compareAcademicYearOptions);
-
-    return [...uniqueOrdered, ...remaining];
-  }, [academicYearBySchoolYearLabel, visibleAcademicYears, visibleSchoolYears]);
-  const hiddenAcademicYearCount = Math.max(0, visibleAcademicYears.length - compactAcademicYears.length);
+  const visibleAcademicYears = yearWorkspaceState.visibleAcademicYears;
+  const dropdownAcademicYears = visibleAcademicYears;
   const visibleCategoryMetrics = categoryMetrics;
   const metricCompletionById = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -1560,10 +1557,10 @@ export function SchoolIndicatorPanel({
     return summary;
   }, [categoryLookupByMetricId, complianceMetrics, orderedComplianceMetrics, requiredSchoolYearSet, schoolYearByAcademicYearId, sortedSubmissions, visibleSchoolYears]);
   const scopedSubmissionsForYear = useMemo(
-    () => (academicYearId && academicYearId !== ALL_RECORDS_YEAR_ID
-      ? sortedSubmissions.filter((submission) => submission.academicYear?.id === academicYearId)
-      : sortedSubmissions),
-    [academicYearId, sortedSubmissions],
+    () => (activeAcademicYearId
+      ? sortedSubmissions.filter((submission) => submission.academicYear?.id === activeAcademicYearId)
+      : []),
+    [activeAcademicYearId, sortedSubmissions],
   );
   const latestServerDraftInScope = useMemo(
     () =>
@@ -1577,12 +1574,8 @@ export function SchoolIndicatorPanel({
     return editingSubmission ?? latestServerDraftInScope ?? scopedSubmissionsForYear[0] ?? null;
   }, [editingSubmission, latestServerDraftInScope, scopedSubmissionsForYear]);
   const workspaceSeedSubmission = useMemo(() => {
-    if (isAllRecordsMode) {
-      return scopedSubmissionsForYear[0] ?? null;
-    }
-
     return latestServerDraftInScope ?? scopedSubmissionsForYear[0] ?? null;
-  }, [isAllRecordsMode, latestServerDraftInScope, scopedSubmissionsForYear]);
+  }, [latestServerDraftInScope, scopedSubmissionsForYear]);
   const loadWorkspaceForAcademicYear = useCallback((submission: IndicatorSubmission | null) => {
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
     const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
@@ -1614,11 +1607,11 @@ export function SchoolIndicatorPanel({
   }, [complianceMetrics]);
   const workspaceFingerprintRef = useRef("");
   useEffect(() => {
-    if (!academicYearId || complianceMetrics.length === 0) {
+    if (!activeAcademicYearId || complianceMetrics.length === 0) {
       return;
     }
 
-    const fingerprint = `${academicYearId}:${workspaceSeedSubmission?.id ?? "blank"}:${workspaceSeedSubmission?.updatedAt ?? ""}`;
+    const fingerprint = `${activeAcademicYearId}:${workspaceSeedSubmission?.id ?? "blank"}:${workspaceSeedSubmission?.updatedAt ?? ""}`;
     if (workspaceFingerprintRef.current === fingerprint) {
       return;
     }
@@ -1626,7 +1619,7 @@ export function SchoolIndicatorPanel({
     workspaceFingerprintRef.current = fingerprint;
     loadWorkspaceForAcademicYear(workspaceSeedSubmission);
     setRestoreBannerDismissed(false);
-  }, [academicYearId, complianceMetrics.length, loadWorkspaceForAcademicYear, workspaceSeedSubmission]);
+  }, [activeAcademicYearId, complianceMetrics.length, loadWorkspaceForAcademicYear, workspaceSeedSubmission]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -1732,10 +1725,22 @@ export function SchoolIndicatorPanel({
   );
   const isActiveCategoryLocked = Boolean(activeCategory && isFormLocked);
   const isYearEditable = useCallback(
-    (yearLabel: string) => !isAllRecordsMode && yearLabel === selectedSchoolYearLabel,
-    [isAllRecordsMode, selectedSchoolYearLabel],
+    (yearLabel: string) => yearLabel === selectedSchoolYearLabel,
+    [selectedSchoolYearLabel],
   );
-  const isWorkspaceReadOnly = isActiveCategoryLocked || isAllRecordsMode;
+  const getYearLockReason = useCallback(
+    (yearLabel: string): string => {
+      if (isYearEditable(yearLabel) && isActiveCategoryLocked) {
+        return "Submitted package is locked. Click Edit to unlock this category.";
+      }
+      if (yearWorkspaceState.lockedSchoolYears.includes(yearLabel)) {
+        return "Only the selected academic year is editable. Other visible years are read-only.";
+      }
+      return "Year is outside the editable workspace.";
+    },
+    [isActiveCategoryLocked, isYearEditable, yearWorkspaceState.lockedSchoolYears],
+  );
+  const isWorkspaceReadOnly = isActiveCategoryLocked || yearWorkspaceState.isWorkspaceReadOnly;
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
@@ -2123,11 +2128,8 @@ export function SchoolIndicatorPanel({
     options: { allowIncomplete?: boolean } = {},
   ): { payload: IndicatorSubmissionPayload | null; reason: string; fingerprint: string } => {
     const allowIncomplete = options.allowIncomplete === true;
-    if (!academicYearId) {
+    if (!activeAcademicYearId) {
       return { payload: null, reason: "Select an academic year.", fingerprint: "" };
-    }
-    if (academicYearId === ALL_RECORDS_YEAR_ID) {
-      return { payload: null, reason: "Select a specific academic year to save. Use All records for viewing only.", fingerprint: "" };
     }
 
     if (!allowIncomplete && missingFieldTargets.length > 0) {
@@ -2324,7 +2326,7 @@ export function SchoolIndicatorPanel({
     }
 
     const payload: IndicatorSubmissionPayload = {
-      academicYearId: Number(academicYearId),
+      academicYearId: Number(activeAcademicYearId),
       reportingPeriod,
       notes: notes.trim() || null,
       indicators: entries.map((entry) => ({
@@ -2338,7 +2340,7 @@ export function SchoolIndicatorPanel({
     };
 
     return { payload, reason: "", fingerprint: JSON.stringify(payload) };
-  }, [academicYearId, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason, workspaceSchoolYears]);
+  }, [activeAcademicYearId, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason, workspaceSchoolYears]);
 
   const persistDraftPayload = useCallback(
     async (payload: IndicatorSubmissionPayload, mode: "manual" | "autosave"): Promise<IndicatorSubmission> => {
@@ -2717,10 +2719,6 @@ export function SchoolIndicatorPanel({
   };
 
   const ensureUploadSubmission = useCallback(async (): Promise<IndicatorSubmission | null> => {
-    if (isAllRecordsMode) {
-      setSubmitError("All records is view-only. Select a specific academic year for uploads.");
-      return null;
-    }
     if (selectedSubmissionForUploads) {
       return selectedSubmissionForUploads;
     }
@@ -2739,13 +2737,9 @@ export function SchoolIndicatorPanel({
       setSubmitError(err instanceof Error ? err.message : "Unable to create a draft for file upload.");
       return null;
     }
-  }, [buildSubmissionPayload, isAllRecordsMode, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads]);
+  }, [buildSubmissionPayload, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
-    if (isAllRecordsMode) {
-      setSubmitError("All records is view-only. Select a specific academic year for uploads.");
-      return;
-    }
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
@@ -2787,7 +2781,7 @@ export function SchoolIndicatorPanel({
     } finally {
       setUploadingFileType(null);
     }
-  }, [ensureUploadSubmission, isAllRecordsMode, refreshSubmissions, uploadSubmissionFile]);
+  }, [ensureUploadSubmission, refreshSubmissions, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -2866,27 +2860,20 @@ export function SchoolIndicatorPanel({
   }, [bmefReportSubmission, downloadSubmissionFile, selectedSubmissionForUploads, smeaReportSubmission]);
 
   const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
-    if (isAllRecordsMode) {
-      return;
-    }
     if (type === "bmef") {
       bmefInputRef.current?.click();
       return;
     }
 
     smeaInputRef.current?.click();
-  }, [isAllRecordsMode]);
+  }, []);
 
   const handleRequestUpload = useCallback((type: IndicatorSubmissionFileType) => {
-    if (isAllRecordsMode) {
-      setSubmitError("All records is view-only. Select a specific academic year for uploads.");
-      return;
-    }
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     openUploadPicker(type);
-  }, [isAllRecordsMode, openUploadPicker]);
+  }, [openUploadPicker]);
 
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
@@ -2968,13 +2955,12 @@ export function SchoolIndicatorPanel({
             <div className="relative">
               <select
                 id="indicator-school-year"
-                value={academicYearId}
+                value={activeAcademicYearId}
                 onChange={(event) => setAcademicYearId(event.target.value)}
                 aria-label="Academic Year"
                 disabled={isActiveCategoryLocked}
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
-                <option value={ALL_RECORDS_YEAR_ID}>All records</option>
                 {dropdownAcademicYears.map((year) => (
                   <option key={year.id} value={year.id}>
                     {year.name}
@@ -3233,7 +3219,7 @@ export function SchoolIndicatorPanel({
                 const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isSaving || isUploading || isAllRecordsMode || !selectedSubmissionForUploads;
+                const uploadDisabled = isSaving || isUploading || !selectedSubmissionForUploads;
                 const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (
@@ -3321,7 +3307,7 @@ export function SchoolIndicatorPanel({
                             >
                               {year}
                               {!isYearEditable(year) && (
-                                <span className="ml-1 rounded-sm bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-600">
+                                <span title={getYearLockReason(year)} className="ml-1 rounded-sm bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-600">
                                   Locked
                                 </span>
                               )}
@@ -3356,7 +3342,7 @@ export function SchoolIndicatorPanel({
                               >
                                 {year}
                                 {!isYearEditable(year) && (
-                                  <span className="ml-1 rounded-sm bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-600">
+                                  <span title={getYearLockReason(year)} className="ml-1 rounded-sm bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-600">
                                     Locked
                                   </span>
                                 )}
@@ -3425,6 +3411,7 @@ export function SchoolIndicatorPanel({
                                   ? enumOptions.join(" / ")
                                   : "";
                             const canEditYear = isYearEditable(year) && !isActiveCategoryLocked;
+                            const yearLockReason = canEditYear ? undefined : getYearLockReason(year);
                             const valueCellId = indicatorCellId(metric.id, year, "value");
                             const targetCellId = indicatorCellId(metric.id, year, "target");
                             const actualCellId = indicatorCellId(metric.id, year, "actual");
@@ -3455,7 +3442,7 @@ export function SchoolIndicatorPanel({
                             if (isAutoCalculated) {
                               if (activeCategory.mode !== "target_actual") {
                                 return (
-                                  <td key={`${metric.id}-${year}-auto`} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td key={`${metric.id}-${year}-auto`} title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
                                       {autoSingleValue !== "" ? autoSingleValue : "Auto"}
                                     </span>
@@ -3465,12 +3452,12 @@ export function SchoolIndicatorPanel({
 
                               return (
                                 <Fragment key={`${metric.id}-${year}-auto`}>
-                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
                                       {autoTargetValue !== "" ? autoTargetValue : "Auto"}
                                     </span>
                                   </td>
-                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
                                       {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "Auto")}
                                     </span>
@@ -3482,7 +3469,7 @@ export function SchoolIndicatorPanel({
                             if (isLockedSyncedYear) {
                               if (activeCategory.mode !== "target_actual") {
                                 return (
-                                  <td key={`${metric.id}-${year}-synced`} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td key={`${metric.id}-${year}-synced`} title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
                                       {autoSingleValue !== "" ? autoSingleValue : "Synced"}
                                     </span>
@@ -3492,12 +3479,12 @@ export function SchoolIndicatorPanel({
 
                               return (
                                 <Fragment key={`${metric.id}-${year}-synced`}>
-                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
                                       {autoTargetValue !== "" ? autoTargetValue : "Synced"}
                                     </span>
                                   </td>
-                                  <td className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
+                                  <td title={yearLockReason} className="border border-slate-300 bg-primary-50/40 p-1.5 text-center align-middle">
                                     <span className="text-[11px] font-semibold text-primary-700">
                                       {autoActualValue !== "" ? autoActualValue : (autoTargetValue !== "" ? autoTargetValue : "Synced")}
                                     </span>
@@ -3508,7 +3495,7 @@ export function SchoolIndicatorPanel({
 
                             if (activeCategory.mode !== "target_actual") {
                               return (
-                                <td key={`${metric.id}-${year}`} className="relative min-w-[170px] border border-slate-300 p-1 align-middle">
+                                <td key={`${metric.id}-${year}`} title={yearLockReason} className="relative min-w-[170px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={valueCellId}
@@ -3553,7 +3540,7 @@ export function SchoolIndicatorPanel({
 
                             return (
                               <Fragment key={`${metric.id}-${year}`}>
-                                <td className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
+                                <td title={yearLockReason} className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={targetCellId}
@@ -3593,7 +3580,7 @@ export function SchoolIndicatorPanel({
                                     </p>
                                   )}
                                 </td>
-                                <td className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
+                                <td title={yearLockReason} className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
                                   {useSelectInput ? (
                                     <select
                                       id={actualCellId}
@@ -3676,9 +3663,9 @@ export function SchoolIndicatorPanel({
             Editing package #{editingSubmissionId}. Save draft to update this package.
           </p>
         )}
-        {academicYearId === ALL_RECORDS_YEAR_ID && (
+        {yearWorkspaceState.isWorkspaceReadOnly && (
           <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
-            All records is view-only. Select a specific academic year to save or submit.
+            No editable academic year is available in the current 5-year window.
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -3686,8 +3673,8 @@ export function SchoolIndicatorPanel({
             <>
               <button
                 type="submit"
-                disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || academicYearId === ALL_RECORDS_YEAR_ID}
-                title={academicYearId === ALL_RECORDS_YEAR_ID ? "Select a specific academic year to save draft." : undefined}
+                disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || yearWorkspaceState.isWorkspaceReadOnly}
+                title={yearWorkspaceState.isWorkspaceReadOnly ? "Select an editable academic year to save draft." : undefined}
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Target className="h-4 w-4" />
@@ -3700,12 +3687,12 @@ export function SchoolIndicatorPanel({
                   isSaving
                   || isSubmissionDataLoading
                   || complianceMetrics.length === 0
-                  || academicYearId === ALL_RECORDS_YEAR_ID
+                  || yearWorkspaceState.isWorkspaceReadOnly
                   || missingFieldTargets.length > 0
                 }
                 title={
-                  academicYearId === ALL_RECORDS_YEAR_ID
-                    ? "Select a specific academic year to submit."
+                  yearWorkspaceState.isWorkspaceReadOnly
+                    ? "Select an editable academic year to submit."
                     : missingFieldTargets.length > 0
                       ? submitBlockedReason || "Complete required fields before submitting."
                       : "Save and submit to monitor"
