@@ -1623,6 +1623,10 @@ export function SchoolIndicatorPanel({
     (yearLabel: string) => Boolean(selectedSchoolYearLabel && isSelectedYearEditable && yearLabel === selectedSchoolYearLabel),
     [isSelectedYearEditable, selectedSchoolYearLabel],
   );
+  const isSelectedYearColumn = useCallback(
+    (yearLabel: string) => Boolean(selectedSchoolYearLabel && yearLabel === selectedSchoolYearLabel),
+    [selectedSchoolYearLabel],
+  );
   const getYearLockReason = useCallback(
     (yearLabel: string): string => {
       if (isYearEditable(yearLabel) && isActiveCategoryLocked) {
@@ -1631,7 +1635,7 @@ export function SchoolIndicatorPanel({
       if (selectedSchoolYearLabel && yearLabel === selectedSchoolYearLabel && !isSelectedYearEditable) {
         return "The selected academic year is outside the active reporting scope and is currently read-only.";
       }
-      return "Only the selected academic year workspace is editable.";
+      return "Reference only. Select this academic year in the dropdown to edit.";
     },
     [isActiveCategoryLocked, isSelectedYearEditable, isYearEditable, selectedSchoolYearLabel],
   );
@@ -3194,20 +3198,34 @@ export function SchoolIndicatorPanel({
                           Indicators
                         </th>
                         {activeCategory.mode === "target_actual" ? (
-                          visibleSchoolYears.map((year) => (
-                            <th
-                              key={`${activeCategory.id}-${year}`}
-                              colSpan={2}
-                              className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
-                            >
-                              {year}
-                              {!isYearEditable(year) && (
-                                <span title={getYearLockReason(year)} className="ml-1 rounded-sm bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-600">
-                                  Locked
-                                </span>
-                              )}
-                            </th>
-                          ))
+                          visibleSchoolYears.map((year) => {
+                            const isSelectedColumn = isSelectedYearColumn(year);
+                            const canEditYear = isYearEditable(year) && !isActiveCategoryLocked;
+
+                            return (
+                              <th
+                                key={`${activeCategory.id}-${year}`}
+                                colSpan={2}
+                                title={!canEditYear ? getYearLockReason(year) : "Active academic year workspace"}
+                                className={`sticky top-0 z-30 border px-2 py-1.5 text-center ${
+                                  isSelectedColumn
+                                    ? "border-primary-300 bg-primary-50 text-slate-900"
+                                    : "border-slate-300 bg-slate-50 text-slate-600"
+                                }`}
+                              >
+                                <span className={isSelectedColumn ? "font-semibold" : "font-medium"}>{year}</span>
+                                {isSelectedColumn && (
+                                  <span className={`ml-1 rounded-sm px-1 py-0.5 text-[9px] font-semibold ${
+                                    canEditYear
+                                      ? "bg-primary-100 text-primary-700"
+                                      : "bg-slate-200 text-slate-700"
+                                  }`}>
+                                    {canEditYear ? "Selected" : "Read-only"}
+                                  </span>
+                                )}
+                              </th>
+                            );
+                          })
                         ) : (
                           <th colSpan={visibleSchoolYears.length} className="sticky top-0 z-30 border border-slate-300 bg-slate-100 px-3 py-1.5 text-center">
                             Academic Year
@@ -3216,29 +3234,49 @@ export function SchoolIndicatorPanel({
                       </tr>
                       <tr className="bg-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
                         {activeCategory.mode === "target_actual"
-                          ? visibleSchoolYears.flatMap((year) => [
-                              <th
-                                key={`${activeCategory.id}-${year}-target`}
-                                className="sticky top-[29px] z-30 min-w-[150px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
-                              >
-                                Target
-                              </th>,
-                              <th
-                                key={`${activeCategory.id}-${year}-actual`}
-                                className="sticky top-[29px] z-30 min-w-[150px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
-                              >
-                                Actual
-                              </th>,
-                            ])
+                          ? visibleSchoolYears.flatMap((year) => {
+                              const isSelectedColumn = isSelectedYearColumn(year);
+                              const headerClass = `sticky top-[29px] z-30 min-w-[150px] border px-2 py-1.5 text-center ${
+                                isSelectedColumn
+                                  ? "border-primary-200 bg-primary-50/70 text-slate-800"
+                                  : "border-slate-300 bg-slate-50 text-slate-500"
+                              }`;
+
+                              return [
+                                <th
+                                  key={`${activeCategory.id}-${year}-target`}
+                                  className={headerClass}
+                                  title={!isSelectedColumn ? "Reference only" : "Selected academic year"}
+                                >
+                                  Target
+                                </th>,
+                                <th
+                                  key={`${activeCategory.id}-${year}-actual`}
+                                  className={headerClass}
+                                  title={!isSelectedColumn ? "Reference only" : "Selected academic year"}
+                                >
+                                  Actual
+                                </th>,
+                              ];
+                            })
                           : visibleSchoolYears.map((year) => (
                               <th
                                 key={`${activeCategory.id}-${year}`}
-                                className="sticky top-[29px] z-30 min-w-[170px] border border-slate-300 bg-slate-100 px-2 py-1.5 text-center"
+                                title={!isYearEditable(year) ? getYearLockReason(year) : "Active academic year workspace"}
+                                className={`sticky top-[29px] z-30 min-w-[170px] border px-2 py-1.5 text-center ${
+                                  isSelectedYearColumn(year)
+                                    ? "border-primary-200 bg-primary-50/70 text-slate-800"
+                                    : "border-slate-300 bg-slate-50 text-slate-500"
+                                }`}
                               >
                                 {year}
-                                {!isYearEditable(year) && (
-                                  <span title={getYearLockReason(year)} className="ml-1 rounded-sm bg-slate-200 px-1 py-0.5 text-[9px] font-semibold text-slate-600">
-                                    Locked
+                                {isSelectedYearColumn(year) && (
+                                  <span className={`ml-1 rounded-sm px-1 py-0.5 text-[9px] font-semibold ${
+                                    isYearEditable(year) && !isActiveCategoryLocked
+                                      ? "bg-primary-100 text-primary-700"
+                                      : "bg-slate-200 text-slate-700"
+                                  }`}>
+                                    {isYearEditable(year) && !isActiveCategoryLocked ? "Selected" : "Read-only"}
                                   </span>
                                 )}
                               </th>
@@ -3308,6 +3346,7 @@ export function SchoolIndicatorPanel({
                                   : "";
                             const canEditYear = isYearEditable(year) && !isActiveCategoryLocked;
                             const yearLockReason = canEditYear ? undefined : getYearLockReason(year);
+                            const isSelectedColumn = isSelectedYearColumn(year);
                             const valueCellId = indicatorCellId(metric.id, year, "value");
                             const targetCellId = indicatorCellId(metric.id, year, "target");
                             const actualCellId = indicatorCellId(metric.id, year, "actual");
@@ -3318,21 +3357,21 @@ export function SchoolIndicatorPanel({
                             const autoActualValue = String(current.actualMatrix[year] ?? "").trim();
                             const autoSingleValue = autoActualValue !== "" ? autoActualValue : autoTargetValue;
 
-                            const valueInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs text-slate-900 outline-none transition ${
+                            const valueInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs outline-none transition ${
                               valueMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
-                            }`;
-                            const targetInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs text-slate-900 outline-none transition ${
+                            } ${isSelectedColumn ? "text-slate-900" : "bg-slate-100 text-slate-600"}`;
+                            const targetInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs outline-none transition ${
                               targetMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
-                            }`;
-                            const actualInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs text-slate-900 outline-none transition ${
+                            } ${isSelectedColumn ? "text-slate-900" : "bg-slate-100 text-slate-600"}`;
+                            const actualInputClass = `h-7 w-full rounded-sm border px-2 py-1 text-xs outline-none transition ${
                               actualMissing
                                 ? "border-amber-300 bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                 : "border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary-100"
-                            }`;
+                            } ${isSelectedColumn ? "text-slate-900" : "bg-slate-100 text-slate-600"}`;
 
                             if (isAutoCalculated) {
                               if (activeCategory.mode !== "target_actual") {
@@ -3363,7 +3402,11 @@ export function SchoolIndicatorPanel({
 
                             if (activeCategory.mode !== "target_actual") {
                               return (
-                                <td key={`${metric.id}-${year}`} title={yearLockReason} className="relative min-w-[170px] border border-slate-300 p-1 align-middle">
+                                <td key={`${metric.id}-${year}`} title={yearLockReason} className={`relative min-w-[170px] border p-1 align-middle ${
+                                  isSelectedColumn
+                                    ? "border-primary-200 bg-white"
+                                    : "border-slate-300 bg-slate-50/80"
+                                }`}>
                                   {useSelectInput ? (
                                     <select
                                       id={valueCellId}
@@ -3408,7 +3451,11 @@ export function SchoolIndicatorPanel({
 
                             return (
                               <Fragment key={`${metric.id}-${year}`}>
-                                <td title={yearLockReason} className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
+                                <td title={yearLockReason} className={`relative min-w-[150px] border p-1 align-middle ${
+                                  isSelectedColumn
+                                    ? "border-primary-200 bg-white"
+                                    : "border-slate-300 bg-slate-50/80"
+                                }`}>
                                   {useSelectInput ? (
                                     <select
                                       id={targetCellId}
@@ -3448,7 +3495,11 @@ export function SchoolIndicatorPanel({
                                     </p>
                                   )}
                                 </td>
-                                <td title={yearLockReason} className="relative min-w-[150px] border border-slate-300 p-1 align-middle">
+                                <td title={yearLockReason} className={`relative min-w-[150px] border p-1 align-middle ${
+                                  isSelectedColumn
+                                    ? "border-primary-200 bg-white"
+                                    : "border-slate-300 bg-slate-50/80"
+                                }`}>
                                   {useSelectInput ? (
                                     <select
                                       id={actualCellId}
