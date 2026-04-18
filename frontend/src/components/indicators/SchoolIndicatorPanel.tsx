@@ -618,7 +618,13 @@ function deriveYearWorkspaceState(params: {
     }
     return yearStart <= currentSchoolYearStartValue;
   });
-  const editableSchoolYears = requiredSchoolYears;
+  const editableSchoolYears = visibleSchoolYears.filter((year) => {
+    const yearStart = schoolYearStartValue(year);
+    if (yearStart === null) {
+      return false;
+    }
+    return yearStart <= currentSchoolYearStartValue;
+  });
   const requiredYearsInScope = workspaceSchoolYears.filter((year) => requiredSchoolYears.includes(year));
   const lockedSchoolYears = visibleSchoolYears.filter((year) => !editableSchoolYears.includes(year));
   const isWorkspaceReadOnly = !selectedSchoolYearLabel;
