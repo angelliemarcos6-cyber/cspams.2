@@ -1670,41 +1670,38 @@ export function SchoolIndicatorPanel({
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const canShowEditAction = workspaceMode === "submitted_locked";
   const canShowCancelEditAction = workspaceMode === "draft" || workspaceMode === "submitted_editing";
-  const getCategoryLifecycleDisplay = useCallback(
-    (
-      progress: { total: number; complete: number } | null,
-      missingCount: number,
-    ): {
-      statusText: string;
-      badgeText: string;
-      badgeTone: string;
-    } => {
+  const getCategoryRailStatusLabel = useCallback(
+    (progress: { total: number; complete: number } | null): string => {
+      if (workspaceMode === "submitted_locked") return "Submitted";
+      if (workspaceMode === "submitted_editing") return "Editing";
+      if (workspaceMode === "read_only_year") return "Read-only";
+      return progress ? `${progress.complete}/${progress.total} complete` : "Draft";
+    },
+    [workspaceMode],
+  );
+  const getCategoryRailBadge = useCallback(
+    (missingCount: number): { label: string; tone: string } => {
       if (workspaceMode === "submitted_locked") {
         return {
-          statusText: "Submitted",
-          badgeText: "Submitted",
-          badgeTone: "border-primary-300 bg-primary-50 text-primary-700",
+          label: "Submitted",
+          tone: "border-primary-300 bg-primary-50 text-primary-700",
         };
       }
       if (workspaceMode === "submitted_editing") {
         return {
-          statusText: "Editing",
-          badgeText: "Editing",
-          badgeTone: "border-primary-300 bg-primary-50 text-primary-700",
+          label: "Editing",
+          tone: "border-primary-300 bg-primary-50 text-primary-700",
         };
       }
       if (workspaceMode === "read_only_year") {
         return {
-          statusText: "Read-only",
-          badgeText: "Read-only",
-          badgeTone: "border-slate-300 bg-slate-50 text-slate-600",
+          label: "Read-only",
+          tone: "border-slate-300 bg-slate-50 text-slate-600",
         };
       }
-
       return {
-        statusText: progress ? `${progress.complete}/${progress.total} complete` : "Draft",
-        badgeText: `Missing ${missingCount}`,
-        badgeTone:
+        label: `Missing ${missingCount}`,
+        tone:
           missingCount > 0
             ? "border-amber-300 bg-amber-50 text-amber-700"
             : "border-primary-300 bg-primary-50 text-primary-700",
@@ -1938,10 +1935,34 @@ export function SchoolIndicatorPanel({
   };
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
-    const nextAcademicYearId = submission.academicYear?.id ?? activeAcademicYearId;
-    if (nextAcademicYearId && nextAcademicYearId !== activeAcademicYearId) {
-      setAcademicYearId(nextAcademicYearId);
+    const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
+    if (!submissionExists) {
+      setSubmitError("Unable to load the selected package.");
+      return;
     }
+
+    const nextAcademicYearId = submission.academicYear?.id ?? activeAcademicYearId;
+    if (!nextAcademicYearId) {
+      setSubmitError("Unable to resolve the academic year for this package.");
+      return;
+    }
+
+    if (nextAcademicYearId !== activeAcademicYearId) {
+      setAcademicYearId(nextAcademicYearId);
+      setEditingSubmissionId(submission.id);
+      setSubmitError("");
+      setSaveMessage(`Switched to package #${submission.id}.`);
+      setExpandedSubmissionId(null);
+      setAutosaveAt(null);
+      setPendingLocalDraft(null);
+      setRestoreBannerDismissed(true);
+      setAutosaveError("");
+      setShowOnlyMissingRows(false);
+      lastAutosaveFingerprintRef.current = "";
+      workspaceFingerprintRef.current = "";
+      return;
+    }
+
     loadWorkspaceForAcademicYear(submission);
     setSubmitError("");
     setSaveMessage(`Editing package #${submission.id}.`);
@@ -3024,8 +3045,8 @@ export function SchoolIndicatorPanel({
                     const uploadSubmitted = tab.kind === "upload"
                       ? (tab.uploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
                       : null;
-                    const categoryLifecycle = tab.kind === "category"
-                      ? getCategoryLifecycleDisplay(progress, missingCount ?? 0)
+                    const categoryRailBadge = tab.kind === "category"
+                      ? getCategoryRailBadge(missingCount ?? 0)
                       : null;
 
                     return (
@@ -3047,7 +3068,7 @@ export function SchoolIndicatorPanel({
                           </span>
                           {tab.kind === "category" && progress ? (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
-                              {categoryLifecycle?.statusText}
+                              {getCategoryRailStatusLabel(progress)}
                             </span>
                           ) : (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
@@ -3058,14 +3079,14 @@ export function SchoolIndicatorPanel({
                         <span
                           className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
                             tab.kind === "category"
-                              ? (categoryLifecycle?.badgeTone ?? "border-slate-300 bg-white text-slate-600")
+                              ? (categoryRailBadge?.tone ?? "border-slate-300 bg-white text-slate-600")
                               : (uploadSubmitted
                                 ? "border-primary-300 bg-primary-50 text-primary-700"
                                 : "border-amber-300 bg-amber-50 text-amber-700")
                           }`}
                         >
                           {tab.kind === "category"
-                            ? (categoryLifecycle?.badgeText ?? "Draft")
+                            ? (categoryRailBadge?.label ?? "Draft")
                             : uploadSubmitted
                               ? "Submitted"
                               : "Not Submitted"}
@@ -3200,6 +3221,11 @@ export function SchoolIndicatorPanel({
                     {!selectedSubmissionForUploads && !canShowSaveAndSubmitActions && (
                       <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
                         This academic year is read-only. File upload is unavailable.
+                      </p>
+                    )}
+                    {selectedSubmissionForUploads && !canShowSaveAndSubmitActions && (
+                      <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                        This workspace is read-only. File upload is unavailable.
                       </p>
                     )}
                   </div>
