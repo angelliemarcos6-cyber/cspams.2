@@ -1207,12 +1207,14 @@ export function SchoolIndicatorPanel({
     if (!activeAcademicYearId) return;
 
     const guardAcademicYearId = activeAcademicYearId;
+    const guardWorkspaceSubmissionId = activeWorkspaceSubmissionIdRef.current;
     const guardEditingSubmissionId = editingSubmissionId;
     const guardAutosaveEpoch = localAutosaveEpochRef.current;
 
     const timer = window.setTimeout(() => {
       if (
         localAutosaveAcademicYearRef.current !== guardAcademicYearId
+        || activeWorkspaceSubmissionIdRef.current !== guardWorkspaceSubmissionId
         || localAutosaveEditingSubmissionIdRef.current !== guardEditingSubmissionId
         || localAutosaveEpochRef.current !== guardAutosaveEpoch
       ) {
@@ -1553,7 +1555,7 @@ export function SchoolIndicatorPanel({
     setShowMissingFields(false);
     setPendingFocusCellId(null);
     setMissingJumpIndex(0);
-    setSubmitError("Active workspace is out of sync with the selected academic year. Reload the workspace and try again.");
+    setSubmitError("The selected academic year changed before saving. Review the workspace and try again.");
     return false;
   }, [activeAcademicYearId, activeWorkspaceSubmission, isSubmissionInAcademicYear]);
   const clearTransientWorkspaceUiState = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
@@ -2361,7 +2363,7 @@ export function SchoolIndicatorPanel({
       guard?: { academicYearId: string | null; submissionId: string | null; editingSubmissionId: string | null },
     ): Promise<IndicatorSubmission> => {
       if (!isAcademicYearValueAligned(payload.academicYearId)) {
-        throw new Error("Draft save is out of sync with the selected academic year.");
+        throw new Error("The selected academic year changed before saving. Review the workspace and try again.");
       }
       if (guard) {
         if (
@@ -2373,7 +2375,7 @@ export function SchoolIndicatorPanel({
         }
       }
       if (activeWorkspaceSubmission && !isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId)) {
-        throw new Error("Active workspace submission does not belong to the selected academic year.");
+        throw new Error("The selected academic year changed before saving. Review the workspace and try again.");
       }
       const canUpdateActiveSubmission = isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId);
       const submissionIdToUpdate = canUpdateActiveSubmission ? activeWorkspaceSubmission?.id ?? null : null;
@@ -2646,8 +2648,7 @@ export function SchoolIndicatorPanel({
     }
 
     handleEditDraft(restorableServerSubmissionInScope);
-    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
-  }, [activeAcademicYearId, clearTransientWorkspaceUiState, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
+  }, [activeAcademicYearId, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
 
   const showRestoreBanner = !restoreBannerDismissed && (
     Boolean(pendingLocalDraft)
@@ -2809,7 +2810,7 @@ export function SchoolIndicatorPanel({
     }
     if (selectedSubmissionForUploads) {
       if (!isSubmissionInAcademicYear(selectedSubmissionForUploads, activeAcademicYearId)) {
-        setSubmitError("Upload workspace is out of sync. Re-select the academic year and try again.");
+        setSubmitError("This file source no longer matches the selected academic year. Re-select the year and try again.");
         return null;
       }
       return selectedSubmissionForUploads;
@@ -2824,7 +2825,7 @@ export function SchoolIndicatorPanel({
     try {
       const created = await persistDraftPayload(prepared.payload, "manual");
       if (!isSubmissionInAcademicYear(created, activeAcademicYearId)) {
-        setSubmitError("Created draft does not match the selected academic year.");
+        setSubmitError("The selected academic year changed before upload. Review the workspace and try again.");
         return null;
       }
       await refreshSubmissions();
@@ -2918,6 +2919,7 @@ export function SchoolIndicatorPanel({
       ? (bmefReportSubmission ?? selectedSubmissionForUploads)
       : (smeaReportSubmission ?? selectedSubmissionForUploads);
     const guardAcademicYearId = activeAcademicYearIdRef.current;
+    const guardWorkspaceSubmissionId = activeWorkspaceSubmissionIdRef.current;
 
     if (!sourceSubmission) {
       setUploadErrorByType((current) => ({
@@ -2926,10 +2928,17 @@ export function SchoolIndicatorPanel({
       }));
       return;
     }
+    if (activeWorkspaceSubmissionIdRef.current !== guardWorkspaceSubmissionId) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "The workspace changed before this file action. Re-select the academic year and try again.",
+      }));
+      return;
+    }
     if (!isSubmissionInAcademicYear(sourceSubmission, guardAcademicYearId)) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "This file source no longer matches the selected academic year.",
+        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
       }));
       return;
     }
@@ -2953,6 +2962,7 @@ export function SchoolIndicatorPanel({
       ? (bmefReportSubmission ?? selectedSubmissionForUploads)
       : (smeaReportSubmission ?? selectedSubmissionForUploads);
     const guardAcademicYearId = activeAcademicYearIdRef.current;
+    const guardWorkspaceSubmissionId = activeWorkspaceSubmissionIdRef.current;
 
     if (!sourceSubmission) {
       setUploadErrorByType((current) => ({
@@ -2961,10 +2971,17 @@ export function SchoolIndicatorPanel({
       }));
       return;
     }
+    if (activeWorkspaceSubmissionIdRef.current !== guardWorkspaceSubmissionId) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "The workspace changed before this file action. Re-select the academic year and try again.",
+      }));
+      return;
+    }
     if (!isSubmissionInAcademicYear(sourceSubmission, guardAcademicYearId)) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "This file source no longer matches the selected academic year.",
+        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
       }));
       return;
     }
