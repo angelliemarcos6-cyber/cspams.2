@@ -1484,6 +1484,27 @@ export function SchoolIndicatorPanel({
   const selectedSubmissionForUploads = useMemo(() => {
     return activeWorkspaceSubmission;
   }, [activeWorkspaceSubmission]);
+  const isSubmissionInAcademicYear = useCallback(
+    (submission: IndicatorSubmission | null, academicYearId: string | number | null): boolean => {
+      if (!submission || academicYearId === null) {
+        return false;
+      }
+      const selectedId = String(academicYearId);
+      const submissionYearId = submission.academicYear?.id ? String(submission.academicYear.id) : "";
+      return submissionYearId.length > 0 && submissionYearId === selectedId;
+    },
+    [],
+  );
+  const clearTransientWorkspaceUiState = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
+    setExpandedSubmissionId(null);
+    setAutosaveAt(null);
+    setPendingLocalDraft(null);
+    setAutosaveError("");
+    setShowOnlyMissingRows(false);
+    setIsAutosavingDraft(false);
+    setRestoreBannerDismissed(options.dismissRestoreBanner ?? false);
+    lastAutosaveFingerprintRef.current = "";
+  }, []);
   const loadWorkspaceForAcademicYear = useCallback((submission: IndicatorSubmission | null) => {
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
     const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
@@ -1922,13 +1943,7 @@ export function SchoolIndicatorPanel({
   const resetForm = () => {
     loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
     setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
-    setAutosaveAt(null);
-    setAutosaveError("");
-    setIsAutosavingDraft(false);
-    setPendingLocalDraft(null);
-    setRestoreBannerDismissed(false);
-    setShowOnlyMissingRows(false);
-    lastAutosaveFingerprintRef.current = "";
+    clearTransientWorkspaceUiState({ dismissRestoreBanner: false });
     if (typeof window !== "undefined") {
       localStorage.removeItem(autosaveKey);
     }
@@ -1952,13 +1967,7 @@ export function SchoolIndicatorPanel({
       setEditingSubmissionId(submission.id);
       setSubmitError("");
       setSaveMessage(`Switched to package #${submission.id}.`);
-      setExpandedSubmissionId(null);
-      setAutosaveAt(null);
-      setPendingLocalDraft(null);
-      setRestoreBannerDismissed(true);
-      setAutosaveError("");
-      setShowOnlyMissingRows(false);
-      lastAutosaveFingerprintRef.current = "";
+      clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
       workspaceFingerprintRef.current = "";
       return;
     }
@@ -1966,13 +1975,7 @@ export function SchoolIndicatorPanel({
     loadWorkspaceForAcademicYear(submission);
     setSubmitError("");
     setSaveMessage(`Editing package #${submission.id}.`);
-    setExpandedSubmissionId(null);
-    setAutosaveAt(null);
-    setPendingLocalDraft(null);
-    setRestoreBannerDismissed(true);
-    setAutosaveError("");
-    setShowOnlyMissingRows(false);
-    lastAutosaveFingerprintRef.current = "";
+    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
   };
 
   const focusMissingTarget = useCallback((target: MissingFieldTarget, nextIndex?: number) => {
@@ -2287,7 +2290,8 @@ export function SchoolIndicatorPanel({
 
   const persistDraftPayload = useCallback(
     async (payload: IndicatorSubmissionPayload, mode: "manual" | "autosave"): Promise<IndicatorSubmission> => {
-      const submissionIdToUpdate = activeWorkspaceSubmission?.id ?? null;
+      const canUpdateActiveSubmission = isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId);
+      const submissionIdToUpdate = canUpdateActiveSubmission ? activeWorkspaceSubmission?.id ?? null : null;
       const result = submissionIdToUpdate
         ? await updateSubmission(submissionIdToUpdate, payload)
         : await createSubmission(payload);
@@ -2306,10 +2310,13 @@ export function SchoolIndicatorPanel({
 
       return result;
     },
-    [activeWorkspaceSubmission?.id, createSubmission, updateSubmission],
+    [activeWorkspaceSubmission, createSubmission, isSubmissionInAcademicYear, updateSubmission],
   );
 
   const triggerServerAutosave = useCallback(async () => {
+    if (!canShowSaveAndSubmitActions) {
+      return;
+    }
     if (autosaveInFlightRef.current) {
       return;
     }
@@ -2334,7 +2341,7 @@ export function SchoolIndicatorPanel({
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
     }
-  }, [activeWorkspaceSubmission?.id, buildSubmissionPayload, persistDraftPayload]);
+  }, [activeWorkspaceSubmission?.id, buildSubmissionPayload, canShowSaveAndSubmitActions, persistDraftPayload]);
 
   useEffect(() => {
     if (typeof window === "undefined" || complianceMetrics.length === 0) {
@@ -2521,28 +2528,24 @@ export function SchoolIndicatorPanel({
     setNotes(pendingLocalDraft.notes);
     setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
     setEditingSubmissionId(inScopeSubmissionId);
+    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
     setAutosaveAt(pendingLocalDraft.savedAt);
-    setPendingLocalDraft(null);
-    setRestoreBannerDismissed(true);
     setSubmitError("");
     setSaveMessage("Local draft restored.");
-    setAutosaveError("");
-    setShowOnlyMissingRows(false);
-    lastAutosaveFingerprintRef.current = "";
-  }, [activeAcademicYearId, complianceMetrics, pendingLocalDraft, scopedSubmissionsForYear]);
+  }, [activeAcademicYearId, clearTransientWorkspaceUiState, complianceMetrics, pendingLocalDraft, scopedSubmissionsForYear]);
 
   const handleRestoreServerDraft = useCallback(() => {
     if (!restorableServerSubmissionInScope) {
       return;
     }
+    if (!isSubmissionInAcademicYear(restorableServerSubmissionInScope, activeAcademicYearId)) {
+      setSubmitError("Server draft does not match the selected academic year.");
+      return;
+    }
 
     handleEditDraft(restorableServerSubmissionInScope);
-    setPendingLocalDraft(null);
-    setRestoreBannerDismissed(true);
-    setAutosaveError("");
-    setShowOnlyMissingRows(false);
-    lastAutosaveFingerprintRef.current = "";
-  }, [handleEditDraft, restorableServerSubmissionInScope]);
+    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
+  }, [activeAcademicYearId, clearTransientWorkspaceUiState, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
 
   const showRestoreBanner = !restoreBannerDismissed && (
     Boolean(pendingLocalDraft)
@@ -2697,6 +2700,10 @@ export function SchoolIndicatorPanel({
       return null;
     }
     if (selectedSubmissionForUploads) {
+      if (!isSubmissionInAcademicYear(selectedSubmissionForUploads, activeAcademicYearId)) {
+        setSubmitError("Upload workspace is out of sync. Re-select the academic year and try again.");
+        return null;
+      }
       return selectedSubmissionForUploads;
     }
 
@@ -2714,7 +2721,7 @@ export function SchoolIndicatorPanel({
       setSubmitError(err instanceof Error ? err.message : "Unable to create a draft for file upload.");
       return null;
     }
-  }, [buildSubmissionPayload, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads, workspaceMode]);
+  }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     setSubmitError("");
