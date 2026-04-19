@@ -2370,7 +2370,7 @@ export function SchoolIndicatorPanel({
       guard?: { academicYearId: string | null; submissionId: string | null; editingSubmissionId: string | null },
     ): Promise<IndicatorSubmission> => {
       if (!isAcademicYearValueAligned(payload.academicYearId)) {
-        throw new Error("The selected academic year changed before saving. Review the workspace and try again.");
+        throw new Error("The selected academic year changed before saving. No stale changes were applied. Review the workspace and try again.");
       }
       if (guard) {
         if (
@@ -2382,7 +2382,7 @@ export function SchoolIndicatorPanel({
         }
       }
       if (activeWorkspaceSubmission && !isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId)) {
-        throw new Error("The selected academic year changed before saving. Review the workspace and try again.");
+        throw new Error("The selected academic year changed before saving. No stale changes were applied. Review the workspace and try again.");
       }
       const canUpdateActiveSubmission = isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId);
       const submissionIdToUpdate = canUpdateActiveSubmission ? activeWorkspaceSubmission?.id ?? null : null;
@@ -2813,7 +2813,7 @@ export function SchoolIndicatorPanel({
     }
     if (selectedSubmissionForUploads) {
       if (!isSubmissionInAcademicYear(selectedSubmissionForUploads, activeAcademicYearId)) {
-        setSubmitError("This file source no longer matches the selected academic year. Re-select the year and try again.");
+        setSubmitError("This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.");
         return null;
       }
       return selectedSubmissionForUploads;
@@ -2873,7 +2873,7 @@ export function SchoolIndicatorPanel({
       || activeWorkspaceSubmissionIdRef.current !== uploadGuardWorkspaceSubmissionId
       || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
     ) {
-      setSubmitError("The workspace changed before this file action. Re-select the academic year and try again.");
+      setSubmitError("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
       return;
     }
 
@@ -2934,14 +2934,14 @@ export function SchoolIndicatorPanel({
     if (activeWorkspaceSubmissionIdRef.current !== guardWorkspaceSubmissionId) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "The workspace changed before this file action. Re-select the academic year and try again.",
+        [type]: "The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.",
       }));
       return;
     }
     if (!isSubmissionInAcademicYear(sourceSubmission, guardAcademicYearId)) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
+        [type]: "This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.",
       }));
       return;
     }
@@ -2977,14 +2977,14 @@ export function SchoolIndicatorPanel({
     if (activeWorkspaceSubmissionIdRef.current !== guardWorkspaceSubmissionId) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "The workspace changed before this file action. Re-select the academic year and try again.",
+        [type]: "The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.",
       }));
       return;
     }
     if (!isSubmissionInAcademicYear(sourceSubmission, guardAcademicYearId)) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
+        [type]: "This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.",
       }));
       return;
     }
