@@ -2866,6 +2866,7 @@ export function SchoolIndicatorPanel({
   };
 
   const ensureUploadSubmission = useCallback(async (): Promise<IndicatorSubmission | null> => {
+    const guardAcademicYearId = activeAcademicYearIdRef.current;
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return null;
@@ -2891,6 +2892,13 @@ export function SchoolIndicatorPanel({
         return null;
       }
       await refreshSubmissions();
+      if (
+        activeAcademicYearIdRef.current !== guardAcademicYearId
+        || activeWorkspaceSubmissionIdRef.current !== created.id
+      ) {
+        setSubmitError("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
+        return null;
+      }
       return created;
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to create a draft for file upload.");
@@ -4002,6 +4010,7 @@ export function SchoolIndicatorPanel({
               onClick={async () => {
                 const didReset = await resetForm();
                 if (didReset) {
+                  setIsSubmittedEditMode(false);
                   setSaveMessage("Submitted report editing canceled. Locked view restored.");
                 }
               }}
