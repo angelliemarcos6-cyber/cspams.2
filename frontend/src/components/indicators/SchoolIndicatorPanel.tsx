@@ -1459,20 +1459,37 @@ export function SchoolIndicatorPanel({
       : []),
     [activeAcademicYearId, sortedSubmissions],
   );
-  const latestServerDraftInScope = useMemo(
+  const returnedSubmissionInScope = useMemo(
     () =>
       scopedSubmissionsForYear.find((submission) => {
         const status = String(submission.status ?? "").toLowerCase();
-        return status === "draft" || status === "returned";
+        return status === "returned";
       }) ?? null,
     [scopedSubmissionsForYear],
   );
+  const draftSubmissionInScope = useMemo(
+    () =>
+      scopedSubmissionsForYear.find((submission) => {
+        const status = String(submission.status ?? "").toLowerCase();
+        return status === "draft";
+      }) ?? null,
+    [scopedSubmissionsForYear],
+  );
+  const latestSubmissionInScope = useMemo(
+    () => scopedSubmissionsForYear[0] ?? null,
+    [scopedSubmissionsForYear],
+  );
+  const resolvedWorkspaceSubmission = useMemo(
+    () => returnedSubmissionInScope ?? draftSubmissionInScope ?? latestSubmissionInScope ?? null,
+    [draftSubmissionInScope, latestSubmissionInScope, returnedSubmissionInScope],
+  );
+  const restorableServerSubmissionInScope = useMemo(
+    () => returnedSubmissionInScope ?? draftSubmissionInScope ?? null,
+    [draftSubmissionInScope, returnedSubmissionInScope],
+  );
   const selectedSubmissionForUploads = useMemo(() => {
-    return editingSubmission ?? latestServerDraftInScope ?? scopedSubmissionsForYear[0] ?? null;
-  }, [editingSubmission, latestServerDraftInScope, scopedSubmissionsForYear]);
-  const workspaceSeedSubmission = useMemo(() => {
-    return latestServerDraftInScope ?? scopedSubmissionsForYear[0] ?? null;
-  }, [latestServerDraftInScope, scopedSubmissionsForYear]);
+    return editingSubmission ?? resolvedWorkspaceSubmission ?? null;
+  }, [editingSubmission, resolvedWorkspaceSubmission]);
   const loadWorkspaceForAcademicYear = useCallback((submission: IndicatorSubmission | null) => {
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
     const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
@@ -1508,15 +1525,15 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const fingerprint = `${activeAcademicYearId}:${workspaceSeedSubmission?.id ?? "blank"}:${workspaceSeedSubmission?.updatedAt ?? ""}`;
+    const fingerprint = `${activeAcademicYearId}:${resolvedWorkspaceSubmission?.id ?? "blank"}:${resolvedWorkspaceSubmission?.updatedAt ?? ""}`;
     if (workspaceFingerprintRef.current === fingerprint) {
       return;
     }
 
     workspaceFingerprintRef.current = fingerprint;
-    loadWorkspaceForAcademicYear(workspaceSeedSubmission);
+    loadWorkspaceForAcademicYear(resolvedWorkspaceSubmission);
     setRestoreBannerDismissed(false);
-  }, [activeAcademicYearId, complianceMetrics.length, loadWorkspaceForAcademicYear, workspaceSeedSubmission]);
+  }, [activeAcademicYearId, complianceMetrics.length, loadWorkspaceForAcademicYear, resolvedWorkspaceSubmission]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -2481,20 +2498,20 @@ export function SchoolIndicatorPanel({
   }, [complianceMetrics, pendingLocalDraft]);
 
   const handleRestoreServerDraft = useCallback(() => {
-    if (!latestServerDraftInScope) {
+    if (!restorableServerSubmissionInScope) {
       return;
     }
 
-    handleEditDraft(latestServerDraftInScope);
+    handleEditDraft(restorableServerSubmissionInScope);
     setPendingLocalDraft(null);
     setRestoreBannerDismissed(true);
     setAutosaveError("");
     lastAutosaveFingerprintRef.current = "";
-  }, [handleEditDraft, latestServerDraftInScope]);
+  }, [handleEditDraft, restorableServerSubmissionInScope]);
 
   const showRestoreBanner = !restoreBannerDismissed && (
     Boolean(pendingLocalDraft)
-    || Boolean(latestServerDraftInScope && latestServerDraftInScope.id !== editingSubmissionId)
+    || Boolean(restorableServerSubmissionInScope && restorableServerSubmissionInScope.id !== editingSubmissionId)
   );
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
