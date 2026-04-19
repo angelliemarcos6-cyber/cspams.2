@@ -3002,8 +3002,6 @@ export function SchoolIndicatorPanel({
         return;
       }
       postRefreshMessageRef.current = `${type.toUpperCase()} file uploaded for package #${updated.id}.`;
-      setSaveMessage(postRefreshMessageRef.current);
-      postRefreshMessageRef.current = null;
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     } catch (err) {
       postRefreshMessageRef.current = null;
