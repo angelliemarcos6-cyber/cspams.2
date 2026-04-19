@@ -1768,7 +1768,15 @@ export function SchoolIndicatorPanel({
   }, [workspaceMode]);
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const canShowEditAction = workspaceMode === "submitted_locked";
-  const canShowCancelEditAction = workspaceMode === "draft" || workspaceMode === "submitted_editing";
+  const canShowCancelEditAction = workspaceMode === "submitted_editing";
+  const canShowResetAction = workspaceMode === "draft";
+  const saveActionLabel = useMemo(() => {
+    if (workspaceMode === "blank") return "Save Draft";
+    if (workspaceMode === "submitted_editing") return "Save Changes";
+    return "Update Draft";
+  }, [workspaceMode]);
+  const submitActionLabel = workspaceMode === "submitted_editing" ? "Re-submit" : "Submit";
+  const showSubmitEligibilityHelper = canShowSaveAndSubmitActions && missingFieldTargets.length > 0;
   const getCategoryRailStatusLabel = useCallback(
     (progress: { total: number; complete: number } | null): string => {
       if (workspaceMode === "submitted_locked") return "Submitted";
@@ -3865,7 +3873,7 @@ export function SchoolIndicatorPanel({
         {normalizedIndicatorError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{normalizedIndicatorError}</p>}
         {(workspaceMode === "draft" || workspaceMode === "submitted_editing") && activeWorkspaceSubmissionId && (
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-            Editing package #{activeWorkspaceSubmissionId}. Save draft to update this package.
+            Editing package #{activeWorkspaceSubmissionId}. {workspaceMode === "submitted_editing" ? "Save changes" : "Update draft"} to update this package.
           </p>
         )}
         {(yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable) && (
@@ -3875,7 +3883,30 @@ export function SchoolIndicatorPanel({
               : "This academic year is not yet open for encoding."}
           </p>
         )}
+        {showSubmitEligibilityHelper && (
+          <p className="text-xs font-semibold text-amber-700">
+            {submitBlockedReason || "Complete required fields before submitting."}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
+          {canShowResetAction && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Reset
+            </button>
+          )}
+          {canShowCancelEditAction && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Cancel Edit
+            </button>
+          )}
           {canShowSaveAndSubmitActions && (
             <>
               <button
@@ -3885,7 +3916,7 @@ export function SchoolIndicatorPanel({
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Target className="h-4 w-4" />
-                {isSaving ? "Saving..." : (workspaceMode === "blank" ? "Save Draft" : "Update Draft")}
+                {isSaving ? "Saving..." : saveActionLabel}
               </button>
               <button
                 type="button"
@@ -3907,7 +3938,7 @@ export function SchoolIndicatorPanel({
                 className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Send className="h-4 w-4" />
-                Submit
+                {submitActionLabel}
               </button>
             </>
           )}
@@ -3919,16 +3950,7 @@ export function SchoolIndicatorPanel({
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Edit2 className="h-4 w-4" />
-              Edit
-            </button>
-          )}
-          {canShowCancelEditAction && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              Cancel Edit
+              Edit Submitted Report
             </button>
           )}
         </div>
