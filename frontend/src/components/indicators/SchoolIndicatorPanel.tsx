@@ -2036,14 +2036,20 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(async () => {
     clearTransientWorkspaceUiState({ dismissRestoreBanner: false });
     loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
     setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
     if (typeof window !== "undefined") {
       localStorage.removeItem(autosaveKey);
     }
-  };
+    try {
+      await refreshSubmissions();
+      workspaceFingerprintRef.current = "";
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
+    }
+  }, [activeWorkspaceSubmission, autosaveKey, clearTransientWorkspaceUiState, loadWorkspaceForAcademicYear, refreshSubmissions]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
@@ -2715,6 +2721,8 @@ export function SchoolIndicatorPanel({
 
     try {
       await persistDraftPayload(prepared.payload, "manual");
+      await refreshSubmissions();
+      workspaceFingerprintRef.current = "";
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
     }
@@ -2951,7 +2959,7 @@ export function SchoolIndicatorPanel({
     if (!sourceSubmission) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "No draft package is available for download.",
+        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
       }));
       return;
     }
@@ -2994,7 +3002,7 @@ export function SchoolIndicatorPanel({
     if (!sourceSubmission) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "No draft package is available for viewing.",
+        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
       }));
       return;
     }
