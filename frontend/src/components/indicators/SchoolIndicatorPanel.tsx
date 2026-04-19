@@ -1627,7 +1627,6 @@ export function SchoolIndicatorPanel({
     workspaceFingerprintRef.current = fingerprint;
     const shouldPreserveSubmittedEditMode = Boolean(
       submittedEditPreserveContextRef.current
-      && isSubmittedEditMode
       && activeAcademicYearId
       && submittedEditPreserveContextRef.current.academicYearId === activeAcademicYearId
       && submittedEditPreserveContextRef.current.submissionId === (activeWorkspaceSubmission?.id ?? null),
@@ -1638,7 +1637,7 @@ export function SchoolIndicatorPanel({
     }
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
-  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, isSubmittedEditMode, loadWorkspaceForAcademicYear]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, loadWorkspaceForAcademicYear]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -2728,7 +2727,6 @@ export function SchoolIndicatorPanel({
 
     const saveModeAtActionStart = workspaceMode;
     const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
-    const saveSubmissionLineageAtActionStart = activeWorkspaceSubmissionIdRef.current;
     try {
       const saved = await persistDraftPayload(prepared.payload, "manual");
       if (saveModeAtActionStart === "submitted_editing") {
@@ -2739,14 +2737,6 @@ export function SchoolIndicatorPanel({
       }
       await refreshSubmissions();
       workspaceFingerprintRef.current = "";
-      if (
-        saveModeAtActionStart === "submitted_editing"
-        && activeAcademicYearIdRef.current === saveAcademicYearAtActionStart
-        && activeWorkspaceSubmissionIdRef.current === saved.id
-        && saveSubmissionLineageAtActionStart === saved.id
-      ) {
-        setIsSubmittedEditMode(true);
-      }
       if (saveModeAtActionStart === "blank") {
         setSaveMessage(`Draft package #${saved.id} saved.`);
       } else if (saveModeAtActionStart === "submitted_editing") {
@@ -2771,6 +2761,7 @@ export function SchoolIndicatorPanel({
     }
     setSubmitError("");
     setSaveMessage("");
+    submittedEditPreserveContextRef.current = null;
     if (!ensureWorkspaceLineageAlignment()) {
       return;
     }
@@ -2813,6 +2804,7 @@ export function SchoolIndicatorPanel({
     }
     setSubmitError("");
     setSaveMessage("");
+    submittedEditPreserveContextRef.current = null;
 
     const submissionSummary = submissionMissingSummaryById.get(submission.id);
     if ((submissionSummary?.missingCount ?? 0) > 0) {
@@ -2930,15 +2922,17 @@ export function SchoolIndicatorPanel({
     }
 
     const uploadGuardAcademicYearId = activeAcademicYearIdRef.current;
-    const uploadGuardWorkspaceSubmissionId = activeWorkspaceSubmissionIdRef.current;
     const submissionForUpload = await ensureUploadSubmission();
     if (!submissionForUpload) {
       return;
     }
     if (
       activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-      || activeWorkspaceSubmissionIdRef.current !== uploadGuardWorkspaceSubmissionId
       || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
+      || (
+        activeWorkspaceSubmissionIdRef.current !== null
+        && activeWorkspaceSubmissionIdRef.current !== submissionForUpload.id
+      )
     ) {
       setSubmitError("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
       return;
@@ -2955,6 +2949,16 @@ export function SchoolIndicatorPanel({
         return;
       }
       await refreshSubmissions();
+      if (
+        activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
+        || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
+      ) {
+        setUploadErrorByType((current) => ({
+          ...current,
+          [type]: "The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.",
+        }));
+        return;
+      }
       setSaveMessage(`${type.toUpperCase()} file uploaded for package #${updated.id}.`);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     } catch (err) {
