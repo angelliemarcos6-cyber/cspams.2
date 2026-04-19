@@ -1484,6 +1484,14 @@ export function SchoolIndicatorPanel({
   const selectedSubmissionForUploads = useMemo(() => {
     return activeWorkspaceSubmission;
   }, [activeWorkspaceSubmission]);
+  const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
+  const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
+  useEffect(() => {
+    activeAcademicYearIdRef.current = activeAcademicYearId;
+  }, [activeAcademicYearId]);
+  useEffect(() => {
+    activeWorkspaceSubmissionIdRef.current = activeWorkspaceSubmission?.id ?? null;
+  }, [activeWorkspaceSubmission?.id]);
   const isSubmissionInAcademicYear = useCallback(
     (submission: IndicatorSubmission | null, academicYearId: string | number | null): boolean => {
       if (!submission || academicYearId === null) {
@@ -1495,6 +1503,25 @@ export function SchoolIndicatorPanel({
     },
     [],
   );
+  const isAcademicYearValueAligned = useCallback(
+    (academicYearId: string | number | null): boolean => {
+      if (!activeAcademicYearId || academicYearId === null) {
+        return false;
+      }
+      return String(academicYearId) === String(activeAcademicYearId);
+    },
+    [activeAcademicYearId],
+  );
+  const ensureWorkspaceLineageAlignment = useCallback((): boolean => {
+    if (!activeWorkspaceSubmission) {
+      return true;
+    }
+    if (isSubmissionInAcademicYear(activeWorkspaceSubmission, activeAcademicYearId)) {
+      return true;
+    }
+    setSubmitError("Active workspace is out of sync with the selected academic year. Reload the workspace and try again.");
+    return false;
+  }, [activeAcademicYearId, activeWorkspaceSubmission, isSubmissionInAcademicYear]);
   const clearTransientWorkspaceUiState = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
     setExpandedSubmissionId(null);
     setAutosaveAt(null);
@@ -2289,12 +2316,38 @@ export function SchoolIndicatorPanel({
   }, [activeAcademicYearId, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason, workspaceSchoolYears]);
 
   const persistDraftPayload = useCallback(
-    async (payload: IndicatorSubmissionPayload, mode: "manual" | "autosave"): Promise<IndicatorSubmission> => {
+    async (
+      payload: IndicatorSubmissionPayload,
+      mode: "manual" | "autosave",
+      guard?: { academicYearId: string | null; submissionId: string | null },
+    ): Promise<IndicatorSubmission> => {
+      if (!isAcademicYearValueAligned(payload.academicYearId)) {
+        throw new Error("Draft save is out of sync with the selected academic year.");
+      }
+      if (guard) {
+        if (
+          activeAcademicYearIdRef.current !== guard.academicYearId
+          || activeWorkspaceSubmissionIdRef.current !== guard.submissionId
+        ) {
+          throw new Error("Workspace changed during autosave. Try again.");
+        }
+      }
+      if (activeWorkspaceSubmission && !isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId)) {
+        throw new Error("Active workspace submission does not belong to the selected academic year.");
+      }
       const canUpdateActiveSubmission = isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId);
       const submissionIdToUpdate = canUpdateActiveSubmission ? activeWorkspaceSubmission?.id ?? null : null;
       const result = submissionIdToUpdate
         ? await updateSubmission(submissionIdToUpdate, payload)
         : await createSubmission(payload);
+      if (guard) {
+        if (
+          activeAcademicYearIdRef.current !== guard.academicYearId
+          || activeWorkspaceSubmissionIdRef.current !== guard.submissionId
+        ) {
+          return result;
+        }
+      }
 
       setEditingSubmissionId(result.id);
       setPendingLocalDraft(null);
@@ -2310,7 +2363,7 @@ export function SchoolIndicatorPanel({
 
       return result;
     },
-    [activeWorkspaceSubmission, createSubmission, isSubmissionInAcademicYear, updateSubmission],
+    [activeWorkspaceSubmission, createSubmission, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission],
   );
 
   const triggerServerAutosave = useCallback(async () => {
@@ -2325,6 +2378,9 @@ export function SchoolIndicatorPanel({
     if (!prepared.payload) {
       return;
     }
+    if (!ensureWorkspaceLineageAlignment() || !isAcademicYearValueAligned(prepared.payload.academicYearId)) {
+      return;
+    }
 
     const currentFingerprint = `${activeWorkspaceSubmission?.id ?? "new"}:${prepared.fingerprint}`;
     if (currentFingerprint === lastAutosaveFingerprintRef.current) {
@@ -2334,14 +2390,17 @@ export function SchoolIndicatorPanel({
     autosaveInFlightRef.current = true;
     setIsAutosavingDraft(true);
     try {
-      await persistDraftPayload(prepared.payload, "autosave");
+      await persistDraftPayload(prepared.payload, "autosave", {
+        academicYearId: activeAcademicYearId,
+        submissionId: activeWorkspaceSubmission?.id ?? null,
+      });
     } catch (err) {
       setAutosaveError(err instanceof Error ? err.message : "Server autosave failed. Draft is still kept locally.");
     } finally {
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
     }
-  }, [activeWorkspaceSubmission?.id, buildSubmissionPayload, canShowSaveAndSubmitActions, persistDraftPayload]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayload, canShowSaveAndSubmitActions, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, persistDraftPayload]);
 
   useEffect(() => {
     if (typeof window === "undefined" || complianceMetrics.length === 0) {
@@ -2564,6 +2623,9 @@ export function SchoolIndicatorPanel({
     }
     setSubmitError("");
     setSaveMessage("");
+    if (!ensureWorkspaceLineageAlignment()) {
+      return;
+    }
 
     const prepared = buildSubmissionPayload({ allowIncomplete: true });
     if (!prepared.payload) {
@@ -2598,6 +2660,9 @@ export function SchoolIndicatorPanel({
     }
     setSubmitError("");
     setSaveMessage("");
+    if (!ensureWorkspaceLineageAlignment()) {
+      return;
+    }
 
     const prepared = buildSubmissionPayload();
     if (!prepared.payload) {
@@ -2715,6 +2780,10 @@ export function SchoolIndicatorPanel({
 
     try {
       const created = await persistDraftPayload(prepared.payload, "manual");
+      if (!isSubmissionInAcademicYear(created, activeAcademicYearId)) {
+        setSubmitError("Created draft does not match the selected academic year.");
+        return null;
+      }
       await refreshSubmissions();
       return created;
     } catch (err) {
@@ -2796,6 +2865,13 @@ export function SchoolIndicatorPanel({
       }));
       return;
     }
+    if (!isSubmissionInAcademicYear(sourceSubmission, activeAcademicYearId)) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "The selected file source does not match the current academic year.",
+      }));
+      return;
+    }
 
     try {
       await downloadSubmissionFile(sourceSubmission.id, type);
@@ -2805,7 +2881,7 @@ export function SchoolIndicatorPanel({
         [type]: err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`,
       }));
     }
-  }, [bmefReportSubmission, downloadSubmissionFile, selectedSubmissionForUploads, smeaReportSubmission]);
+  }, [activeAcademicYearId, bmefReportSubmission, downloadSubmissionFile, isSubmissionInAcademicYear, selectedSubmissionForUploads, smeaReportSubmission]);
 
   const handleViewUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
     setSubmitError("");
@@ -2820,6 +2896,13 @@ export function SchoolIndicatorPanel({
       setUploadErrorByType((current) => ({
         ...current,
         [type]: "No draft package is available for viewing.",
+      }));
+      return;
+    }
+    if (!isSubmissionInAcademicYear(sourceSubmission, activeAcademicYearId)) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "The selected file source does not match the current academic year.",
       }));
       return;
     }
@@ -2841,7 +2924,7 @@ export function SchoolIndicatorPanel({
         [type]: err instanceof Error ? err.message : `Unable to open ${type.toUpperCase()} report.`,
       }));
     }
-  }, [bmefReportSubmission, downloadSubmissionFile, selectedSubmissionForUploads, smeaReportSubmission]);
+  }, [activeAcademicYearId, bmefReportSubmission, downloadSubmissionFile, isSubmissionInAcademicYear, selectedSubmissionForUploads, smeaReportSubmission]);
 
   const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
     if (type === "bmef") {
