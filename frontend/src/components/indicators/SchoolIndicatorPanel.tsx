@@ -1777,6 +1777,16 @@ export function SchoolIndicatorPanel({
   }, [workspaceMode]);
   const submitActionLabel = workspaceMode === "submitted_editing" ? "Re-submit" : "Submit";
   const showSubmitEligibilityHelper = canShowSaveAndSubmitActions && missingFieldTargets.length > 0;
+  const saveActionDisabledTitle = isWorkspaceReadOnly
+    ? "This academic year is not open for encoding."
+    : undefined;
+  const submitActionTitle = isWorkspaceReadOnly
+    ? "This academic year is not open for encoding."
+    : missingFieldTargets.length > 0
+      ? "Complete required fields before submitting."
+      : workspaceMode === "submitted_editing"
+        ? "Re-submit to monitor"
+        : "Submit to monitor";
   const getCategoryRailStatusLabel = useCallback(
     (progress: { total: number; complete: number } | null): string => {
       if (workspaceMode === "submitted_locked") return "Submitted";
@@ -2417,12 +2427,18 @@ export function SchoolIndicatorPanel({
       lastAutosaveFingerprintRef.current = `${result.id}:${JSON.stringify(payload)}`;
 
       if (mode === "manual") {
-        setSaveMessage(`Draft package #${result.id} saved.`);
+        if (workspaceMode === "blank") {
+          setSaveMessage(`Draft package #${result.id} saved.`);
+        } else if (workspaceMode === "submitted_editing") {
+          setSaveMessage(`Changes saved for package #${result.id}.`);
+        } else {
+          setSaveMessage(`Draft package #${result.id} updated.`);
+        }
       }
 
       return result;
     },
-    [activeWorkspaceSubmission, createSubmission, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission],
+    [activeWorkspaceSubmission, createSubmission, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission, workspaceMode],
   );
 
   const triggerServerAutosave = useCallback(async () => {
@@ -3892,7 +3908,10 @@ export function SchoolIndicatorPanel({
           {canShowResetAction && (
             <button
               type="button"
-              onClick={resetForm}
+              onClick={() => {
+                resetForm();
+                setSaveMessage("Draft changes were reset to the last saved values.");
+              }}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Reset
@@ -3901,7 +3920,10 @@ export function SchoolIndicatorPanel({
           {canShowCancelEditAction && (
             <button
               type="button"
-              onClick={resetForm}
+              onClick={() => {
+                resetForm();
+                setSaveMessage("Submitted report editing canceled. Locked view restored.");
+              }}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Cancel Edit
@@ -3912,7 +3934,7 @@ export function SchoolIndicatorPanel({
               <button
                 type="submit"
                 disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || isWorkspaceReadOnly}
-                title={isWorkspaceReadOnly ? "Select an academic year that is open for encoding to save draft." : undefined}
+                title={saveActionDisabledTitle}
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Target className="h-4 w-4" />
@@ -3928,13 +3950,7 @@ export function SchoolIndicatorPanel({
                   || isWorkspaceReadOnly
                   || missingFieldTargets.length > 0
                 }
-                title={
-                  isWorkspaceReadOnly
-                    ? "Select an academic year that is open for encoding to submit."
-                    : missingFieldTargets.length > 0
-                      ? submitBlockedReason || "Complete required fields before submitting."
-                      : "Save and submit to monitor"
-                }
+                title={submitActionTitle}
                 className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Send className="h-4 w-4" />
@@ -3947,6 +3963,7 @@ export function SchoolIndicatorPanel({
               type="button"
               onClick={() => setShowEditConfirmModal(true)}
               disabled={isSaving || isSubmissionDataLoading}
+              title={isSaving || isSubmissionDataLoading ? "Please wait for the current action to finish." : undefined}
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Edit2 className="h-4 w-4" />
