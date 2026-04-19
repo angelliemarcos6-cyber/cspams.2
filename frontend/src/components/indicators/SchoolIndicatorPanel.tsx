@@ -969,6 +969,7 @@ export function SchoolIndicatorPanel({
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
+  const [isWorkspaceTransitioning, setIsWorkspaceTransitioning] = useState(false);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [isSubmittedEditMode, setIsSubmittedEditMode] = useState(false);
   const [optimisticSubmittedByType, setOptimisticSubmittedByType] = useState<{
@@ -1784,6 +1785,9 @@ export function SchoolIndicatorPanel({
   const canShowEditAction = workspaceMode === "submitted_locked";
   const canShowCancelEditAction = workspaceMode === "submitted_editing";
   const canShowResetAction = workspaceMode === "draft";
+  const isUploading = uploadingFileType !== null;
+  const isCriticalActionInFlight = isSaving || isUploading || isWorkspaceTransitioning;
+  const isManualActionBlocked = isCriticalActionInFlight || isAutosavingDraft;
   const saveActionLabel = useMemo(() => {
     if (workspaceMode === "blank") return "Save Draft";
     if (workspaceMode === "submitted_editing") return "Save Changes";
@@ -2051,6 +2055,7 @@ export function SchoolIndicatorPanel({
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
   const resetForm = useCallback(async (): Promise<boolean> => {
+    setIsWorkspaceTransitioning(true);
     clearTransientWorkspaceUiState({ dismissRestoreBanner: false });
     loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
     setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
@@ -2070,6 +2075,8 @@ export function SchoolIndicatorPanel({
       postRefreshMessageRef.current = null;
       setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
       return false;
+    } finally {
+      setIsWorkspaceTransitioning(false);
     }
   }, [activeWorkspaceSubmission, autosaveKey, clearTransientWorkspaceUiState, loadWorkspaceForAcademicYear, refreshSubmissions]);
 
@@ -2468,6 +2475,9 @@ export function SchoolIndicatorPanel({
     if (autosaveInFlightRef.current) {
       return;
     }
+    if (isSaving || uploadingFileType !== null || isWorkspaceTransitioning) {
+      return;
+    }
 
     const prepared = buildSubmissionPayload({ allowIncomplete: true });
     if (!prepared.payload) {
@@ -2496,7 +2506,7 @@ export function SchoolIndicatorPanel({
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
     }
-  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayload, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, persistDraftPayload]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayload, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isSaving, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
 
   useEffect(() => {
     if (typeof window === "undefined" || complianceMetrics.length === 0) {
@@ -2706,6 +2716,9 @@ export function SchoolIndicatorPanel({
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isManualActionBlocked) {
+      return;
+    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2760,6 +2773,9 @@ export function SchoolIndicatorPanel({
   };
 
   const handleCreateAndSubmit = async () => {
+    if (isManualActionBlocked) {
+      return;
+    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2808,6 +2824,9 @@ export function SchoolIndicatorPanel({
   };
 
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
+    if (isManualActionBlocked) {
+      return;
+    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2918,6 +2937,9 @@ export function SchoolIndicatorPanel({
   }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
+    if (isManualActionBlocked) {
+      return;
+    }
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
@@ -2992,7 +3014,7 @@ export function SchoolIndicatorPanel({
     } finally {
       setUploadingFileType(null);
     }
-  }, [ensureUploadSubmission, isSubmissionInAcademicYear, refreshSubmissions, uploadSubmissionFile]);
+  }, [ensureUploadSubmission, isManualActionBlocked, isSubmissionInAcademicYear, refreshSubmissions, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -3142,11 +3164,14 @@ export function SchoolIndicatorPanel({
   }, []);
 
   const handleRequestUpload = useCallback((type: IndicatorSubmissionFileType) => {
+    if (isManualActionBlocked) {
+      return;
+    }
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     openUploadPicker(type);
-  }, [openUploadPicker]);
+  }, [isManualActionBlocked, openUploadPicker]);
 
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
@@ -3485,7 +3510,7 @@ export function SchoolIndicatorPanel({
                 const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isSaving || isUploading || !selectedSubmissionForUploads || isWorkspaceReadOnly;
+                const uploadDisabled = isManualActionBlocked || isUploading || !selectedSubmissionForUploads || isWorkspaceReadOnly;
                 const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (
@@ -4008,6 +4033,7 @@ export function SchoolIndicatorPanel({
           {canShowResetAction && (
             <button
               type="button"
+              disabled={isManualActionBlocked}
               onClick={async () => {
                 postRefreshMessageRef.current = "Draft changes were reset to the last saved values.";
                 const didReset = await resetForm();
@@ -4015,7 +4041,7 @@ export function SchoolIndicatorPanel({
                   postRefreshMessageRef.current = null;
                 }
               }}
-              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               Reset
             </button>
@@ -4023,6 +4049,7 @@ export function SchoolIndicatorPanel({
           {canShowCancelEditAction && (
             <button
               type="button"
+              disabled={isManualActionBlocked}
               onClick={async () => {
                 postRefreshMessageRef.current = "Submitted report editing canceled. Locked view restored.";
                 const didReset = await resetForm();
@@ -4032,7 +4059,7 @@ export function SchoolIndicatorPanel({
                   postRefreshMessageRef.current = null;
                 }
               }}
-              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               Cancel Edit
             </button>
@@ -4041,7 +4068,7 @@ export function SchoolIndicatorPanel({
             <>
               <button
                 type="submit"
-                disabled={isSaving || isSubmissionDataLoading || complianceMetrics.length === 0 || isWorkspaceReadOnly}
+                disabled={isManualActionBlocked || isSubmissionDataLoading || complianceMetrics.length === 0 || isWorkspaceReadOnly}
                 title={saveActionDisabledTitle}
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
@@ -4052,7 +4079,7 @@ export function SchoolIndicatorPanel({
                 type="button"
                 onClick={() => void handleCreateAndSubmit()}
                 disabled={
-                  isSaving
+                  isManualActionBlocked
                   || isSubmissionDataLoading
                   || complianceMetrics.length === 0
                   || isWorkspaceReadOnly
@@ -4070,8 +4097,8 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={() => setShowEditConfirmModal(true)}
-              disabled={isSaving || isSubmissionDataLoading}
-              title={isSaving || isSubmissionDataLoading ? "Please wait for the current action to finish." : undefined}
+              disabled={isManualActionBlocked || isSubmissionDataLoading}
+              title={isManualActionBlocked || isSubmissionDataLoading ? "Please wait for the current action to finish." : undefined}
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Edit2 className="h-4 w-4" />
