@@ -81,6 +81,13 @@ interface LocalDraftSnapshot {
   editingSubmissionId: string | null;
 }
 
+type GroupBWorkspaceMode =
+  | "blank"
+  | "draft"
+  | "submitted_locked"
+  | "submitted_editing"
+  | "read_only_year";
+
 interface YearWorkspaceState {
   visibleSchoolYears: string[];
   visibleAcademicYears: AcademicYearOption[];
@@ -1459,14 +1466,6 @@ export function SchoolIndicatorPanel({
       : []),
     [activeAcademicYearId, sortedSubmissions],
   );
-  const returnedSubmissionInScope = useMemo(
-    () =>
-      scopedSubmissionsForYear.find((submission) => {
-        const status = String(submission.status ?? "").toLowerCase();
-        return status === "returned";
-      }) ?? null,
-    [scopedSubmissionsForYear],
-  );
   const draftSubmissionInScope = useMemo(
     () =>
       scopedSubmissionsForYear.find((submission) => {
@@ -1480,16 +1479,24 @@ export function SchoolIndicatorPanel({
     [scopedSubmissionsForYear],
   );
   const resolvedWorkspaceSubmission = useMemo(
-    () => returnedSubmissionInScope ?? draftSubmissionInScope ?? latestSubmissionInScope ?? null,
-    [draftSubmissionInScope, latestSubmissionInScope, returnedSubmissionInScope],
+    () => draftSubmissionInScope ?? latestSubmissionInScope ?? null,
+    [draftSubmissionInScope, latestSubmissionInScope],
   );
   const restorableServerSubmissionInScope = useMemo(
-    () => returnedSubmissionInScope ?? draftSubmissionInScope ?? null,
-    [draftSubmissionInScope, returnedSubmissionInScope],
+    () => draftSubmissionInScope,
+    [draftSubmissionInScope],
+  );
+  const editingSubmissionInScope = useMemo(
+    () => scopedSubmissionsForYear.find((submission) => submission.id === editingSubmissionId) ?? null,
+    [editingSubmissionId, scopedSubmissionsForYear],
+  );
+  const activeWorkspaceSubmission = useMemo(
+    () => editingSubmissionInScope ?? resolvedWorkspaceSubmission ?? null,
+    [editingSubmissionInScope, resolvedWorkspaceSubmission],
   );
   const selectedSubmissionForUploads = useMemo(() => {
-    return editingSubmission ?? resolvedWorkspaceSubmission ?? null;
-  }, [editingSubmission, resolvedWorkspaceSubmission]);
+    return activeWorkspaceSubmission;
+  }, [activeWorkspaceSubmission]);
   const loadWorkspaceForAcademicYear = useCallback((submission: IndicatorSubmission | null) => {
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
     const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
@@ -1525,15 +1532,15 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const fingerprint = `${activeAcademicYearId}:${resolvedWorkspaceSubmission?.id ?? "blank"}:${resolvedWorkspaceSubmission?.updatedAt ?? ""}`;
+    const fingerprint = `${activeAcademicYearId}:${activeWorkspaceSubmission?.id ?? "blank"}:${activeWorkspaceSubmission?.updatedAt ?? ""}`;
     if (workspaceFingerprintRef.current === fingerprint) {
       return;
     }
 
     workspaceFingerprintRef.current = fingerprint;
-    loadWorkspaceForAcademicYear(resolvedWorkspaceSubmission);
+    loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
     setRestoreBannerDismissed(false);
-  }, [activeAcademicYearId, complianceMetrics.length, loadWorkspaceForAcademicYear, resolvedWorkspaceSubmission]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, loadWorkspaceForAcademicYear]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -1568,14 +1575,9 @@ export function SchoolIndicatorPanel({
   );
   const bmefFileEntry = bmefReportSubmission?.files?.bmef ?? null;
   const smeaFileEntry = smeaReportSubmission?.files?.smea ?? null;
-  const activeFormSubmission = useMemo(
-    () =>
-      (editingSubmissionId
-        ? sortedSubmissions.find((submission) => submission.id === editingSubmissionId) ?? null
-        : selectedSubmissionForUploads) ?? null,
-    [editingSubmissionId, selectedSubmissionForUploads, sortedSubmissions],
-  );
+  const activeFormSubmission = activeWorkspaceSubmission;
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
+  const activeWorkspaceSubmissionId = activeWorkspaceSubmission?.id ?? null;
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
   const isFormSubmitted = isSubmittedWorkflowStatus(activeFormStatus);
   const bmefSubmissionStatus = String(bmefReportSubmission?.status ?? "").toLowerCase();
@@ -1641,6 +1643,18 @@ export function SchoolIndicatorPanel({
   const isSelectedYearEditable = Boolean(
     selectedSchoolYearLabel && yearWorkspaceState.editableSchoolYears.includes(selectedSchoolYearLabel),
   );
+  const workspaceMode: GroupBWorkspaceMode = useMemo(() => {
+    if (yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable) {
+      return "read_only_year";
+    }
+    if (!activeWorkspaceSubmission) {
+      return "blank";
+    }
+    if (!isSubmittedWorkflowStatus(activeFormStatus)) {
+      return "draft";
+    }
+    return isSubmittedEditMode ? "submitted_editing" : "submitted_locked";
+  }, [activeFormStatus, activeWorkspaceSubmission, isSelectedYearEditable, isSubmittedEditMode, yearWorkspaceState.isWorkspaceReadOnly]);
   const isYearEditable = useCallback(
     (yearLabel: string) => Boolean(selectedSchoolYearLabel && isSelectedYearEditable && yearLabel === selectedSchoolYearLabel),
     [isSelectedYearEditable, selectedSchoolYearLabel],
@@ -1661,7 +1675,7 @@ export function SchoolIndicatorPanel({
     },
     [isActiveCategoryLocked, isSelectedYearEditable, isYearEditable, selectedSchoolYearLabel],
   );
-  const isWorkspaceReadOnly = isActiveCategoryLocked || yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable;
+  const isWorkspaceReadOnly = workspaceMode === "submitted_locked" || workspaceMode === "read_only_year";
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
@@ -2265,8 +2279,9 @@ export function SchoolIndicatorPanel({
 
   const persistDraftPayload = useCallback(
     async (payload: IndicatorSubmissionPayload, mode: "manual" | "autosave"): Promise<IndicatorSubmission> => {
-      const result = editingSubmissionId
-        ? await updateSubmission(editingSubmissionId, payload)
+      const submissionIdToUpdate = activeWorkspaceSubmission?.id ?? null;
+      const result = submissionIdToUpdate
+        ? await updateSubmission(submissionIdToUpdate, payload)
         : await createSubmission(payload);
 
       setEditingSubmissionId(result.id);
@@ -2283,7 +2298,7 @@ export function SchoolIndicatorPanel({
 
       return result;
     },
-    [createSubmission, editingSubmissionId, updateSubmission],
+    [activeWorkspaceSubmission?.id, createSubmission, updateSubmission],
   );
 
   const triggerServerAutosave = useCallback(async () => {
@@ -2296,7 +2311,7 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const currentFingerprint = `${editingSubmissionId ?? "new"}:${prepared.fingerprint}`;
+    const currentFingerprint = `${activeWorkspaceSubmission?.id ?? "new"}:${prepared.fingerprint}`;
     if (currentFingerprint === lastAutosaveFingerprintRef.current) {
       return;
     }
@@ -2311,7 +2326,7 @@ export function SchoolIndicatorPanel({
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
     }
-  }, [buildSubmissionPayload, editingSubmissionId, persistDraftPayload]);
+  }, [activeWorkspaceSubmission?.id, buildSubmissionPayload, persistDraftPayload]);
 
   useEffect(() => {
     if (typeof window === "undefined" || complianceMetrics.length === 0) {
@@ -2516,6 +2531,10 @@ export function SchoolIndicatorPanel({
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (workspaceMode === "read_only_year") {
+      setSubmitError("This academic year is not yet open for encoding.");
+      return;
+    }
     if (isActiveCategoryLocked) {
       setSubmitError("This submitted report is read-only. Click Edit to continue.");
       return;
@@ -2546,6 +2565,10 @@ export function SchoolIndicatorPanel({
   };
 
   const handleCreateAndSubmit = async () => {
+    if (workspaceMode === "read_only_year") {
+      setSubmitError("This academic year is not yet open for encoding.");
+      return;
+    }
     if (isActiveCategoryLocked) {
       setSubmitError("This submitted report is read-only. Click Edit to continue.");
       return;
@@ -2584,6 +2607,10 @@ export function SchoolIndicatorPanel({
   };
 
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
+    if (workspaceMode === "read_only_year") {
+      setSubmitError("This academic year is not yet open for encoding.");
+      return;
+    }
     setSubmitError("");
     setSaveMessage("");
 
@@ -2608,6 +2635,11 @@ export function SchoolIndicatorPanel({
   };
 
   const handleConfirmEditSubmittedReport = () => {
+    if (workspaceMode === "read_only_year") {
+      setShowEditConfirmModal(false);
+      setSubmitError("This academic year is not yet open for encoding.");
+      return;
+    }
     setShowEditConfirmModal(false);
     setIsSubmittedEditMode(true);
     setOptimisticSubmittedByType({ bmef: false, smea: false });
@@ -2640,6 +2672,10 @@ export function SchoolIndicatorPanel({
   };
 
   const ensureUploadSubmission = useCallback(async (): Promise<IndicatorSubmission | null> => {
+    if (workspaceMode === "read_only_year") {
+      setSubmitError("This academic year is not yet open for encoding.");
+      return null;
+    }
     if (selectedSubmissionForUploads) {
       return selectedSubmissionForUploads;
     }
@@ -2658,7 +2694,7 @@ export function SchoolIndicatorPanel({
       setSubmitError(err instanceof Error ? err.message : "Unable to create a draft for file upload.");
       return null;
     }
-  }, [buildSubmissionPayload, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads]);
+  }, [buildSubmissionPayload, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     setSubmitError("");
@@ -3632,9 +3668,9 @@ export function SchoolIndicatorPanel({
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">{saveMessage}</p>
         )}
         {normalizedIndicatorError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{normalizedIndicatorError}</p>}
-        {editingSubmissionId && (
+        {activeWorkspaceSubmissionId && (
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-            Editing package #{editingSubmissionId}. Save draft to update this package.
+            Editing package #{activeWorkspaceSubmissionId}. Save draft to update this package.
           </p>
         )}
         {(yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable) && (
@@ -3654,7 +3690,7 @@ export function SchoolIndicatorPanel({
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Target className="h-4 w-4" />
-                {isSaving ? "Saving..." : editingSubmissionId ? "Update Draft" : "Save Draft"}
+                {isSaving ? "Saving..." : (workspaceMode === "blank" ? "Save Draft" : "Update Draft")}
               </button>
               <button
                 type="button"
@@ -3684,7 +3720,8 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={() => setShowEditConfirmModal(true)}
-              disabled={isSaving || isSubmissionDataLoading}
+              disabled={isSaving || isSubmissionDataLoading || workspaceMode === "read_only_year"}
+              title={workspaceMode === "read_only_year" ? "This academic year is not yet open for encoding." : undefined}
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Edit2 className="h-4 w-4" />
