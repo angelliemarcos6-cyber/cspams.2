@@ -1516,6 +1516,7 @@ export function SchoolIndicatorPanel({
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
   const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
+  const postRefreshMessageRef = useRef<string | null>(null);
   useEffect(() => {
     activeAcademicYearIdRef.current = activeAcademicYearId;
   }, [activeAcademicYearId]);
@@ -1634,6 +1635,10 @@ export function SchoolIndicatorPanel({
     loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
     if (shouldPreserveSubmittedEditMode) {
       setIsSubmittedEditMode(true);
+    }
+    if (postRefreshMessageRef.current) {
+      setSaveMessage(postRefreshMessageRef.current);
+      postRefreshMessageRef.current = null;
     }
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
@@ -2056,8 +2061,13 @@ export function SchoolIndicatorPanel({
     try {
       await refreshSubmissions();
       workspaceFingerprintRef.current = "";
+      if (postRefreshMessageRef.current) {
+        setSaveMessage(postRefreshMessageRef.current);
+        postRefreshMessageRef.current = null;
+      }
       return true;
     } catch (err) {
+      postRefreshMessageRef.current = null;
       setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
       return false;
     }
@@ -2735,17 +2745,16 @@ export function SchoolIndicatorPanel({
           submissionId: saved.id,
         };
       }
+      postRefreshMessageRef.current = saveModeAtActionStart === "blank"
+        ? `Draft package #${saved.id} saved.`
+        : saveModeAtActionStart === "submitted_editing"
+          ? `Changes saved for package #${saved.id}.`
+          : `Draft package #${saved.id} updated.`;
       await refreshSubmissions();
       workspaceFingerprintRef.current = "";
-      if (saveModeAtActionStart === "blank") {
-        setSaveMessage(`Draft package #${saved.id} saved.`);
-      } else if (saveModeAtActionStart === "submitted_editing") {
-        setSaveMessage(`Changes saved for package #${saved.id}.`);
-      } else {
-        setSaveMessage(`Draft package #${saved.id} updated.`);
-      }
     } catch (err) {
       submittedEditPreserveContextRef.current = null;
+      postRefreshMessageRef.current = null;
       setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
     }
   };
@@ -2788,11 +2797,12 @@ export function SchoolIndicatorPanel({
         bmef: hasUploadedReportFile(bmefFileEntry),
         smea: hasUploadedReportFile(smeaFileEntry),
       });
+      postRefreshMessageRef.current = `Package #${result.id} submitted to monitor.`;
       await refreshSubmissions();
       setIsSubmittedEditMode(false);
       submittedEditPreserveContextRef.current = null;
-      setSaveMessage(`Package #${result.id} submitted to monitor.`);
     } catch (err) {
+      postRefreshMessageRef.current = null;
       setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
     }
   };
@@ -2818,11 +2828,12 @@ export function SchoolIndicatorPanel({
         bmef: hasUploadedReportFile(bmefFileEntry),
         smea: hasUploadedReportFile(smeaFileEntry),
       });
+      postRefreshMessageRef.current = `Package #${submission.id} submitted to monitor.`;
       await refreshSubmissions();
       setIsSubmittedEditMode(false);
       submittedEditPreserveContextRef.current = null;
-      setSaveMessage(`Package #${submission.id} submitted to monitor.`);
     } catch (err) {
+      postRefreshMessageRef.current = null;
       setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
     }
   };
@@ -2960,6 +2971,7 @@ export function SchoolIndicatorPanel({
       if (
         activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
         || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
+        || activeWorkspaceSubmissionIdRef.current !== updated.id
       ) {
         setUploadErrorByType((current) => ({
           ...current,
@@ -2967,9 +2979,12 @@ export function SchoolIndicatorPanel({
         }));
         return;
       }
-      setSaveMessage(`${type.toUpperCase()} file uploaded for package #${updated.id}.`);
+      postRefreshMessageRef.current = `${type.toUpperCase()} file uploaded for package #${updated.id}.`;
+      setSaveMessage(postRefreshMessageRef.current);
+      postRefreshMessageRef.current = null;
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     } catch (err) {
+      postRefreshMessageRef.current = null;
       setUploadErrorByType((current) => ({
         ...current,
         [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
@@ -3994,9 +4009,10 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={async () => {
+                postRefreshMessageRef.current = "Draft changes were reset to the last saved values.";
                 const didReset = await resetForm();
-                if (didReset) {
-                  setSaveMessage("Draft changes were reset to the last saved values.");
+                if (!didReset) {
+                  postRefreshMessageRef.current = null;
                 }
               }}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
@@ -4008,10 +4024,12 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               onClick={async () => {
+                postRefreshMessageRef.current = "Submitted report editing canceled. Locked view restored.";
                 const didReset = await resetForm();
                 if (didReset) {
                   setIsSubmittedEditMode(false);
-                  setSaveMessage("Submitted report editing canceled. Locked view restored.");
+                } else {
+                  postRefreshMessageRef.current = null;
                 }
               }}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
