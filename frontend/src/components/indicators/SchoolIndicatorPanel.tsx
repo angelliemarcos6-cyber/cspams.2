@@ -962,7 +962,6 @@ export function SchoolIndicatorPanel({
   const [missingJumpIndex, setMissingJumpIndex] = useState(0);
   const [pendingFocusCellId, setPendingFocusCellId] = useState<string | null>(null);
   const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
-  const [autoMissingAppliedForSubmissionId, setAutoMissingAppliedForSubmissionId] = useState<string | null>(null);
   const [showOptionalNotes, setShowOptionalNotes] = useState(false);
   const [pendingLocalDraft, setPendingLocalDraft] = useState<LocalDraftSnapshot | null>(null);
   const [restoreBannerDismissed, setRestoreBannerDismissed] = useState(false);
@@ -1379,18 +1378,6 @@ export function SchoolIndicatorPanel({
     }
     return map;
   }, [missingFieldTargets]);
-  const editingSubmission = useMemo(
-    () => sortedSubmissions.find((submission) => submission.id === editingSubmissionId) ?? null,
-    [editingSubmissionId, sortedSubmissions],
-  );
-  const returnedSubmission = useMemo(
-    () =>
-      (editingSubmission && String(editingSubmission.status ?? "").toLowerCase() === "returned")
-        ? editingSubmission
-        : sortedSubmissions.find((submission) => String(submission.status ?? "").toLowerCase() === "returned") ?? null,
-    [editingSubmission, sortedSubmissions],
-  );
-  const returnedSubmissionNotes = (returnedSubmission?.reviewNotes ?? "").trim();
   const submissionMissingSummaryById = useMemo(() => {
     const summary = new Map<string, { missingCount: number; reason: string }>();
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
@@ -1887,18 +1874,14 @@ export function SchoolIndicatorPanel({
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
   const resetForm = () => {
-    setEditingSubmissionId(null);
-    setNotes("");
-    setMetricEntries(() => buildInitialMetricEntries(complianceMetrics, {}));
+    loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
+    setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
     setAutosaveAt(null);
-    setServerAutosaveAt(null);
     setAutosaveError("");
     setIsAutosavingDraft(false);
     setPendingLocalDraft(null);
     setRestoreBannerDismissed(false);
-    setShowMissingFields(false);
-    setMissingJumpIndex(0);
-    setPendingFocusCellId(null);
+    setShowOnlyMissingRows(false);
     lastAutosaveFingerprintRef.current = "";
     if (typeof window !== "undefined") {
       localStorage.removeItem(autosaveKey);
@@ -1933,10 +1916,6 @@ export function SchoolIndicatorPanel({
     setRestoreBannerDismissed(true);
     setAutosaveError("");
     lastAutosaveFingerprintRef.current = "";
-    if (String(submission.status ?? "").toLowerCase() === "returned") {
-      setShowOnlyMissingRows(true);
-      setAutoMissingAppliedForSubmissionId(submission.id);
-    }
   };
 
   const focusMissingTarget = useCallback((target: MissingFieldTarget, nextIndex?: number) => {
@@ -1999,34 +1978,6 @@ export function SchoolIndicatorPanel({
 
     focusMissingTarget(target);
   }, [firstMissingByCategory, focusMissingTarget]);
-
-  const handleReturnedIndicatorFocus = useCallback(() => {
-    if (!returnedSubmission) {
-      return;
-    }
-
-    if (editingSubmissionId !== returnedSubmission.id) {
-      handleEditDraft(returnedSubmission);
-    }
-
-    const target = firstMissingByCategory.values().next().value as MissingFieldTarget | undefined;
-    if (target) {
-      focusMissingTarget(target);
-    }
-  }, [editingSubmissionId, firstMissingByCategory, focusMissingTarget, handleEditDraft, returnedSubmission]);
-
-  useEffect(() => {
-    if (!returnedSubmission) {
-      return;
-    }
-
-    if (autoMissingAppliedForSubmissionId === returnedSubmission.id) {
-      return;
-    }
-
-    setShowOnlyMissingRows(true);
-    setAutoMissingAppliedForSubmissionId(returnedSubmission.id);
-  }, [autoMissingAppliedForSubmissionId, returnedSubmission]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3200,9 +3151,14 @@ export function SchoolIndicatorPanel({
                       onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
                       error={uploadError}
                     />
-                    {!selectedSubmissionForUploads && (
+                    {!selectedSubmissionForUploads && workspaceMode !== "read_only_year" && (
                       <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
                         Save the indicator draft first to enable file upload.
+                      </p>
+                    )}
+                    {!selectedSubmissionForUploads && workspaceMode === "read_only_year" && (
+                      <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                        This academic year is read-only. File upload is unavailable.
                       </p>
                     )}
                   </div>
@@ -3668,7 +3624,7 @@ export function SchoolIndicatorPanel({
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">{saveMessage}</p>
         )}
         {normalizedIndicatorError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{normalizedIndicatorError}</p>}
-        {activeWorkspaceSubmissionId && (
+        {(workspaceMode === "draft" || workspaceMode === "submitted_editing") && activeWorkspaceSubmissionId && (
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
             Editing package #{activeWorkspaceSubmissionId}. Save draft to update this package.
           </p>
@@ -3728,7 +3684,7 @@ export function SchoolIndicatorPanel({
               Edit
             </button>
           )}
-          {editingSubmissionId && (
+          {(workspaceMode === "draft" || workspaceMode === "submitted_editing") && (
             <button
               type="button"
               onClick={resetForm}
