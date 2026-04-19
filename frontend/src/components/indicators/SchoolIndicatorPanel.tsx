@@ -1588,8 +1588,6 @@ export function SchoolIndicatorPanel({
   const submittedAtLabel = activeFormSubmission?.submittedAt
     ?? activeFormSubmission?.updatedAt
     ?? null;
-  const schoolAchievementsSubmitted = isFormSubmitted && !isSubmittedEditMode;
-  const keyPerformanceSubmitted = isFormSubmitted && !isSubmittedEditMode;
   // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
   // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
   // Monitor & School Head views updated for DepEd standards
@@ -1663,6 +1661,15 @@ export function SchoolIndicatorPanel({
     [isActiveCategoryLocked, isSelectedYearEditable, isYearEditable, selectedSchoolYearLabel],
   );
   const isWorkspaceReadOnly = workspaceMode === "submitted_locked" || workspaceMode === "read_only_year";
+  const lifecycleStatusLabel = useMemo(() => {
+    if (workspaceMode === "submitted_locked") return "Submitted";
+    if (workspaceMode === "submitted_editing") return "Editing";
+    if (workspaceMode === "read_only_year") return "Read-only";
+    return "Draft";
+  }, [workspaceMode]);
+  const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
+  const canShowEditAction = workspaceMode === "submitted_locked";
+  const canShowCancelEditAction = workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
@@ -2793,21 +2800,25 @@ export function SchoolIndicatorPanel({
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span
                   className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                    schoolAchievementsSubmitted
+                    workspaceMode === "submitted_locked" || workspaceMode === "submitted_editing"
                       ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-600"
+                      : workspaceMode === "read_only_year"
+                        ? "border-slate-300 bg-slate-50 text-slate-600"
+                        : "border-slate-300 bg-white text-slate-600"
                   }`}
                 >
-                  School Achievements: {schoolAchievementsSubmitted ? "Submitted" : (isSubmittedEditMode ? "Editing" : "Draft")}
+                  School Achievements: {lifecycleStatusLabel}
                 </span>
                 <span
                   className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                    keyPerformanceSubmitted
+                    workspaceMode === "submitted_locked" || workspaceMode === "submitted_editing"
                       ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-600"
+                      : workspaceMode === "read_only_year"
+                        ? "border-slate-300 bg-slate-50 text-slate-600"
+                        : "border-slate-300 bg-white text-slate-600"
                   }`}
                 >
-                  Key Performance: {keyPerformanceSubmitted ? "Submitted" : (isSubmittedEditMode ? "Editing" : "Draft")}
+                  Key Performance: {lifecycleStatusLabel}
                 </span>
                 <span
                   className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
@@ -2828,7 +2839,7 @@ export function SchoolIndicatorPanel({
                   SMEA: {smeaSubmitted ? "Submitted" : "Not Submitted"}
                 </span>
               </div>
-              {isFormSubmitted && submittedAtLabel && (
+              {(workspaceMode === "submitted_locked" || workspaceMode === "submitted_editing") && submittedAtLabel && (
                 <p className="mt-1 text-[11px] font-medium text-slate-500">
                   Submitted by {submittedByLabel ?? "Unknown"} • {formatDateTime(submittedAtLabel)}
                 </p>
@@ -2967,13 +2978,7 @@ export function SchoolIndicatorPanel({
                     const uploadSubmitted = tab.kind === "upload"
                       ? (tab.uploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
                       : null;
-                    const categorySubmitted = tab.kind === "category"
-                      ? (tab.id === "school_achievements_learning_outcomes"
-                        ? schoolAchievementsSubmitted
-                        : tab.id === "key_performance_indicators"
-                          ? keyPerformanceSubmitted
-                          : false)
-                      : false;
+                    const categorySubmitted = tab.kind === "category" ? workspaceMode === "submitted_locked" : false;
 
                     return (
                       <button
@@ -2996,8 +3001,10 @@ export function SchoolIndicatorPanel({
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
                               {categorySubmitted
                                 ? "Submitted"
-                                : isSubmittedEditMode
+                                : workspaceMode === "submitted_editing"
                                   ? "Editing"
+                                  : workspaceMode === "read_only_year"
+                                    ? "Read-only"
                                   : `${progress.complete}/${progress.total} complete`}
                             </span>
                           ) : (
@@ -3022,8 +3029,10 @@ export function SchoolIndicatorPanel({
                           {tab.kind === "category"
                             ? (categorySubmitted
                               ? "Submitted"
-                              : isSubmittedEditMode
+                              : workspaceMode === "submitted_editing"
                                 ? "Editing"
+                                : workspaceMode === "read_only_year"
+                                  ? "Read-only"
                                 : `Missing ${missingCount ?? 0}`)
                             : uploadSubmitted
                               ? "Submitted"
@@ -3127,7 +3136,7 @@ export function SchoolIndicatorPanel({
                 const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isSaving || isUploading || !selectedSubmissionForUploads;
+                const uploadDisabled = isSaving || isUploading || !selectedSubmissionForUploads || isWorkspaceReadOnly;
                 const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (
@@ -3151,12 +3160,12 @@ export function SchoolIndicatorPanel({
                       onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
                       error={uploadError}
                     />
-                    {!selectedSubmissionForUploads && workspaceMode !== "read_only_year" && (
+                    {!selectedSubmissionForUploads && canShowSaveAndSubmitActions && (
                       <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
                         Save the indicator draft first to enable file upload.
                       </p>
                     )}
-                    {!selectedSubmissionForUploads && workspaceMode === "read_only_year" && (
+                    {!selectedSubmissionForUploads && !canShowSaveAndSubmitActions && (
                       <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
                         This academic year is read-only. File upload is unavailable.
                       </p>
@@ -3637,7 +3646,7 @@ export function SchoolIndicatorPanel({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {!isActiveCategoryLocked && (
+          {canShowSaveAndSubmitActions && (
             <>
               <button
                 type="submit"
@@ -3672,19 +3681,18 @@ export function SchoolIndicatorPanel({
               </button>
             </>
           )}
-          {isActiveCategoryLocked && (
+          {canShowEditAction && (
             <button
               type="button"
               onClick={() => setShowEditConfirmModal(true)}
-              disabled={isSaving || isSubmissionDataLoading || workspaceMode === "read_only_year"}
-              title={workspaceMode === "read_only_year" ? "This academic year is not yet open for encoding." : undefined}
+              disabled={isSaving || isSubmissionDataLoading}
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Edit2 className="h-4 w-4" />
               Edit
             </button>
           )}
-          {(workspaceMode === "draft" || workspaceMode === "submitted_editing") && (
+          {canShowCancelEditAction && (
             <button
               type="button"
               onClick={resetForm}
