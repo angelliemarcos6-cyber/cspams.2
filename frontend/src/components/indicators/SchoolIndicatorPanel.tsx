@@ -1515,6 +1515,7 @@ export function SchoolIndicatorPanel({
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
+  const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   useEffect(() => {
     activeAcademicYearIdRef.current = activeAcademicYearId;
   }, [activeAcademicYearId]);
@@ -1624,9 +1625,20 @@ export function SchoolIndicatorPanel({
     }
 
     workspaceFingerprintRef.current = fingerprint;
+    const shouldPreserveSubmittedEditMode = Boolean(
+      submittedEditPreserveContextRef.current
+      && isSubmittedEditMode
+      && activeAcademicYearId
+      && submittedEditPreserveContextRef.current.academicYearId === activeAcademicYearId
+      && submittedEditPreserveContextRef.current.submissionId === (activeWorkspaceSubmission?.id ?? null),
+    );
     loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
+    if (shouldPreserveSubmittedEditMode) {
+      setIsSubmittedEditMode(true);
+    }
+    submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
-  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, loadWorkspaceForAcademicYear]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, isSubmittedEditMode, loadWorkspaceForAcademicYear]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -1641,9 +1653,8 @@ export function SchoolIndicatorPanel({
         )
       ))
       ?? latestSubmittedInScope
-      ?? selectedSubmissionForUploads
       ?? null,
-    [latestSubmittedInScope, scopedSubmissionsForYear, selectedSubmissionForUploads],
+    [latestSubmittedInScope, scopedSubmissionsForYear],
   );
   const smeaReportSubmission = useMemo(
     () =>
@@ -1655,9 +1666,8 @@ export function SchoolIndicatorPanel({
         )
       ))
       ?? latestSubmittedInScope
-      ?? selectedSubmissionForUploads
       ?? null,
-    [latestSubmittedInScope, scopedSubmissionsForYear, selectedSubmissionForUploads],
+    [latestSubmittedInScope, scopedSubmissionsForYear],
   );
   const bmefFileEntry = bmefReportSubmission?.files?.bmef ?? null;
   const smeaFileEntry = smeaReportSubmission?.files?.smea ?? null;
@@ -2036,18 +2046,21 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
-  const resetForm = useCallback(async () => {
+  const resetForm = useCallback(async (): Promise<boolean> => {
     clearTransientWorkspaceUiState({ dismissRestoreBanner: false });
     loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
     setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
+    submittedEditPreserveContextRef.current = null;
     if (typeof window !== "undefined") {
       localStorage.removeItem(autosaveKey);
     }
     try {
       await refreshSubmissions();
       workspaceFingerprintRef.current = "";
+      return true;
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
+      return false;
     }
   }, [activeWorkspaceSubmission, autosaveKey, clearTransientWorkspaceUiState, loadWorkspaceForAcademicYear, refreshSubmissions]);
 
@@ -2065,6 +2078,7 @@ export function SchoolIndicatorPanel({
     }
 
     clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
+    submittedEditPreserveContextRef.current = null;
     if (nextAcademicYearId !== activeAcademicYearId) {
       setAcademicYearId(nextAcademicYearId);
       setEditingSubmissionId(submission.id);
@@ -2074,6 +2088,7 @@ export function SchoolIndicatorPanel({
     }
 
     loadWorkspaceForAcademicYear(submission);
+    workspaceFingerprintRef.current = "";
     setSaveMessage(`Editing package #${submission.id}.`);
   };
 
@@ -2390,7 +2405,7 @@ export function SchoolIndicatorPanel({
   const persistDraftPayload = useCallback(
     async (
       payload: IndicatorSubmissionPayload,
-      mode: "manual" | "autosave",
+      _mode: "manual" | "autosave",
       guard?: { academicYearId: string | null; submissionId: string | null; editingSubmissionId: string | null },
     ): Promise<IndicatorSubmission> => {
       if (!isAcademicYearValueAligned(payload.academicYearId)) {
@@ -2432,19 +2447,9 @@ export function SchoolIndicatorPanel({
       setServerAutosaveAt(savedAt);
       lastAutosaveFingerprintRef.current = `${result.id}:${JSON.stringify(payload)}`;
 
-      if (mode === "manual") {
-        if (workspaceMode === "blank") {
-          setSaveMessage(`Draft package #${result.id} saved.`);
-        } else if (workspaceMode === "submitted_editing") {
-          setSaveMessage(`Changes saved for package #${result.id}.`);
-        } else {
-          setSaveMessage(`Draft package #${result.id} updated.`);
-        }
-      }
-
       return result;
     },
-    [activeWorkspaceSubmission, createSubmission, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission, workspaceMode],
+    [activeWorkspaceSubmission, createSubmission, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission],
   );
 
   const triggerServerAutosave = useCallback(async () => {
@@ -2664,6 +2669,7 @@ export function SchoolIndicatorPanel({
     const inScopeSubmissionId = resolveInScopeSubmissionId(pendingLocalDraft.editingSubmissionId);
 
     clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
+    submittedEditPreserveContextRef.current = null;
     setNotes(pendingLocalDraft.notes);
     setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
     setEditingSubmissionId(inScopeSubmissionId);
@@ -2680,6 +2686,7 @@ export function SchoolIndicatorPanel({
       return;
     }
 
+    submittedEditPreserveContextRef.current = null;
     handleEditDraft(restorableServerSubmissionInScope);
   }, [activeAcademicYearId, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
 
@@ -2719,11 +2726,36 @@ export function SchoolIndicatorPanel({
       return;
     }
 
+    const saveModeAtActionStart = workspaceMode;
+    const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
+    const saveSubmissionLineageAtActionStart = activeWorkspaceSubmissionIdRef.current;
     try {
-      await persistDraftPayload(prepared.payload, "manual");
+      const saved = await persistDraftPayload(prepared.payload, "manual");
+      if (saveModeAtActionStart === "submitted_editing") {
+        submittedEditPreserveContextRef.current = {
+          academicYearId: saveAcademicYearAtActionStart,
+          submissionId: saved.id,
+        };
+      }
       await refreshSubmissions();
       workspaceFingerprintRef.current = "";
+      if (
+        saveModeAtActionStart === "submitted_editing"
+        && activeAcademicYearIdRef.current === saveAcademicYearAtActionStart
+        && activeWorkspaceSubmissionIdRef.current === saved.id
+        && saveSubmissionLineageAtActionStart === saved.id
+      ) {
+        setIsSubmittedEditMode(true);
+      }
+      if (saveModeAtActionStart === "blank") {
+        setSaveMessage(`Draft package #${saved.id} saved.`);
+      } else if (saveModeAtActionStart === "submitted_editing") {
+        setSaveMessage(`Changes saved for package #${saved.id}.`);
+      } else {
+        setSaveMessage(`Draft package #${saved.id} updated.`);
+      }
     } catch (err) {
+      submittedEditPreserveContextRef.current = null;
       setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
     }
   };
@@ -2767,6 +2799,7 @@ export function SchoolIndicatorPanel({
       });
       await refreshSubmissions();
       setIsSubmittedEditMode(false);
+      submittedEditPreserveContextRef.current = null;
       setSaveMessage(`Package #${result.id} submitted to monitor.`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
@@ -2795,6 +2828,7 @@ export function SchoolIndicatorPanel({
       });
       await refreshSubmissions();
       setIsSubmittedEditMode(false);
+      submittedEditPreserveContextRef.current = null;
       setSaveMessage(`Package #${submission.id} submitted to monitor.`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
@@ -2809,6 +2843,7 @@ export function SchoolIndicatorPanel({
     }
     setShowEditConfirmModal(false);
     setIsSubmittedEditMode(true);
+    submittedEditPreserveContextRef.current = null;
     setOptimisticSubmittedByType({ bmef: false, smea: false });
     setSaveMessage("Editing mode enabled for submitted report.");
     setSubmitError("");
@@ -2945,21 +2980,53 @@ export function SchoolIndicatorPanel({
     [handleFileUpload],
   );
 
+  const resolveFileSourceSubmission = useCallback(
+    (type: IndicatorSubmissionFileType): { submission: IndicatorSubmission | null; error: string | null } => {
+      const sourceSubmission = type === "bmef" ? bmefReportSubmission : smeaReportSubmission;
+      const selectedYearId = activeAcademicYearIdRef.current;
+
+      if (!sourceSubmission) {
+        return {
+          submission: null,
+          error: "No submitted file is available for the selected academic year. Re-select the year and try again.",
+        };
+      }
+      if (!isSubmissionInAcademicYear(sourceSubmission, selectedYearId)) {
+        return {
+          submission: null,
+          error: "This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.",
+        };
+      }
+
+      const hasFile = type === "bmef"
+        ? hasUploadedReportFile(sourceSubmission.files?.bmef ?? null) || Boolean(sourceSubmission.completion?.hasBmefFile)
+        : hasUploadedReportFile(sourceSubmission.files?.smea ?? null) || Boolean(sourceSubmission.completion?.hasSmeaFile);
+
+      if (!hasFile) {
+        return {
+          submission: null,
+          error: "No submitted file is available for the selected academic year. Re-select the year and try again.",
+        };
+      }
+
+      return { submission: sourceSubmission, error: null };
+    },
+    [bmefReportSubmission, isSubmissionInAcademicYear, smeaReportSubmission],
+  );
+
   const handleDownloadUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
-    const sourceSubmission = type === "bmef"
-      ? (bmefReportSubmission ?? selectedSubmissionForUploads)
-      : (smeaReportSubmission ?? selectedSubmissionForUploads);
+    const source = resolveFileSourceSubmission(type);
     const guardAcademicYearId = activeAcademicYearIdRef.current;
     const guardWorkspaceSubmissionId = activeWorkspaceSubmissionIdRef.current;
 
-    if (!sourceSubmission) {
+    if (!source.submission) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
+        [type]: source.error ?? "This file source no longer matches the selected academic year. Re-select the year and try again.",
       }));
       return;
     }
@@ -2970,7 +3037,7 @@ export function SchoolIndicatorPanel({
       }));
       return;
     }
-    if (!isSubmissionInAcademicYear(sourceSubmission, guardAcademicYearId)) {
+    if (!isSubmissionInAcademicYear(source.submission, guardAcademicYearId)) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: "This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.",
@@ -2979,30 +3046,28 @@ export function SchoolIndicatorPanel({
     }
 
     try {
-      await downloadSubmissionFile(sourceSubmission.id, type);
+      await downloadSubmissionFile(source.submission.id, type);
     } catch (err) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`,
       }));
     }
-  }, [bmefReportSubmission, downloadSubmissionFile, isSubmissionInAcademicYear, selectedSubmissionForUploads, smeaReportSubmission]);
+  }, [downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);
 
   const handleViewUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
-    const sourceSubmission = type === "bmef"
-      ? (bmefReportSubmission ?? selectedSubmissionForUploads)
-      : (smeaReportSubmission ?? selectedSubmissionForUploads);
+    const source = resolveFileSourceSubmission(type);
     const guardAcademicYearId = activeAcademicYearIdRef.current;
     const guardWorkspaceSubmissionId = activeWorkspaceSubmissionIdRef.current;
 
-    if (!sourceSubmission) {
+    if (!source.submission) {
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: "This file source no longer matches the selected academic year. Re-select the year and try again.",
+        [type]: source.error ?? "This file source no longer matches the selected academic year. Re-select the year and try again.",
       }));
       return;
     }
@@ -3013,7 +3078,7 @@ export function SchoolIndicatorPanel({
       }));
       return;
     }
-    if (!isSubmissionInAcademicYear(sourceSubmission, guardAcademicYearId)) {
+    if (!isSubmissionInAcademicYear(source.submission, guardAcademicYearId)) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: "This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.",
@@ -3022,8 +3087,8 @@ export function SchoolIndicatorPanel({
     }
 
     const entry = type === "bmef"
-      ? sourceSubmission.files?.bmef ?? null
-      : sourceSubmission.files?.smea ?? null;
+      ? source.submission.files?.bmef ?? null
+      : source.submission.files?.smea ?? null;
 
     if (entry?.downloadUrl) {
       window.open(entry.downloadUrl, "_blank", "noopener,noreferrer");
@@ -3031,14 +3096,14 @@ export function SchoolIndicatorPanel({
     }
 
     try {
-      await downloadSubmissionFile(sourceSubmission.id, type);
+      await downloadSubmissionFile(source.submission.id, type);
     } catch (err) {
       setUploadErrorByType((current) => ({
         ...current,
         [type]: err instanceof Error ? err.message : `Unable to open ${type.toUpperCase()} report.`,
       }));
     }
-  }, [bmefReportSubmission, downloadSubmissionFile, isSubmissionInAcademicYear, selectedSubmissionForUploads, smeaReportSubmission]);
+  }, [downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);
 
   const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
     if (type === "bmef") {
@@ -3916,9 +3981,11 @@ export function SchoolIndicatorPanel({
           {canShowResetAction && (
             <button
               type="button"
-              onClick={() => {
-                resetForm();
-                setSaveMessage("Draft changes were reset to the last saved values.");
+              onClick={async () => {
+                const didReset = await resetForm();
+                if (didReset) {
+                  setSaveMessage("Draft changes were reset to the last saved values.");
+                }
               }}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
@@ -3928,9 +3995,11 @@ export function SchoolIndicatorPanel({
           {canShowCancelEditAction && (
             <button
               type="button"
-              onClick={() => {
-                resetForm();
-                setSaveMessage("Submitted report editing canceled. Locked view restored.");
+              onClick={async () => {
+                const didReset = await resetForm();
+                if (didReset) {
+                  setSaveMessage("Submitted report editing canceled. Locked view restored.");
+                }
               }}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
