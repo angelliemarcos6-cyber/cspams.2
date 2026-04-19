@@ -1670,6 +1670,48 @@ export function SchoolIndicatorPanel({
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const canShowEditAction = workspaceMode === "submitted_locked";
   const canShowCancelEditAction = workspaceMode === "draft" || workspaceMode === "submitted_editing";
+  const getCategoryLifecycleDisplay = useCallback(
+    (
+      progress: { total: number; complete: number } | null,
+      missingCount: number,
+    ): {
+      statusText: string;
+      badgeText: string;
+      badgeTone: string;
+    } => {
+      if (workspaceMode === "submitted_locked") {
+        return {
+          statusText: "Submitted",
+          badgeText: "Submitted",
+          badgeTone: "border-primary-300 bg-primary-50 text-primary-700",
+        };
+      }
+      if (workspaceMode === "submitted_editing") {
+        return {
+          statusText: "Editing",
+          badgeText: "Editing",
+          badgeTone: "border-primary-300 bg-primary-50 text-primary-700",
+        };
+      }
+      if (workspaceMode === "read_only_year") {
+        return {
+          statusText: "Read-only",
+          badgeText: "Read-only",
+          badgeTone: "border-slate-300 bg-slate-50 text-slate-600",
+        };
+      }
+
+      return {
+        statusText: progress ? `${progress.complete}/${progress.total} complete` : "Draft",
+        badgeText: `Missing ${missingCount}`,
+        badgeTone:
+          missingCount > 0
+            ? "border-amber-300 bg-amber-50 text-amber-700"
+            : "border-primary-300 bg-primary-50 text-primary-700",
+      };
+    },
+    [workspaceMode],
+  );
   const activeCategoryProgress = activeCategory
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
@@ -1896,32 +1938,19 @@ export function SchoolIndicatorPanel({
   };
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
-    const nextAcademicYearId = submission.academicYear?.id ?? "";
-    const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
-    const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
-
-    for (const indicator of submission.indicators) {
-      const metricId = indicator.metric?.id;
-      if (!metricId) continue;
-
-      const metric = metricsById.get(metricId);
-      if (!metric) continue;
-
-      nextEntries[metricId] = buildEntryFromSubmission(metric, indicator);
+    const nextAcademicYearId = submission.academicYear?.id ?? activeAcademicYearId;
+    if (nextAcademicYearId && nextAcademicYearId !== activeAcademicYearId) {
+      setAcademicYearId(nextAcademicYearId);
     }
-
-    setEditingSubmissionId(submission.id);
-    setAcademicYearId(nextAcademicYearId);
-    setNotes(submission.notes ?? "");
-    setMetricEntries(nextEntries);
+    loadWorkspaceForAcademicYear(submission);
     setSubmitError("");
     setSaveMessage(`Editing package #${submission.id}.`);
     setExpandedSubmissionId(null);
     setAutosaveAt(null);
-    setServerAutosaveAt(submission.updatedAt ?? null);
     setPendingLocalDraft(null);
     setRestoreBannerDismissed(true);
     setAutosaveError("");
+    setShowOnlyMissingRows(false);
     lastAutosaveFingerprintRef.current = "";
   };
 
@@ -2458,17 +2487,28 @@ export function SchoolIndicatorPanel({
       return;
     }
 
+    if (pendingLocalDraft.academicYearId !== activeAcademicYearId) {
+      setSubmitError("Local draft does not match the selected academic year.");
+      return;
+    }
+
+    const restoredSubmissionId = pendingLocalDraft.editingSubmissionId;
+    const inScopeSubmissionId = restoredSubmissionId && scopedSubmissionsForYear.some((submission) => submission.id === restoredSubmissionId)
+      ? restoredSubmissionId
+      : null;
+
     setNotes(pendingLocalDraft.notes);
     setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
-    setEditingSubmissionId(pendingLocalDraft.editingSubmissionId);
+    setEditingSubmissionId(inScopeSubmissionId);
     setAutosaveAt(pendingLocalDraft.savedAt);
     setPendingLocalDraft(null);
     setRestoreBannerDismissed(true);
     setSubmitError("");
     setSaveMessage("Local draft restored.");
     setAutosaveError("");
+    setShowOnlyMissingRows(false);
     lastAutosaveFingerprintRef.current = "";
-  }, [complianceMetrics, pendingLocalDraft]);
+  }, [activeAcademicYearId, complianceMetrics, pendingLocalDraft, scopedSubmissionsForYear]);
 
   const handleRestoreServerDraft = useCallback(() => {
     if (!restorableServerSubmissionInScope) {
@@ -2479,6 +2519,7 @@ export function SchoolIndicatorPanel({
     setPendingLocalDraft(null);
     setRestoreBannerDismissed(true);
     setAutosaveError("");
+    setShowOnlyMissingRows(false);
     lastAutosaveFingerprintRef.current = "";
   }, [handleEditDraft, restorableServerSubmissionInScope]);
 
@@ -2861,6 +2902,11 @@ export function SchoolIndicatorPanel({
                   aria-label="Indicator completion progress"
                 />
               </div>
+              {workspaceMode === "read_only_year" && (
+                <p className="mt-2 text-right text-[11px] font-medium text-slate-500">
+                  This academic year is read-only. Completion is shown for reference only.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -2978,7 +3024,9 @@ export function SchoolIndicatorPanel({
                     const uploadSubmitted = tab.kind === "upload"
                       ? (tab.uploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
                       : null;
-                    const categorySubmitted = tab.kind === "category" ? workspaceMode === "submitted_locked" : false;
+                    const categoryLifecycle = tab.kind === "category"
+                      ? getCategoryLifecycleDisplay(progress, missingCount ?? 0)
+                      : null;
 
                     return (
                       <button
@@ -2999,13 +3047,7 @@ export function SchoolIndicatorPanel({
                           </span>
                           {tab.kind === "category" && progress ? (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
-                              {categorySubmitted
-                                ? "Submitted"
-                                : workspaceMode === "submitted_editing"
-                                  ? "Editing"
-                                  : workspaceMode === "read_only_year"
-                                    ? "Read-only"
-                                  : `${progress.complete}/${progress.total} complete`}
+                              {categoryLifecycle?.statusText}
                             </span>
                           ) : (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
@@ -3016,24 +3058,14 @@ export function SchoolIndicatorPanel({
                         <span
                           className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
                             tab.kind === "category"
-                              ? (categorySubmitted
-                                ? "border-primary-300 bg-primary-50 text-primary-700"
-                                : (missingCount && missingCount > 0
-                                  ? "border-amber-300 bg-amber-50 text-amber-700"
-                                  : "border-primary-300 bg-primary-50 text-primary-700"))
+                              ? (categoryLifecycle?.badgeTone ?? "border-slate-300 bg-white text-slate-600")
                               : (uploadSubmitted
                                 ? "border-primary-300 bg-primary-50 text-primary-700"
                                 : "border-amber-300 bg-amber-50 text-amber-700")
                           }`}
                         >
                           {tab.kind === "category"
-                            ? (categorySubmitted
-                              ? "Submitted"
-                              : workspaceMode === "submitted_editing"
-                                ? "Editing"
-                                : workspaceMode === "read_only_year"
-                                  ? "Read-only"
-                                : `Missing ${missingCount ?? 0}`)
+                            ? (categoryLifecycle?.badgeText ?? "Draft")
                             : uploadSubmitted
                               ? "Submitted"
                               : "Not Submitted"}
