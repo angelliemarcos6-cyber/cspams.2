@@ -1555,9 +1555,17 @@ export function SchoolIndicatorPanel({
     setShowMissingFields(false);
     setPendingFocusCellId(null);
     setMissingJumpIndex(0);
-    setSubmitError("The selected academic year changed before saving. Review the workspace and try again.");
+    setSubmitError("The selected academic year changed before saving. No stale changes were applied. Review the workspace and try again.");
     return false;
   }, [activeAcademicYearId, activeWorkspaceSubmission, isSubmissionInAcademicYear]);
+  const resolveInScopeSubmissionId = useCallback(
+    (submissionId: string | null): string | null => (
+      submissionId && scopedSubmissionsForYear.some((submission) => submission.id === submissionId)
+        ? submissionId
+        : null
+    ),
+    [scopedSubmissionsForYear],
+  );
   const clearTransientWorkspaceUiState = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
     localAutosaveEpochRef.current += 1;
     setExpandedSubmissionId(null);
@@ -2011,9 +2019,9 @@ export function SchoolIndicatorPanel({
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
   const resetForm = () => {
+    clearTransientWorkspaceUiState({ dismissRestoreBanner: false });
     loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
     setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
-    clearTransientWorkspaceUiState({ dismissRestoreBanner: false });
     if (typeof window !== "undefined") {
       localStorage.removeItem(autosaveKey);
     }
@@ -2032,17 +2040,16 @@ export function SchoolIndicatorPanel({
       return;
     }
 
+    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
     if (nextAcademicYearId !== activeAcademicYearId) {
       setAcademicYearId(nextAcademicYearId);
       setEditingSubmissionId(submission.id);
-      clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
       setSaveMessage(`Switched to package #${submission.id}.`);
       workspaceFingerprintRef.current = "";
       return;
     }
 
     loadWorkspaceForAcademicYear(submission);
-    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
     setSaveMessage(`Editing package #${submission.id}.`);
   };
 
@@ -2620,30 +2627,26 @@ export function SchoolIndicatorPanel({
     }
 
     if (pendingLocalDraft.academicYearId !== activeAcademicYearId) {
-      setSubmitError("Local draft does not match the selected academic year.");
+      setSubmitError("This local draft no longer matches the selected academic year. Re-select the year and try again.");
       return;
     }
 
-    const restoredSubmissionId = pendingLocalDraft.editingSubmissionId;
-    const inScopeSubmissionId = restoredSubmissionId && scopedSubmissionsForYear.some((submission) => submission.id === restoredSubmissionId)
-      ? restoredSubmissionId
-      : null;
+    const inScopeSubmissionId = resolveInScopeSubmissionId(pendingLocalDraft.editingSubmissionId);
 
+    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
     setNotes(pendingLocalDraft.notes);
     setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
     setEditingSubmissionId(inScopeSubmissionId);
-    clearTransientWorkspaceUiState({ dismissRestoreBanner: true });
     setAutosaveAt(pendingLocalDraft.savedAt);
-    setSubmitError("");
     setSaveMessage("Local draft restored.");
-  }, [activeAcademicYearId, clearTransientWorkspaceUiState, complianceMetrics, pendingLocalDraft, scopedSubmissionsForYear]);
+  }, [activeAcademicYearId, clearTransientWorkspaceUiState, complianceMetrics, pendingLocalDraft, resolveInScopeSubmissionId]);
 
   const handleRestoreServerDraft = useCallback(() => {
     if (!restorableServerSubmissionInScope) {
       return;
     }
     if (!isSubmissionInAcademicYear(restorableServerSubmissionInScope, activeAcademicYearId)) {
-      setSubmitError("Server draft does not match the selected academic year.");
+      setSubmitError("This server draft no longer matches the selected academic year. Re-select the year and try again.");
       return;
     }
 
@@ -2825,7 +2828,7 @@ export function SchoolIndicatorPanel({
     try {
       const created = await persistDraftPayload(prepared.payload, "manual");
       if (!isSubmissionInAcademicYear(created, activeAcademicYearId)) {
-        setSubmitError("The selected academic year changed before upload. Review the workspace and try again.");
+        setSubmitError("The selected academic year changed before upload. No stale changes were applied. Review the workspace and try again.");
         return null;
       }
       await refreshSubmissions();
@@ -2870,7 +2873,7 @@ export function SchoolIndicatorPanel({
       || activeWorkspaceSubmissionIdRef.current !== uploadGuardWorkspaceSubmissionId
       || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
     ) {
-      setSubmitError("The workspace changed before upload started. Please review the selected academic year and try again.");
+      setSubmitError("The workspace changed before this file action. Re-select the academic year and try again.");
       return;
     }
 
@@ -2880,7 +2883,7 @@ export function SchoolIndicatorPanel({
       if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
         setUploadErrorByType((current) => ({
           ...current,
-          [type]: "Upload completed on an out-of-sync workspace. Please refresh and verify the selected academic year.",
+          [type]: "The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.",
         }));
         return;
       }
