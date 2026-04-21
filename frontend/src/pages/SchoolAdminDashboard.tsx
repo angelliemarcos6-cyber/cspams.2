@@ -39,6 +39,12 @@ function latestSubmission<T extends { updatedAt: string | null; createdAt: strin
   return sorted[0] ?? null;
 }
 
+function resolveSelectedYearFinalizedSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
+  return latestSubmission(
+    entries.filter((submission) => isFinalizedSubmissionStatus(submission.status)),
+  );
+}
+
 function normalizeFileExtension(filename: string | null | undefined): string {
   const value = String(filename ?? "").trim().toLowerCase();
   if (!value.includes(".")) return "";
@@ -336,7 +342,7 @@ export function SchoolAdminDashboard() {
     })
       .then((result) => {
         if (yearScopedRequestRef.current !== requestId) return;
-        const finalized = result.data.find((submission) => isFinalizedSubmissionStatus(submission.status));
+        const finalized = resolveSelectedYearFinalizedSubmission(result.data);
         setYearScopedSubmission(finalized ?? null);
       })
       .catch(() => {
