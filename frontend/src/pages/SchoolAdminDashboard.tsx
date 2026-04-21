@@ -107,72 +107,72 @@ function compareAcademicYearsAscending(a: { name: string }, b: { name: string })
 
 const MOBILE_BREAKPOINT = 768;
 const SCHOOL_ACHIEVEMENT_ROWS = [
-  "NAME OF SCHOOL HEAD",
-  "TOTAL NUMBER OF ENROLMENT",
-  "SBM LEVEL OF PRACTICE",
-  "Pupil/Student Classroom Ratio (Kindergarten)",
-  "Pupil/Student Classroom Ratio (Grades 1 to 3)",
-  "Pupil/Student Classroom Ratio (Grades 4 to 6)",
-  "Pupil/Student Classroom Ratio (Grades 7 to 10)",
-  "Pupil/Student Classroom Ratio (Grades 11 to 12)",
-  "Water and Sanitation facility to pupil ratio",
-  "Number of Comfort rooms",
-  "a. Toilet bowl",
-  "b. Urinal",
-  "Handwashing Facilities",
-  "Ideal learning materials to learner ratio",
-  "Pupil/student seat ratio (Overall)",
-  "a. Kindergarten",
-  "b. Grades 1 - 6",
-  "c. Grades 7 - 10",
-  "d. Grades 11 - 12",
-  "ICT Package/E-classroom package to sections ratio",
-  "a. ICT Laboratory",
-  "Science Laboratory",
-  "Do you have internet access? (Y/N)",
-  "Do you have electricity (Y/N)",
-  "Do you have a complete fence/gate? (Evident/Partially/Not Evident)",
-  "No. of Teachers",
-  "a. Male",
-  "b. Female",
-  "Teachers with Physical Disability",
-  "a. Male",
-  "b. Female",
-  "Functional SGC",
-  "School-Based Feeding Program Beneficiaries",
-  "School-Managed Canteen (Annual income)",
-  "Teachers Cooperative Managed Canteen - if there is (Annual income)",
-  "Security and Safety (Contingency Plan)",
-  "a. Earthquake",
-  "b. Typhoon",
-  "c. COVID-19",
-  "d. Power interruption",
-  "e. In-person classes",
-  "No. of Teachers trained on Psychological First Aid (PFA)",
-  "No. of Teachers trained on Occupational First Aid",
-];
+  { label: "NAME OF SCHOOL HEAD", metricKey: "NAME OF SCHOOL HEAD" },
+  { label: "TOTAL NUMBER OF ENROLMENT", metricKey: "TOTAL NUMBER OF ENROLMENT" },
+  { label: "SBM LEVEL OF PRACTICE", metricKey: "SBM LEVEL OF PRACTICE" },
+  { label: "Pupil/Student Classroom Ratio (Kindergarten)", metricKey: "Pupil/Student Classroom Ratio (Kindergarten)" },
+  { label: "Pupil/Student Classroom Ratio (Grades 1 to 3)", metricKey: "Pupil/Student Classroom Ratio (Grades 1 to 3)" },
+  { label: "Pupil/Student Classroom Ratio (Grades 4 to 6)", metricKey: "Pupil/Student Classroom Ratio (Grades 4 to 6)" },
+  { label: "Pupil/Student Classroom Ratio (Grades 7 to 10)", metricKey: "Pupil/Student Classroom Ratio (Grades 7 to 10)" },
+  { label: "Pupil/Student Classroom Ratio (Grades 11 to 12)", metricKey: "Pupil/Student Classroom Ratio (Grades 11 to 12)" },
+  { label: "Water and Sanitation facility to pupil ratio", metricKey: "Water and Sanitation facility to pupil ratio" },
+  { label: "Number of Comfort rooms", metricKey: "Number of Comfort rooms" },
+  { label: "a. Toilet bowl", metricKey: "a. Toilet bowl" },
+  { label: "b. Urinal", metricKey: "b. Urinal" },
+  { label: "Handwashing Facilities", metricKey: "Handwashing Facilities" },
+  { label: "Ideal learning materials to learner ratio", metricKey: "Ideal learning materials to learner ratio" },
+  { label: "Pupil/student seat ratio (Overall)", metricKey: "Pupil/student seat ratio (Overall)" },
+  { label: "a. Kindergarten", metricKey: "a. Kindergarten" },
+  { label: "b. Grades 1 - 6", metricKey: "b. Grades 1 - 6" },
+  { label: "c. Grades 7 - 10", metricKey: "c. Grades 7 - 10" },
+  { label: "d. Grades 11 - 12", metricKey: "d. Grades 11 - 12" },
+  { label: "ICT Package/E-classroom package to sections ratio", metricKey: "ICT Package/E-classroom package to sections ratio" },
+  { label: "a. ICT Laboratory", metricKey: "a. ICT Laboratory" },
+  { label: "Science Laboratory", metricKey: "Science Laboratory" },
+  { label: "Do you have internet access? (Y/N)", metricKey: "Do you have internet access? (Y/N)" },
+  { label: "Do you have electricity (Y/N)", metricKey: "Do you have electricity (Y/N)" },
+  { label: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)", metricKey: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)" },
+  { label: "No. of Teachers", metricKey: "No. of Teachers" },
+  { label: "a. Male", metricKey: "a. Male" },
+  { label: "b. Female", metricKey: "b. Female" },
+  { label: "Teachers with Physical Disability", metricKey: "Teachers with Physical Disability" },
+  { label: "a. Male", metricKey: "a. Male" },
+  { label: "b. Female", metricKey: "b. Female" },
+  { label: "Functional SGC", metricKey: "Functional SGC" },
+  { label: "School-Based Feeding Program Beneficiaries", metricKey: "School-Based Feeding Program Beneficiaries" },
+  { label: "School-Managed Canteen (Annual income)", metricKey: "School-Managed Canteen (Annual income)" },
+  { label: "Teachers Cooperative Managed Canteen - if there is (Annual income)", metricKey: "Teachers Cooperative Managed Canteen - if there is (Annual income)" },
+  { label: "Security and Safety (Contingency Plan)", metricKey: "Security and Safety (Contingency Plan)" },
+  { label: "a. Earthquake", metricKey: "a. Earthquake" },
+  { label: "b. Typhoon", metricKey: "b. Typhoon" },
+  { label: "c. COVID-19", metricKey: "c. COVID-19" },
+  { label: "d. Power interruption", metricKey: "d. Power interruption" },
+  { label: "e. In-person classes", metricKey: "e. In-person classes" },
+  { label: "No. of Teachers trained on Psychological First Aid (PFA)", metricKey: "No. of Teachers trained on Psychological First Aid (PFA)" },
+  { label: "No. of Teachers trained on Occupational First Aid", metricKey: "No. of Teachers trained on Occupational First Aid" },
+] as const;
 
 const KPI_ROWS = [
-  "Net Enrollment Rate (NER)",
-  "Retention Rate (RR)",
-  "Drop-out Rate (DR)",
-  "Transition Rate (TR)",
-  "Net Intake Rate (NIR)",
-  "Participation Rate (PR)",
-  "ALS Completion Rate",
-  "Gender Parity Index (GPI)",
-  "Interquartile Ratio (IQR)",
-  "Completion Rate (CR)",
-  "Cohort Survival Rate (CSR)",
-  "Learning Mastery: Nearly Proficient",
-  "Learning Mastery: Proficient",
-  "Learning Mastery: Highly Proficient",
-  "A&E Test Pass Rate",
-  "Learners Reporting School Violence",
-  "Learner Satisfaction",
-  "Learners Aware of Education Rights",
-  "Schools/LCs Manifesting RBE Indicators",
-];
+  { label: "Net Enrollment Rate (NER)", metricKey: "Net Enrollment Rate (NER)" },
+  { label: "Retention Rate (RR)", metricKey: "Retention Rate (RR)" },
+  { label: "Drop-out Rate (DR)", metricKey: "Drop-out Rate (DR)" },
+  { label: "Transition Rate (TR)", metricKey: "Transition Rate (TR)" },
+  { label: "Net Intake Rate (NIR)", metricKey: "Net Intake Rate (NIR)" },
+  { label: "Participation Rate (PR)", metricKey: "Participation Rate (PR)" },
+  { label: "ALS Completion Rate", metricKey: "ALS Completion Rate" },
+  { label: "Gender Parity Index (GPI)", metricKey: "Gender Parity Index (GPI)" },
+  { label: "Interquartile Ratio (IQR)", metricKey: "Interquartile Ratio (IQR)" },
+  { label: "Completion Rate (CR)", metricKey: "Completion Rate (CR)" },
+  { label: "Cohort Survival Rate (CSR)", metricKey: "Cohort Survival Rate (CSR)" },
+  { label: "Learning Mastery: Nearly Proficient", metricKey: "Learning Mastery: Nearly Proficient" },
+  { label: "Learning Mastery: Proficient", metricKey: "Learning Mastery: Proficient" },
+  { label: "Learning Mastery: Highly Proficient", metricKey: "Learning Mastery: Highly Proficient" },
+  { label: "A&E Test Pass Rate", metricKey: "A&E Test Pass Rate" },
+  { label: "Learners Reporting School Violence", metricKey: "Learners Reporting School Violence" },
+  { label: "Learner Satisfaction", metricKey: "Learner Satisfaction" },
+  { label: "Learners Aware of Education Rights", metricKey: "Learners Aware of Education Rights" },
+  { label: "Schools/LCs Manifesting RBE Indicators", metricKey: "Schools/LCs Manifesting RBE Indicators" },
+] as const;
 
 function isSubItemMetric(label: string): boolean {
   return /^[a-e]\.\s/i.test(label);
@@ -227,21 +227,21 @@ export function SchoolAdminDashboard() {
     const indicatorByKey = new Map(
       indicators.map((item) => [normalizeMetricLookupKey(item.metric?.name), item] as const),
     );
-    const getIndicatorByLabel = (label: string): IndicatorSubmissionItem | null => (
-      indicatorByKey.get(normalizeMetricLookupKey(label)) ?? null
+    const getIndicatorByMetricKey = (metricKey: string): IndicatorSubmissionItem | null => (
+      indicatorByKey.get(normalizeMetricLookupKey(metricKey)) ?? null
     );
-    const schoolAchievementRows = SCHOOL_ACHIEVEMENT_ROWS.map((label) => {
-      const indicator = getIndicatorByLabel(label);
+    const schoolAchievementRows = SCHOOL_ACHIEVEMENT_ROWS.map((row) => {
+      const indicator = getIndicatorByMetricKey(row.metricKey);
       return {
-        label,
+        label: row.label,
         indicator,
         value: indicator?.actualDisplay ?? indicator?.actualValue ?? "-",
       };
     });
-    const kpiRows = KPI_ROWS.map((label) => {
-      const indicator = getIndicatorByLabel(label);
+    const kpiRows = KPI_ROWS.map((row) => {
+      const indicator = getIndicatorByMetricKey(row.metricKey);
       return {
-        label,
+        label: row.label,
         indicator,
         target: indicator?.targetDisplay ?? indicator?.targetValue ?? "-",
         actual: indicator?.actualDisplay ?? indicator?.actualValue ?? "-",
@@ -255,11 +255,10 @@ export function SchoolAdminDashboard() {
         bmef: submission?.files?.bmef ?? null,
         smea: submission?.files?.smea ?? null,
       },
+      hasSubmittedPackage: Boolean(submission),
       completedIndicators: submission?.summary?.metIndicators ?? 0,
       totalIndicators: submission?.summary?.totalIndicators ?? 0,
       indicators,
-      indicatorByKey,
-      getIndicatorByLabel,
       schoolAchievementRows,
       kpiRows,
     };
@@ -519,14 +518,24 @@ export function SchoolAdminDashboard() {
       <section id="file-reports" className={`mb-8 ${focusCls("file-reports")}`}>
         <div className="rounded-sm border-2 border-primary-200 bg-primary-50/20 p-3 md:p-4">
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-primary-200 pb-2">
-            <h2 className="text-[18px] font-semibold text-slate-900">Reports</h2>
+            <div>
+              <h2 className="text-[18px] font-semibold text-slate-900">Submitted Reports</h2>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                Read-only view of the finalized report package for the selected academic year.
+              </p>
+            </div>
           </div>
 
           {isYearScopedLoading && (
             <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
           )}
           {!isYearScopedLoading && !yearScopedSubmission && (
-            <p className="mb-3 text-xs font-medium text-slate-500">No submitted report package for the selected academic year.</p>
+            <div className="mb-3 space-y-1">
+              <p className="text-xs font-medium text-slate-500">No submitted report package for the selected academic year.</p>
+              <p className="text-xs text-slate-500">
+                Use the submission workspace below to prepare and submit this year&apos;s report package.
+              </p>
+            </div>
           )}
 
           <div className="flex flex-col gap-4 md:flex-row">
@@ -582,7 +591,14 @@ export function SchoolAdminDashboard() {
 
           <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
             <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
-              <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
+              <div className="flex flex-col gap-1">
+                <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
+                {groupAReportView.totalIndicators > 0 && (
+                  <span className="pl-3 text-xs font-medium text-slate-500">
+                    Submitted package completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
+                  </span>
+                )}
+              </div>
             </h2>
             <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
             {/* School's Achievement Table */}
@@ -760,13 +776,11 @@ export function SchoolAdminDashboard() {
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">
-              I-META Compliance Indicators
+              Indicator Submission Workspace
             </h2>
-            {groupAReportView.totalIndicators > 0 && (
-              <p className="mt-0.5 text-xs text-slate-500">
-                {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
-              </p>
-            )}
+            <p className="mt-0.5 text-xs text-slate-500">
+              Use this workspace to edit, save, submit, re-submit, and upload files for the selected academic year.
+            </p>
           </div>
         </div>
         <SchoolIndicatorPanel
