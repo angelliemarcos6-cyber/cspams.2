@@ -227,23 +227,43 @@ export function SchoolAdminDashboard() {
     const indicatorByKey = new Map(
       indicators.map((item) => [normalizeMetricLookupKey(item.metric?.name), item] as const),
     );
+    const getIndicatorByLabel = (label: string): IndicatorSubmissionItem | null => (
+      indicatorByKey.get(normalizeMetricLookupKey(label)) ?? null
+    );
+    const schoolAchievementRows = SCHOOL_ACHIEVEMENT_ROWS.map((label) => {
+      const indicator = getIndicatorByLabel(label);
+      return {
+        label,
+        indicator,
+        value: indicator?.actualDisplay ?? indicator?.actualValue ?? "-",
+      };
+    });
+    const kpiRows = KPI_ROWS.map((label) => {
+      const indicator = getIndicatorByLabel(label);
+      return {
+        label,
+        indicator,
+        target: indicator?.targetDisplay ?? indicator?.targetValue ?? "-",
+        actual: indicator?.actualDisplay ?? indicator?.actualValue ?? "-",
+        status: String(indicator?.complianceStatus ?? "-"),
+      };
+    });
 
     return {
       submission,
-      bmefFile: submission?.files?.bmef ?? null,
-      smeaFile: submission?.files?.smea ?? null,
+      reportFiles: {
+        bmef: submission?.files?.bmef ?? null,
+        smea: submission?.files?.smea ?? null,
+      },
       completedIndicators: submission?.summary?.metIndicators ?? 0,
       totalIndicators: submission?.summary?.totalIndicators ?? 0,
       indicators,
       indicatorByKey,
+      getIndicatorByLabel,
+      schoolAchievementRows,
+      kpiRows,
     };
   }, [yearScopedSubmission]);
-  const getGroupAIndicator = useCallback(
-    (label: string): IndicatorSubmissionItem | null => (
-      groupAReportView.indicatorByKey.get(normalizeMetricLookupKey(label)) ?? null
-    ),
-    [groupAReportView],
-  );
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
     if (!activeReportModalType || !groupAReportView.submission?.files) return null;
     return groupAReportView.submission.files[activeReportModalType] ?? null;
@@ -255,7 +275,7 @@ export function SchoolAdminDashboard() {
     orderedAcademicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
   );
-  const targetsMetYearLabel = selectedYearLabel(
+  const selectedReportYearLabel = selectedYearLabel(
     effectiveAcademicYearId,
     orderedAcademicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
@@ -514,12 +534,12 @@ export function SchoolAdminDashboard() {
               {
                 type: "bmef" as const,
                 title: "BMEF Report",
-                file: groupAReportView.bmefFile,
+                file: groupAReportView.reportFiles.bmef,
               },
               {
                 type: "smea" as const,
                 title: "SMEA Report",
-                file: groupAReportView.smeaFile,
+                file: groupAReportView.reportFiles.smea,
               },
             ]).map((report) => {
               const hasFile = Boolean(report.file?.uploaded && report.file?.originalFilename);
@@ -568,7 +588,7 @@ export function SchoolAdminDashboard() {
             {/* School's Achievement Table */}
             <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {targetsMetYearLabel})</h3>
+                <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
               </div>
               <table className="w-full text-[13px] text-slate-900">
                 <thead>
@@ -578,15 +598,13 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5E7EB]">
-                  {SCHOOL_ACHIEVEMENT_ROWS.map((label) => (
-                    <tr key={label}>
-                      <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
-                        {label}
+                  {groupAReportView.schoolAchievementRows.map((row) => (
+                    <tr key={row.label}>
+                      <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
+                        {row.label}
                       </td>
                       <td className="px-4 py-2.5 text-right text-slate-900">
-                        {getGroupAIndicator(label)?.actualDisplay ??
-                          getGroupAIndicator(label)?.actualValue ??
-                          "-"}
+                        {row.value}
                       </td>
                     </tr>
                   ))}
@@ -597,7 +615,7 @@ export function SchoolAdminDashboard() {
             {/* Key Performance Indicators Table */}
             <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {targetsMetYearLabel})</h3>
+                <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
               </div>
               <table className="w-full text-[13px] text-slate-900">
                 <thead>
@@ -609,23 +627,17 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5E7EB]">
-                  {KPI_ROWS.map((label) => (
-                    <tr key={label}>
-                      <td className="px-4 py-2.5 text-slate-900">{label}</td>
+                  {groupAReportView.kpiRows.map((row) => (
+                    <tr key={row.label}>
+                      <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
                       <td className="px-4 py-2.5 text-center text-slate-900">
-                        {getGroupAIndicator(label)?.targetDisplay ??
-                          getGroupAIndicator(label)?.targetValue ??
-                          "-"}
+                        {row.target}
                       </td>
                       <td className="px-4 py-2.5 text-center text-slate-900">
-                        {getGroupAIndicator(label)?.actualDisplay ??
-                          getGroupAIndicator(label)?.actualValue ??
-                          "-"}
+                        {row.actual}
                       </td>
                       <td className="px-4 py-2.5 text-center text-slate-900">
-                        {String(
-                          getGroupAIndicator(label)?.complianceStatus ?? "-",
-                        )}
+                        {row.status}
                       </td>
                     </tr>
                   ))}
