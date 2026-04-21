@@ -183,8 +183,6 @@ export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
   const {
-    submissions: indicatorSubmissionSnapshot,
-    allSubmissions,
     academicYears,
     downloadSubmissionFile,
     listSubmissions,
@@ -207,13 +205,6 @@ export function SchoolAdminDashboard() {
   const yearScopedRequestRef = useRef(0);
 
   /* ── Derived data ── */
-  const indicatorSubmissions = useMemo(
-    () =>
-      allSubmissions.length > 0 || indicatorSubmissionSnapshot.length === 0
-        ? allSubmissions
-        : indicatorSubmissionSnapshot,
-    [allSubmissions, indicatorSubmissionSnapshot],
-  );
   const orderedAcademicYears = useMemo(
     () => [...academicYears].sort(compareAcademicYearsAscending),
     [academicYears],
@@ -230,20 +221,33 @@ export function SchoolAdminDashboard() {
     [orderedAcademicYears],
   );
   const effectiveAcademicYearId = contextAcademicYearId;
-  const latestIndicatorsForImeta: IndicatorSubmission | null = useMemo(
-    () => latestSubmission(indicatorSubmissions),
-    [indicatorSubmissions],
+  const groupAReportView = useMemo(() => {
+    const submission = yearScopedSubmission;
+    const indicators = submission?.indicators ?? [];
+    const indicatorByKey = new Map(
+      indicators.map((item) => [normalizeMetricLookupKey(item.metric?.name), item] as const),
+    );
+
+    return {
+      submission,
+      bmefFile: submission?.files?.bmef ?? null,
+      smeaFile: submission?.files?.smea ?? null,
+      completedIndicators: submission?.summary?.metIndicators ?? 0,
+      totalIndicators: submission?.summary?.totalIndicators ?? 0,
+      indicators,
+      indicatorByKey,
+    };
+  }, [yearScopedSubmission]);
+  const getGroupAIndicator = useCallback(
+    (label: string): IndicatorSubmissionItem | null => (
+      groupAReportView.indicatorByKey.get(normalizeMetricLookupKey(label)) ?? null
+    ),
+    [groupAReportView],
   );
-
-  const bmefFile = yearScopedSubmission?.files?.bmef ?? null;
-  const smeaFile = yearScopedSubmission?.files?.smea ?? null;
-
-  const completedIndicators = latestIndicatorsForImeta?.summary?.metIndicators ?? 0;
-  const totalIndicators = latestIndicatorsForImeta?.summary?.totalIndicators ?? 0;
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
-    if (!activeReportModalType || !yearScopedSubmission?.files) return null;
-    return yearScopedSubmission.files[activeReportModalType] ?? null;
-  }, [activeReportModalType, yearScopedSubmission]);
+    if (!activeReportModalType || !groupAReportView.submission?.files) return null;
+    return groupAReportView.submission.files[activeReportModalType] ?? null;
+  }, [activeReportModalType, groupAReportView]);
   const activeReportFileName = activeReportFileEntry?.originalFilename ?? null;
   const activeReportExtension = normalizeFileExtension(activeReportFileName);
   const activeSchoolYearLabel = selectedYearLabel(
@@ -256,20 +260,9 @@ export function SchoolAdminDashboard() {
     orderedAcademicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
   );
-  const selectedYearIndicators = useMemo<IndicatorSubmissionItem[]>(
-    () => yearScopedSubmission?.indicators ?? [],
-    [yearScopedSubmission],
-  );
-  const selectedYearIndicatorsByMetric = useMemo(() => {
-    const entries = selectedYearIndicators.map((item) => [
-      normalizeMetricLookupKey(item.metric?.name),
-      item,
-    ] as const);
-    return new Map<string, IndicatorSubmissionItem>(entries);
-  }, [selectedYearIndicators]);
   const submittedIndicatorRows = useMemo(
-    () => yearScopedSubmission?.indicators ?? [],
-    [yearScopedSubmission],
+    () => groupAReportView.indicators,
+    [groupAReportView],
   );
 
   /* ── Refresh ── */
@@ -374,11 +367,11 @@ export function SchoolAdminDashboard() {
 
   const openReportModal = useCallback(
     (type: IndicatorSubmissionFileType) => {
-      if (!yearScopedSubmission?.files?.[type]?.uploaded) return;
+      if (!groupAReportView.submission?.files?.[type]?.uploaded) return;
       setActiveReportModalType(type);
       setReportZoomLevel(1);
     },
-    [yearScopedSubmission],
+    [groupAReportView],
   );
 
   const closeReportModal = useCallback(() => {
@@ -387,8 +380,8 @@ export function SchoolAdminDashboard() {
   }, []);
 
   const handleDownloadActiveReport = useCallback(async () => {
-    if (!activeReportModalType || !yearScopedSubmission) return;
-    const activeFile = yearScopedSubmission.files?.[activeReportModalType] ?? null;
+    if (!activeReportModalType || !groupAReportView.submission) return;
+    const activeFile = groupAReportView.submission.files?.[activeReportModalType] ?? null;
 
     if (activeFile?.downloadUrl) {
       const anchor = document.createElement("a");
@@ -404,8 +397,8 @@ export function SchoolAdminDashboard() {
       return;
     }
 
-    await downloadSubmissionFile(yearScopedSubmission.id, activeReportModalType);
-  }, [activeReportModalType, downloadSubmissionFile, yearScopedSubmission]);
+    await downloadSubmissionFile(groupAReportView.submission.id, activeReportModalType);
+  }, [activeReportModalType, downloadSubmissionFile, groupAReportView]);
 
   useEffect(() => {
     if (!activeReportModalType || typeof window === "undefined") return;
@@ -521,12 +514,12 @@ export function SchoolAdminDashboard() {
               {
                 type: "bmef" as const,
                 title: "BMEF Report",
-                file: bmefFile,
+                file: groupAReportView.bmefFile,
               },
               {
                 type: "smea" as const,
                 title: "SMEA Report",
-                file: smeaFile,
+                file: groupAReportView.smeaFile,
               },
             ]).map((report) => {
               const hasFile = Boolean(report.file?.uploaded && report.file?.originalFilename);
@@ -569,7 +562,7 @@ export function SchoolAdminDashboard() {
 
           <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
             <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
-              <span className="inline-block border-l-[3px] border-primary-600 pl-3">TARGETS-MET</span>
+              <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
             </h2>
             <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
             {/* School's Achievement Table */}
@@ -591,8 +584,8 @@ export function SchoolAdminDashboard() {
                         {label}
                       </td>
                       <td className="px-4 py-2.5 text-right text-slate-900">
-                        {selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualDisplay ??
-                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualValue ??
+                        {getGroupAIndicator(label)?.actualDisplay ??
+                          getGroupAIndicator(label)?.actualValue ??
                           "-"}
                       </td>
                     </tr>
@@ -620,18 +613,18 @@ export function SchoolAdminDashboard() {
                     <tr key={label}>
                       <td className="px-4 py-2.5 text-slate-900">{label}</td>
                       <td className="px-4 py-2.5 text-center text-slate-900">
-                        {selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.targetDisplay ??
-                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.targetValue ??
+                        {getGroupAIndicator(label)?.targetDisplay ??
+                          getGroupAIndicator(label)?.targetValue ??
                           "-"}
                       </td>
                       <td className="px-4 py-2.5 text-center text-slate-900">
-                        {selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualDisplay ??
-                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.actualValue ??
+                        {getGroupAIndicator(label)?.actualDisplay ??
+                          getGroupAIndicator(label)?.actualValue ??
                           "-"}
                       </td>
                       <td className="px-4 py-2.5 text-center text-slate-900">
                         {String(
-                          selectedYearIndicatorsByMetric.get(normalizeMetricLookupKey(label))?.complianceStatus ?? "-",
+                          getGroupAIndicator(label)?.complianceStatus ?? "-",
                         )}
                       </td>
                     </tr>
@@ -757,9 +750,9 @@ export function SchoolAdminDashboard() {
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">
               I-META Compliance Indicators
             </h2>
-            {totalIndicators > 0 && (
+            {groupAReportView.totalIndicators > 0 && (
               <p className="mt-0.5 text-xs text-slate-500">
-                {completedIndicators}/{totalIndicators} complete
+                {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
               </p>
             )}
           </div>
