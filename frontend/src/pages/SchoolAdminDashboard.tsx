@@ -52,7 +52,11 @@ function normalizeFileExtension(filename: string | null | undefined): string {
 }
 
 function normalizeMetricLookupKey(label: string | null | undefined): string {
-  return String(label ?? "").trim().toLowerCase();
+  return String(label ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function isFinalizedSubmissionStatus(status: string | null | undefined): boolean {
@@ -107,81 +111,141 @@ function compareAcademicYearsAscending(a: { name: string }, b: { name: string })
 
 const MOBILE_BREAKPOINT = 768;
 const SCHOOL_ACHIEVEMENT_ROWS = [
-  { key: "school_head_name", label: "NAME OF SCHOOL HEAD", metricLabel: "NAME OF SCHOOL HEAD" },
-  { key: "total_enrolment", label: "TOTAL NUMBER OF ENROLMENT", metricLabel: "TOTAL NUMBER OF ENROLMENT" },
-  { key: "sbm_level_of_practice", label: "SBM LEVEL OF PRACTICE", metricLabel: "SBM LEVEL OF PRACTICE" },
-  { key: "classroom_ratio_kindergarten", label: "Pupil/Student Classroom Ratio (Kindergarten)", metricLabel: "Pupil/Student Classroom Ratio (Kindergarten)" },
-  { key: "classroom_ratio_grades_1_3", label: "Pupil/Student Classroom Ratio (Grades 1 to 3)", metricLabel: "Pupil/Student Classroom Ratio (Grades 1 to 3)" },
-  { key: "classroom_ratio_grades_4_6", label: "Pupil/Student Classroom Ratio (Grades 4 to 6)", metricLabel: "Pupil/Student Classroom Ratio (Grades 4 to 6)" },
-  { key: "classroom_ratio_grades_7_10", label: "Pupil/Student Classroom Ratio (Grades 7 to 10)", metricLabel: "Pupil/Student Classroom Ratio (Grades 7 to 10)" },
-  { key: "classroom_ratio_grades_11_12", label: "Pupil/Student Classroom Ratio (Grades 11 to 12)", metricLabel: "Pupil/Student Classroom Ratio (Grades 11 to 12)" },
-  { key: "water_sanitation_ratio", label: "Water and Sanitation facility to pupil ratio", metricLabel: "Water and Sanitation facility to pupil ratio" },
-  { key: "comfort_rooms", label: "Number of Comfort rooms", metricLabel: "Number of Comfort rooms" },
-  { key: "comfort_rooms_toilet_bowl", label: "a. Toilet bowl", metricLabel: "a. Toilet bowl" },
-  { key: "comfort_rooms_urinal", label: "b. Urinal", metricLabel: "b. Urinal" },
-  { key: "handwashing_facilities", label: "Handwashing Facilities", metricLabel: "Handwashing Facilities" },
-  { key: "learning_material_ratio", label: "Ideal learning materials to learner ratio", metricLabel: "Ideal learning materials to learner ratio" },
-  { key: "seat_ratio_overall", label: "Pupil/student seat ratio (Overall)", metricLabel: "Pupil/student seat ratio (Overall)" },
-  { key: "seat_ratio_kindergarten", label: "a. Kindergarten", metricLabel: "a. Kindergarten" },
-  { key: "seat_ratio_grades_1_6", label: "b. Grades 1 - 6", metricLabel: "b. Grades 1 - 6" },
-  { key: "seat_ratio_grades_7_10", label: "c. Grades 7 - 10", metricLabel: "c. Grades 7 - 10" },
-  { key: "seat_ratio_grades_11_12", label: "d. Grades 11 - 12", metricLabel: "d. Grades 11 - 12" },
-  { key: "ict_package_ratio", label: "ICT Package/E-classroom package to sections ratio", metricLabel: "ICT Package/E-classroom package to sections ratio" },
-  { key: "ict_laboratory", label: "a. ICT Laboratory", metricLabel: "a. ICT Laboratory" },
-  { key: "science_laboratory", label: "Science Laboratory", metricLabel: "Science Laboratory" },
-  { key: "internet_access", label: "Do you have internet access? (Y/N)", metricLabel: "Do you have internet access? (Y/N)" },
-  { key: "electricity_access", label: "Do you have electricity (Y/N)", metricLabel: "Do you have electricity (Y/N)" },
-  { key: "complete_fence_gate", label: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)", metricLabel: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)" },
-  { key: "teachers_total", label: "No. of Teachers", metricLabel: "No. of Teachers" },
-  { key: "teachers_male", label: "a. Male", metricLabel: "a. Male" },
-  { key: "teachers_female", label: "b. Female", metricLabel: "b. Female" },
-  { key: "teachers_with_disability", label: "Teachers with Physical Disability", metricLabel: "Teachers with Physical Disability" },
-  { key: "teachers_with_disability_male", label: "a. Male", metricLabel: "a. Male" },
-  { key: "teachers_with_disability_female", label: "b. Female", metricLabel: "b. Female" },
-  { key: "functional_sgc", label: "Functional SGC", metricLabel: "Functional SGC" },
-  { key: "feeding_program_beneficiaries", label: "School-Based Feeding Program Beneficiaries", metricLabel: "School-Based Feeding Program Beneficiaries" },
-  { key: "canteen_income", label: "School-Managed Canteen (Annual income)", metricLabel: "School-Managed Canteen (Annual income)" },
-  { key: "teachers_coop_canteen_income", label: "Teachers Cooperative Managed Canteen - if there is (Annual income)", metricLabel: "Teachers Cooperative Managed Canteen - if there is (Annual income)" },
-  { key: "security_safety_plan", label: "Security and Safety (Contingency Plan)", metricLabel: "Security and Safety (Contingency Plan)" },
-  { key: "security_safety_earthquake", label: "a. Earthquake", metricLabel: "a. Earthquake" },
-  { key: "security_safety_typhoon", label: "b. Typhoon", metricLabel: "b. Typhoon" },
-  { key: "security_safety_covid", label: "c. COVID-19", metricLabel: "c. COVID-19" },
-  { key: "security_safety_power_interruption", label: "d. Power interruption", metricLabel: "d. Power interruption" },
-  { key: "security_safety_in_person", label: "e. In-person classes", metricLabel: "e. In-person classes" },
-  { key: "teachers_trained_pfa", label: "No. of Teachers trained on Psychological First Aid (PFA)", metricLabel: "No. of Teachers trained on Psychological First Aid (PFA)" },
-  { key: "teachers_trained_occ_first_aid", label: "No. of Teachers trained on Occupational First Aid", metricLabel: "No. of Teachers trained on Occupational First Aid" },
+  { key: "school_head_name", label: "NAME OF SCHOOL HEAD" },
+  { key: "total_enrolment", label: "TOTAL NUMBER OF ENROLMENT" },
+  { key: "sbm_level_of_practice", label: "SBM LEVEL OF PRACTICE" },
+  { key: "classroom_ratio_kindergarten", label: "Pupil/Student Classroom Ratio (Kindergarten)" },
+  { key: "classroom_ratio_grades_1_3", label: "Pupil/Student Classroom Ratio (Grades 1 to 3)" },
+  { key: "classroom_ratio_grades_4_6", label: "Pupil/Student Classroom Ratio (Grades 4 to 6)" },
+  { key: "classroom_ratio_grades_7_10", label: "Pupil/Student Classroom Ratio (Grades 7 to 10)" },
+  { key: "classroom_ratio_grades_11_12", label: "Pupil/Student Classroom Ratio (Grades 11 to 12)" },
+  { key: "water_sanitation_ratio", label: "Water and Sanitation facility to pupil ratio" },
+  { key: "comfort_rooms", label: "Number of Comfort rooms" },
+  { key: "comfort_rooms_toilet_bowl", label: "a. Toilet bowl" },
+  { key: "comfort_rooms_urinal", label: "b. Urinal" },
+  { key: "handwashing_facilities", label: "Handwashing Facilities" },
+  { key: "learning_material_ratio", label: "Ideal learning materials to learner ratio" },
+  { key: "seat_ratio_overall", label: "Pupil/student seat ratio (Overall)" },
+  { key: "seat_ratio_kindergarten", label: "a. Kindergarten" },
+  { key: "seat_ratio_grades_1_6", label: "b. Grades 1 - 6" },
+  { key: "seat_ratio_grades_7_10", label: "c. Grades 7 - 10" },
+  { key: "seat_ratio_grades_11_12", label: "d. Grades 11 - 12" },
+  { key: "ict_package_ratio", label: "ICT Package/E-classroom package to sections ratio" },
+  { key: "ict_laboratory", label: "a. ICT Laboratory" },
+  { key: "science_laboratory", label: "Science Laboratory" },
+  { key: "internet_access", label: "Do you have internet access? (Y/N)" },
+  { key: "electricity_access", label: "Do you have electricity (Y/N)" },
+  { key: "complete_fence_gate", label: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)" },
+  { key: "teachers_total", label: "No. of Teachers" },
+  { key: "teachers_male", label: "a. Male" },
+  { key: "teachers_female", label: "b. Female" },
+  { key: "teachers_with_disability", label: "Teachers with Physical Disability" },
+  { key: "teachers_with_disability_male", label: "a. Male" },
+  { key: "teachers_with_disability_female", label: "b. Female" },
+  { key: "functional_sgc", label: "Functional SGC" },
+  { key: "feeding_program_beneficiaries", label: "School-Based Feeding Program Beneficiaries" },
+  { key: "canteen_income", label: "School-Managed Canteen (Annual income)" },
+  { key: "teachers_coop_canteen_income", label: "Teachers Cooperative Managed Canteen - if there is (Annual income)" },
+  { key: "security_safety_plan", label: "Security and Safety (Contingency Plan)" },
+  { key: "security_safety_earthquake", label: "a. Earthquake" },
+  { key: "security_safety_typhoon", label: "b. Typhoon" },
+  { key: "security_safety_covid", label: "c. COVID-19" },
+  { key: "security_safety_power_interruption", label: "d. Power interruption" },
+  { key: "security_safety_in_person", label: "e. In-person classes" },
+  { key: "teachers_trained_pfa", label: "No. of Teachers trained on Psychological First Aid (PFA)" },
+  { key: "teachers_trained_occ_first_aid", label: "No. of Teachers trained on Occupational First Aid" },
 ] as const;
 
 const KPI_ROWS = [
-  { key: "net_enrollment_rate", label: "Net Enrollment Rate (NER)", metricLabel: "Net Enrollment Rate (NER)" },
-  { key: "retention_rate", label: "Retention Rate (RR)", metricLabel: "Retention Rate (RR)" },
-  { key: "dropout_rate", label: "Drop-out Rate (DR)", metricLabel: "Drop-out Rate (DR)" },
-  { key: "transition_rate", label: "Transition Rate (TR)", metricLabel: "Transition Rate (TR)" },
-  { key: "net_intake_rate", label: "Net Intake Rate (NIR)", metricLabel: "Net Intake Rate (NIR)" },
-  { key: "participation_rate", label: "Participation Rate (PR)", metricLabel: "Participation Rate (PR)" },
-  { key: "als_completion_rate", label: "ALS Completion Rate", metricLabel: "ALS Completion Rate" },
-  { key: "gender_parity_index", label: "Gender Parity Index (GPI)", metricLabel: "Gender Parity Index (GPI)" },
-  { key: "interquartile_ratio", label: "Interquartile Ratio (IQR)", metricLabel: "Interquartile Ratio (IQR)" },
-  { key: "completion_rate", label: "Completion Rate (CR)", metricLabel: "Completion Rate (CR)" },
-  { key: "cohort_survival_rate", label: "Cohort Survival Rate (CSR)", metricLabel: "Cohort Survival Rate (CSR)" },
-  { key: "learning_mastery_nearly_proficient", label: "Learning Mastery: Nearly Proficient", metricLabel: "Learning Mastery: Nearly Proficient" },
-  { key: "learning_mastery_proficient", label: "Learning Mastery: Proficient", metricLabel: "Learning Mastery: Proficient" },
-  { key: "learning_mastery_highly_proficient", label: "Learning Mastery: Highly Proficient", metricLabel: "Learning Mastery: Highly Proficient" },
-  { key: "ae_test_pass_rate", label: "A&E Test Pass Rate", metricLabel: "A&E Test Pass Rate" },
-  { key: "learners_reporting_school_violence", label: "Learners Reporting School Violence", metricLabel: "Learners Reporting School Violence" },
-  { key: "learner_satisfaction", label: "Learner Satisfaction", metricLabel: "Learner Satisfaction" },
-  { key: "learners_aware_of_education_rights", label: "Learners Aware of Education Rights", metricLabel: "Learners Aware of Education Rights" },
-  { key: "schools_manifesting_rbe_indicators", label: "Schools/LCs Manifesting RBE Indicators", metricLabel: "Schools/LCs Manifesting RBE Indicators" },
+  { key: "net_enrollment_rate", label: "Net Enrollment Rate (NER)" },
+  { key: "retention_rate", label: "Retention Rate (RR)" },
+  { key: "dropout_rate", label: "Drop-out Rate (DR)" },
+  { key: "transition_rate", label: "Transition Rate (TR)" },
+  { key: "net_intake_rate", label: "Net Intake Rate (NIR)" },
+  { key: "participation_rate", label: "Participation Rate (PR)" },
+  { key: "als_completion_rate", label: "ALS Completion Rate" },
+  { key: "gender_parity_index", label: "Gender Parity Index (GPI)" },
+  { key: "interquartile_ratio", label: "Interquartile Ratio (IQR)" },
+  { key: "completion_rate", label: "Completion Rate (CR)" },
+  { key: "cohort_survival_rate", label: "Cohort Survival Rate (CSR)" },
+  { key: "learning_mastery_nearly_proficient", label: "Learning Mastery: Nearly Proficient" },
+  { key: "learning_mastery_proficient", label: "Learning Mastery: Proficient" },
+  { key: "learning_mastery_highly_proficient", label: "Learning Mastery: Highly Proficient" },
+  { key: "ae_test_pass_rate", label: "A&E Test Pass Rate" },
+  { key: "learners_reporting_school_violence", label: "Learners Reporting School Violence" },
+  { key: "learner_satisfaction", label: "Learner Satisfaction" },
+  { key: "learners_aware_of_education_rights", label: "Learners Aware of Education Rights" },
+  { key: "schools_manifesting_rbe_indicators", label: "Schools/LCs Manifesting RBE Indicators" },
 ] as const;
 
 const GROUP_A_METRIC_KEYS = {
-  schoolAchievement: Object.fromEntries(
-    SCHOOL_ACHIEVEMENT_ROWS.map((row) => [row.key, row.metricLabel]),
-  ) as Record<(typeof SCHOOL_ACHIEVEMENT_ROWS)[number]["key"], string>,
-  kpi: Object.fromEntries(
-    KPI_ROWS.map((row) => [row.key, row.metricLabel]),
-  ) as Record<(typeof KPI_ROWS)[number]["key"], string>,
-};
+  schoolAchievement: {
+    school_head_name: ["name of school head"],
+    total_enrolment: ["total number of enrolment", "total number of enrollment"],
+    sbm_level_of_practice: ["sbm level of practice", "sbm level"],
+    classroom_ratio_kindergarten: ["pupil student classroom ratio kindergarten"],
+    classroom_ratio_grades_1_3: ["pupil student classroom ratio grades 1 to 3"],
+    classroom_ratio_grades_4_6: ["pupil student classroom ratio grades 4 to 6"],
+    classroom_ratio_grades_7_10: ["pupil student classroom ratio grades 7 to 10"],
+    classroom_ratio_grades_11_12: ["pupil student classroom ratio grades 11 to 12"],
+    water_sanitation_ratio: ["water and sanitation facility to pupil ratio"],
+    comfort_rooms: ["number of comfort rooms"],
+    comfort_rooms_toilet_bowl: ["a toilet bowl", "toilet bowl"],
+    comfort_rooms_urinal: ["b urinal", "urinal"],
+    handwashing_facilities: ["handwashing facilities"],
+    learning_material_ratio: ["ideal learning materials to learner ratio"],
+    seat_ratio_overall: ["pupil student seat ratio overall"],
+    seat_ratio_kindergarten: ["a kindergarten", "kindergarten"],
+    seat_ratio_grades_1_6: ["b grades 1 6", "grades 1 6"],
+    seat_ratio_grades_7_10: ["c grades 7 10", "grades 7 10"],
+    seat_ratio_grades_11_12: ["d grades 11 12", "grades 11 12"],
+    ict_package_ratio: ["ict package e classroom package to sections ratio", "ict package classroom package to sections ratio"],
+    ict_laboratory: ["a ict laboratory", "ict laboratory"],
+    science_laboratory: ["science laboratory"],
+    internet_access: ["do you have internet access y n", "do you have internet access"],
+    electricity_access: ["do you have electricity y n", "do you have electricity"],
+    complete_fence_gate: ["do you have a complete fence gate evident partially not evident", "complete fence gate"],
+    teachers_total: ["no of teachers", "number of teachers"],
+    teachers_male: ["a male", "male"],
+    teachers_female: ["b female", "female"],
+    teachers_with_disability: ["teachers with physical disability"],
+    teachers_with_disability_male: ["a male", "male"],
+    teachers_with_disability_female: ["b female", "female"],
+    functional_sgc: ["functional sgc"],
+    feeding_program_beneficiaries: ["school based feeding program beneficiaries"],
+    canteen_income: ["school managed canteen annual income", "school managed canteen"],
+    teachers_coop_canteen_income: ["teachers cooperative managed canteen if there is annual income", "teachers cooperative managed canteen annual income"],
+    security_safety_plan: ["security and safety contingency plan"],
+    security_safety_earthquake: ["a earthquake", "earthquake"],
+    security_safety_typhoon: ["b typhoon", "typhoon"],
+    security_safety_covid: ["c covid 19", "covid 19"],
+    security_safety_power_interruption: ["d power interruption", "power interruption"],
+    security_safety_in_person: ["e in person classes", "in person classes"],
+    teachers_trained_pfa: ["no of teachers trained on psychological first aid pfa", "teachers trained on psychological first aid pfa"],
+    teachers_trained_occ_first_aid: ["no of teachers trained on occupational first aid", "teachers trained on occupational first aid"],
+  },
+  kpi: {
+    net_enrollment_rate: ["net enrollment rate ner", "net enrollment rate"],
+    retention_rate: ["retention rate rr", "retention rate"],
+    dropout_rate: ["drop out rate dr", "dropout rate dr", "drop out rate", "dropout rate"],
+    transition_rate: ["transition rate tr", "transition rate"],
+    net_intake_rate: ["net intake rate nir", "net intake rate"],
+    participation_rate: ["participation rate pr", "participation rate"],
+    als_completion_rate: ["als completion rate"],
+    gender_parity_index: ["gender parity index gpi", "gender parity index"],
+    interquartile_ratio: ["interquartile ratio iqr", "interquartile ratio"],
+    completion_rate: ["completion rate cr", "completion rate"],
+    cohort_survival_rate: ["cohort survival rate csr", "cohort survival rate"],
+    learning_mastery_nearly_proficient: ["learning mastery nearly proficient"],
+    learning_mastery_proficient: ["learning mastery proficient"],
+    learning_mastery_highly_proficient: ["learning mastery highly proficient"],
+    ae_test_pass_rate: ["a e test pass rate", "ae test pass rate"],
+    learners_reporting_school_violence: ["learners reporting school violence"],
+    learner_satisfaction: ["learner satisfaction"],
+    learners_aware_of_education_rights: ["learners aware of education rights"],
+    schools_manifesting_rbe_indicators: ["schools lcs manifesting rbe indicators", "schools manifesting rbe indicators"],
+  },
+} as const;
 
 function isSubItemMetric(label: string): boolean {
   return /^[a-e]\.\s/i.test(label);
@@ -233,16 +297,32 @@ export function SchoolAdminDashboard() {
   const groupAReportView = useMemo(() => {
     const submission = yearScopedSubmission;
     const indicators = submission?.indicators ?? [];
-    const indicatorByKey = new Map(
+    const indicatorByNormalizedName = new Map(
       indicators.map((item) => [normalizeMetricLookupKey(item.metric?.name), item] as const),
     );
     const getIndicatorByGroupAKey = (
       group: keyof typeof GROUP_A_METRIC_KEYS,
       key: string,
     ): IndicatorSubmissionItem | null => {
-      const metricLabel = GROUP_A_METRIC_KEYS[group][key as keyof (typeof GROUP_A_METRIC_KEYS)[typeof group]];
-      if (!metricLabel) return null;
-      return indicatorByKey.get(normalizeMetricLookupKey(metricLabel)) ?? null;
+      const groupMappings: Record<string, readonly string[]> =
+        group === "schoolAchievement"
+          ? GROUP_A_METRIC_KEYS.schoolAchievement
+          : GROUP_A_METRIC_KEYS.kpi;
+      const aliases = groupMappings[key];
+      if (!aliases) {
+        console.warn("Missing Group A mapping:", group, key);
+        return null;
+      }
+
+      for (const alias of aliases) {
+        const match = indicatorByNormalizedName.get(normalizeMetricLookupKey(alias));
+        if (match) {
+          return match;
+        }
+      }
+
+      console.warn("Missing Group A mapping:", group, key);
+      return null;
     };
     const schoolAchievementRows = SCHOOL_ACHIEVEMENT_ROWS.map((row) => {
       const indicator = getIndicatorByGroupAKey("schoolAchievement", row.key);
