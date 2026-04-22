@@ -247,6 +247,90 @@ const GROUP_A_METRIC_KEYS = {
   },
 } as const;
 
+const GROUP_A_METRIC_CODES = {
+  schoolAchievement: {
+    school_head_name: "IMETA_HEAD_NAME",
+    total_enrolment: "IMETA_ENROLL_TOTAL",
+    sbm_level_of_practice: "IMETA_SBM_LEVEL",
+    classroom_ratio_kindergarten: "PCR_K",
+    classroom_ratio_grades_1_3: "PCR_G1_3",
+    classroom_ratio_grades_4_6: "PCR_G4_6",
+    classroom_ratio_grades_7_10: "PCR_G7_10",
+    classroom_ratio_grades_11_12: "PCR_G11_12",
+    water_sanitation_ratio: "WASH_RATIO",
+    comfort_rooms: "COMFORT_ROOMS",
+    comfort_rooms_toilet_bowl: "TOILET_BOWLS",
+    comfort_rooms_urinal: "URINALS",
+    handwashing_facilities: "HANDWASH_FAC",
+    learning_material_ratio: "LEARNING_MAT_RATIO",
+    seat_ratio_overall: "PSR_OVERALL",
+    seat_ratio_kindergarten: "PSR_K",
+    seat_ratio_grades_1_6: "PSR_G1_6",
+    seat_ratio_grades_7_10: "PSR_G7_10",
+    seat_ratio_grades_11_12: "PSR_G11_12",
+    ict_package_ratio: "ICT_RATIO",
+    ict_laboratory: "ICT_LAB",
+    science_laboratory: "SCIENCE_LAB",
+    internet_access: "INTERNET_ACCESS",
+    electricity_access: "ELECTRICITY",
+    complete_fence_gate: "FENCE_STATUS",
+    teachers_total: "TEACHERS_TOTAL",
+    teachers_male: "TEACHERS_MALE",
+    teachers_female: "TEACHERS_FEMALE",
+    teachers_with_disability: "TEACHERS_PWD_TOTAL",
+    teachers_with_disability_male: "TEACHERS_PWD_MALE",
+    teachers_with_disability_female: "TEACHERS_PWD_FEMALE",
+    functional_sgc: "FUNCTIONAL_SGC",
+    feeding_program_beneficiaries: "FEEDING_BENEFICIARIES",
+    canteen_income: "CANTEEN_INCOME",
+    teachers_coop_canteen_income: "TEACHER_COOP_INCOME",
+    security_safety_plan: "SAFETY_PLAN",
+    security_safety_earthquake: "SAFETY_EARTHQUAKE",
+    security_safety_typhoon: "SAFETY_TYPHOON",
+    security_safety_covid: "SAFETY_COVID",
+    security_safety_power_interruption: "SAFETY_POWER",
+    security_safety_in_person: "SAFETY_IN_PERSON",
+    teachers_trained_pfa: "TEACHERS_PFA",
+    teachers_trained_occ_first_aid: "TEACHERS_OCC_FIRST_AID",
+  },
+  kpi: {
+    net_enrollment_rate: "NER",
+    retention_rate: "RR",
+    dropout_rate: "DR",
+    transition_rate: "TR",
+    net_intake_rate: "NIR",
+    participation_rate: "PR",
+    als_completion_rate: "ALS_COMPLETER_PCT",
+    gender_parity_index: "GPI",
+    interquartile_ratio: "IQR",
+    completion_rate: "CR",
+    cohort_survival_rate: "CSR",
+    learning_mastery_nearly_proficient: "PLM_NEARLY_PROF",
+    learning_mastery_proficient: "PLM_PROF",
+    learning_mastery_highly_proficient: "PLM_HIGH_PROF",
+    ae_test_pass_rate: "AE_PASS_RATE",
+    learners_reporting_school_violence: "VIOLENCE_REPORT_RATE",
+    learner_satisfaction: "LEARNER_SATISFACTION",
+    learners_aware_of_education_rights: "RIGHTS_AWARENESS",
+    schools_manifesting_rbe_indicators: "RBE_MANIFEST",
+  },
+} as const;
+
+const GROUP_A_NORMALIZED_METRIC_CODES = {
+  schoolAchievement: Object.fromEntries(
+    Object.entries(GROUP_A_METRIC_CODES.schoolAchievement).map(([key, code]) => [
+      key,
+      normalizeMetricLookupKey(code),
+    ]),
+  ) as Record<keyof typeof GROUP_A_METRIC_CODES.schoolAchievement, string>,
+  kpi: Object.fromEntries(
+    Object.entries(GROUP_A_METRIC_CODES.kpi).map(([key, code]) => [
+      key,
+      normalizeMetricLookupKey(code),
+    ]),
+  ) as Record<keyof typeof GROUP_A_METRIC_CODES.kpi, string>,
+};
+
 const GROUP_A_NORMALIZED_METRIC_ALIASES = {
   schoolAchievement: Object.fromEntries(
     Object.entries(GROUP_A_METRIC_KEYS.schoolAchievement).map(([key, aliases]) => [
@@ -312,24 +396,44 @@ export function SchoolAdminDashboard() {
   const groupAReportView = useMemo(() => {
     const submission = yearScopedSubmission;
     const indicators = submission?.indicators ?? [];
+    const indicatorByMetricCode = new Map(
+      indicators
+        .filter((item) => item.metric?.code)
+        .map((item) => [normalizeMetricLookupKey(item.metric?.code), item] as const),
+    );
     const indicatorByNormalizedName = new Map(
       indicators.map((item) => [normalizeMetricLookupKey(item.metric?.name), item] as const),
     );
+    const availableMetricCodes = Array.from(indicatorByMetricCode.keys()).sort();
     const availableMetricNames = Array.from(indicatorByNormalizedName.keys()).sort();
     const getIndicatorByGroupAKey = (
       group: keyof typeof GROUP_A_METRIC_KEYS,
       key: string,
     ): IndicatorSubmissionItem | null => {
-      const groupMappings: Record<string, readonly string[]> =
+      const groupCodeMappings: Record<string, string> =
+        group === "schoolAchievement"
+          ? GROUP_A_NORMALIZED_METRIC_CODES.schoolAchievement
+          : GROUP_A_NORMALIZED_METRIC_CODES.kpi;
+      const groupAliasMappings: Record<string, readonly string[]> =
         group === "schoolAchievement"
           ? GROUP_A_NORMALIZED_METRIC_ALIASES.schoolAchievement
           : GROUP_A_NORMALIZED_METRIC_ALIASES.kpi;
-      const aliases = groupMappings[key];
+      const metricCode = groupCodeMappings[key];
+      const aliases = groupAliasMappings[key];
+      if (metricCode) {
+        const codeMatch = indicatorByMetricCode.get(metricCode);
+        if (codeMatch) {
+          return codeMatch;
+        }
+      }
+
       if (!aliases) {
         console.warn("Missing Group A mapping", {
           group,
           key,
+          metricCode: metricCode ?? null,
           aliases: [],
+          availableMetricCodes,
           availableMetricNames,
         });
         return null;
@@ -345,7 +449,9 @@ export function SchoolAdminDashboard() {
       console.warn("Missing Group A mapping", {
         group,
         key,
+        metricCode: metricCode ?? null,
         aliases,
+        availableMetricCodes,
         availableMetricNames,
       });
       return null;
