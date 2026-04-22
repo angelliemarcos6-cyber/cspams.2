@@ -402,14 +402,39 @@ export function SchoolAdminDashboard() {
       metricCode: string | null;
       aliases: readonly string[];
     }> = [];
-    const indicatorByMetricCode = new Map(
-      indicators
-        .filter((item) => item.metric?.code)
-        .map((item) => [normalizeMetricLookupKey(item.metric?.code), item] as const),
-    );
-    const indicatorByNormalizedName = new Map(
-      indicators.map((item) => [normalizeMetricLookupKey(item.metric?.name), item] as const),
-    );
+    const aliasFallbackMatches: Array<{
+      group: keyof typeof GROUP_A_METRIC_KEYS;
+      key: string;
+      metricCode: string | null;
+      matchedAlias: string;
+      matchedMetricName: string | null;
+      matchedMetricCode: string | null;
+    }> = [];
+    const duplicateMetricCodes = new Set<string>();
+    const duplicateMetricNames = new Set<string>();
+    const indicatorByMetricCode = new Map<string, IndicatorSubmissionItem>();
+    const indicatorByNormalizedName = new Map<string, IndicatorSubmissionItem>();
+
+    for (const item of indicators) {
+      const normalizedMetricCode = normalizeMetricLookupKey(item.metric?.code);
+      if (normalizedMetricCode) {
+        if (indicatorByMetricCode.has(normalizedMetricCode)) {
+          duplicateMetricCodes.add(normalizedMetricCode);
+        } else {
+          indicatorByMetricCode.set(normalizedMetricCode, item);
+        }
+      }
+
+      const normalizedMetricName = normalizeMetricLookupKey(item.metric?.name);
+      if (normalizedMetricName) {
+        if (indicatorByNormalizedName.has(normalizedMetricName)) {
+          duplicateMetricNames.add(normalizedMetricName);
+        } else {
+          indicatorByNormalizedName.set(normalizedMetricName, item);
+        }
+      }
+    }
+
     const availableMetricCodes = Array.from(indicatorByMetricCode.keys()).sort();
     const availableMetricNames = Array.from(indicatorByNormalizedName.keys()).sort();
     const getIndicatorByGroupAKey = (
@@ -446,6 +471,14 @@ export function SchoolAdminDashboard() {
       for (const alias of aliases) {
         const match = indicatorByNormalizedName.get(alias);
         if (match) {
+          aliasFallbackMatches.push({
+            group,
+            key,
+            metricCode: metricCode ?? null,
+            matchedAlias: alias,
+            matchedMetricName: match.metric?.name ?? null,
+            matchedMetricCode: match.metric?.code ?? null,
+          });
           return match;
         }
       }
@@ -479,11 +512,17 @@ export function SchoolAdminDashboard() {
       };
     });
 
-    if (import.meta.env.DEV && missingMappings.length > 0) {
-      console.warn("Missing Group A mappings", {
+    if (
+      import.meta.env.DEV &&
+      (missingMappings.length > 0 || aliasFallbackMatches.length > 0 || duplicateMetricCodes.size > 0 || duplicateMetricNames.size > 0)
+    ) {
+      console.warn("Group A mapping diagnostics", {
         submissionId: submission?.id ?? null,
         academicYearId: submission?.academicYear?.id ?? null,
         missingMappings,
+        aliasFallbackMatches,
+        duplicateMetricCodes: Array.from(duplicateMetricCodes).sort(),
+        duplicateMetricNames: Array.from(duplicateMetricNames).sort(),
         availableMetricCodes,
         availableMetricNames,
       });
