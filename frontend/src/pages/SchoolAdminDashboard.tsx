@@ -247,6 +247,21 @@ const GROUP_A_METRIC_KEYS = {
   },
 } as const;
 
+const GROUP_A_NORMALIZED_METRIC_ALIASES = {
+  schoolAchievement: Object.fromEntries(
+    Object.entries(GROUP_A_METRIC_KEYS.schoolAchievement).map(([key, aliases]) => [
+      key,
+      aliases.map((alias) => normalizeMetricLookupKey(alias)),
+    ]),
+  ) as Record<keyof typeof GROUP_A_METRIC_KEYS.schoolAchievement, string[]>,
+  kpi: Object.fromEntries(
+    Object.entries(GROUP_A_METRIC_KEYS.kpi).map(([key, aliases]) => [
+      key,
+      aliases.map((alias) => normalizeMetricLookupKey(alias)),
+    ]),
+  ) as Record<keyof typeof GROUP_A_METRIC_KEYS.kpi, string[]>,
+};
+
 function isSubItemMetric(label: string): boolean {
   return /^[a-e]\.\s/i.test(label);
 }
@@ -300,28 +315,39 @@ export function SchoolAdminDashboard() {
     const indicatorByNormalizedName = new Map(
       indicators.map((item) => [normalizeMetricLookupKey(item.metric?.name), item] as const),
     );
+    const availableMetricNames = Array.from(indicatorByNormalizedName.keys()).sort();
     const getIndicatorByGroupAKey = (
       group: keyof typeof GROUP_A_METRIC_KEYS,
       key: string,
     ): IndicatorSubmissionItem | null => {
       const groupMappings: Record<string, readonly string[]> =
         group === "schoolAchievement"
-          ? GROUP_A_METRIC_KEYS.schoolAchievement
-          : GROUP_A_METRIC_KEYS.kpi;
+          ? GROUP_A_NORMALIZED_METRIC_ALIASES.schoolAchievement
+          : GROUP_A_NORMALIZED_METRIC_ALIASES.kpi;
       const aliases = groupMappings[key];
       if (!aliases) {
-        console.warn("Missing Group A mapping:", group, key);
+        console.warn("Missing Group A mapping", {
+          group,
+          key,
+          aliases: [],
+          availableMetricNames,
+        });
         return null;
       }
 
       for (const alias of aliases) {
-        const match = indicatorByNormalizedName.get(normalizeMetricLookupKey(alias));
+        const match = indicatorByNormalizedName.get(alias);
         if (match) {
           return match;
         }
       }
 
-      console.warn("Missing Group A mapping:", group, key);
+      console.warn("Missing Group A mapping", {
+        group,
+        key,
+        aliases,
+        availableMetricNames,
+      });
       return null;
     };
     const schoolAchievementRows = SCHOOL_ACHIEVEMENT_ROWS.map((row) => {
