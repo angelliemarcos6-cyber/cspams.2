@@ -396,6 +396,12 @@ export function SchoolAdminDashboard() {
   const groupAReportView = useMemo(() => {
     const submission = yearScopedSubmission;
     const indicators = submission?.indicators ?? [];
+    const missingMappings: Array<{
+      group: keyof typeof GROUP_A_METRIC_KEYS;
+      key: string;
+      metricCode: string | null;
+      aliases: readonly string[];
+    }> = [];
     const indicatorByMetricCode = new Map(
       indicators
         .filter((item) => item.metric?.code)
@@ -428,13 +434,11 @@ export function SchoolAdminDashboard() {
       }
 
       if (!aliases) {
-        console.warn("Missing Group A mapping", {
+        missingMappings.push({
           group,
           key,
           metricCode: metricCode ?? null,
           aliases: [],
-          availableMetricCodes,
-          availableMetricNames,
         });
         return null;
       }
@@ -446,13 +450,11 @@ export function SchoolAdminDashboard() {
         }
       }
 
-      console.warn("Missing Group A mapping", {
+      missingMappings.push({
         group,
         key,
         metricCode: metricCode ?? null,
         aliases,
-        availableMetricCodes,
-        availableMetricNames,
       });
       return null;
     };
@@ -476,6 +478,16 @@ export function SchoolAdminDashboard() {
         status: String(indicator?.complianceStatus ?? "-"),
       };
     });
+
+    if (import.meta.env.DEV && missingMappings.length > 0) {
+      console.warn("Missing Group A mappings", {
+        submissionId: submission?.id ?? null,
+        academicYearId: submission?.academicYear?.id ?? null,
+        missingMappings,
+        availableMetricCodes,
+        availableMetricNames,
+      });
+    }
 
     return {
       submission,
