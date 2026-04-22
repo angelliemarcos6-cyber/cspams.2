@@ -1571,6 +1571,7 @@ export function SchoolIndicatorPanel({
   );
   const clearTransientWorkspaceUiState = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
     localAutosaveEpochRef.current += 1;
+    autosaveInFlightRef.current = false;
     setExpandedSubmissionId(null);
     setAutosaveAt(null);
     setPendingLocalDraft(null);
@@ -1590,6 +1591,14 @@ export function SchoolIndicatorPanel({
     postRefreshMessageRef.current = null;
     workspaceFingerprintRef.current = "";
   }, []);
+  const invalidateAutosaveContext = useCallback((options: { resetFingerprint?: boolean } = {}) => {
+    localAutosaveEpochRef.current += 1;
+    autosaveInFlightRef.current = false;
+    setIsAutosavingDraft(false);
+    if (options.resetFingerprint ?? true) {
+      lastAutosaveFingerprintRef.current = "";
+    }
+  }, []);
   const startControlledWorkspaceTransition = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
     setIsWorkspaceTransitioning(true);
     clearTransientWorkspaceUiState(options);
@@ -1597,6 +1606,11 @@ export function SchoolIndicatorPanel({
     setIsSubmittedEditMode(false);
     setOptimisticSubmittedByType({ bmef: false, smea: false });
   }, [clearTransientWorkspaceUiState, clearWorkspaceTransitionIntents]);
+  const beginCriticalMutationTransition = useCallback(() => {
+    invalidateAutosaveContext();
+    clearWorkspaceTransitionIntents();
+    setIsWorkspaceTransitioning(true);
+  }, [clearWorkspaceTransitionIntents, invalidateAutosaveContext]);
   const getManualActionBlockReason = useCallback((): string | null => {
     if (isWorkspaceTransitioning || isSaving || uploadingFileType !== null) {
       return "Please wait for the current action to finish.";
@@ -1614,6 +1628,40 @@ export function SchoolIndicatorPanel({
     setSubmitError(reason);
     return true;
   }, [getManualActionBlockReason]);
+  const runCriticalWorkspaceMutation = useCallback(
+    async <T,>(
+      options: {
+        mutation: () => Promise<T>;
+        onSuccess?: (result: T) => Promise<void> | void;
+        getSuccessMessage?: (result: T) => string | null;
+        onError?: (err: unknown) => void;
+      },
+    ): Promise<T | null> => {
+      if (blockIfManualActionBusy()) {
+        return null;
+      }
+
+      beginCriticalMutationTransition();
+      try {
+        const result = await options.mutation();
+        await options.onSuccess?.(result);
+        postRefreshMessageRef.current = options.getSuccessMessage?.(result) ?? null;
+        await refreshSubmissions();
+        workspaceFingerprintRef.current = "";
+        return result;
+      } catch (err) {
+        clearWorkspaceTransitionIntents();
+        setIsWorkspaceTransitioning(false);
+        if (options.onError) {
+          options.onError(err);
+        } else {
+          setSubmitError(err instanceof Error ? err.message : "Unable to complete the requested action.");
+        }
+        return null;
+      }
+    },
+    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, refreshSubmissions],
+  );
   const loadWorkspaceForAcademicYear = useCallback((submission: IndicatorSubmission | null) => {
     localAutosaveEpochRef.current += 1;
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
@@ -2777,9 +2825,6 @@ export function SchoolIndicatorPanel({
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2808,35 +2853,34 @@ export function SchoolIndicatorPanel({
       setSubmitError(prepared.reason);
       return;
     }
+    const payload = prepared.payload;
 
     const saveModeAtActionStart = workspaceMode;
     const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
-    try {
-      const saved = await persistDraftPayload(prepared.payload, "manual");
-      if (saveModeAtActionStart === "submitted_editing") {
-        submittedEditPreserveContextRef.current = {
-          academicYearId: saveAcademicYearAtActionStart,
-          submissionId: saved.id,
-        };
-      }
-      postRefreshMessageRef.current = saveModeAtActionStart === "blank"
-        ? `Draft package #${saved.id} saved.`
-        : saveModeAtActionStart === "submitted_editing"
-          ? `Changes saved for package #${saved.id}.`
-          : `Draft package #${saved.id} updated.`;
-      await refreshSubmissions();
-      workspaceFingerprintRef.current = "";
-    } catch (err) {
-      submittedEditPreserveContextRef.current = null;
-      postRefreshMessageRef.current = null;
-      setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
-    }
+    await runCriticalWorkspaceMutation({
+      mutation: () => persistDraftPayload(payload, "manual"),
+      onSuccess: (saved) => {
+        if (saveModeAtActionStart === "submitted_editing") {
+          submittedEditPreserveContextRef.current = {
+            academicYearId: saveAcademicYearAtActionStart,
+            submissionId: saved.id,
+          };
+        }
+      },
+      getSuccessMessage: (saved) => (
+        saveModeAtActionStart === "blank"
+          ? `Draft package #${saved.id} saved.`
+          : saveModeAtActionStart === "submitted_editing"
+            ? `Changes saved for package #${saved.id}.`
+            : `Draft package #${saved.id} updated.`
+      ),
+      onError: (err) => {
+        setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
+      },
+    });
   };
 
   const handleCreateAndSubmit = async () => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2866,28 +2910,30 @@ export function SchoolIndicatorPanel({
       setSubmitError(prepared.reason);
       return;
     }
+    const payload = prepared.payload;
 
-    try {
-      const result = await persistDraftPayload(prepared.payload, "manual");
-      await submitSubmission(result.id);
-      setOptimisticSubmittedByType({
-        bmef: hasUploadedReportFile(bmefFileEntry),
-        smea: hasUploadedReportFile(smeaFileEntry),
-      });
-      postRefreshMessageRef.current = `Package #${result.id} submitted to monitor.`;
-      await refreshSubmissions();
-      setIsSubmittedEditMode(false);
-      submittedEditPreserveContextRef.current = null;
-    } catch (err) {
-      postRefreshMessageRef.current = null;
-      setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
-    }
+    await runCriticalWorkspaceMutation({
+      mutation: async () => {
+        const result = await persistDraftPayload(payload, "manual");
+        await submitSubmission(result.id);
+        return result;
+      },
+      onSuccess: (result) => {
+        setOptimisticSubmittedByType({
+          bmef: hasUploadedReportFile(bmefFileEntry),
+          smea: hasUploadedReportFile(smeaFileEntry),
+        });
+        setIsSubmittedEditMode(false);
+        submittedEditPreserveContextRef.current = null;
+      },
+      getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
+      onError: (err) => {
+        setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
+      },
+    });
   };
 
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2902,20 +2948,24 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    try {
-      await submitSubmission(submission.id);
-      setOptimisticSubmittedByType({
-        bmef: hasUploadedReportFile(bmefFileEntry),
-        smea: hasUploadedReportFile(smeaFileEntry),
-      });
-      postRefreshMessageRef.current = `Package #${submission.id} submitted to monitor.`;
-      await refreshSubmissions();
-      setIsSubmittedEditMode(false);
-      submittedEditPreserveContextRef.current = null;
-    } catch (err) {
-      postRefreshMessageRef.current = null;
-      setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
-    }
+    await runCriticalWorkspaceMutation({
+      mutation: async () => {
+        await submitSubmission(submission.id);
+        return submission;
+      },
+      onSuccess: () => {
+        setOptimisticSubmittedByType({
+          bmef: hasUploadedReportFile(bmefFileEntry),
+          smea: hasUploadedReportFile(smeaFileEntry),
+        });
+        setIsSubmittedEditMode(false);
+        submittedEditPreserveContextRef.current = null;
+      },
+      getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
+      onError: (err) => {
+        setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
+      },
+    });
   };
 
   const handleConfirmEditSubmittedReport = () => {
@@ -2961,7 +3011,7 @@ export function SchoolIndicatorPanel({
     }
   };
 
-  const ensureUploadSubmission = useCallback(async (): Promise<IndicatorSubmission | null> => {
+  const ensureUploadSubmission = useCallback(async (options: { skipRefreshAfterCreate?: boolean } = {}): Promise<IndicatorSubmission | null> => {
     const guardAcademicYearId = activeAcademicYearIdRef.current;
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
@@ -2987,10 +3037,16 @@ export function SchoolIndicatorPanel({
         setSubmitError("The selected academic year changed before upload. No stale changes were applied. Review the workspace and try again.");
         return null;
       }
-      await refreshSubmissions();
+      if (!(options.skipRefreshAfterCreate ?? false)) {
+        await refreshSubmissions();
+      }
       if (
         activeAcademicYearIdRef.current !== guardAcademicYearId
-        || activeWorkspaceSubmissionIdRef.current !== created.id
+        || (
+          !(options.skipRefreshAfterCreate ?? false)
+            ? activeWorkspaceSubmissionIdRef.current !== created.id
+            : activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== created.id
+        )
       ) {
         setSubmitError("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
         return null;
@@ -3003,9 +3059,6 @@ export function SchoolIndicatorPanel({
   }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
@@ -3029,56 +3082,56 @@ export function SchoolIndicatorPanel({
     }
 
     const uploadGuardAcademicYearId = activeAcademicYearIdRef.current;
-    const submissionForUpload = await ensureUploadSubmission();
-    if (!submissionForUpload) {
-      return;
-    }
-    if (
-      activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-      || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
-      || (
-        activeWorkspaceSubmissionIdRef.current !== null
-        && activeWorkspaceSubmissionIdRef.current !== submissionForUpload.id
-      )
-    ) {
-      setSubmitError("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
-      return;
-    }
+    const uploaded = await runCriticalWorkspaceMutation({
+      mutation: async () => {
+        setUploadingFileType(type);
+        const submissionForUpload = await ensureUploadSubmission({ skipRefreshAfterCreate: true });
+        if (!submissionForUpload) {
+          throw new Error(`Unable to prepare package for ${type.toUpperCase()} upload.`);
+        }
+        if (
+          activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
+          || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
+          || (
+            activeWorkspaceSubmissionIdRef.current !== null
+            && activeWorkspaceSubmissionIdRef.current !== submissionForUpload.id
+          )
+        ) {
+          throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
+        }
 
-    setUploadingFileType(type);
-    try {
-      const updated = await uploadSubmissionFile(submissionForUpload.id, type, file);
-      if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
+        const updated = await uploadSubmissionFile(submissionForUpload.id, type, file);
+        if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
+          throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
+        }
+        if (
+          activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
+          || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
+        ) {
+          throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
+        }
+        return updated;
+      },
+      onSuccess: (updated) => {
+        if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== updated.id) {
+          throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
+        }
+        setUploadingFileType(null);
+        setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+      },
+      getSuccessMessage: (updated) => `${type.toUpperCase()} file uploaded for package #${updated.id}.`,
+      onError: (err) => {
+        setUploadingFileType(null);
         setUploadErrorByType((current) => ({
           ...current,
-          [type]: "The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.",
+          [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
         }));
-        return;
-      }
-      await refreshSubmissions();
-      if (
-        activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-        || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
-        || activeWorkspaceSubmissionIdRef.current !== updated.id
-      ) {
-        setUploadErrorByType((current) => ({
-          ...current,
-          [type]: "The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.",
-        }));
-        return;
-      }
-      postRefreshMessageRef.current = `${type.toUpperCase()} file uploaded for package #${updated.id}.`;
-      setUploadErrorByType((current) => ({ ...current, [type]: "" }));
-    } catch (err) {
+      },
+    });
+    if (!uploaded) {
       postRefreshMessageRef.current = null;
-      setUploadErrorByType((current) => ({
-        ...current,
-        [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
-      }));
-    } finally {
-      setUploadingFileType(null);
     }
-  }, [blockIfManualActionBusy, ensureUploadSubmission, isSubmissionInAcademicYear, refreshSubmissions, uploadSubmissionFile]);
+  }, [ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
