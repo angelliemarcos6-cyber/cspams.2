@@ -401,6 +401,7 @@ export function SchoolAdminDashboard() {
       key: string;
       metricCode: string | null;
       aliases: readonly string[];
+      fallbackAttempted: boolean;
     }> = [];
     const aliasFallbackMatches: Array<{
       group: keyof typeof GROUP_A_METRIC_KEYS;
@@ -409,7 +410,9 @@ export function SchoolAdminDashboard() {
       matchedAlias: string;
       matchedMetricName: string | null;
       matchedMetricCode: string | null;
+      usedFallback: true;
     }> = [];
+    let resolvedByMetricCodeCount = 0;
     const duplicateMetricCodes = new Set<string>();
     const duplicateMetricNames = new Set<string>();
     const indicatorByMetricCode = new Map<string, IndicatorSubmissionItem>();
@@ -454,6 +457,7 @@ export function SchoolAdminDashboard() {
       if (metricCode) {
         const codeMatch = indicatorByMetricCode.get(metricCode);
         if (codeMatch) {
+          resolvedByMetricCodeCount += 1;
           return codeMatch;
         }
       }
@@ -464,6 +468,7 @@ export function SchoolAdminDashboard() {
           key,
           metricCode: metricCode ?? null,
           aliases: [],
+          fallbackAttempted: false,
         });
         return null;
       }
@@ -478,6 +483,7 @@ export function SchoolAdminDashboard() {
             matchedAlias: alias,
             matchedMetricName: match.metric?.name ?? null,
             matchedMetricCode: match.metric?.code ?? null,
+            usedFallback: true,
           });
           return match;
         }
@@ -488,6 +494,7 @@ export function SchoolAdminDashboard() {
         key,
         metricCode: metricCode ?? null,
         aliases,
+        fallbackAttempted: true,
       });
       return null;
     };
@@ -519,6 +526,12 @@ export function SchoolAdminDashboard() {
       console.warn("Group A mapping diagnostics", {
         submissionId: submission?.id ?? null,
         academicYearId: submission?.academicYear?.id ?? null,
+        resolutionSummary: {
+          totalIndicators: indicators.length,
+          resolvedByMetricCodeCount,
+          resolvedByAliasFallbackCount: aliasFallbackMatches.length,
+          missingMappingCount: missingMappings.length,
+        },
         missingMappings,
         aliasFallbackMatches,
         duplicateMetricCodes: Array.from(duplicateMetricCodes).sort(),
