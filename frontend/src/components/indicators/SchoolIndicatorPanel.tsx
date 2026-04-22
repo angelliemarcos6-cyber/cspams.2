@@ -2738,6 +2738,37 @@ export function SchoolIndicatorPanel({
 
     handleEditDraft(restorableServerSubmissionInScope);
   }, [activeAcademicYearId, blockIfManualActionBusy, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
+  const runResetWorkspaceAction = useCallback(async (message: string, onSuccess?: () => void) => {
+    if (blockIfManualActionBusy()) {
+      return;
+    }
+    postRefreshMessageRef.current = message;
+    const didReset = await resetForm();
+    if (didReset) {
+      onSuccess?.();
+      return;
+    }
+    postRefreshMessageRef.current = null;
+  }, [blockIfManualActionBusy, resetForm]);
+  const handleResetDraft = useCallback(async () => {
+    await runResetWorkspaceAction("Draft changes were reset to the last saved values.");
+  }, [runResetWorkspaceAction]);
+  const handleCancelSubmittedEdit = useCallback(async () => {
+    await runResetWorkspaceAction(
+      "Submitted report editing canceled. Locked view restored.",
+      () => setIsSubmittedEditMode(false),
+    );
+  }, [runResetWorkspaceAction]);
+  const handleOpenEditSubmittedReport = useCallback(() => {
+    if (blockIfManualActionBusy()) {
+      return;
+    }
+    if (workspaceMode === "read_only_year") {
+      setSubmitError("This academic year is not yet open for encoding.");
+      return;
+    }
+    setShowEditConfirmModal(true);
+  }, [blockIfManualActionBusy, workspaceMode]);
 
   const showRestoreBanner = !restoreBannerDismissed && (
     Boolean(pendingLocalDraft)
@@ -4077,13 +4108,7 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               disabled={isManualActionBlocked}
-              onClick={async () => {
-                postRefreshMessageRef.current = "Draft changes were reset to the last saved values.";
-                const didReset = await resetForm();
-                if (!didReset) {
-                  postRefreshMessageRef.current = null;
-                }
-              }}
+              onClick={() => void handleResetDraft()}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               Reset
@@ -4093,15 +4118,7 @@ export function SchoolIndicatorPanel({
             <button
               type="button"
               disabled={isManualActionBlocked}
-              onClick={async () => {
-                postRefreshMessageRef.current = "Submitted report editing canceled. Locked view restored.";
-                const didReset = await resetForm();
-                if (didReset) {
-                  setIsSubmittedEditMode(false);
-                } else {
-                  postRefreshMessageRef.current = null;
-                }
-              }}
+              onClick={() => void handleCancelSubmittedEdit()}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               Cancel Edit
@@ -4139,7 +4156,7 @@ export function SchoolIndicatorPanel({
           {canShowEditAction && (
             <button
               type="button"
-              onClick={() => setShowEditConfirmModal(true)}
+              onClick={handleOpenEditSubmittedReport}
               disabled={isManualActionBlocked || isSubmissionDataLoading}
               title={isManualActionBlocked || isSubmissionDataLoading ? "Please wait for the current action to finish." : undefined}
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
