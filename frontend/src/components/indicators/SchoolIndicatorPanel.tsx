@@ -1683,6 +1683,44 @@ export function SchoolIndicatorPanel({
     },
     [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, refreshSubmissions],
   );
+  const runCriticalWorkspaceTransition = useCallback(
+    async <T,>(
+      options: {
+        action: () => Promise<T> | T;
+        dismissRestoreBanner?: boolean;
+        endOnComplete?: boolean;
+        onError?: (err: unknown) => void;
+      },
+    ): Promise<T | null> => {
+      if (blockIfManualActionBusy()) {
+        return null;
+      }
+
+      startControlledWorkspaceTransition({ dismissRestoreBanner: options.dismissRestoreBanner });
+      const actionEpoch = transitionEpochRef.current;
+      const shouldEndOnComplete = options.endOnComplete ?? true;
+      try {
+        const result = await options.action();
+        if (transitionEpochRef.current !== actionEpoch) {
+          return null;
+        }
+        return result;
+      } catch (err) {
+        clearWorkspaceTransitionIntents();
+        if (options.onError) {
+          options.onError(err);
+        } else {
+          setSubmitError(err instanceof Error ? err.message : "Unable to complete the workspace transition.");
+        }
+        return null;
+      } finally {
+        if (shouldEndOnComplete && transitionEpochRef.current === actionEpoch) {
+          endControlledWorkspaceTransition();
+        }
+      }
+    },
+    [blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, startControlledWorkspaceTransition],
+  );
   const loadWorkspaceForAcademicYear = useCallback((submission: IndicatorSubmission | null) => {
     localAutosaveEpochRef.current += 1;
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
@@ -2154,29 +2192,27 @@ export function SchoolIndicatorPanel({
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
   const resetForm = useCallback(async (): Promise<boolean> => {
-    startControlledWorkspaceTransition({ dismissRestoreBanner: false });
-    loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
-    setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(autosaveKey);
-    }
-    try {
-      await refreshSubmissions();
-      workspaceFingerprintRef.current = "";
-      return true;
-    } catch (err) {
-      postRefreshMessageRef.current = null;
-      setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
-      return false;
-    } finally {
-      endControlledWorkspaceTransition();
-    }
-  }, [activeWorkspaceSubmission, autosaveKey, endControlledWorkspaceTransition, loadWorkspaceForAcademicYear, refreshSubmissions, startControlledWorkspaceTransition]);
+    const didReset = await runCriticalWorkspaceTransition({
+      dismissRestoreBanner: false,
+      action: async () => {
+        loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
+        setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(autosaveKey);
+        }
+        await refreshSubmissions();
+        workspaceFingerprintRef.current = "";
+        return true;
+      },
+      onError: (err) => {
+        postRefreshMessageRef.current = null;
+        setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
+      },
+    });
+    return didReset === true;
+  }, [activeWorkspaceSubmission, autosaveKey, loadWorkspaceForAcademicYear, refreshSubmissions, runCriticalWorkspaceTransition]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
     if (!submissionExists) {
       setSubmitError("Unable to load the selected package.");
@@ -2189,17 +2225,22 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    startControlledWorkspaceTransition({ dismissRestoreBanner: true });
-    if (nextAcademicYearId !== activeAcademicYearId) {
-      setAcademicYearId(nextAcademicYearId);
-      setEditingSubmissionId(submission.id);
-      setSaveMessage(`Switched to package #${submission.id}.`);
-      return;
-    }
+    void runCriticalWorkspaceTransition({
+      dismissRestoreBanner: true,
+      endOnComplete: nextAcademicYearId === activeAcademicYearId,
+      action: () => {
+        if (nextAcademicYearId !== activeAcademicYearId) {
+          setAcademicYearId(nextAcademicYearId);
+          setEditingSubmissionId(submission.id);
+          setSaveMessage(`Switched to package #${submission.id}.`);
+          return;
+        }
 
-    loadWorkspaceForAcademicYear(submission);
-    workspaceFingerprintRef.current = "";
-    setSaveMessage(`Editing package #${submission.id}.`);
+        loadWorkspaceForAcademicYear(submission);
+        workspaceFingerprintRef.current = "";
+        setSaveMessage(`Editing package #${submission.id}.`);
+      },
+    });
   };
 
   const focusMissingTarget = useCallback((target: MissingFieldTarget, nextIndex?: number) => {
@@ -2774,9 +2815,6 @@ export function SchoolIndicatorPanel({
   }, [latestValidatedSubmission, orderedComplianceMetrics, visibleSchoolYears, workspaceSchoolYears]);
 
   const handleRestoreLocalDraft = useCallback(() => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     if (!pendingLocalDraft) {
       return;
     }
@@ -2788,19 +2826,19 @@ export function SchoolIndicatorPanel({
 
     const inScopeSubmissionId = resolveInScopeSubmissionId(pendingLocalDraft.editingSubmissionId);
 
-    startControlledWorkspaceTransition({ dismissRestoreBanner: true });
-    setNotes(pendingLocalDraft.notes);
-    setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
-    setEditingSubmissionId(inScopeSubmissionId);
-    setAutosaveAt(pendingLocalDraft.savedAt);
-    endControlledWorkspaceTransition();
-    setSaveMessage("Local draft restored.");
-  }, [activeAcademicYearId, blockIfManualActionBusy, complianceMetrics, endControlledWorkspaceTransition, pendingLocalDraft, resolveInScopeSubmissionId, startControlledWorkspaceTransition]);
+    void runCriticalWorkspaceTransition({
+      dismissRestoreBanner: true,
+      action: () => {
+        setNotes(pendingLocalDraft.notes);
+        setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
+        setEditingSubmissionId(inScopeSubmissionId);
+        setAutosaveAt(pendingLocalDraft.savedAt);
+        setSaveMessage("Local draft restored.");
+      },
+    });
+  }, [activeAcademicYearId, complianceMetrics, pendingLocalDraft, resolveInScopeSubmissionId, runCriticalWorkspaceTransition]);
 
   const handleRestoreServerDraft = useCallback(() => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     if (!restorableServerSubmissionInScope) {
       return;
     }
@@ -2810,19 +2848,16 @@ export function SchoolIndicatorPanel({
     }
 
     handleEditDraft(restorableServerSubmissionInScope);
-  }, [activeAcademicYearId, blockIfManualActionBusy, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
+  }, [activeAcademicYearId, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
   const runResetWorkspaceAction = useCallback(async (message: string, onSuccess?: () => void) => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
-    postRefreshMessageRef.current = message;
     const didReset = await resetForm();
     if (didReset) {
+      postRefreshMessageRef.current = message;
       onSuccess?.();
       return;
     }
     postRefreshMessageRef.current = null;
-  }, [blockIfManualActionBusy, resetForm]);
+  }, [resetForm]);
   const handleResetDraft = useCallback(async () => {
     await runResetWorkspaceAction("Draft changes were reset to the last saved values.");
   }, [runResetWorkspaceAction]);
@@ -2833,15 +2868,15 @@ export function SchoolIndicatorPanel({
     );
   }, [runResetWorkspaceAction]);
   const handleOpenEditSubmittedReport = useCallback(() => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
     }
-    setShowEditConfirmModal(true);
-  }, [blockIfManualActionBusy, workspaceMode]);
+    void runCriticalWorkspaceTransition({
+      dismissRestoreBanner: false,
+      action: () => setShowEditConfirmModal(true),
+    });
+  }, [runCriticalWorkspaceTransition, workspaceMode]);
 
   const showRestoreBanner = !restoreBannerDismissed && (
     Boolean(pendingLocalDraft)
@@ -3003,22 +3038,21 @@ export function SchoolIndicatorPanel({
   };
 
   const handleConfirmEditSubmittedReport = () => {
-    if (blockIfManualActionBusy()) {
-      setShowEditConfirmModal(false);
-      return;
-    }
     if (workspaceMode === "read_only_year") {
       setShowEditConfirmModal(false);
       setSubmitError("This academic year is not yet open for encoding.");
       return;
     }
-    setShowEditConfirmModal(false);
-    startControlledWorkspaceTransition({ dismissRestoreBanner: true });
-    setIsSubmittedEditMode(true);
-    setOptimisticSubmittedByType({ bmef: false, smea: false });
-    endControlledWorkspaceTransition();
-    setSaveMessage("Editing mode enabled for submitted report.");
-    setSubmitError("");
+    void runCriticalWorkspaceTransition({
+      dismissRestoreBanner: true,
+      action: () => {
+        setShowEditConfirmModal(false);
+        setIsSubmittedEditMode(true);
+        setOptimisticSubmittedByType({ bmef: false, smea: false });
+        setSaveMessage("Editing mode enabled for submitted report.");
+        setSubmitError("");
+      },
+    });
   };
 
   const handleToggleDetails = async (submission: IndicatorSubmission) => {
@@ -3186,12 +3220,12 @@ export function SchoolIndicatorPanel({
     if (nextAcademicYearId === activeAcademicYearId) {
       return;
     }
-    if (blockIfManualActionBusy()) {
-      return;
-    }
-    startControlledWorkspaceTransition({ dismissRestoreBanner: true });
-    setAcademicYearId(nextAcademicYearId);
-  }, [activeAcademicYearId, blockIfManualActionBusy, startControlledWorkspaceTransition]);
+    void runCriticalWorkspaceTransition({
+      dismissRestoreBanner: true,
+      endOnComplete: false,
+      action: () => setAcademicYearId(nextAcademicYearId),
+    });
+  }, [activeAcademicYearId, runCriticalWorkspaceTransition]);
 
   const resolveFileSourceSubmission = useCallback(
     (type: IndicatorSubmissionFileType): { submission: IndicatorSubmission | null; error: string | null } => {
