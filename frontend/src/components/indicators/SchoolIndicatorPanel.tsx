@@ -983,6 +983,8 @@ export function SchoolIndicatorPanel({
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
+  const criticalActionInFlightRef = useRef(false);
+  const transitionEpochRef = useRef(0);
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
   const bmefInputRef = useRef<HTMLInputElement | null>(null);
@@ -1600,19 +1602,27 @@ export function SchoolIndicatorPanel({
     }
   }, []);
   const startControlledWorkspaceTransition = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
+    criticalActionInFlightRef.current = true;
+    transitionEpochRef.current += 1;
     setIsWorkspaceTransitioning(true);
     clearTransientWorkspaceUiState(options);
     clearWorkspaceTransitionIntents();
     setIsSubmittedEditMode(false);
     setOptimisticSubmittedByType({ bmef: false, smea: false });
   }, [clearTransientWorkspaceUiState, clearWorkspaceTransitionIntents]);
+  const endControlledWorkspaceTransition = useCallback(() => {
+    criticalActionInFlightRef.current = false;
+    setIsWorkspaceTransitioning(false);
+  }, []);
   const beginCriticalMutationTransition = useCallback(() => {
+    criticalActionInFlightRef.current = true;
+    transitionEpochRef.current += 1;
     invalidateAutosaveContext();
     clearWorkspaceTransitionIntents();
     setIsWorkspaceTransitioning(true);
   }, [clearWorkspaceTransitionIntents, invalidateAutosaveContext]);
   const getManualActionBlockReason = useCallback((): string | null => {
-    if (isWorkspaceTransitioning || isSaving || uploadingFileType !== null) {
+    if (criticalActionInFlightRef.current || isWorkspaceTransitioning || isSaving || uploadingFileType !== null) {
       return "Please wait for the current action to finish.";
     }
     if (isAutosavingDraft) {
@@ -1642,16 +1652,27 @@ export function SchoolIndicatorPanel({
       }
 
       beginCriticalMutationTransition();
+      const actionEpoch = transitionEpochRef.current;
       try {
         const result = await options.mutation();
+        if (transitionEpochRef.current !== actionEpoch) {
+          throw new Error("The workspace changed before this action completed. No stale changes were applied. Review the workspace and try again.");
+        }
         await options.onSuccess?.(result);
+        if (transitionEpochRef.current !== actionEpoch) {
+          throw new Error("The workspace changed before this action completed. No stale changes were applied. Review the workspace and try again.");
+        }
         postRefreshMessageRef.current = options.getSuccessMessage?.(result) ?? null;
         await refreshSubmissions();
+        if (transitionEpochRef.current !== actionEpoch) {
+          postRefreshMessageRef.current = null;
+          return null;
+        }
         workspaceFingerprintRef.current = "";
         return result;
       } catch (err) {
         clearWorkspaceTransitionIntents();
-        setIsWorkspaceTransitioning(false);
+        endControlledWorkspaceTransition();
         if (options.onError) {
           options.onError(err);
         } else {
@@ -1660,7 +1681,7 @@ export function SchoolIndicatorPanel({
         return null;
       }
     },
-    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, refreshSubmissions],
+    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, refreshSubmissions],
   );
   const loadWorkspaceForAcademicYear = useCallback((submission: IndicatorSubmission | null) => {
     localAutosaveEpochRef.current += 1;
@@ -1720,8 +1741,8 @@ export function SchoolIndicatorPanel({
     }
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
-    setIsWorkspaceTransitioning(false);
-  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, loadWorkspaceForAcademicYear]);
+    endControlledWorkspaceTransition();
+  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, endControlledWorkspaceTransition, loadWorkspaceForAcademicYear]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -2148,9 +2169,9 @@ export function SchoolIndicatorPanel({
       setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
       return false;
     } finally {
-      setIsWorkspaceTransitioning(false);
+      endControlledWorkspaceTransition();
     }
-  }, [activeWorkspaceSubmission, autosaveKey, loadWorkspaceForAcademicYear, refreshSubmissions, startControlledWorkspaceTransition]);
+  }, [activeWorkspaceSubmission, autosaveKey, endControlledWorkspaceTransition, loadWorkspaceForAcademicYear, refreshSubmissions, startControlledWorkspaceTransition]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     if (blockIfManualActionBusy()) {
@@ -2495,7 +2516,7 @@ export function SchoolIndicatorPanel({
     async (
       payload: IndicatorSubmissionPayload,
       _mode: "manual" | "autosave",
-      guard?: { academicYearId: string | null; submissionId: string | null; editingSubmissionId: string | null },
+      guard?: { academicYearId: string | null; submissionId: string | null; editingSubmissionId: string | null; transitionEpoch?: number },
     ): Promise<IndicatorSubmission> => {
       if (!isAcademicYearValueAligned(payload.academicYearId)) {
         throw new Error("The selected academic year changed before saving. No stale changes were applied. Review the workspace and try again.");
@@ -2505,6 +2526,7 @@ export function SchoolIndicatorPanel({
           activeAcademicYearIdRef.current !== guard.academicYearId
           || activeWorkspaceSubmissionIdRef.current !== guard.submissionId
           || activeEditingSubmissionIdRef.current !== guard.editingSubmissionId
+          || (typeof guard.transitionEpoch === "number" && transitionEpochRef.current !== guard.transitionEpoch)
         ) {
           throw new Error("The workspace changed during autosave. No stale changes were applied.");
         }
@@ -2522,6 +2544,7 @@ export function SchoolIndicatorPanel({
           activeAcademicYearIdRef.current !== guard.academicYearId
           || activeWorkspaceSubmissionIdRef.current !== guard.submissionId
           || activeEditingSubmissionIdRef.current !== guard.editingSubmissionId
+          || (typeof guard.transitionEpoch === "number" && transitionEpochRef.current !== guard.transitionEpoch)
         ) {
           setAutosaveError("The draft changed during autosave. No stale changes were applied.");
           return result;
@@ -2548,7 +2571,7 @@ export function SchoolIndicatorPanel({
     if (autosaveInFlightRef.current) {
       return;
     }
-    if (isSaving || uploadingFileType !== null || isWorkspaceTransitioning) {
+    if (criticalActionInFlightRef.current || isSaving || uploadingFileType !== null || isWorkspaceTransitioning) {
       return;
     }
 
@@ -2567,11 +2590,13 @@ export function SchoolIndicatorPanel({
 
     autosaveInFlightRef.current = true;
     setIsAutosavingDraft(true);
+    const autosaveTransitionEpoch = transitionEpochRef.current;
     try {
       await persistDraftPayload(prepared.payload, "autosave", {
         academicYearId: activeAcademicYearId,
         submissionId: activeWorkspaceSubmission?.id ?? null,
         editingSubmissionId: editingSubmissionId ?? null,
+        transitionEpoch: autosaveTransitionEpoch,
       });
     } catch (err) {
       setAutosaveError(err instanceof Error ? err.message : "Server autosave failed. Draft is still kept locally.");
@@ -2768,9 +2793,9 @@ export function SchoolIndicatorPanel({
     setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
     setEditingSubmissionId(inScopeSubmissionId);
     setAutosaveAt(pendingLocalDraft.savedAt);
-    setIsWorkspaceTransitioning(false);
+    endControlledWorkspaceTransition();
     setSaveMessage("Local draft restored.");
-  }, [activeAcademicYearId, blockIfManualActionBusy, complianceMetrics, pendingLocalDraft, resolveInScopeSubmissionId, startControlledWorkspaceTransition]);
+  }, [activeAcademicYearId, blockIfManualActionBusy, complianceMetrics, endControlledWorkspaceTransition, pendingLocalDraft, resolveInScopeSubmissionId, startControlledWorkspaceTransition]);
 
   const handleRestoreServerDraft = useCallback(() => {
     if (blockIfManualActionBusy()) {
@@ -2825,6 +2850,9 @@ export function SchoolIndicatorPanel({
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (blockIfManualActionBusy()) {
+      return;
+    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2881,6 +2909,9 @@ export function SchoolIndicatorPanel({
   };
 
   const handleCreateAndSubmit = async () => {
+    if (blockIfManualActionBusy()) {
+      return;
+    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2934,6 +2965,9 @@ export function SchoolIndicatorPanel({
   };
 
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
+    if (blockIfManualActionBusy()) {
+      return;
+    }
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
       return;
@@ -2982,7 +3016,7 @@ export function SchoolIndicatorPanel({
     startControlledWorkspaceTransition({ dismissRestoreBanner: true });
     setIsSubmittedEditMode(true);
     setOptimisticSubmittedByType({ bmef: false, smea: false });
-    setIsWorkspaceTransitioning(false);
+    endControlledWorkspaceTransition();
     setSaveMessage("Editing mode enabled for submitted report.");
     setSubmitError("");
   };
@@ -3059,6 +3093,9 @@ export function SchoolIndicatorPanel({
   }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
+    if (blockIfManualActionBusy()) {
+      return;
+    }
     setSubmitError("");
     setSaveMessage("");
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
@@ -3131,7 +3168,7 @@ export function SchoolIndicatorPanel({
     if (!uploaded) {
       postRefreshMessageRef.current = null;
     }
-  }, [ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, uploadSubmissionFile]);
+  }, [blockIfManualActionBusy, ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
