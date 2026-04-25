@@ -202,14 +202,96 @@ function toSubmissionSortTime(submission: IndicatorSubmission): number {
   return new Date(submission.updatedAt ?? submission.submittedAt ?? submission.createdAt ?? 0).getTime();
 }
 
+function parseSubmissionTimestamp(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function numericSubmissionVersion(submission: IndicatorSubmission): number | null {
+  if (typeof submission.version !== "number" || !Number.isFinite(submission.version)) {
+    return null;
+  }
+
+  return submission.version;
+}
+
+function submissionFreshnessValue(submission: IndicatorSubmission): number | null {
+  const version = numericSubmissionVersion(submission);
+  if (version !== null) {
+    return version;
+  }
+
+  const timestamps = [
+    parseSubmissionTimestamp(submission.updatedAt),
+    parseSubmissionTimestamp(submission.submittedAt),
+    parseSubmissionTimestamp(submission.reviewedAt),
+    parseSubmissionTimestamp(submission.createdAt),
+  ].filter((value): value is number => value !== null);
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return Math.max(...timestamps);
+}
+
+function isIncomingSubmissionStale(
+  existing: IndicatorSubmission,
+  incoming: IndicatorSubmission,
+): boolean {
+  const existingVersion = numericSubmissionVersion(existing);
+  const incomingVersion = numericSubmissionVersion(incoming);
+
+  if (existingVersion !== null && incomingVersion !== null) {
+    return incomingVersion < existingVersion;
+  }
+
+  const existingFreshness = submissionFreshnessValue(existing);
+  const incomingFreshness = submissionFreshnessValue(incoming);
+
+  if (existingFreshness === null || incomingFreshness === null) {
+    return false;
+  }
+
+  return incomingFreshness < existingFreshness;
+}
+
 function sortSubmissionRows(rows: IndicatorSubmission[]): IndicatorSubmission[] {
   return [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
 }
 
 function upsertSubmissionRow(rows: IndicatorSubmission[], submission: IndicatorSubmission): IndicatorSubmission[] {
+  const existing = rows.find((row) => row.id === submission.id);
+  if (existing && isIncomingSubmissionStale(existing, submission)) {
+    return rows;
+  }
+
   const nextRows = rows.filter((row) => row.id !== submission.id);
   nextRows.push(submission);
   return sortSubmissionRows(nextRows);
+}
+
+function mergeSubmissionsPreservingFreshest(
+  currentRows: IndicatorSubmission[],
+  incomingRows: IndicatorSubmission[],
+): IndicatorSubmission[] {
+  if (currentRows.length === 0) {
+    return sortSubmissionRows(incomingRows);
+  }
+  if (incomingRows.length === 0) {
+    return currentRows;
+  }
+
+  let mergedRows = currentRows;
+  for (const incomingRow of incomingRows) {
+    mergedRows = upsertSubmissionRow(mergedRows, incomingRow);
+  }
+
+  return sortSubmissionRows(mergedRows);
 }
 
 function parseDownloadFilename(contentDisposition: string | null): string | null {
@@ -629,8 +711,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           schoolSubmissionsCacheRef.current.clear();
           allSubmissionsCacheRef.current = null;
           allSubmissionsInFlightRef.current = null;
-          setAllSubmissions([]);
-          setSubmissions(readSubmissionRows(submissionsResponse.data));
+          const incomingRows = readSubmissionRows(submissionsResponse.data);
+          setSubmissions((current) => mergeSubmissionsPreservingFreshest(current, incomingRows));
+          setAllSubmissions((current) => (
+            current.length > 0 ? mergeSubmissionsPreservingFreshest(current, incomingRows) : current
+          ));
         }
         if (shouldRefreshReferenceData) {
           setMetrics(Array.isArray(metricPayload?.data) ? metricPayload?.data : []);
