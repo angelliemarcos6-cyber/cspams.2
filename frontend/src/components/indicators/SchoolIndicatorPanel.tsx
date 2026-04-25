@@ -3850,9 +3850,6 @@ export function SchoolIndicatorPanel({
                     </span>
                   </div>
                 </div>
-                <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-600">
-                  You can only edit data for the selected academic year. Other years are shown for reference.
-                </p>
                 <div
                   ref={indicatorTableRef}
                   tabIndex={0}

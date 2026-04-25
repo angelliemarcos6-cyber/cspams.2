@@ -813,9 +813,6 @@ export function SchoolAdminDashboard() {
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-primary-200 pb-2">
             <div>
               <h2 className="text-[18px] font-semibold text-slate-900">Submitted Report View</h2>
-              <p className="mt-1 text-xs font-medium text-slate-500">
-                This shows the finalized report for the selected academic year.
-              </p>
             </div>
           </div>
 
@@ -1071,9 +1068,6 @@ export function SchoolAdminDashboard() {
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">
               Submission Workspace
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Use this section to prepare, edit, and submit the report for this academic year.
-            </p>
           </div>
         </div>
         <SchoolIndicatorPanel
