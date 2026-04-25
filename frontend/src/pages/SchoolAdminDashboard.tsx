@@ -32,8 +32,8 @@ import type {
 function latestSubmission<T extends { updatedAt: string | null; createdAt: string | null }>(entries: T[]): T | null {
   if (entries.length === 0) return null;
   const sorted = [...entries].sort((a, b) => {
-    const aDate = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
-    const bDate = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+    const aDate = new Date((a as { submittedAt?: string | null }).submittedAt ?? a.updatedAt ?? a.createdAt ?? 0).getTime();
+    const bDate = new Date((b as { submittedAt?: string | null }).submittedAt ?? b.updatedAt ?? b.createdAt ?? 0).getTime();
     return bDate - aDate;
   });
   return sorted[0] ?? null;
@@ -355,9 +355,12 @@ export function SchoolAdminDashboard() {
   const { user } = useAuth();
   const { records, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
   const {
+    submissions: submissionSnapshot,
+    allSubmissions,
     academicYears,
     downloadSubmissionFile,
-    listSubmissions,
+    isLoading,
+    isAllSubmissionsLoading,
     refreshSubmissions,
   } = useIndicatorData();
 
@@ -367,14 +370,11 @@ export function SchoolAdminDashboard() {
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
   const [reportZoomLevel, setReportZoomLevel] = useState(1);
-  const [yearScopedSubmission, setYearScopedSubmission] = useState<IndicatorSubmission | null>(null);
-  const [isYearScopedLoading, setIsYearScopedLoading] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
   const initialLoadStartedRef = useRef(false);
   const initialAcademicYearAppliedRef = useRef(false);
-  const yearScopedRequestRef = useRef(0);
 
   /* ── Derived data ── */
   const orderedAcademicYears = useMemo(
@@ -393,8 +393,28 @@ export function SchoolAdminDashboard() {
     [orderedAcademicYears],
   );
   const effectiveAcademicYearId = contextAcademicYearId;
+  const indicatorSubmissions = useMemo(
+    () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
+    [allSubmissions, submissionSnapshot],
+  );
+  const groupASubmittedSubmission = useMemo(
+    () => resolveSelectedYearFinalizedSubmission(
+      indicatorSubmissions.filter((submission) => {
+        const matchesAcademicYear =
+          effectiveAcademicYearId.length > 0
+          && String(submission.academicYear?.id ?? "") === String(effectiveAcademicYearId);
+        const matchesSchool =
+          selectedSchoolId.length === 0
+          || String(submission.school?.id ?? selectedSchoolId) === selectedSchoolId;
+
+        return matchesAcademicYear && matchesSchool;
+      }),
+    ),
+    [effectiveAcademicYearId, indicatorSubmissions, selectedSchoolId],
+  );
+  const isYearScopedLoading = (isLoading || isAllSubmissionsLoading) && effectiveAcademicYearId.length > 0;
   const groupAReportView = useMemo(() => {
-    const submission = yearScopedSubmission;
+    const submission = groupASubmittedSubmission;
     const indicators = submission?.indicators ?? [];
     const missingMappings: Array<{
       group: keyof typeof GROUP_A_METRIC_KEYS;
@@ -555,7 +575,7 @@ export function SchoolAdminDashboard() {
       schoolAchievementRows,
       kpiRows,
     };
-  }, [yearScopedSubmission]);
+  }, [groupASubmittedSubmission]);
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
     if (!activeReportModalType || !groupAReportView.submission?.files) return null;
     return groupAReportView.submission.files[activeReportModalType] ?? null;
@@ -622,43 +642,8 @@ export function SchoolAdminDashboard() {
   }, [currentAcademicYearOption]);
 
   useEffect(() => {
-    if (!selectedSchoolId) {
-      setYearScopedSubmission(null);
-      setIsYearScopedLoading(false);
-      return;
-    }
-    if (!effectiveAcademicYearId) {
-      setYearScopedSubmission(null);
-      setIsYearScopedLoading(false);
-      return;
-    }
-
-    const requestId = yearScopedRequestRef.current + 1;
-    yearScopedRequestRef.current = requestId;
-    setIsYearScopedLoading(true);
-    setYearScopedSubmission(null);
     setActiveReportModalType(null);
-
-    void listSubmissions({
-      schoolId: selectedSchoolId,
-      academicYearId: effectiveAcademicYearId,
-      page: 1,
-      perPage: 25,
-    })
-      .then((result) => {
-        if (yearScopedRequestRef.current !== requestId) return;
-        const finalized = resolveSelectedYearFinalizedSubmission(result.data);
-        setYearScopedSubmission(finalized ?? null);
-      })
-      .catch(() => {
-        if (yearScopedRequestRef.current !== requestId) return;
-        setYearScopedSubmission(null);
-      })
-      .finally(() => {
-        if (yearScopedRequestRef.current !== requestId) return;
-        setIsYearScopedLoading(false);
-      });
-  }, [effectiveAcademicYearId, listSubmissions, selectedSchoolId]);
+  }, [effectiveAcademicYearId, groupASubmittedSubmission?.id]);
 
 
   /* ── Quick-jump scroll ── */
@@ -819,7 +804,7 @@ export function SchoolAdminDashboard() {
           {isYearScopedLoading && (
             <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
           )}
-          {!isYearScopedLoading && !yearScopedSubmission && (
+          {!isYearScopedLoading && !groupASubmittedSubmission && (
             <div className="mb-3 space-y-1">
               <p className="text-xs font-medium text-slate-500">No submitted report package for the selected academic year.</p>
               <p className="text-xs text-slate-500">
