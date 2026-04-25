@@ -1519,6 +1519,7 @@ export function SchoolIndicatorPanel({
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
+  const resolvedAcademicYearBoundaryRef = useRef<string | null>(activeAcademicYearId);
   const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   const postRefreshMessageRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1639,6 +1640,16 @@ export function SchoolIndicatorPanel({
     setSubmitError(reason);
     return true;
   }, [getManualActionBlockReason]);
+  useEffect(() => {
+    if (resolvedAcademicYearBoundaryRef.current === activeAcademicYearId) {
+      return;
+    }
+
+    resolvedAcademicYearBoundaryRef.current = activeAcademicYearId;
+    transitionEpochRef.current += 1;
+    invalidateAutosaveContext();
+    clearWorkspaceTransitionIntents();
+  }, [activeAcademicYearId, clearWorkspaceTransitionIntents, invalidateAutosaveContext]);
   const refreshResolvedWorkspace = useCallback(async () => {
     await refreshSubmissions();
     workspaceFingerprintRef.current = "";
