@@ -76,6 +76,29 @@ interface IndicatorHistoryResponse {
   data: FormSubmissionHistoryEntry[];
 }
 
+interface LightweightIndicatorSubmission {
+  id: string;
+  schoolId: string;
+  academicYearId: string;
+  reportingPeriod: string | null;
+  status: string | null;
+  version: number;
+  notes: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  updatedAt: string | null;
+  completion?: {
+    hasImetaFormData: boolean;
+    hasBmefFile: boolean;
+    hasSmeaFile: boolean;
+    isComplete: boolean;
+  };
+  academicYear?: {
+    id: string;
+    name?: string | null;
+  };
+}
+
 export interface BootstrapIndicatorSubmissionPayload {
   academicYearId: string | number;
   reportingPeriod?: string | null;
@@ -269,6 +292,121 @@ function isIncomingSubmissionStale(
 
 function sortSubmissionRows(rows: IndicatorSubmission[]): IndicatorSubmission[] {
   return [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
+}
+
+function isLightweightSubmission(
+  submission: IndicatorSubmission | LightweightIndicatorSubmission,
+): submission is LightweightIndicatorSubmission {
+  return !Array.isArray((submission as IndicatorSubmission).indicators);
+}
+
+function patchSubmissionWithLightweightPayload(
+  current: IndicatorSubmission,
+  patch: LightweightIndicatorSubmission,
+): IndicatorSubmission {
+  const existingCompletion = current.completion;
+  const nextCompletion = patch.completion
+    ? {
+        hasImetaFormData: patch.completion.hasImetaFormData,
+        hasBmefFile: patch.completion.hasBmefFile,
+        hasSmeaFile: patch.completion.hasSmeaFile,
+        isComplete:
+          typeof patch.completion.isComplete === "boolean"
+            ? patch.completion.isComplete
+            : patch.completion.hasImetaFormData && patch.completion.hasBmefFile && patch.completion.hasSmeaFile,
+      }
+    : existingCompletion;
+
+  return {
+    ...current,
+    status: patch.status ?? current.status,
+    reportingPeriod: patch.reportingPeriod ?? current.reportingPeriod,
+    version: patch.version ?? current.version,
+    notes: patch.notes ?? current.notes,
+    submittedAt: patch.submittedAt ?? current.submittedAt,
+    reviewedAt: patch.reviewedAt ?? current.reviewedAt,
+    updatedAt: patch.updatedAt ?? current.updatedAt,
+    completion: nextCompletion,
+    academicYear: patch.academicYear?.id
+      ? {
+          id: patch.academicYear.id,
+          name: patch.academicYear.name ?? current.academicYear?.name ?? "",
+        }
+      : current.academicYear,
+  };
+}
+
+function toWorkflowStatusLabel(status: string | null | undefined): string {
+  if (!status) {
+    return "Draft";
+  }
+
+  const normalized = status.replace(/_/g, " ").trim();
+  if (!normalized) {
+    return "Draft";
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function materializeSubmissionFromLightweightPayload(
+  patch: LightweightIndicatorSubmission,
+): IndicatorSubmission {
+  const hasImetaFormData = Boolean(patch.completion?.hasImetaFormData);
+  const hasBmefFile = Boolean(patch.completion?.hasBmefFile);
+  const hasSmeaFile = Boolean(patch.completion?.hasSmeaFile);
+
+  return {
+    id: patch.id,
+    formType: "indicator",
+    status: patch.status ?? "draft",
+    statusLabel: toWorkflowStatusLabel(patch.status),
+    reportingPeriod: patch.reportingPeriod ?? null,
+    version: typeof patch.version === "number" ? patch.version : 1,
+    notes: patch.notes ?? null,
+    reviewNotes: null,
+    summary: {
+      totalIndicators: 0,
+      metIndicators: 0,
+      belowTargetIndicators: 0,
+      complianceRatePercent: 0,
+    },
+    files: {
+      bmef: {
+        type: "bmef",
+        uploaded: hasBmefFile,
+        path: null,
+        originalFilename: null,
+        sizeBytes: null,
+        uploadedAt: null,
+        downloadUrl: hasBmefFile ? `/api/submissions/${patch.id}/download/bmef` : null,
+      },
+      smea: {
+        type: "smea",
+        uploaded: hasSmeaFile,
+        path: null,
+        originalFilename: null,
+        sizeBytes: null,
+        uploadedAt: null,
+        downloadUrl: hasSmeaFile ? `/api/submissions/${patch.id}/download/smea` : null,
+      },
+    },
+    completion: {
+      hasImetaFormData,
+      hasBmefFile,
+      hasSmeaFile,
+      isComplete: patch.completion?.isComplete ?? (hasImetaFormData && hasBmefFile && hasSmeaFile),
+    },
+    indicators: [],
+    academicYear: {
+      id: patch.academicYear?.id ?? patch.academicYearId,
+      name: patch.academicYear?.name ?? "",
+    },
+    submittedAt: patch.submittedAt ?? null,
+    reviewedAt: patch.reviewedAt ?? null,
+    createdAt: null,
+    updatedAt: patch.updatedAt ?? null,
+  };
 }
 
 function upsertSubmissionRow(rows: IndicatorSubmission[], submission: IndicatorSubmission): IndicatorSubmission[] {
@@ -614,6 +752,38 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(new Date().toISOString());
   }, [allSubmissions.length]);
 
+  const patchSubmissionLocally = useCallback((patch: LightweightIndicatorSubmission) => {
+    const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
+    submissionsEtagRef.current = "";
+    schoolSubmissionsCacheRef.current.clear();
+    allSubmissionsCacheRef.current = null;
+    allSubmissionsInFlightRef.current = null;
+    lastLocalMutationAtRef.current = Date.now();
+
+    setSubmissions((current) => {
+      const existing = current.find((row) => row.id === patch.id);
+      if (!existing) {
+        return upsertSubmissionRow(current, materializeSubmissionFromLightweightPayload(patch));
+      }
+      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch));
+    });
+
+    setAllSubmissions((current) => {
+      if (!shouldRefreshAllSubmissionsState && current.length === 0) {
+        return current;
+      }
+
+      const existing = current.find((row) => row.id === patch.id);
+      if (!existing) {
+        return upsertSubmissionRow(current, materializeSubmissionFromLightweightPayload(patch));
+      }
+
+      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch));
+    });
+
+    setLastSyncedAt(new Date().toISOString());
+  }, [allSubmissions.length]);
+
   const shouldSkipBackgroundSync = useCallback((): boolean => {
     if (manualMutationInFlightRef.current || syncInFlightRef.current) {
       return true;
@@ -621,28 +791,6 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
     return Date.now() - lastLocalMutationAtRef.current < POST_MUTATION_AUTO_SYNC_GRACE_MS;
   }, []);
-
-  const runSubmissionMutation = useCallback(
-    async (action: () => Promise<IndicatorSubmission>): Promise<IndicatorSubmission> => {
-      manualMutationInFlightRef.current = true;
-      syncQueuedRef.current = false;
-      setIsSaving(true);
-      setError("");
-
-      try {
-        const submission = await action();
-        upsertSubmissionLocally(submission);
-        return submission;
-      } catch (err) {
-        await handleApiError(err);
-        throw err;
-      } finally {
-        manualMutationInFlightRef.current = false;
-        setIsSaving(false);
-      }
-    },
-    [handleApiError, upsertSubmissionLocally],
-  );
 
   const syncSubmissions = useCallback(
     async (silent = false) => {
@@ -763,6 +911,38 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     await syncSubmissions(false);
   }, [syncSubmissions]);
 
+  const runSubmissionMutation = useCallback(
+    async (
+      action: () => Promise<IndicatorSubmission | LightweightIndicatorSubmission>,
+    ): Promise<IndicatorSubmission> => {
+      manualMutationInFlightRef.current = true;
+      syncQueuedRef.current = false;
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const submission = await action();
+        if (isLightweightSubmission(submission)) {
+          patchSubmissionLocally(submission);
+          const materialized = materializeSubmissionFromLightweightPayload(submission);
+          void syncSubmissions(true);
+          return materialized;
+        }
+
+        upsertSubmissionLocally(submission);
+        void syncSubmissions(true);
+        return submission;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        manualMutationInFlightRef.current = false;
+        setIsSaving(false);
+      }
+    },
+    [handleApiError, patchSubmissionLocally, syncSubmissions, upsertSubmissionLocally],
+  );
+
   const bootstrapSubmission = useCallback(
     async (payload: BootstrapIndicatorSubmissionPayload): Promise<IndicatorSubmission> => {
       if (!token) {
@@ -795,6 +975,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequest<IndicatorSubmissionResponse>("/api/indicators/submissions", {
           method: "POST",
           token,
+          // Indicator draft save can hit cold-start and heavier payload processing on free-tier services.
+          timeoutMs: 90_000,
           body: {
             academic_year_id: payload.academicYearId,
             reporting_period: payload.reportingPeriod ?? null,
@@ -825,6 +1007,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}/submit`, {
           method: "POST",
           token,
+          // Submission validates completion + status transitions and can outlive the default timeout.
+          timeoutMs: 60_000,
         });
         return response.data;
       });
@@ -842,6 +1026,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
           method: "PUT",
           token,
+          // Indicator draft updates can be slow on free-tier backend cold starts.
+          timeoutMs: 90_000,
           body: {
             academic_year_id: payload.academicYearId,
             reporting_period: payload.reportingPeriod ?? null,
@@ -876,6 +1062,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/submissions/${id}/upload-file`, {
           method: "POST",
           token,
+          // Upload + file persistence is the heaviest indicator action; allow a longer request window.
+          timeoutMs: 120_000,
           body: formData,
         });
         return response.data;

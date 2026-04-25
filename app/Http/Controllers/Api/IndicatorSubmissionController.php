@@ -383,8 +383,41 @@ class IndicatorSubmissionController extends Controller
                 'notes' => $notes,
             ])->save();
 
-            $submission->items()->delete();
-            $submission->items()->createMany($indicatorRows->all());
+            // Sync by metric ID to avoid full delete+recreate writes on every update.
+            $existingItemsByMetricId = $submission->items()
+                ->get()
+                ->keyBy(static fn ($item): int => (int) $item->performance_metric_id);
+            $incomingMetricIds = [];
+
+            foreach ($indicatorRows as $indicatorRow) {
+                $metricId = (int) ($indicatorRow['performance_metric_id'] ?? 0);
+                if ($metricId <= 0) {
+                    continue;
+                }
+
+                $incomingMetricIds[] = $metricId;
+                $existingItem = $existingItemsByMetricId->get($metricId);
+
+                if ($existingItem) {
+                    $existingItem->fill($indicatorRow);
+                    if ($existingItem->isDirty()) {
+                        $existingItem->save();
+                    }
+
+                    continue;
+                }
+
+                $submission->items()->create($indicatorRow);
+            }
+
+            $metricsToDelete = $existingItemsByMetricId
+                ->keys()
+                ->diff(collect($incomingMetricIds)->unique()->values());
+            if ($metricsToDelete->isNotEmpty()) {
+                $submission->items()
+                    ->whereIn('performance_metric_id', $metricsToDelete->all())
+                    ->delete();
+            }
 
             app(FormSubmissionHistoryLogger::class)->log(
                 formType: IndicatorSubmission::FORM_TYPE,
@@ -413,18 +446,7 @@ class IndicatorSubmissionController extends Controller
             ]));
         });
 
-        $submission->load([
-            'school:id,school_code,name',
-            'academicYear:id,name',
-            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'createdBy:id,name,email',
-            'submittedBy:id,name,email',
-            'reviewedBy:id,name,email',
-        ]);
-
-        return response()->json([
-            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
-        ]);
+        return $this->lightweightSubmissionResponse($submission);
     }
 
     public function uploadFile(Request $request, IndicatorSubmission $submission): JsonResponse
@@ -517,18 +539,7 @@ class IndicatorSubmissionController extends Controller
             'fileType' => $fileType,
         ]));
 
-        $submission->load([
-            'school:id,school_code,name',
-            'academicYear:id,name',
-            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'createdBy:id,name,email',
-            'submittedBy:id,name,email',
-            'reviewedBy:id,name,email',
-        ]);
-
-        return response()->json([
-            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
-        ]);
+        return $this->lightweightSubmissionResponse($submission);
     }
 
     public function downloadFile(Request $request, IndicatorSubmission $submission, string $type)
@@ -619,18 +630,7 @@ class IndicatorSubmissionController extends Controller
             'status' => FormSubmissionStatus::SUBMITTED->value,
         ]));
 
-        $submission->load([
-            'school:id,school_code,name',
-            'academicYear:id,name',
-            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'createdBy:id,name,email',
-            'submittedBy:id,name,email',
-            'reviewedBy:id,name,email',
-        ]);
-
-        return response()->json([
-            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
-        ]);
+        return $this->lightweightSubmissionResponse($submission);
     }
 
     public function review(ReviewIndicatorSubmissionRequest $request, IndicatorSubmission $submission): JsonResponse
@@ -702,18 +702,7 @@ class IndicatorSubmissionController extends Controller
             'notes' => $notes,
         ]));
 
-        $submission->load([
-            'school:id,school_code,name',
-            'academicYear:id,name',
-            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'createdBy:id,name,email',
-            'submittedBy:id,name,email',
-            'reviewedBy:id,name,email',
-        ]);
-
-        return response()->json([
-            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
-        ]);
+        return $this->lightweightSubmissionResponse($submission);
     }
 
     public function history(Request $request, IndicatorSubmission $submission): AnonymousResourceCollection
@@ -729,6 +718,40 @@ class IndicatorSubmissionController extends Controller
             ->get();
 
         return FormSubmissionHistoryResource::collection($history);
+    }
+
+    private function lightweightSubmissionResponse(IndicatorSubmission $submission, int $status = 200): JsonResponse
+    {
+        $submission->refresh();
+        $hasImetaFormData = $submission->hasImetaFormData();
+        $hasBmefFile = $submission->hasBmefFile();
+        $hasSmeaFile = $submission->hasSmeaFile();
+
+        // Keep mutation payloads small by returning state-only fields (no items.metric eager loading).
+        return response()->json([
+            'data' => [
+                'id' => (string) $submission->id,
+                'schoolId' => (string) $submission->school_id,
+                'academicYearId' => (string) $submission->academic_year_id,
+                'academicYear' => [
+                    'id' => (string) $submission->academic_year_id,
+                    'name' => null,
+                ],
+                'reportingPeriod' => $submission->reporting_period,
+                'status' => $this->statusValue($submission->status),
+                'version' => (int) $submission->version,
+                'notes' => $submission->notes,
+                'submittedAt' => optional($submission->submitted_at)->toISOString(),
+                'reviewedAt' => optional($submission->reviewed_at)->toISOString(),
+                'updatedAt' => optional($submission->updated_at)->toISOString(),
+                'completion' => [
+                    'hasImetaFormData' => $hasImetaFormData,
+                    'hasBmefFile' => $hasBmefFile,
+                    'hasSmeaFile' => $hasSmeaFile,
+                    'isComplete' => $hasImetaFormData && $hasBmefFile && $hasSmeaFile,
+                ],
+            ],
+        ], $status);
     }
 
     private function requireUser(Request $request): User
