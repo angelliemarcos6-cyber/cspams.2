@@ -2353,8 +2353,9 @@ export function SchoolIndicatorPanel({
     const didReset = await runCriticalWorkspaceTransition({
       dismissRestoreBanner: false,
       action: () => {
-        const latestSubmission = latestActiveWorkspaceSubmission?.id
-          ? sortedSubmissions.find((submission) => submission.id === latestActiveWorkspaceSubmission.id) ?? latestActiveWorkspaceSubmission
+        const activeSubmission = latestActiveWorkspaceSubmission;
+        const latestSubmission = activeSubmission?.id
+          ? sortedSubmissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
           : null;
         if (latestSubmission) {
           rehydrateWorkspaceFromSubmission(latestSubmission);
@@ -2614,9 +2615,9 @@ export function SchoolIndicatorPanel({
     }),
     [activeAcademicYearId, buildComparablePayloadFromWorkspaceState, metricEntries, notes],
   );
-  const savedWorkspacePayloadFingerprint = useMemo(() => {
-    if (!latestActiveWorkspaceSubmission || !isSubmissionInAcademicYear(latestActiveWorkspaceSubmission, activeAcademicYearId)) {
-      return "";
+  const buildComparablePayloadFromSubmission = useCallback((submission: IndicatorSubmission | null) => {
+    if (!submission) {
+      return { payload: null, fingerprint: "" };
     }
 
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
@@ -2628,7 +2629,7 @@ export function SchoolIndicatorPanel({
     );
     const savedEntries = buildInitialMetricEntries(complianceMetrics, {});
 
-    for (const indicator of latestActiveWorkspaceSubmission.indicators) {
+    for (const indicator of submission.indicators) {
       const metric = (
         (indicator.metric?.id ? metricsById.get(indicator.metric.id) : undefined)
         ?? (indicator.metric?.code ? metricsByNormalizedCode.get(normalizeMetricCode(indicator.metric.code)) : undefined)
@@ -2642,18 +2643,54 @@ export function SchoolIndicatorPanel({
     }
 
     return buildComparablePayloadFromWorkspaceState({
-      academicYearId: latestActiveWorkspaceSubmission.academicYear?.id ?? activeAcademicYearId,
-      noteValue: latestActiveWorkspaceSubmission.notes ?? "",
+      academicYearId: submission.academicYear?.id ?? activeAcademicYearId,
+      noteValue: submission.notes ?? "",
       entryState: savedEntries,
-    }).fingerprint;
-  }, [activeAcademicYearId, buildComparablePayloadFromWorkspaceState, complianceMetrics, isSubmissionInAcademicYear, latestActiveWorkspaceSubmission]);
+    });
+  }, [activeAcademicYearId, buildComparablePayloadFromWorkspaceState, complianceMetrics]);
+
+  const areSubmissionPayloadsEquivalent = useCallback(
+    (
+      left: { payload: IndicatorSubmissionPayload | null; fingerprint: string },
+      right: { payload: IndicatorSubmissionPayload | null; fingerprint: string },
+    ): boolean => {
+      if (!left.payload && !right.payload) {
+        return true;
+      }
+
+      if (!left.payload || !right.payload) {
+        return false;
+      }
+
+      return left.fingerprint === right.fingerprint;
+    },
+    [],
+  );
+
   const hasUnsavedWorkspaceChanges = useMemo(() => {
-    if (!latestActiveWorkspaceSubmission) {
+    const activeSubmission = (
+      latestActiveWorkspaceSubmission && isSubmissionInAcademicYear(latestActiveWorkspaceSubmission, activeAcademicYearId)
+        ? latestActiveWorkspaceSubmission
+        : null
+    );
+
+    if (!activeSubmission) {
       return hasMeaningfulMetricEntries(metricEntries) || notes.trim() !== "";
     }
 
-    return comparableWorkspacePayload.fingerprint !== savedWorkspacePayloadFingerprint;
-  }, [comparableWorkspacePayload.fingerprint, latestActiveWorkspaceSubmission, metricEntries, notes, savedWorkspacePayloadFingerprint]);
+    const currentPayload = comparableWorkspacePayload;
+    const savedPayload = buildComparablePayloadFromSubmission(activeSubmission);
+    return !areSubmissionPayloadsEquivalent(currentPayload, savedPayload);
+  }, [
+    activeAcademicYearId,
+    areSubmissionPayloadsEquivalent,
+    buildComparablePayloadFromSubmission,
+    comparableWorkspacePayload,
+    isSubmissionInAcademicYear,
+    latestActiveWorkspaceSubmission,
+    metricEntries,
+    notes,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3266,12 +3303,34 @@ export function SchoolIndicatorPanel({
         return;
       }
       const payload = prepared.payload;
+      const activeSubmission = latestActiveWorkspaceSubmission;
+      const submissionIdToUpdate = (
+        activeSubmission && isSubmissionInAcademicYear(activeSubmission, payload.academicYearId)
+          ? activeSubmission.id
+          : null
+      );
+
+      if (submissionIdToUpdate && !hasUnsavedWorkspaceChanges) {
+        setSubmitError("");
+        setSaveMessage("No draft changes to save.");
+        return;
+      }
 
       const saveModeAtActionStart = workspaceMode;
       const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
       await runCriticalWorkspaceMutation({
-        mutation: () => persistDraftPayload(payload, "manual"),
+        mutation: () => (
+          submissionIdToUpdate
+            ? updateSubmission(submissionIdToUpdate, payload)
+            : createSubmission(payload)
+        ),
         onSuccess: (saved) => {
+          setEditingSubmissionId(saved.id);
+          setPendingLocalDraft(null);
+          setAutosaveError("");
+          const savedAt = new Date().toISOString();
+          setServerAutosaveAt(savedAt);
+          lastAutosaveFingerprintRef.current = `${saved.id}:${prepared.fingerprint}`;
           if (saveModeAtActionStart === "submitted_editing") {
             submittedEditPreserveContextRef.current = {
               academicYearId: saveAcademicYearAtActionStart,
@@ -3327,12 +3386,24 @@ export function SchoolIndicatorPanel({
       await runCriticalWorkspaceMutation({
         mutation: async () => {
           let submissionToSubmit = latestActiveWorkspaceSubmission;
+          const submissionIdToUpdate = (
+            submissionToSubmit && isSubmissionInAcademicYear(submissionToSubmit, payload.academicYearId)
+              ? submissionToSubmit.id
+              : null
+          );
 
-          if (!submissionToSubmit?.id) {
-            submissionToSubmit = await persistDraftPayload(payload, "manual");
+          if (!submissionIdToUpdate) {
+            submissionToSubmit = await createSubmission(payload);
           } else if (hasUnsavedWorkspaceChanges) {
-            submissionToSubmit = await persistDraftPayload(payload, "manual");
+            submissionToSubmit = await updateSubmission(submissionIdToUpdate, payload);
           }
+
+          setEditingSubmissionId(submissionToSubmit.id);
+          setPendingLocalDraft(null);
+          setAutosaveError("");
+          const savedAt = new Date().toISOString();
+          setServerAutosaveAt(savedAt);
+          lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
 
           return await submitSubmission(submissionToSubmit.id);
         },
@@ -3375,7 +3446,13 @@ export function SchoolIndicatorPanel({
             if (!prepared.payload) {
               throw new Error(prepared.reason || "Complete all required indicator cells before submitting.");
             }
-            submissionToSubmit = await persistDraftPayload(prepared.payload, "manual");
+            submissionToSubmit = await updateSubmission(submission.id, prepared.payload);
+            setEditingSubmissionId(submissionToSubmit.id);
+            setPendingLocalDraft(null);
+            setAutosaveError("");
+            const savedAt = new Date().toISOString();
+            setServerAutosaveAt(savedAt);
+            lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
           }
 
           return await submitSubmission(submissionToSubmit.id);
@@ -3440,7 +3517,7 @@ export function SchoolIndicatorPanel({
     }
   };
 
-  const ensureUploadSubmission = useCallback(async (options: { skipRefreshAfterCreate?: boolean } = {}): Promise<IndicatorSubmission | null> => {
+  const ensureUploadSubmission = useCallback(async (): Promise<IndicatorSubmission | null> => {
     const guardAcademicYearId = activeAcademicYearIdRef.current;
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
@@ -3455,33 +3532,24 @@ export function SchoolIndicatorPanel({
     }
 
     try {
-      const created = hasUnsavedWorkspaceChanges
-        ? await (() => {
-          const prepared = buildSubmissionPayload({ allowIncomplete: true });
-          if (!prepared.payload) {
-            throw new Error(prepared.reason);
-          }
-          return persistDraftPayload(prepared.payload, "manual");
-        })()
-        : await bootstrapSubmission({
-          academicYearId: activeAcademicYearId,
-          reportingPeriod,
-          notes: null,
-        });
+      const prepared = buildSubmissionPayload({ allowIncomplete: true });
+      if (!prepared.payload) {
+        throw new Error(prepared.reason);
+      }
+      const created = await createSubmission(prepared.payload);
       if (!isSubmissionInAcademicYear(created, activeAcademicYearId)) {
         setSubmitError("The selected academic year changed before upload. No stale changes were applied. Review the workspace and try again.");
         return null;
       }
-      if (!(options.skipRefreshAfterCreate ?? false)) {
-        await refreshResolvedWorkspace();
-      }
+      setEditingSubmissionId(created.id);
+      setPendingLocalDraft(null);
+      setAutosaveError("");
+      const savedAt = new Date().toISOString();
+      setServerAutosaveAt(savedAt);
+      lastAutosaveFingerprintRef.current = `${created.id}:${prepared.fingerprint}`;
       if (
         activeAcademicYearIdRef.current !== guardAcademicYearId
-        || (
-          !(options.skipRefreshAfterCreate ?? false)
-            ? activeWorkspaceSubmissionIdRef.current !== created.id
-            : activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== created.id
-        )
+        || (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== created.id)
       ) {
         setSubmitError("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
         return null;
@@ -3491,7 +3559,7 @@ export function SchoolIndicatorPanel({
       setSubmitError(toGroupBActionErrorMessage(err, "Unable to prepare a draft for file upload."));
       return null;
     }
-  }, [activeAcademicYearId, bootstrapSubmission, buildSubmissionPayload, hasUnsavedWorkspaceChanges, isSubmissionInAcademicYear, persistDraftPayload, refreshResolvedWorkspace, reportingPeriod, selectedSubmissionForUploads, toGroupBActionErrorMessage, workspaceMode]);
+  }, [activeAcademicYearId, buildSubmissionPayload, createSubmission, isSubmissionInAcademicYear, selectedSubmissionForUploads, toGroupBActionErrorMessage, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     await runGroupBAction(`Upload ${type.toUpperCase()}`, async () => {
@@ -3519,7 +3587,7 @@ export function SchoolIndicatorPanel({
       const uploaded = await runCriticalWorkspaceMutation({
         mutation: async () => {
           setUploadingFileType(type);
-          const submissionForUpload = await ensureUploadSubmission({ skipRefreshAfterCreate: true });
+          const submissionForUpload = await ensureUploadSubmission();
           if (!submissionForUpload) {
             throw new Error(`Unable to prepare package for ${type.toUpperCase()} upload.`);
           }
@@ -4074,7 +4142,7 @@ export function SchoolIndicatorPanel({
                 const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isManualActionBlocked || isUploading || !selectedSubmissionForUploads || isWorkspaceReadOnly;
+                const uploadDisabled = isManualActionBlocked || isUploading || isWorkspaceReadOnly;
                 const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (
@@ -4100,7 +4168,7 @@ export function SchoolIndicatorPanel({
                     />
                     {!selectedSubmissionForUploads && canShowSaveAndSubmitActions && (
                       <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                        Save the indicator draft first to enable file upload.
+                        Upload will create a draft automatically if none exists yet.
                       </p>
                     )}
                     {!selectedSubmissionForUploads && !canShowSaveAndSubmitActions && (
