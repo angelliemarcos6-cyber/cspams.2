@@ -1557,9 +1557,17 @@ export function SchoolIndicatorPanel({
     () => editingSubmissionInScope ?? resolvedWorkspaceSubmission ?? null,
     [editingSubmissionInScope, resolvedWorkspaceSubmission],
   );
+  const latestActiveWorkspaceSubmission = useMemo(
+    () => (
+      activeWorkspaceSubmission?.id
+        ? sortedSubmissions.find((submission) => submission.id === activeWorkspaceSubmission.id) ?? activeWorkspaceSubmission
+        : activeWorkspaceSubmission
+    ),
+    [activeWorkspaceSubmission, sortedSubmissions],
+  );
   const selectedSubmissionForUploads = useMemo(() => {
-    return activeWorkspaceSubmission;
-  }, [activeWorkspaceSubmission]);
+    return latestActiveWorkspaceSubmission;
+  }, [latestActiveWorkspaceSubmission]);
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
@@ -1702,17 +1710,17 @@ export function SchoolIndicatorPanel({
     workspaceFingerprintRef.current = "";
   }, []);
   const activeWorkspaceSubmissionFingerprint = useMemo(
-    () => buildWorkspaceSubmissionFingerprint(activeAcademicYearId, activeWorkspaceSubmission),
+    () => buildWorkspaceSubmissionFingerprint(activeAcademicYearId, latestActiveWorkspaceSubmission),
     [
       activeAcademicYearId,
-      activeWorkspaceSubmission?.id,
-      activeWorkspaceSubmission?.status,
-      activeWorkspaceSubmission?.version,
-      activeWorkspaceSubmission?.updatedAt,
-      activeWorkspaceSubmission?.submittedAt,
-      activeWorkspaceSubmission?.reviewedAt,
-      activeWorkspaceSubmission?.completion?.hasBmefFile,
-      activeWorkspaceSubmission?.completion?.hasSmeaFile,
+      latestActiveWorkspaceSubmission?.id,
+      latestActiveWorkspaceSubmission?.status,
+      latestActiveWorkspaceSubmission?.version,
+      latestActiveWorkspaceSubmission?.updatedAt,
+      latestActiveWorkspaceSubmission?.submittedAt,
+      latestActiveWorkspaceSubmission?.reviewedAt,
+      latestActiveWorkspaceSubmission?.completion?.hasBmefFile,
+      latestActiveWorkspaceSubmission?.completion?.hasSmeaFile,
     ],
   );
   const runCriticalWorkspaceMutation = useCallback(
@@ -1841,9 +1849,9 @@ export function SchoolIndicatorPanel({
       submittedEditPreserveContextRef.current
       && activeAcademicYearId
       && submittedEditPreserveContextRef.current.academicYearId === activeAcademicYearId
-      && submittedEditPreserveContextRef.current.submissionId === (activeWorkspaceSubmission?.id ?? null),
+      && submittedEditPreserveContextRef.current.submissionId === (latestActiveWorkspaceSubmission?.id ?? null),
     );
-    loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
+    loadWorkspaceForAcademicYear(latestActiveWorkspaceSubmission);
     if (shouldPreserveSubmittedEditMode) {
       setIsSubmittedEditMode(true);
     }
@@ -1854,7 +1862,7 @@ export function SchoolIndicatorPanel({
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
     endControlledWorkspaceTransition();
-  }, [activeAcademicYearId, activeWorkspaceSubmission, activeWorkspaceSubmissionFingerprint, complianceMetrics.length, endControlledWorkspaceTransition, loadWorkspaceForAcademicYear]);
+  }, [activeAcademicYearId, activeWorkspaceSubmissionFingerprint, complianceMetrics.length, endControlledWorkspaceTransition, latestActiveWorkspaceSubmission, loadWorkspaceForAcademicYear]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -1887,7 +1895,7 @@ export function SchoolIndicatorPanel({
   );
   const bmefFileEntry = bmefReportSubmission?.files?.bmef ?? null;
   const smeaFileEntry = smeaReportSubmission?.files?.smea ?? null;
-  const activeFormSubmission = activeWorkspaceSubmission;
+  const activeFormSubmission = latestActiveWorkspaceSubmission;
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
   const activeWorkspaceSubmissionId = activeWorkspaceSubmission?.id ?? null;
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
@@ -1954,12 +1962,12 @@ export function SchoolIndicatorPanel({
     selectedSchoolYearLabel && yearWorkspaceState.editableSchoolYears.includes(selectedSchoolYearLabel),
   );
   const workspaceMode: GroupBWorkspaceMode = useMemo(
-    () => deriveWorkspaceModeFromSubmission(activeWorkspaceSubmission, {
+    () => deriveWorkspaceModeFromSubmission(latestActiveWorkspaceSubmission, {
       isSelectedYearEditable,
       isWorkspaceReadOnly: yearWorkspaceState.isWorkspaceReadOnly,
       isSubmittedEditMode,
     }),
-    [activeWorkspaceSubmission, isSelectedYearEditable, isSubmittedEditMode, yearWorkspaceState.isWorkspaceReadOnly],
+    [isSelectedYearEditable, isSubmittedEditMode, latestActiveWorkspaceSubmission, yearWorkspaceState.isWorkspaceReadOnly],
   );
   const isYearEditable = useCallback(
     (yearLabel: string) => Boolean(selectedSchoolYearLabel && isSelectedYearEditable && yearLabel === selectedSchoolYearLabel),
@@ -2265,11 +2273,8 @@ export function SchoolIndicatorPanel({
     const didReset = await runCriticalWorkspaceTransition({
       dismissRestoreBanner: false,
       action: () => {
-        const latestWorkspaceSubmission = activeWorkspaceSubmission?.id
-          ? sortedSubmissions.find((submission) => submission.id === activeWorkspaceSubmission.id) ?? activeWorkspaceSubmission
-          : activeWorkspaceSubmission;
-        loadWorkspaceForAcademicYear(latestWorkspaceSubmission);
-        setEditingSubmissionId(latestWorkspaceSubmission?.id ?? null);
+        loadWorkspaceForAcademicYear(latestActiveWorkspaceSubmission);
+        setEditingSubmissionId(latestActiveWorkspaceSubmission?.id ?? null);
         if (typeof window !== "undefined") {
           localStorage.removeItem(autosaveKey);
         }
@@ -2285,7 +2290,7 @@ export function SchoolIndicatorPanel({
       },
     });
     return didReset === true;
-  }, [activeWorkspaceSubmission, autosaveKey, loadWorkspaceForAcademicYear, runCriticalWorkspaceTransition, sortedSubmissions]);
+  }, [autosaveKey, latestActiveWorkspaceSubmission, loadWorkspaceForAcademicYear, runCriticalWorkspaceTransition]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
@@ -3054,8 +3059,8 @@ export function SchoolIndicatorPanel({
       },
       onSuccess: (result) => {
         setOptimisticSubmittedByType({
-          bmef: hasUploadedReportFile(bmefFileEntry),
-          smea: hasUploadedReportFile(smeaFileEntry),
+          bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
+          smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
         });
         setIsSubmittedEditMode(false);
         submittedEditPreserveContextRef.current = null;
@@ -3089,10 +3094,10 @@ export function SchoolIndicatorPanel({
       mutation: async () => {
         return await submitSubmission(submission.id);
       },
-      onSuccess: () => {
+      onSuccess: (result) => {
         setOptimisticSubmittedByType({
-          bmef: hasUploadedReportFile(bmefFileEntry),
-          smea: hasUploadedReportFile(smeaFileEntry),
+          bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
+          smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
         });
         setIsSubmittedEditMode(false);
         submittedEditPreserveContextRef.current = null;
