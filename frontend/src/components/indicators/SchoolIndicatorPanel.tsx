@@ -88,6 +88,27 @@ type GroupBWorkspaceMode =
   | "submitted_editing"
   | "read_only_year";
 
+function buildWorkspaceSubmissionFingerprint(
+  academicYearId: string | null,
+  submission: IndicatorSubmission | null,
+): string {
+  if (!academicYearId) {
+    return "";
+  }
+
+  return [
+    academicYearId,
+    submission?.id ?? "blank",
+    submission?.status ?? "",
+    submission?.version ?? "",
+    submission?.updatedAt ?? "",
+    submission?.submittedAt ?? "",
+    submission?.reviewedAt ?? "",
+    submission?.completion?.hasBmefFile ? "bmef:1" : "bmef:0",
+    submission?.completion?.hasSmeaFile ? "smea:1" : "smea:0",
+  ].join(":");
+}
+
 interface YearWorkspaceState {
   visibleSchoolYears: string[];
   visibleAcademicYears: AcademicYearOption[];
@@ -1519,6 +1540,7 @@ export function SchoolIndicatorPanel({
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
+  const activeWorkspaceSubmissionRef = useRef<IndicatorSubmission | null>(activeWorkspaceSubmission);
   const resolvedAcademicYearBoundaryRef = useRef<string | null>(activeAcademicYearId);
   const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   const postRefreshMessageRef = useRef<string | null>(null);
@@ -1528,6 +1550,9 @@ export function SchoolIndicatorPanel({
   useEffect(() => {
     activeWorkspaceSubmissionIdRef.current = activeWorkspaceSubmission?.id ?? null;
   }, [activeWorkspaceSubmission?.id]);
+  useEffect(() => {
+    activeWorkspaceSubmissionRef.current = activeWorkspaceSubmission;
+  }, [activeWorkspaceSubmission]);
   useEffect(() => {
     activeEditingSubmissionIdRef.current = editingSubmissionId;
   }, [editingSubmissionId]);
@@ -1774,7 +1799,7 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const fingerprint = `${activeAcademicYearId}:${activeWorkspaceSubmission?.id ?? "blank"}:${activeWorkspaceSubmission?.updatedAt ?? ""}`;
+    const fingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, activeWorkspaceSubmission);
     if (workspaceFingerprintRef.current === fingerprint) {
       return;
     }
@@ -2211,15 +2236,16 @@ export function SchoolIndicatorPanel({
   const resetForm = useCallback(async (options: { postRefreshMessage?: string | null; onSuccess?: () => void } = {}): Promise<boolean> => {
     const didReset = await runCriticalWorkspaceTransition({
       dismissRestoreBanner: false,
-      action: async () => {
-        loadWorkspaceForAcademicYear(activeWorkspaceSubmission);
-        setEditingSubmissionId(activeWorkspaceSubmission?.id ?? null);
+      action: () => {
+        const latestWorkspaceSubmission = activeWorkspaceSubmissionRef.current;
+        loadWorkspaceForAcademicYear(latestWorkspaceSubmission);
+        setEditingSubmissionId(latestWorkspaceSubmission?.id ?? null);
         if (typeof window !== "undefined") {
           localStorage.removeItem(autosaveKey);
         }
         postRefreshMessageRef.current = options.postRefreshMessage ?? null;
         options.onSuccess?.();
-        await refreshResolvedWorkspace();
+        requestResolvedWorkspaceRehydrate();
         return true;
       },
       onError: (err) => {
@@ -2228,7 +2254,7 @@ export function SchoolIndicatorPanel({
       },
     });
     return didReset === true;
-  }, [activeWorkspaceSubmission, autosaveKey, loadWorkspaceForAcademicYear, refreshResolvedWorkspace, runCriticalWorkspaceTransition]);
+  }, [autosaveKey, loadWorkspaceForAcademicYear, requestResolvedWorkspaceRehydrate, runCriticalWorkspaceTransition]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
@@ -2993,8 +3019,7 @@ export function SchoolIndicatorPanel({
     await runCriticalWorkspaceMutation({
       mutation: async () => {
         const result = await persistDraftPayload(payload, "manual");
-        await submitSubmission(result.id);
-        return result;
+        return await submitSubmission(result.id);
       },
       onSuccess: (result) => {
         setOptimisticSubmittedByType({
@@ -3031,8 +3056,7 @@ export function SchoolIndicatorPanel({
 
     await runCriticalWorkspaceMutation({
       mutation: async () => {
-        await submitSubmission(submission.id);
-        return submission;
+        return await submitSubmission(submission.id);
       },
       onSuccess: () => {
         setOptimisticSubmittedByType({
