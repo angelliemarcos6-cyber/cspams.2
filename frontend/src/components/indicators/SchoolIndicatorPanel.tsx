@@ -2205,7 +2205,7 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
-  const resetForm = useCallback(async (): Promise<boolean> => {
+  const resetForm = useCallback(async (options: { postRefreshMessage?: string | null; onSuccess?: () => void } = {}): Promise<boolean> => {
     const didReset = await runCriticalWorkspaceTransition({
       dismissRestoreBanner: false,
       action: async () => {
@@ -2214,6 +2214,8 @@ export function SchoolIndicatorPanel({
         if (typeof window !== "undefined") {
           localStorage.removeItem(autosaveKey);
         }
+        postRefreshMessageRef.current = options.postRefreshMessage ?? null;
+        options.onSuccess?.();
         await refreshResolvedWorkspace();
         return true;
       },
@@ -2863,13 +2865,7 @@ export function SchoolIndicatorPanel({
     handleEditDraft(restorableServerSubmissionInScope);
   }, [activeAcademicYearId, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
   const runResetWorkspaceAction = useCallback(async (message: string, onSuccess?: () => void) => {
-    const didReset = await resetForm();
-    if (didReset) {
-      setSaveMessage(message);
-      onSuccess?.();
-      return;
-    }
-    postRefreshMessageRef.current = null;
+    await resetForm({ postRefreshMessage: message, onSuccess });
   }, [resetForm]);
   const handleResetDraft = useCallback(async () => {
     await runResetWorkspaceAction("Draft changes were reset to the last saved values.");
