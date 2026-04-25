@@ -985,6 +985,7 @@ export function SchoolIndicatorPanel({
   const lastAutosaveFingerprintRef = useRef("");
   const criticalActionInFlightRef = useRef(false);
   const transitionEpochRef = useRef(0);
+  const workspaceFingerprintRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
   const bmefInputRef = useRef<HTMLInputElement | null>(null);
@@ -1638,6 +1639,10 @@ export function SchoolIndicatorPanel({
     setSubmitError(reason);
     return true;
   }, [getManualActionBlockReason]);
+  const refreshResolvedWorkspace = useCallback(async () => {
+    await refreshSubmissions();
+    workspaceFingerprintRef.current = "";
+  }, [refreshSubmissions]);
   const runCriticalWorkspaceMutation = useCallback(
     async <T,>(
       options: {
@@ -1663,12 +1668,11 @@ export function SchoolIndicatorPanel({
           throw new Error("The workspace changed before this action completed. No stale changes were applied. Review the workspace and try again.");
         }
         postRefreshMessageRef.current = options.getSuccessMessage?.(result) ?? null;
-        await refreshSubmissions();
+        await refreshResolvedWorkspace();
         if (transitionEpochRef.current !== actionEpoch) {
           postRefreshMessageRef.current = null;
           return null;
         }
-        workspaceFingerprintRef.current = "";
         return result;
       } catch (err) {
         clearWorkspaceTransitionIntents();
@@ -1681,7 +1685,7 @@ export function SchoolIndicatorPanel({
         return null;
       }
     },
-    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, refreshSubmissions],
+    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, refreshResolvedWorkspace],
   );
   const runCriticalWorkspaceTransition = useCallback(
     async <T,>(
@@ -1751,7 +1755,6 @@ export function SchoolIndicatorPanel({
     setPendingFocusCellId(null);
     lastAutosaveFingerprintRef.current = "";
   }, [complianceMetrics]);
-  const workspaceFingerprintRef = useRef("");
   useEffect(() => {
     if (!activeAcademicYearId || complianceMetrics.length === 0) {
       return;
@@ -2200,8 +2203,7 @@ export function SchoolIndicatorPanel({
         if (typeof window !== "undefined") {
           localStorage.removeItem(autosaveKey);
         }
-        await refreshSubmissions();
-        workspaceFingerprintRef.current = "";
+        await refreshResolvedWorkspace();
         return true;
       },
       onError: (err) => {
@@ -2210,7 +2212,7 @@ export function SchoolIndicatorPanel({
       },
     });
     return didReset === true;
-  }, [activeWorkspaceSubmission, autosaveKey, loadWorkspaceForAcademicYear, refreshSubmissions, runCriticalWorkspaceTransition]);
+  }, [activeWorkspaceSubmission, autosaveKey, loadWorkspaceForAcademicYear, refreshResolvedWorkspace, runCriticalWorkspaceTransition]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
@@ -2852,7 +2854,7 @@ export function SchoolIndicatorPanel({
   const runResetWorkspaceAction = useCallback(async (message: string, onSuccess?: () => void) => {
     const didReset = await resetForm();
     if (didReset) {
-      postRefreshMessageRef.current = message;
+      setSaveMessage(message);
       onSuccess?.();
       return;
     }
@@ -3106,7 +3108,7 @@ export function SchoolIndicatorPanel({
         return null;
       }
       if (!(options.skipRefreshAfterCreate ?? false)) {
-        await refreshSubmissions();
+        await refreshResolvedWorkspace();
       }
       if (
         activeAcademicYearIdRef.current !== guardAcademicYearId
@@ -3124,7 +3126,7 @@ export function SchoolIndicatorPanel({
       setSubmitError(err instanceof Error ? err.message : "Unable to create a draft for file upload.");
       return null;
     }
-  }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshSubmissions, selectedSubmissionForUploads, workspaceMode]);
+  }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshResolvedWorkspace, selectedSubmissionForUploads, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     if (blockIfManualActionBusy()) {
