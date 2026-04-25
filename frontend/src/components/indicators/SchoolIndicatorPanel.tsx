@@ -1870,10 +1870,29 @@ export function SchoolIndicatorPanel({
     setRestoreBannerDismissed(false);
     endControlledWorkspaceTransition();
   }, [activeAcademicYearId, workspaceSubmissionFingerprint, complianceMetrics.length, endControlledWorkspaceTransition, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear]);
-  const latestSubmittedInScope = useMemo(
-    () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
+  const groupASubmittedSubmission = useMemo(
+    () =>
+      scopedSubmissionsForYear
+        .filter((submission) => isSubmittedWorkflowStatus(submission.status))
+        .sort((a, b) => (
+          new Date(b.submittedAt ?? b.updatedAt ?? b.createdAt ?? 0).getTime()
+          - new Date(a.submittedAt ?? a.updatedAt ?? a.createdAt ?? 0).getTime()
+        ))[0] ?? null,
     [scopedSubmissionsForYear],
   );
+  const groupASubmittedIndicatorByMetricId = useMemo(() => {
+    const map = new Map<string, IndicatorSubmissionItem>();
+
+    for (const item of groupASubmittedSubmission?.indicators ?? []) {
+      const metricId = String(item.metric?.id ?? "");
+      if (!metricId) {
+        continue;
+      }
+      map.set(metricId, item);
+    }
+
+    return map;
+  }, [groupASubmittedSubmission]);
   const bmefReportSubmission = useMemo(
     () =>
       scopedSubmissionsForYear.find((submission) => (
@@ -1883,9 +1902,9 @@ export function SchoolIndicatorPanel({
           || Boolean(submission.completion?.hasBmefFile)
         )
       ))
-      ?? latestSubmittedInScope
+      ?? groupASubmittedSubmission
       ?? null,
-    [latestSubmittedInScope, scopedSubmissionsForYear],
+    [groupASubmittedIndicatorByMetricId, groupASubmittedSubmission, scopedSubmissionsForYear],
   );
   const smeaReportSubmission = useMemo(
     () =>
@@ -1896,9 +1915,9 @@ export function SchoolIndicatorPanel({
           || Boolean(submission.completion?.hasSmeaFile)
         )
       ))
-      ?? latestSubmittedInScope
+      ?? groupASubmittedSubmission
       ?? null,
-    [latestSubmittedInScope, scopedSubmissionsForYear],
+    [groupASubmittedIndicatorByMetricId, groupASubmittedSubmission, scopedSubmissionsForYear],
   );
   const bmefFileEntry = bmefReportSubmission?.files?.bmef ?? null;
   const smeaFileEntry = smeaReportSubmission?.files?.smea ?? null;
