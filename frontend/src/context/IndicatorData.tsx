@@ -103,6 +103,7 @@ export interface IndicatorDataContextType {
 const IndicatorDataContext = createContext<IndicatorDataContextType | undefined>(undefined);
 const AUTO_SYNC_INTERVAL_MS = 60_000;
 const REFERENCE_DATA_SYNC_INTERVAL_MS = 5 * 60_000;
+const POST_MUTATION_AUTO_SYNC_GRACE_MS = 5_000;
 const SUBMISSION_SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_LIST_PER_PAGE = 25;
 const MAX_LIST_PER_PAGE = 100;
@@ -201,6 +202,16 @@ function toSubmissionSortTime(submission: IndicatorSubmission): number {
   return new Date(submission.updatedAt ?? submission.submittedAt ?? submission.createdAt ?? 0).getTime();
 }
 
+function sortSubmissionRows(rows: IndicatorSubmission[]): IndicatorSubmission[] {
+  return [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
+}
+
+function upsertSubmissionRow(rows: IndicatorSubmission[], submission: IndicatorSubmission): IndicatorSubmission[] {
+  const nextRows = rows.filter((row) => row.id !== submission.id);
+  nextRows.push(submission);
+  return sortSubmissionRows(nextRows);
+}
+
 function parseDownloadFilename(contentDisposition: string | null): string | null {
   if (!contentDisposition) {
     return null;
@@ -248,6 +259,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncGenerationRef = useRef(0);
   const referenceDataSyncedAtRef = useRef(0);
   const allSubmissionsLoadingCountRef = useRef(0);
+  const manualMutationInFlightRef = useRef(false);
+  const lastLocalMutationAtRef = useRef(0);
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -495,6 +508,52 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [buildAllSubmissionsVersionKey, loadAllSubmissions],
   );
 
+  const upsertSubmissionLocally = useCallback((submission: IndicatorSubmission) => {
+    const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
+    submissionsEtagRef.current = "";
+    schoolSubmissionsCacheRef.current.clear();
+    allSubmissionsCacheRef.current = null;
+    allSubmissionsInFlightRef.current = null;
+    lastLocalMutationAtRef.current = Date.now();
+
+    setSubmissions((current) => upsertSubmissionRow(current, submission));
+    setAllSubmissions((current) => (
+      shouldRefreshAllSubmissionsState || current.length > 0
+        ? upsertSubmissionRow(current, submission)
+        : current
+    ));
+    setLastSyncedAt(new Date().toISOString());
+  }, [allSubmissions.length]);
+
+  const shouldSkipBackgroundSync = useCallback((): boolean => {
+    if (manualMutationInFlightRef.current || syncInFlightRef.current) {
+      return true;
+    }
+
+    return Date.now() - lastLocalMutationAtRef.current < POST_MUTATION_AUTO_SYNC_GRACE_MS;
+  }, []);
+
+  const runSubmissionMutation = useCallback(
+    async (action: () => Promise<IndicatorSubmission>): Promise<IndicatorSubmission> => {
+      manualMutationInFlightRef.current = true;
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const submission = await action();
+        upsertSubmissionLocally(submission);
+        return submission;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        manualMutationInFlightRef.current = false;
+        setIsSaving(false);
+      }
+    },
+    [handleApiError, upsertSubmissionLocally],
+  );
+
   const syncSubmissions = useCallback(
     async (silent = false) => {
       if (syncInFlightRef.current) {
@@ -608,10 +667,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      setIsSaving(true);
-      setError("");
-
-      try {
+      return runSubmissionMutation(async () => {
         const response = await apiRequest<IndicatorSubmissionResponse>("/api/indicators/submissions", {
           method: "POST",
           token,
@@ -629,18 +685,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
             })),
           },
         });
-
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
         return response.data;
-      } catch (err) {
-        await handleApiError(err);
-        throw err;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [token, syncSubmissions, handleApiError],
+    [runSubmissionMutation, token],
   );
 
   const submitSubmission = useCallback(
@@ -649,26 +697,15 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      setIsSaving(true);
-      setError("");
-
-      try {
+      return runSubmissionMutation(async () => {
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}/submit`, {
           method: "POST",
           token,
         });
-
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
         return response.data;
-      } catch (err) {
-        await handleApiError(err);
-        throw err;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [token, syncSubmissions, handleApiError],
+    [runSubmissionMutation, token],
   );
 
   const updateSubmission = useCallback(
@@ -677,10 +714,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      setIsSaving(true);
-      setError("");
-
-      try {
+      return runSubmissionMutation(async () => {
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
           method: "PUT",
           token,
@@ -698,18 +732,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
             })),
           },
         });
-
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
         return response.data;
-      } catch (err) {
-        await handleApiError(err);
-        throw err;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [token, syncSubmissions, handleApiError],
+    [runSubmissionMutation, token],
   );
 
   const uploadSubmissionFile = useCallback(
@@ -718,10 +744,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      setIsSaving(true);
-      setError("");
-
-      try {
+      return runSubmissionMutation(async () => {
         const formData = new FormData();
         formData.append("type", type);
         formData.append("file", file);
@@ -731,18 +754,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           token,
           body: formData,
         });
-
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
         return response.data;
-      } catch (err) {
-        await handleApiError(err);
-        throw err;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [token, syncSubmissions, handleApiError],
+    [runSubmissionMutation, token],
   );
 
   const downloadSubmissionFile = useCallback(
@@ -795,10 +810,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      setIsSaving(true);
-      setError("");
-
-      try {
+      return runSubmissionMutation(async () => {
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}/review`, {
           method: "POST",
           token,
@@ -807,18 +819,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
             notes: notes?.trim() || null,
           },
         });
-
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
         return response.data;
-      } catch (err) {
-        await handleApiError(err);
-        throw err;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [token, syncSubmissions, handleApiError],
+    [runSubmissionMutation, token],
   );
 
   const loadHistory = useCallback(
@@ -845,14 +849,23 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return;
       }
+      if (shouldSkipBackgroundSync()) {
+        return;
+      }
       void syncSubmissions(true);
     }, AUTO_SYNC_INTERVAL_MS);
 
     const syncOnFocus = () => {
+      if (shouldSkipBackgroundSync()) {
+        return;
+      }
       void syncSubmissions(true);
     };
     const syncOnRealtime = (event: Event) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      if (shouldSkipBackgroundSync()) {
         return;
       }
       const payload = (event as CustomEvent<{ entity?: string }>).detail;
@@ -872,7 +885,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", syncOnFocus);
       window.removeEventListener("cspams:update", syncOnRealtime);
     };
-  }, [token, syncSubmissions]);
+  }, [shouldSkipBackgroundSync, syncSubmissions, token]);
 
   const value = useMemo<IndicatorDataContextType>(
     () => ({

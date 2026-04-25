@@ -1654,6 +1654,9 @@ export function SchoolIndicatorPanel({
     await refreshSubmissions();
     workspaceFingerprintRef.current = "";
   }, [refreshSubmissions]);
+  const requestResolvedWorkspaceRehydrate = useCallback(() => {
+    workspaceFingerprintRef.current = "";
+  }, []);
   const runCriticalWorkspaceMutation = useCallback(
     async <T,>(
       options: {
@@ -1679,7 +1682,7 @@ export function SchoolIndicatorPanel({
           throw new Error("The workspace changed before this action completed. No stale changes were applied. Review the workspace and try again.");
         }
         postRefreshMessageRef.current = options.getSuccessMessage?.(result) ?? null;
-        await refreshResolvedWorkspace();
+        requestResolvedWorkspaceRehydrate();
         if (transitionEpochRef.current !== actionEpoch) {
           postRefreshMessageRef.current = null;
           return null;
@@ -1696,7 +1699,7 @@ export function SchoolIndicatorPanel({
         return null;
       }
     },
-    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, refreshResolvedWorkspace],
+    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, requestResolvedWorkspaceRehydrate],
   );
   const runCriticalWorkspaceTransition = useCallback(
     async <T,>(
