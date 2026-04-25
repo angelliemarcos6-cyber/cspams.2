@@ -109,6 +109,29 @@ function buildWorkspaceSubmissionFingerprint(
   ].join(":");
 }
 
+function deriveWorkspaceModeFromSubmission(
+  submission: IndicatorSubmission | null,
+  options: {
+    isSelectedYearEditable: boolean;
+    isWorkspaceReadOnly: boolean;
+    isSubmittedEditMode: boolean;
+  },
+): GroupBWorkspaceMode {
+  if (options.isWorkspaceReadOnly || !options.isSelectedYearEditable) {
+    return "read_only_year";
+  }
+
+  if (!submission) {
+    return "blank";
+  }
+
+  if (!isSubmittedWorkflowStatus(submission.status)) {
+    return "draft";
+  }
+
+  return options.isSubmittedEditMode ? "submitted_editing" : "submitted_locked";
+}
+
 interface YearWorkspaceState {
   visibleSchoolYears: string[];
   visibleAcademicYears: AcademicYearOption[];
@@ -1540,7 +1563,6 @@ export function SchoolIndicatorPanel({
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
-  const activeWorkspaceSubmissionRef = useRef<IndicatorSubmission | null>(activeWorkspaceSubmission);
   const resolvedAcademicYearBoundaryRef = useRef<string | null>(activeAcademicYearId);
   const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   const postRefreshMessageRef = useRef<string | null>(null);
@@ -1550,9 +1572,6 @@ export function SchoolIndicatorPanel({
   useEffect(() => {
     activeWorkspaceSubmissionIdRef.current = activeWorkspaceSubmission?.id ?? null;
   }, [activeWorkspaceSubmission?.id]);
-  useEffect(() => {
-    activeWorkspaceSubmissionRef.current = activeWorkspaceSubmission;
-  }, [activeWorkspaceSubmission]);
   useEffect(() => {
     activeEditingSubmissionIdRef.current = editingSubmissionId;
   }, [editingSubmissionId]);
@@ -1682,6 +1701,20 @@ export function SchoolIndicatorPanel({
   const requestResolvedWorkspaceRehydrate = useCallback(() => {
     workspaceFingerprintRef.current = "";
   }, []);
+  const activeWorkspaceSubmissionFingerprint = useMemo(
+    () => buildWorkspaceSubmissionFingerprint(activeAcademicYearId, activeWorkspaceSubmission),
+    [
+      activeAcademicYearId,
+      activeWorkspaceSubmission?.id,
+      activeWorkspaceSubmission?.status,
+      activeWorkspaceSubmission?.version,
+      activeWorkspaceSubmission?.updatedAt,
+      activeWorkspaceSubmission?.submittedAt,
+      activeWorkspaceSubmission?.reviewedAt,
+      activeWorkspaceSubmission?.completion?.hasBmefFile,
+      activeWorkspaceSubmission?.completion?.hasSmeaFile,
+    ],
+  );
   const runCriticalWorkspaceMutation = useCallback(
     async <T,>(
       options: {
@@ -1799,12 +1832,11 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const fingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, activeWorkspaceSubmission);
-    if (workspaceFingerprintRef.current === fingerprint) {
+    if (workspaceFingerprintRef.current === activeWorkspaceSubmissionFingerprint) {
       return;
     }
 
-    workspaceFingerprintRef.current = fingerprint;
+    workspaceFingerprintRef.current = activeWorkspaceSubmissionFingerprint;
     const shouldPreserveSubmittedEditMode = Boolean(
       submittedEditPreserveContextRef.current
       && activeAcademicYearId
@@ -1822,7 +1854,7 @@ export function SchoolIndicatorPanel({
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
     endControlledWorkspaceTransition();
-  }, [activeAcademicYearId, activeWorkspaceSubmission, complianceMetrics.length, endControlledWorkspaceTransition, loadWorkspaceForAcademicYear]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission, activeWorkspaceSubmissionFingerprint, complianceMetrics.length, endControlledWorkspaceTransition, loadWorkspaceForAcademicYear]);
   const latestSubmittedInScope = useMemo(
     () => scopedSubmissionsForYear.find((submission) => isSubmittedWorkflowStatus(submission.status)),
     [scopedSubmissionsForYear],
@@ -1921,18 +1953,14 @@ export function SchoolIndicatorPanel({
   const isSelectedYearEditable = Boolean(
     selectedSchoolYearLabel && yearWorkspaceState.editableSchoolYears.includes(selectedSchoolYearLabel),
   );
-  const workspaceMode: GroupBWorkspaceMode = useMemo(() => {
-    if (yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable) {
-      return "read_only_year";
-    }
-    if (!activeWorkspaceSubmission) {
-      return "blank";
-    }
-    if (!isSubmittedWorkflowStatus(activeFormStatus)) {
-      return "draft";
-    }
-    return isSubmittedEditMode ? "submitted_editing" : "submitted_locked";
-  }, [activeFormStatus, activeWorkspaceSubmission, isSelectedYearEditable, isSubmittedEditMode, yearWorkspaceState.isWorkspaceReadOnly]);
+  const workspaceMode: GroupBWorkspaceMode = useMemo(
+    () => deriveWorkspaceModeFromSubmission(activeWorkspaceSubmission, {
+      isSelectedYearEditable,
+      isWorkspaceReadOnly: yearWorkspaceState.isWorkspaceReadOnly,
+      isSubmittedEditMode,
+    }),
+    [activeWorkspaceSubmission, isSelectedYearEditable, isSubmittedEditMode, yearWorkspaceState.isWorkspaceReadOnly],
+  );
   const isYearEditable = useCallback(
     (yearLabel: string) => Boolean(selectedSchoolYearLabel && isSelectedYearEditable && yearLabel === selectedSchoolYearLabel),
     [isSelectedYearEditable, selectedSchoolYearLabel],
@@ -2237,15 +2265,18 @@ export function SchoolIndicatorPanel({
     const didReset = await runCriticalWorkspaceTransition({
       dismissRestoreBanner: false,
       action: () => {
-        const latestWorkspaceSubmission = activeWorkspaceSubmissionRef.current;
+        const latestWorkspaceSubmission = activeWorkspaceSubmission?.id
+          ? sortedSubmissions.find((submission) => submission.id === activeWorkspaceSubmission.id) ?? activeWorkspaceSubmission
+          : activeWorkspaceSubmission;
         loadWorkspaceForAcademicYear(latestWorkspaceSubmission);
         setEditingSubmissionId(latestWorkspaceSubmission?.id ?? null);
         if (typeof window !== "undefined") {
           localStorage.removeItem(autosaveKey);
         }
-        postRefreshMessageRef.current = options.postRefreshMessage ?? null;
         options.onSuccess?.();
-        requestResolvedWorkspaceRehydrate();
+        if (options.postRefreshMessage) {
+          setSaveMessage(options.postRefreshMessage);
+        }
         return true;
       },
       onError: (err) => {
@@ -2254,7 +2285,7 @@ export function SchoolIndicatorPanel({
       },
     });
     return didReset === true;
-  }, [autosaveKey, loadWorkspaceForAcademicYear, requestResolvedWorkspaceRehydrate, runCriticalWorkspaceTransition]);
+  }, [activeWorkspaceSubmission, autosaveKey, loadWorkspaceForAcademicYear, runCriticalWorkspaceTransition, sortedSubmissions]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
