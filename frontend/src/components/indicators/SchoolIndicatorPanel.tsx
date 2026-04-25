@@ -1014,6 +1014,7 @@ export function SchoolIndicatorPanel({
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
   const [isWorkspaceTransitioning, setIsWorkspaceTransitioning] = useState(false);
+  const [isGroupBActionRunning, setIsGroupBActionRunning] = useState(false);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [isSubmittedEditMode, setIsSubmittedEditMode] = useState(false);
   const [optimisticSubmittedByType, setOptimisticSubmittedByType] = useState<{
@@ -1028,6 +1029,7 @@ export function SchoolIndicatorPanel({
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
   const criticalActionInFlightRef = useRef(false);
+  const groupBActionInFlightRef = useRef(false);
   const transitionEpochRef = useRef(0);
   const workspaceFingerprintRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
@@ -1805,6 +1807,35 @@ export function SchoolIndicatorPanel({
     },
     [blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, startControlledWorkspaceTransition],
   );
+  const runGroupBAction = useCallback(
+    async (label: string, action: () => Promise<void>): Promise<void> => {
+      if (
+        groupBActionInFlightRef.current
+        || isSaving
+        || uploadingFileType !== null
+        || isWorkspaceTransitioning
+      ) {
+        return;
+      }
+
+      groupBActionInFlightRef.current = true;
+      setIsGroupBActionRunning(true);
+      setSubmitError("");
+      setSaveMessage("");
+
+      try {
+        await action();
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error ? error.message : `${label} failed. Please try again.`,
+        );
+      } finally {
+        groupBActionInFlightRef.current = false;
+        setIsGroupBActionRunning(false);
+      }
+    },
+    [isSaving, isWorkspaceTransitioning, uploadingFileType],
+  );
   const rehydrateWorkspaceFromSubmission = useCallback((submission: IndicatorSubmission | null) => {
     localAutosaveEpochRef.current += 1;
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
@@ -2027,8 +2058,9 @@ export function SchoolIndicatorPanel({
   const canShowCancelEditAction = workspaceMode === "submitted_editing";
   const canShowResetAction = workspaceMode === "draft";
   const isUploading = uploadingFileType !== null;
-  const isCriticalActionInFlight = isSaving || isUploading || isWorkspaceTransitioning;
-  const isManualActionBlocked = isCriticalActionInFlight || isAutosavingDraft;
+  const isGroupBActionBusy = groupBActionInFlightRef.current || isGroupBActionRunning || isSaving || isUploading || isWorkspaceTransitioning;
+  const isCriticalActionInFlight = isGroupBActionBusy;
+  const isManualActionBlocked = isGroupBActionBusy || isAutosavingDraft;
   const saveActionLabel = useMemo(() => {
     if (workspaceMode === "blank") return "Save Draft";
     if (workspaceMode === "submitted_editing") return "Save Changes";
@@ -2928,52 +2960,60 @@ export function SchoolIndicatorPanel({
   }, [latestValidatedSubmission, orderedComplianceMetrics, visibleSchoolYears, workspaceSchoolYears]);
 
   const handleRestoreLocalDraft = useCallback(() => {
-    if (!pendingLocalDraft) {
-      return;
-    }
+    void runGroupBAction("Restore local draft", async () => {
+      if (!pendingLocalDraft) {
+        return;
+      }
 
-    if (pendingLocalDraft.academicYearId !== activeAcademicYearId) {
-      setSubmitError("This local draft no longer matches the selected academic year. Re-select the year and try again.");
-      return;
-    }
+      if (pendingLocalDraft.academicYearId !== activeAcademicYearId) {
+        setSubmitError("This local draft no longer matches the selected academic year. Re-select the year and try again.");
+        return;
+      }
 
-    const inScopeSubmissionId = resolveInScopeSubmissionId(pendingLocalDraft.editingSubmissionId);
+      const inScopeSubmissionId = resolveInScopeSubmissionId(pendingLocalDraft.editingSubmissionId);
 
-    void runCriticalWorkspaceTransition({
-      dismissRestoreBanner: true,
-      action: () => {
-        setNotes(pendingLocalDraft.notes);
-        setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
-        setEditingSubmissionId(inScopeSubmissionId);
-        setAutosaveAt(pendingLocalDraft.savedAt);
-        setSaveMessage("Local draft restored.");
-      },
+      await runCriticalWorkspaceTransition({
+        dismissRestoreBanner: true,
+        action: () => {
+          setNotes(pendingLocalDraft.notes);
+          setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
+          setEditingSubmissionId(inScopeSubmissionId);
+          setAutosaveAt(pendingLocalDraft.savedAt);
+          setSaveMessage("Local draft restored.");
+        },
+      });
     });
-  }, [activeAcademicYearId, complianceMetrics, pendingLocalDraft, resolveInScopeSubmissionId, runCriticalWorkspaceTransition]);
+  }, [activeAcademicYearId, complianceMetrics, pendingLocalDraft, resolveInScopeSubmissionId, runCriticalWorkspaceTransition, runGroupBAction]);
 
   const handleRestoreServerDraft = useCallback(() => {
-    if (!restorableServerSubmissionInScope) {
-      return;
-    }
-    if (!isSubmissionInAcademicYear(restorableServerSubmissionInScope, activeAcademicYearId)) {
-      setSubmitError("This server draft no longer matches the selected academic year. Re-select the year and try again.");
-      return;
-    }
+    void runGroupBAction("Restore server draft", async () => {
+      if (!restorableServerSubmissionInScope) {
+        return;
+      }
+      if (!isSubmissionInAcademicYear(restorableServerSubmissionInScope, activeAcademicYearId)) {
+        setSubmitError("This server draft no longer matches the selected academic year. Re-select the year and try again.");
+        return;
+      }
 
-    handleEditDraft(restorableServerSubmissionInScope);
-  }, [activeAcademicYearId, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope]);
+      handleEditDraft(restorableServerSubmissionInScope);
+    });
+  }, [activeAcademicYearId, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope, runGroupBAction]);
   const runResetWorkspaceAction = useCallback(async (message: string, onSuccess?: () => void) => {
     await resetForm({ postRefreshMessage: message, onSuccess });
   }, [resetForm]);
   const handleResetDraft = useCallback(async () => {
-    await runResetWorkspaceAction("Draft changes were reset to the last saved values.");
-  }, [runResetWorkspaceAction]);
+    await runGroupBAction("Reset draft", async () => {
+      await runResetWorkspaceAction("Draft changes were reset to the last saved values.");
+    });
+  }, [runGroupBAction, runResetWorkspaceAction]);
   const handleCancelSubmittedEdit = useCallback(async () => {
-    await runResetWorkspaceAction(
-      "Submitted report editing canceled. Locked view restored.",
-      () => setIsSubmittedEditMode(false),
-    );
-  }, [runResetWorkspaceAction]);
+    await runGroupBAction("Cancel submitted edit", async () => {
+      await runResetWorkspaceAction(
+        "Submitted report editing canceled. Locked view restored.",
+        () => setIsSubmittedEditMode(false),
+      );
+    });
+  }, [runGroupBAction, runResetWorkspaceAction]);
   const handleOpenEditSubmittedReport = useCallback(() => {
     if (workspaceMode === "read_only_year") {
       setSubmitError("This academic year is not yet open for encoding.");
@@ -2992,171 +3032,164 @@ export function SchoolIndicatorPanel({
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (blockIfManualActionBusy()) {
-      return;
-    }
-    if (workspaceMode === "read_only_year") {
-      setSubmitError("This academic year is not yet open for encoding.");
-      return;
-    }
-    if (isActiveCategoryLocked) {
-      setSubmitError("This submitted report is read-only. Click Edit to continue.");
-      return;
-    }
-    setSubmitError("");
-    setSaveMessage("");
-    if (!ensureWorkspaceLineageAlignment()) {
-      return;
-    }
-
-    const prepared = buildSubmissionPayload({ allowIncomplete: true });
-    if (!prepared.payload) {
-      if (missingFieldTargets.length > 0) {
-        setSubmitError("");
-        setShowMissingFields(true);
-        const firstMissing = missingFieldTargets[0];
-        if (firstMissing) {
-          focusMissingTarget(firstMissing, missingFieldTargets.length > 1 ? 1 : 0);
-        }
+    await runGroupBAction("Save draft", async () => {
+      if (workspaceMode === "read_only_year") {
+        setSubmitError("This academic year is not yet open for encoding.");
         return;
       }
-      setSubmitError(prepared.reason);
-      return;
-    }
-    const payload = prepared.payload;
+      if (isActiveCategoryLocked) {
+        setSubmitError("This submitted report is read-only. Click Edit to continue.");
+        return;
+      }
+      if (!ensureWorkspaceLineageAlignment()) {
+        return;
+      }
 
-    const saveModeAtActionStart = workspaceMode;
-    const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
-    await runCriticalWorkspaceMutation({
-      mutation: () => persistDraftPayload(payload, "manual"),
-      onSuccess: (saved) => {
-        if (saveModeAtActionStart === "submitted_editing") {
-          submittedEditPreserveContextRef.current = {
-            academicYearId: saveAcademicYearAtActionStart,
-            submissionId: saved.id,
-          };
+      const prepared = buildSubmissionPayload({ allowIncomplete: true });
+      if (!prepared.payload) {
+        if (missingFieldTargets.length > 0) {
+          setSubmitError("");
+          setShowMissingFields(true);
+          const firstMissing = missingFieldTargets[0];
+          if (firstMissing) {
+            focusMissingTarget(firstMissing, missingFieldTargets.length > 1 ? 1 : 0);
+          }
+          return;
         }
-      },
-      getSuccessMessage: (saved) => (
-        saveModeAtActionStart === "blank"
-          ? `Draft package #${saved.id} saved.`
-          : saveModeAtActionStart === "submitted_editing"
-            ? `Changes saved for package #${saved.id}.`
-            : `Draft package #${saved.id} updated.`
-      ),
-      onError: (err) => {
-        setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
-      },
+        setSubmitError(prepared.reason);
+        return;
+      }
+      const payload = prepared.payload;
+
+      const saveModeAtActionStart = workspaceMode;
+      const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
+      await runCriticalWorkspaceMutation({
+        mutation: () => persistDraftPayload(payload, "manual"),
+        onSuccess: (saved) => {
+          if (saveModeAtActionStart === "submitted_editing") {
+            submittedEditPreserveContextRef.current = {
+              academicYearId: saveAcademicYearAtActionStart,
+              submissionId: saved.id,
+            };
+          }
+        },
+        getSuccessMessage: (saved) => (
+          saveModeAtActionStart === "blank"
+            ? `Draft package #${saved.id} saved.`
+            : saveModeAtActionStart === "submitted_editing"
+              ? `Changes saved for package #${saved.id}.`
+              : `Draft package #${saved.id} updated.`
+        ),
+        onError: (err) => {
+          setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
+        },
+      });
     });
   };
 
   const handleCreateAndSubmit = async () => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
-    if (workspaceMode === "read_only_year") {
-      setSubmitError("This academic year is not yet open for encoding.");
-      return;
-    }
-    if (isActiveCategoryLocked) {
-      setSubmitError("This submitted report is read-only. Click Edit to continue.");
-      return;
-    }
-    setSubmitError("");
-    setSaveMessage("");
-    submittedEditPreserveContextRef.current = null;
-    if (!ensureWorkspaceLineageAlignment()) {
-      return;
-    }
-
-    const prepared = buildSubmissionPayload();
-    if (!prepared.payload) {
-      if (missingFieldTargets.length > 0) {
-        setSubmitError("");
-        setShowMissingFields(true);
-        const firstMissing = missingFieldTargets[0];
-        if (firstMissing) {
-          focusMissingTarget(firstMissing, missingFieldTargets.length > 1 ? 1 : 0);
-        }
+    await runGroupBAction("Submit", async () => {
+      if (workspaceMode === "read_only_year") {
+        setSubmitError("This academic year is not yet open for encoding.");
         return;
       }
-      setSubmitError(prepared.reason);
-      return;
-    }
-    const payload = prepared.payload;
+      if (isActiveCategoryLocked) {
+        setSubmitError("This submitted report is read-only. Click Edit to continue.");
+        return;
+      }
+      submittedEditPreserveContextRef.current = null;
+      if (!ensureWorkspaceLineageAlignment()) {
+        return;
+      }
 
-    await runCriticalWorkspaceMutation({
-      mutation: async () => {
-        const result = await persistDraftPayload(payload, "manual");
-        return await submitSubmission(result.id);
-      },
-      onSuccess: (result) => {
-        setOptimisticSubmittedByType({
-          bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
-          smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
-        });
-        setIsSubmittedEditMode(false);
-        submittedEditPreserveContextRef.current = null;
-      },
-      getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
-      onError: (err) => {
-        setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
-      },
+      const prepared = buildSubmissionPayload();
+      if (!prepared.payload) {
+        if (missingFieldTargets.length > 0) {
+          setSubmitError("");
+          setShowMissingFields(true);
+          const firstMissing = missingFieldTargets[0];
+          if (firstMissing) {
+            focusMissingTarget(firstMissing, missingFieldTargets.length > 1 ? 1 : 0);
+          }
+          return;
+        }
+        setSubmitError(prepared.reason);
+        return;
+      }
+      const payload = prepared.payload;
+
+      await runCriticalWorkspaceMutation({
+        mutation: async () => {
+          const result = await persistDraftPayload(payload, "manual");
+          return await submitSubmission(result.id);
+        },
+        onSuccess: (result) => {
+          setOptimisticSubmittedByType({
+            bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
+            smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
+          });
+          setIsSubmittedEditMode(false);
+          submittedEditPreserveContextRef.current = null;
+        },
+        getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
+        onError: (err) => {
+          setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
+        },
+      });
     });
   };
 
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
-    if (workspaceMode === "read_only_year") {
-      setSubmitError("This academic year is not yet open for encoding.");
-      return;
-    }
-    setSubmitError("");
-    setSaveMessage("");
-    submittedEditPreserveContextRef.current = null;
+    await runGroupBAction("Submit", async () => {
+      if (workspaceMode === "read_only_year") {
+        setSubmitError("This academic year is not yet open for encoding.");
+        return;
+      }
+      submittedEditPreserveContextRef.current = null;
 
-    const submissionSummary = submissionMissingSummaryById.get(submission.id);
-    if ((submissionSummary?.missingCount ?? 0) > 0) {
-      setSubmitError(submissionSummary?.reason || "Complete all required indicator cells before submitting.");
-      return;
-    }
+      const submissionSummary = submissionMissingSummaryById.get(submission.id);
+      if ((submissionSummary?.missingCount ?? 0) > 0) {
+        setSubmitError(submissionSummary?.reason || "Complete all required indicator cells before submitting.");
+        return;
+      }
 
-    await runCriticalWorkspaceMutation({
-      mutation: async () => {
-        return await submitSubmission(submission.id);
-      },
-      onSuccess: (result) => {
-        setOptimisticSubmittedByType({
-          bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
-          smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
-        });
-        setIsSubmittedEditMode(false);
-        submittedEditPreserveContextRef.current = null;
-      },
-      getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
-      onError: (err) => {
-        setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
-      },
+      await runCriticalWorkspaceMutation({
+        mutation: async () => {
+          return await submitSubmission(submission.id);
+        },
+        onSuccess: (result) => {
+          setOptimisticSubmittedByType({
+            bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
+            smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
+          });
+          setIsSubmittedEditMode(false);
+          submittedEditPreserveContextRef.current = null;
+        },
+        getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
+        onError: (err) => {
+          setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
+        },
+      });
     });
   };
 
   const handleConfirmEditSubmittedReport = () => {
-    if (workspaceMode === "read_only_year") {
-      setShowEditConfirmModal(false);
-      setSubmitError("This academic year is not yet open for encoding.");
-      return;
-    }
-    void runCriticalWorkspaceTransition({
-      dismissRestoreBanner: true,
-      action: () => {
+    void runGroupBAction("Edit submitted report", async () => {
+      if (workspaceMode === "read_only_year") {
         setShowEditConfirmModal(false);
-        setIsSubmittedEditMode(true);
-        setOptimisticSubmittedByType({ bmef: false, smea: false });
-        setSaveMessage("Editing mode enabled for submitted report.");
-        setSubmitError("");
-      },
+        setSubmitError("This academic year is not yet open for encoding.");
+        return;
+      }
+      await runCriticalWorkspaceTransition({
+        dismissRestoreBanner: true,
+        action: () => {
+          setShowEditConfirmModal(false);
+          setIsSubmittedEditMode(true);
+          setOptimisticSubmittedByType({ bmef: false, smea: false });
+          setSaveMessage("Editing mode enabled for submitted report.");
+          setSubmitError("");
+        },
+      });
     });
   };
 
@@ -3232,82 +3265,79 @@ export function SchoolIndicatorPanel({
   }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshResolvedWorkspace, selectedSubmissionForUploads, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
-    if (blockIfManualActionBusy()) {
-      return;
-    }
-    setSubmitError("");
-    setSaveMessage("");
-    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+    await runGroupBAction(`Upload ${type.toUpperCase()}`, async () => {
+      setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
-    const normalizedName = file.name.toLowerCase();
-    const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
-    if (!validExtension) {
-      setUploadErrorByType((current) => ({
-        ...current,
-        [type]: "Only PDF, DOCX, and XLSX files are allowed.",
-      }));
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadErrorByType((current) => ({
-        ...current,
-        [type]: "File size must not exceed 10MB.",
-      }));
-      return;
-    }
-
-    const uploadGuardAcademicYearId = activeAcademicYearIdRef.current;
-    const uploaded = await runCriticalWorkspaceMutation({
-      mutation: async () => {
-        setUploadingFileType(type);
-        const submissionForUpload = await ensureUploadSubmission({ skipRefreshAfterCreate: true });
-        if (!submissionForUpload) {
-          throw new Error(`Unable to prepare package for ${type.toUpperCase()} upload.`);
-        }
-        if (
-          activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-          || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
-          || (
-            activeWorkspaceSubmissionIdRef.current !== null
-            && activeWorkspaceSubmissionIdRef.current !== submissionForUpload.id
-          )
-        ) {
-          throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
-        }
-
-        const updated = await uploadSubmissionFile(submissionForUpload.id, type, file);
-        if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
-          throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
-        }
-        if (
-          activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-          || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
-        ) {
-          throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
-        }
-        return updated;
-      },
-      onSuccess: (updated) => {
-        if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== updated.id) {
-          throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
-        }
-        setUploadingFileType(null);
-        setUploadErrorByType((current) => ({ ...current, [type]: "" }));
-      },
-      getSuccessMessage: (updated) => `${type.toUpperCase()} file uploaded for package #${updated.id}.`,
-      onError: (err) => {
-        setUploadingFileType(null);
+      const normalizedName = file.name.toLowerCase();
+      const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
+      if (!validExtension) {
         setUploadErrorByType((current) => ({
           ...current,
-          [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
+          [type]: "Only PDF, DOCX, and XLSX files are allowed.",
         }));
-      },
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        setUploadErrorByType((current) => ({
+          ...current,
+          [type]: "File size must not exceed 10MB.",
+        }));
+        return;
+      }
+
+      const uploadGuardAcademicYearId = activeAcademicYearIdRef.current;
+      const uploaded = await runCriticalWorkspaceMutation({
+        mutation: async () => {
+          setUploadingFileType(type);
+          const submissionForUpload = await ensureUploadSubmission({ skipRefreshAfterCreate: true });
+          if (!submissionForUpload) {
+            throw new Error(`Unable to prepare package for ${type.toUpperCase()} upload.`);
+          }
+          if (
+            activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
+            || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
+            || (
+              activeWorkspaceSubmissionIdRef.current !== null
+              && activeWorkspaceSubmissionIdRef.current !== submissionForUpload.id
+            )
+          ) {
+            throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
+          }
+
+          const updated = await uploadSubmissionFile(submissionForUpload.id, type, file);
+          if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
+            throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
+          }
+          if (
+            activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
+            || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
+          ) {
+            throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
+          }
+          return updated;
+        },
+        onSuccess: (updated) => {
+          if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== updated.id) {
+            throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
+          }
+          setUploadingFileType(null);
+          setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+        },
+        getSuccessMessage: (updated) => `${type.toUpperCase()} file uploaded for package #${updated.id}.`,
+        onError: (err) => {
+          setUploadingFileType(null);
+          setUploadErrorByType((current) => ({
+            ...current,
+            [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
+          }));
+        },
+      });
+      if (!uploaded) {
+        postRefreshMessageRef.current = null;
+      }
     });
-    if (!uploaded) {
-      postRefreshMessageRef.current = null;
-    }
-  }, [blockIfManualActionBusy, ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, uploadSubmissionFile]);
+  }, [ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -3322,15 +3352,17 @@ export function SchoolIndicatorPanel({
     [handleFileUpload],
   );
   const handleAcademicYearChange = useCallback((nextAcademicYearId: string) => {
-    if (nextAcademicYearId === activeAcademicYearId) {
-      return;
-    }
-    void runCriticalWorkspaceTransition({
-      dismissRestoreBanner: true,
-      endOnComplete: false,
-      action: () => setAcademicYearId(nextAcademicYearId),
+    void runGroupBAction("Switch academic year", async () => {
+      if (nextAcademicYearId === activeAcademicYearId) {
+        return;
+      }
+      await runCriticalWorkspaceTransition({
+        dismissRestoreBanner: true,
+        endOnComplete: false,
+        action: () => setAcademicYearId(nextAcademicYearId),
+      });
     });
-  }, [activeAcademicYearId, runCriticalWorkspaceTransition]);
+  }, [activeAcademicYearId, runCriticalWorkspaceTransition, runGroupBAction]);
 
   const resolveFileSourceSubmission = useCallback(
     (type: IndicatorSubmissionFileType): { submission: IndicatorSubmission | null; error: string | null } => {
