@@ -965,6 +965,20 @@ function normalizeSessionMessage(value: string | null | undefined): string {
   return "Your session expired. Please sign in again.";
 }
 
+function toGroupBActionErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : fallback;
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("timeout")
+    || normalized.includes("timed out")
+    || normalized.includes("network")
+    || normalized.includes("fetch")
+  ) {
+    return "Request took too long. Please save your draft first, then try again.";
+  }
+  return message;
+}
+
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
@@ -1827,14 +1841,14 @@ export function SchoolIndicatorPanel({
         await action();
       } catch (error) {
         setSubmitError(
-          error instanceof Error ? error.message : `${label} failed. Please try again.`,
+          toGroupBActionErrorMessage(error, `${label} failed. Please try again.`),
         );
       } finally {
         groupBActionInFlightRef.current = false;
         setIsGroupBActionRunning(false);
       }
     },
-    [isSaving, isWorkspaceTransitioning, uploadingFileType],
+    [isSaving, isWorkspaceTransitioning, toGroupBActionErrorMessage, uploadingFileType],
   );
   const rehydrateWorkspaceFromSubmission = useCallback((submission: IndicatorSubmission | null) => {
     localAutosaveEpochRef.current += 1;
@@ -2448,6 +2462,185 @@ export function SchoolIndicatorPanel({
 
     focusMissingTarget(target);
   }, [firstMissingByCategory, focusMissingTarget]);
+
+  const buildComparablePayloadFromWorkspaceState = useCallback((
+    source: { academicYearId: string | null; noteValue: string | null; entryState: MetricEntryState },
+  ): { payload: IndicatorSubmissionPayload | null; fingerprint: string } => {
+    if (!source.academicYearId) {
+      return { payload: null, fingerprint: "" };
+    }
+
+    const entries = orderedComplianceMetrics.map((metric) => {
+      const value = source.entryState[metric.id] ?? buildDefaultEntry(metric);
+      const scopedYears = resolveMetricYearsInScope(metric, workspaceSchoolYears);
+      const requiredYears = scopedYears.filter((year) => requiredSchoolYearSet.has(year));
+      const type = metricDataType(metric);
+      const isAutoCalculated = metricIsAutoCalculated(metric);
+      const isSyncedLocked = metricUsesSyncedLockedTotals(metric);
+      const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code));
+
+      let targetPayload: IndicatorTypedValuePayload | undefined;
+      let actualPayload: IndicatorTypedValuePayload | undefined;
+      let targetValue: number | undefined;
+      let actualValue: number | undefined;
+
+      if (isAutoCalculated) {
+        return {
+          metricId: Number(metric.id),
+          targetValue: undefined,
+          actualValue: undefined,
+          target: undefined,
+          actual: undefined,
+          remarks: value.remarks.trim() || null,
+        };
+      }
+
+      if (type === "currency" || type === "number") {
+        if (requiresTargetActual) {
+          const targetRaw = value.targetValue.trim();
+          const actualRaw = value.actualValue.trim();
+          targetValue = targetRaw === "" ? undefined : Number(targetRaw);
+          actualValue = actualRaw === "" ? undefined : Number(actualRaw);
+        } else {
+          const singleRaw = String(value.actualValue || value.targetValue || "").trim();
+          const singleValue = singleRaw === "" ? undefined : Number(singleRaw);
+          targetValue = singleValue;
+          actualValue = singleValue;
+        }
+        targetPayload = type === "currency" ? { amount: targetValue, currency: metric.inputSchema?.currency ?? "PHP" } : undefined;
+        actualPayload = type === "currency" ? { amount: actualValue, currency: metric.inputSchema?.currency ?? "PHP" } : undefined;
+      } else if (type === "yes_no") {
+        const toBooleanValue = (candidate: "" | "yes" | "no"): boolean | undefined => {
+          if (candidate === "yes") return true;
+          if (candidate === "no") return false;
+          return undefined;
+        };
+
+        if (requiresTargetActual) {
+          targetPayload = { value: toBooleanValue(value.targetBoolean) };
+          actualPayload = { value: toBooleanValue(value.actualBoolean) };
+        } else {
+          const boolValue = toBooleanValue(value.actualBoolean) ?? toBooleanValue(value.targetBoolean);
+          targetPayload = { value: boolValue };
+          actualPayload = { value: boolValue };
+        }
+      } else if (type === "enum") {
+        if (requiresTargetActual) {
+          targetPayload = { value: value.targetEnum.trim() };
+          actualPayload = { value: value.actualEnum.trim() };
+        } else {
+          const enumValue = (value.actualEnum || value.targetEnum || "").trim();
+          targetPayload = { value: enumValue };
+          actualPayload = { value: enumValue };
+        }
+      } else if (type === "text") {
+        if (requiresTargetActual) {
+          targetPayload = { value: value.targetText.trim() };
+          actualPayload = { value: value.actualText.trim() };
+        } else {
+          const textValue = (value.actualText || value.targetText || "").trim();
+          targetPayload = { value: textValue };
+          actualPayload = { value: textValue };
+        }
+      } else if (type === "yearly_matrix") {
+        const requiredYearSet = new Set(requiredYears);
+        if (requiresTargetActual) {
+          targetPayload = {
+            values: Object.fromEntries(
+              scopedYears
+                .map((year) => [year, (value.targetMatrix[year] ?? "").trim()] as const)
+                .filter(([year, cellValue]) => requiredYearSet.has(year) || cellValue !== ""),
+            ),
+          };
+          actualPayload = {
+            values: Object.fromEntries(
+              scopedYears
+                .map((year) => [year, (value.actualMatrix[year] ?? "").trim()] as const)
+                .filter(([year, cellValue]) => requiredYearSet.has(year) || cellValue !== ""),
+            ),
+          };
+        } else {
+          const matrixValues = Object.fromEntries(
+            scopedYears
+              .map((year) => [year, (value.actualMatrix[year] ?? value.targetMatrix[year] ?? "").trim()] as const)
+              .filter(([year, cellValue]) => requiredYearSet.has(year) || cellValue !== ""),
+          );
+          targetPayload = { values: matrixValues };
+          actualPayload = { values: matrixValues };
+        }
+      }
+
+      return {
+        metricId: Number(metric.id),
+        targetValue,
+        actualValue,
+        target: targetPayload,
+        actual: actualPayload,
+        remarks: value.remarks.trim() || null,
+        isSyncedLocked,
+      };
+    });
+
+    const payload: IndicatorSubmissionPayload = {
+      academicYearId: Number(source.academicYearId),
+      reportingPeriod,
+      notes: (source.noteValue ?? "").trim() || null,
+      indicators: entries.map((entry) => ({
+        metricId: entry.metricId,
+        targetValue: entry.targetValue,
+        actualValue: entry.actualValue,
+        target: entry.target,
+        actual: entry.actual,
+        remarks: entry.remarks,
+      })),
+    };
+
+    return { payload, fingerprint: JSON.stringify(payload) };
+  }, [orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, workspaceSchoolYears]);
+
+  const comparableWorkspacePayload = useMemo(
+    () => buildComparablePayloadFromWorkspaceState({
+      academicYearId: activeAcademicYearId,
+      noteValue: notes,
+      entryState: metricEntries,
+    }),
+    [activeAcademicYearId, buildComparablePayloadFromWorkspaceState, metricEntries, notes],
+  );
+  const savedWorkspacePayloadFingerprint = useMemo(() => {
+    if (!latestActiveWorkspaceSubmission || !isSubmissionInAcademicYear(latestActiveWorkspaceSubmission, activeAcademicYearId)) {
+      return "";
+    }
+
+    const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
+    const savedEntries = buildInitialMetricEntries(complianceMetrics, {});
+
+    for (const indicator of latestActiveWorkspaceSubmission.indicators) {
+      const metricId = indicator.metric?.id;
+      if (!metricId) {
+        continue;
+      }
+
+      const metric = metricsById.get(metricId);
+      if (!metric) {
+        continue;
+      }
+
+      savedEntries[metricId] = buildEntryFromSubmission(metric, indicator);
+    }
+
+    return buildComparablePayloadFromWorkspaceState({
+      academicYearId: latestActiveWorkspaceSubmission.academicYear?.id ?? activeAcademicYearId,
+      noteValue: latestActiveWorkspaceSubmission.notes ?? "",
+      entryState: savedEntries,
+    }).fingerprint;
+  }, [activeAcademicYearId, buildComparablePayloadFromWorkspaceState, complianceMetrics, isSubmissionInAcademicYear, latestActiveWorkspaceSubmission]);
+  const hasUnsavedWorkspaceChanges = useMemo(() => {
+    if (!latestActiveWorkspaceSubmission) {
+      return hasMeaningfulMetricEntries(metricEntries) || notes.trim() !== "";
+    }
+
+    return comparableWorkspacePayload.fingerprint !== savedWorkspacePayloadFingerprint;
+  }, [comparableWorkspacePayload.fingerprint, latestActiveWorkspaceSubmission, metricEntries, notes, savedWorkspacePayloadFingerprint]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3081,7 +3274,7 @@ export function SchoolIndicatorPanel({
               : `Draft package #${saved.id} updated.`
         ),
         onError: (err) => {
-          setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
+          setSubmitError(toGroupBActionErrorMessage(err, "Unable to save indicator package."));
         },
       });
     });
@@ -3120,8 +3313,15 @@ export function SchoolIndicatorPanel({
 
       await runCriticalWorkspaceMutation({
         mutation: async () => {
-          const result = await persistDraftPayload(payload, "manual");
-          return await submitSubmission(result.id);
+          let submissionToSubmit = latestActiveWorkspaceSubmission;
+
+          if (!submissionToSubmit?.id) {
+            submissionToSubmit = await persistDraftPayload(payload, "manual");
+          } else if (hasUnsavedWorkspaceChanges) {
+            submissionToSubmit = await persistDraftPayload(payload, "manual");
+          }
+
+          return await submitSubmission(submissionToSubmit.id);
         },
         onSuccess: (result) => {
           setOptimisticSubmittedByType({
@@ -3133,7 +3333,7 @@ export function SchoolIndicatorPanel({
         },
         getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
         onError: (err) => {
-          setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
+          setSubmitError(toGroupBActionErrorMessage(err, "Unable to submit package."));
         },
       });
     });
@@ -3167,7 +3367,7 @@ export function SchoolIndicatorPanel({
         },
         getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
         onError: (err) => {
-          setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
+          setSubmitError(toGroupBActionErrorMessage(err, "Unable to submit package."));
         },
       });
     });
@@ -3259,10 +3459,10 @@ export function SchoolIndicatorPanel({
       }
       return created;
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Unable to create a draft for file upload.");
+      setSubmitError(toGroupBActionErrorMessage(err, "Unable to create a draft for file upload."));
       return null;
     }
-  }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshResolvedWorkspace, selectedSubmissionForUploads, workspaceMode]);
+  }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshResolvedWorkspace, selectedSubmissionForUploads, toGroupBActionErrorMessage, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     await runGroupBAction(`Upload ${type.toUpperCase()}`, async () => {
@@ -3329,7 +3529,7 @@ export function SchoolIndicatorPanel({
           setUploadingFileType(null);
           setUploadErrorByType((current) => ({
             ...current,
-            [type]: err instanceof Error ? err.message : `Unable to upload ${type.toUpperCase()} file.`,
+            [type]: toGroupBActionErrorMessage(err, `Unable to upload ${type.toUpperCase()} file.`),
           }));
         },
       });
@@ -3337,7 +3537,7 @@ export function SchoolIndicatorPanel({
         postRefreshMessageRef.current = null;
       }
     });
-  }, [ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, uploadSubmissionFile]);
+  }, [ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, toGroupBActionErrorMessage, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
