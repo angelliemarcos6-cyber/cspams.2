@@ -442,6 +442,13 @@ function normalizeMetricCode(code: string | null | undefined): string {
     .replace(/[\s-]+/g, "_");
 }
 
+function normalizeMetricName(name: string | null | undefined): string {
+  return String(name ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 function metricYears(metric: IndicatorMetric): string[] {
   return Array.isArray(metric.inputSchema?.years) ? metric.inputSchema?.years ?? [] : [];
 }
@@ -993,6 +1000,7 @@ export function SchoolIndicatorPanel({
     isSaving,
     error,
     refreshSubmissions,
+    bootstrapSubmission,
     createSubmission,
     updateSubmission,
     uploadSubmissionFile,
@@ -2612,20 +2620,25 @@ export function SchoolIndicatorPanel({
     }
 
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
+    const metricsByNormalizedCode = new Map(
+      complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric] as const),
+    );
+    const metricsByNormalizedName = new Map(
+      complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric] as const),
+    );
     const savedEntries = buildInitialMetricEntries(complianceMetrics, {});
 
     for (const indicator of latestActiveWorkspaceSubmission.indicators) {
-      const metricId = indicator.metric?.id;
-      if (!metricId) {
-        continue;
-      }
-
-      const metric = metricsById.get(metricId);
+      const metric = (
+        (indicator.metric?.id ? metricsById.get(indicator.metric.id) : undefined)
+        ?? (indicator.metric?.code ? metricsByNormalizedCode.get(normalizeMetricCode(indicator.metric.code)) : undefined)
+        ?? (indicator.metric?.name ? metricsByNormalizedName.get(normalizeMetricName(indicator.metric.name)) : undefined)
+      );
       if (!metric) {
         continue;
       }
 
-      savedEntries[metricId] = buildEntryFromSubmission(metric, indicator);
+      savedEntries[metric.id] = buildEntryFromSubmission(metric, indicator);
     }
 
     return buildComparablePayloadFromWorkspaceState({
@@ -3355,7 +3368,17 @@ export function SchoolIndicatorPanel({
 
       await runCriticalWorkspaceMutation({
         mutation: async () => {
-          return await submitSubmission(submission.id);
+          let submissionToSubmit = submission;
+
+          if (latestActiveWorkspaceSubmission?.id === submission.id && hasUnsavedWorkspaceChanges) {
+            const prepared = buildSubmissionPayload();
+            if (!prepared.payload) {
+              throw new Error(prepared.reason || "Complete all required indicator cells before submitting.");
+            }
+            submissionToSubmit = await persistDraftPayload(prepared.payload, "manual");
+          }
+
+          return await submitSubmission(submissionToSubmit.id);
         },
         onSuccess: (result) => {
           setOptimisticSubmittedByType({
@@ -3431,14 +3454,20 @@ export function SchoolIndicatorPanel({
       return selectedSubmissionForUploads;
     }
 
-    const prepared = buildSubmissionPayload({ allowIncomplete: true });
-    if (!prepared.payload) {
-      setSubmitError(prepared.reason);
-      return null;
-    }
-
     try {
-      const created = await persistDraftPayload(prepared.payload, "manual");
+      const created = hasUnsavedWorkspaceChanges
+        ? await (() => {
+          const prepared = buildSubmissionPayload({ allowIncomplete: true });
+          if (!prepared.payload) {
+            throw new Error(prepared.reason);
+          }
+          return persistDraftPayload(prepared.payload, "manual");
+        })()
+        : await bootstrapSubmission({
+          academicYearId: activeAcademicYearId,
+          reportingPeriod,
+          notes: null,
+        });
       if (!isSubmissionInAcademicYear(created, activeAcademicYearId)) {
         setSubmitError("The selected academic year changed before upload. No stale changes were applied. Review the workspace and try again.");
         return null;
@@ -3459,10 +3488,10 @@ export function SchoolIndicatorPanel({
       }
       return created;
     } catch (err) {
-      setSubmitError(toGroupBActionErrorMessage(err, "Unable to create a draft for file upload."));
+      setSubmitError(toGroupBActionErrorMessage(err, "Unable to prepare a draft for file upload."));
       return null;
     }
-  }, [activeAcademicYearId, buildSubmissionPayload, isSubmissionInAcademicYear, persistDraftPayload, refreshResolvedWorkspace, selectedSubmissionForUploads, toGroupBActionErrorMessage, workspaceMode]);
+  }, [activeAcademicYearId, bootstrapSubmission, buildSubmissionPayload, hasUnsavedWorkspaceChanges, isSubmissionInAcademicYear, persistDraftPayload, refreshResolvedWorkspace, reportingPeriod, selectedSubmissionForUploads, toGroupBActionErrorMessage, workspaceMode]);
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     await runGroupBAction(`Upload ${type.toUpperCase()}`, async () => {

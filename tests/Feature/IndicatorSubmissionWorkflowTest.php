@@ -226,6 +226,49 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.2.action', 'generated');
     }
 
+    public function test_school_head_can_bootstrap_minimal_indicator_draft_and_update_it_later(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
+
+        $bootstrapped = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $bootstrapped->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.summary.totalIndicators', 0)
+            ->assertJsonPath('data.completion.hasImetaFormData', false);
+
+        $submissionId = (string) $bootstrapped->json('data.id');
+
+        $updated = $this->withToken($token)->putJson("/api/indicators/submissions/{$submissionId}", [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'notes' => 'Filled after lightweight bootstrap.',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 75,
+                    'actual_value' => 80,
+                    'remarks' => 'Encoded after bootstrap.',
+                ],
+            ],
+        ]);
+
+        $updated->assertOk()
+            ->assertJsonPath('data.id', $submissionId)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.summary.totalIndicators', 1)
+            ->assertJsonPath('data.completion.hasImetaFormData', true);
+    }
+
     public function test_school_head_cannot_submit_other_schools_indicator_package(): void
     {
         $this->seedIndicatorFixtures();

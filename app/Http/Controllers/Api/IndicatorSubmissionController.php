@@ -262,6 +262,88 @@ class IndicatorSubmissionController extends Controller
         ], Response::HTTP_CREATED);
     }
 
+    public function bootstrap(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertSchoolHead($user);
+        abort_if(! $user->school_id, Response::HTTP_FORBIDDEN, 'School Head account is missing school assignment.');
+
+        $validated = $request->validate([
+            'academic_year_id' => ['required', 'integer', 'exists:academic_years,id'],
+            'reporting_period' => ['nullable', 'string', 'max:50'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $schoolId = (int) $user->school_id;
+        $academicYearId = (int) $validated['academic_year_id'];
+        $reportingPeriod = array_key_exists('reporting_period', $validated) && is_string($validated['reporting_period'])
+            ? trim($validated['reporting_period']) ?: null
+            : null;
+        $notes = array_key_exists('notes', $validated) && is_string($validated['notes'])
+            ? trim($validated['notes']) ?: null
+            : null;
+
+        /** @var IndicatorSubmission $submission */
+        $submission = DB::transaction(function () use (
+            $schoolId,
+            $academicYearId,
+            $reportingPeriod,
+            $notes,
+            $user,
+        ): IndicatorSubmission {
+            $submission = IndicatorSubmission::query()->create([
+                'school_id' => $schoolId,
+                'academic_year_id' => $academicYearId,
+                'reporting_period' => $reportingPeriod,
+                'version' => $this->nextVersion($schoolId, $academicYearId, $reportingPeriod),
+                'status' => FormSubmissionStatus::DRAFT->value,
+                'notes' => $notes,
+                'created_by' => $user->id,
+            ]);
+
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $submission->id,
+                schoolId: $submission->school_id,
+                academicYearId: $submission->academic_year_id,
+                action: 'bootstrapped',
+                fromStatus: null,
+                toStatus: FormSubmissionStatus::DRAFT,
+                actorId: $user->id,
+                notes: 'Indicator compliance package draft bootstrapped for file upload.',
+                metadata: [
+                    'indicator_count' => 0,
+                    'met_count' => 0,
+                    'below_target_count' => 0,
+                ],
+            );
+
+            event(new CspamsUpdateBroadcast([
+                'entity' => 'indicators',
+                'eventType' => 'indicators.bootstrapped',
+                'submissionId' => (string) $submission->id,
+                'schoolId' => (string) $submission->school_id,
+                'academicYearId' => (string) $submission->academic_year_id,
+                'status' => FormSubmissionStatus::DRAFT->value,
+            ]));
+
+            return $submission;
+        });
+
+        $submission->load([
+            'school:id,school_code,name',
+            'academicYear:id,name',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'createdBy:id,name,email',
+            'submittedBy:id,name,email',
+            'reviewedBy:id,name,email',
+        ]);
+
+        return response()->json([
+            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
+        ], Response::HTTP_CREATED);
+    }
+
     public function update(UpsertIndicatorSubmissionRequest $request, IndicatorSubmission $submission): JsonResponse
     {
         $user = $this->requireUser($request);

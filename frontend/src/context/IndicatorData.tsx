@@ -76,6 +76,12 @@ interface IndicatorHistoryResponse {
   data: FormSubmissionHistoryEntry[];
 }
 
+export interface BootstrapIndicatorSubmissionPayload {
+  academicYearId: string | number;
+  reportingPeriod?: string | null;
+  notes?: string | null;
+}
+
 export interface IndicatorDataContextType {
   submissions: IndicatorSubmission[];
   allSubmissions: IndicatorSubmission[];
@@ -91,6 +97,7 @@ export interface IndicatorDataContextType {
   listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
   listSubmissionsForSchool: (schoolId: string, options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
+  bootstrapSubmission: (payload: BootstrapIndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   uploadSubmissionFile: (id: string, type: IndicatorSubmissionFileType, file: File) => Promise<IndicatorSubmission>;
@@ -756,6 +763,28 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     await syncSubmissions(false);
   }, [syncSubmissions]);
 
+  const bootstrapSubmission = useCallback(
+    async (payload: BootstrapIndicatorSubmissionPayload): Promise<IndicatorSubmission> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      return runSubmissionMutation(async () => {
+        const response = await apiRequest<IndicatorSubmissionResponse>("/api/indicators/submissions/bootstrap", {
+          method: "POST",
+          token,
+          body: {
+            academic_year_id: payload.academicYearId,
+            reporting_period: payload.reportingPeriod ?? null,
+            notes: payload.notes ?? null,
+          },
+        });
+        return response.data;
+      });
+    },
+    [runSubmissionMutation, token],
+  );
+
   const createSubmission = useCallback(
     async (payload: IndicatorSubmissionPayload): Promise<IndicatorSubmission> => {
       if (!token) {
@@ -998,6 +1027,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       listSubmissions,
       listSubmissionsForSchool,
       loadAllSubmissions,
+      bootstrapSubmission,
       createSubmission,
       updateSubmission,
       uploadSubmissionFile,
@@ -1021,6 +1051,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       listSubmissions,
       listSubmissionsForSchool,
       loadAllSubmissions,
+      bootstrapSubmission,
       createSubmission,
       updateSubmission,
       uploadSubmissionFile,

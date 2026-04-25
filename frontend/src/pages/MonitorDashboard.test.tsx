@@ -237,6 +237,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       listSubmissions: vi.fn(),
       listSubmissionsForSchool: vi.fn().mockResolvedValue([]),
       loadAllSubmissions: vi.fn(),
+      bootstrapSubmission: vi.fn(),
       createSubmission: vi.fn(),
       updateSubmission: vi.fn(),
       // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET

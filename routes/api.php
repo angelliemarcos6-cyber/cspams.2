@@ -98,6 +98,7 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicat
     Route::get('/academic-years', [IndicatorSubmissionController::class, 'academicYears']);
     Route::get('/metrics', [IndicatorSubmissionController::class, 'metrics']);
     Route::get('/submissions', [IndicatorSubmissionController::class, 'index']);
+    Route::post('/submissions/bootstrap', [IndicatorSubmissionController::class, 'bootstrap']);
     Route::post('/submissions', [IndicatorSubmissionController::class, 'store']);
     Route::get('/submissions/{submission}', [IndicatorSubmissionController::class, 'show']);
     Route::put('/submissions/{submission}', [IndicatorSubmissionController::class, 'update']);
