@@ -536,6 +536,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const runSubmissionMutation = useCallback(
     async (action: () => Promise<IndicatorSubmission>): Promise<IndicatorSubmission> => {
       manualMutationInFlightRef.current = true;
+      syncQueuedRef.current = false;
       setIsSaving(true);
       setError("");
 
@@ -582,6 +583,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       syncInFlightRef.current = true;
       syncQueuedRef.current = false;
       const requestGeneration = syncGenerationRef.current;
+      const syncStartedAt = Date.now();
 
       if (!silent) {
         setIsLoading(true);
@@ -609,6 +611,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (requestGeneration !== syncGenerationRef.current) {
+          return;
+        }
+        if (syncStartedAt < lastLocalMutationAtRef.current) {
           return;
         }
 
@@ -639,6 +644,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         if (requestGeneration !== syncGenerationRef.current) {
           return;
         }
+        if (syncStartedAt < lastLocalMutationAtRef.current) {
+          return;
+        }
         await handleApiError(err);
       } finally {
         if (requestGeneration === syncGenerationRef.current) {
@@ -650,11 +658,13 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
         if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
           syncQueuedRef.current = false;
-          void syncSubmissions(true);
+          if (!shouldSkipBackgroundSync()) {
+            void syncSubmissions(true);
+          }
         }
       }
     },
-    [academicYears.length, handleApiError, metrics.length, token],
+    [academicYears.length, handleApiError, metrics.length, shouldSkipBackgroundSync, token],
   );
 
   const refreshSubmissions = useCallback(async () => {
