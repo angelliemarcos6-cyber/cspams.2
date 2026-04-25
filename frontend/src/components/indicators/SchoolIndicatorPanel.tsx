@@ -2355,7 +2355,24 @@ export function SchoolIndicatorPanel({
       action: () => {
         const activeSubmission = latestActiveWorkspaceSubmission;
         const latestSubmission = activeSubmission?.id
-          ? sortedSubmissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
+          ? (() => {
+            const inSortedSubmissions = sortedSubmissions.find((submission) => submission.id === activeSubmission.id) ?? null;
+            const inSubmissionSnapshot = submissionSnapshot.find((submission) => submission.id === activeSubmission.id) ?? null;
+            const candidates = [inSortedSubmissions, inSubmissionSnapshot, activeSubmission].filter(
+              (candidate): candidate is IndicatorSubmission => Boolean(candidate),
+            );
+
+            // Prefer the richest in-memory record so Reset restores indicator cells even
+            // when a lightweight mutation response temporarily lacks full indicator rows.
+            return candidates.sort((left, right) => {
+              const leftScore = (left.indicators ?? []).filter((item) => Boolean(item.metric?.id)).length;
+              const rightScore = (right.indicators ?? []).filter((item) => Boolean(item.metric?.id)).length;
+              if (leftScore === rightScore) {
+                return (right.indicators?.length ?? 0) - (left.indicators?.length ?? 0);
+              }
+              return rightScore - leftScore;
+            })[0] ?? activeSubmission;
+          })()
           : null;
         if (latestSubmission) {
           rehydrateWorkspaceFromSubmission(latestSubmission);
@@ -2378,7 +2395,7 @@ export function SchoolIndicatorPanel({
       },
     });
     return didReset === true;
-  }, [autosaveKey, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, runCriticalWorkspaceTransition, sortedSubmissions]);
+  }, [autosaveKey, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, runCriticalWorkspaceTransition, sortedSubmissions, submissionSnapshot]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
