@@ -248,6 +248,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncGenerationRef = useRef(0);
   const referenceDataSyncedAtRef = useRef(0);
   const allSubmissionsLoadingCountRef = useRef(0);
+  const localMutationsRef = useRef<Map<string, IndicatorSubmission>>(new Map());
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -263,6 +264,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     schoolSubmissionsCacheRef.current.clear();
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
+    localMutationsRef.current.clear();
     setSubmissions([]);
     setAllSubmissions([]);
     setMetrics([]);
@@ -293,6 +295,21 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const upsertSubmissionLocally = useCallback((updated: IndicatorSubmission) => {
+    localMutationsRef.current.set(updated.id, updated);
+    setSubmissions((current) => {
+      const index = current.findIndex((s) => s.id === updated.id);
+      if (index >= 0) {
+        const next = [...current];
+        next[index] = updated;
+        return next;
+      }
+      return [updated, ...current];
+    });
+    allSubmissionsCacheRef.current = null;
+    schoolSubmissionsCacheRef.current.clear();
+  }, []);
 
   const listSubmissions = useCallback(
     async (params?: IndicatorListParams): Promise<IndicatorListResult> => {
@@ -566,7 +583,33 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           allSubmissionsCacheRef.current = null;
           allSubmissionsInFlightRef.current = null;
           setAllSubmissions([]);
-          setSubmissions(readSubmissionRows(submissionsResponse.data));
+
+          const incoming = readSubmissionRows(submissionsResponse.data);
+          const localMuts = localMutationsRef.current;
+
+          if (localMuts.size === 0) {
+            setSubmissions(incoming);
+          } else {
+            const incomingById = new Map(incoming.map((s) => [s.id, s]));
+            setSubmissions((current) => {
+              const merged = incoming.map((s) => {
+                const local = localMuts.get(s.id);
+                if (!local) return s;
+                const localTime = new Date(local.updatedAt ?? local.createdAt ?? 0).getTime();
+                const incomingTime = new Date(s.updatedAt ?? s.createdAt ?? 0).getTime();
+                return localTime > incomingTime ? local : s;
+              });
+              for (const [id, local] of localMuts) {
+                if (!incomingById.has(id)) {
+                  const existsInCurrent = current.some((s) => s.id === id);
+                  if (existsInCurrent) {
+                    merged.unshift(local);
+                  }
+                }
+              }
+              return merged;
+            });
+          }
         }
         if (shouldRefreshReferenceData) {
           setMetrics(Array.isArray(metricPayload?.data) ? metricPayload?.data : []);
@@ -630,8 +673,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
+        upsertSubmissionLocally(response.data);
         return response.data;
       } catch (err) {
         await handleApiError(err);
@@ -640,7 +682,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncSubmissions, handleApiError],
+    [token, upsertSubmissionLocally, handleApiError],
   );
 
   const submitSubmission = useCallback(
@@ -658,8 +700,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           token,
         });
 
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
+        upsertSubmissionLocally(response.data);
         return response.data;
       } catch (err) {
         await handleApiError(err);
@@ -668,7 +709,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncSubmissions, handleApiError],
+    [token, upsertSubmissionLocally, handleApiError],
   );
 
   const updateSubmission = useCallback(
@@ -699,8 +740,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
+        upsertSubmissionLocally(response.data);
         return response.data;
       } catch (err) {
         await handleApiError(err);
@@ -709,7 +749,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncSubmissions, handleApiError],
+    [token, upsertSubmissionLocally, handleApiError],
   );
 
   const uploadSubmissionFile = useCallback(
@@ -732,8 +772,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           body: formData,
         });
 
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
+        upsertSubmissionLocally(response.data);
         return response.data;
       } catch (err) {
         await handleApiError(err);
@@ -742,7 +781,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncSubmissions, handleApiError],
+    [token, upsertSubmissionLocally, handleApiError],
   );
 
   const downloadSubmissionFile = useCallback(
@@ -808,8 +847,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        allSubmissionsCacheRef.current = null;
-        await syncSubmissions(true);
+        upsertSubmissionLocally(response.data);
         return response.data;
       } catch (err) {
         await handleApiError(err);
@@ -818,7 +856,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, syncSubmissions, handleApiError],
+    [token, upsertSubmissionLocally, handleApiError],
   );
 
   const loadHistory = useCallback(

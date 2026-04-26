@@ -22,7 +22,7 @@ import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
-import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType, IndicatorSubmissionItem } from "@/types";
 
 /* ── Quick-jump targets ── */
 interface QuickJumpItem {
@@ -90,6 +90,74 @@ function selectedYearLabel(
 
 const MOBILE_BREAKPOINT = 768;
 
+const SCHOOL_ACHIEVEMENTS_DISPLAY: Array<{ code: string; label: string }> = [
+  { code: "IMETA_HEAD_NAME", label: "NAME OF SCHOOL HEAD" },
+  { code: "IMETA_ENROLL_TOTAL", label: "TOTAL NUMBER OF ENROLMENT" },
+  { code: "IMETA_SBM_LEVEL", label: "SBM LEVEL OF PRACTICE" },
+  { code: "PCR_K", label: "Pupil/Student Classroom Ratio (Kindergarten)" },
+  { code: "PCR_G1_3", label: "Pupil/Student Classroom Ratio (Grades 1 to 3)" },
+  { code: "PCR_G4_6", label: "Pupil/Student Classroom Ratio (Grades 4 to 6)" },
+  { code: "PCR_G7_10", label: "Pupil/Student Classroom Ratio (Grades 7 to 10)" },
+  { code: "PCR_G11_12", label: "Pupil/Student Classroom Ratio (Grades 11 to 12)" },
+  { code: "WASH_RATIO", label: "Water and Sanitation facility to pupil ratio" },
+  { code: "COMFORT_ROOMS", label: "Number of Comfort rooms" },
+  { code: "TOILET_BOWLS", label: "a. Toilet bowl" },
+  { code: "URINALS", label: "b. Urinal" },
+  { code: "HANDWASH_FAC", label: "Handwashing Facilities" },
+  { code: "LEARNING_MAT_RATIO", label: "Ideal learning materials to learner ratio" },
+  { code: "PSR_OVERALL", label: "Pupil/student seat ratio" },
+  { code: "PSR_K", label: "a. Kindergarten" },
+  { code: "PSR_G1_6", label: "b. Grades 1 - 6" },
+  { code: "PSR_G7_10", label: "c. Grades 7 - 10" },
+  { code: "PSR_G11_12", label: "d. Grades 11 - 12" },
+  { code: "ICT_RATIO", label: "ICT Package/E-classroom package to sections ratio" },
+  { code: "ICT_LAB", label: "a. ICT Laboratory" },
+  { code: "SCIENCE_LAB", label: "Science Laboratory" },
+  { code: "INTERNET_ACCESS", label: "Do you have internet access? (Y/N)" },
+  { code: "ELECTRICITY", label: "Do you have electricity (Y/N)" },
+  { code: "FENCE_STATUS", label: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)" },
+  { code: "TEACHERS_TOTAL", label: "No. of Teachers" },
+  { code: "TEACHERS_MALE", label: "a. Male" },
+  { code: "TEACHERS_FEMALE", label: "b. Female" },
+  { code: "TEACHERS_PWD_TOTAL", label: "Teachers with Physical Disability" },
+  { code: "TEACHERS_PWD_MALE", label: "a. Male" },
+  { code: "TEACHERS_PWD_FEMALE", label: "b. Female" },
+  { code: "FUNCTIONAL_SGC", label: "Functional SGC" },
+  { code: "FEEDING_BENEFICIARIES", label: "School-Based Feeding Program Beneficiaries" },
+  { code: "CANTEEN_INCOME", label: "School-Managed Canteen (Annual income)" },
+  { code: "TEACHER_COOP_INCOME", label: "Teachers Cooperative Managed Canteen - if there is (Annual income)" },
+  { code: "SAFETY_PLAN", label: "Security and Safety (Contingency Plan)" },
+  { code: "SAFETY_EARTHQUAKE", label: "a. Earthquake" },
+  { code: "SAFETY_TYPHOON", label: "b. Typhoon" },
+  { code: "SAFETY_COVID", label: "c. COVID-19" },
+  { code: "SAFETY_POWER", label: "d. Power interruption" },
+  { code: "SAFETY_IN_PERSON", label: "e. In-person classes" },
+  { code: "TEACHERS_PFA", label: "No. of Teachers trained on Psychological First Aid (PFA)" },
+  { code: "TEACHERS_OCC_FIRST_AID", label: "No. of Teachers trained on Occupational First Aid" },
+];
+
+const KEY_PERFORMANCE_DISPLAY: Array<{ code: string; label: string }> = [
+  { code: "NER", label: "Net Enrollment Rate (NER)" },
+  { code: "RR", label: "Retention Rate (RR)" },
+  { code: "DR", label: "Drop-out Rate (DR)" },
+  { code: "TR", label: "Transition Rate (TR)" },
+  { code: "NIR", label: "Net Intake Rate (NIR)" },
+  { code: "PR", label: "Participation Rate (PR)" },
+  { code: "ALS_COMPLETER_PCT", label: "ALS Completion Rate" },
+  { code: "GPI", label: "Gender Parity Index (GPI)" },
+  { code: "IQR", label: "Interquartile Ratio (IQR)" },
+  { code: "CR", label: "Completion Rate (CR)" },
+  { code: "CSR", label: "Cohort Survival Rate (CSR)" },
+  { code: "PLM_NEARLY_PROF", label: "Learning Mastery: Nearly Proficient" },
+  { code: "PLM_PROF", label: "Learning Mastery: Proficient" },
+  { code: "PLM_HIGH_PROF", label: "Learning Mastery: Highly Proficient" },
+  { code: "AE_PASS_RATE", label: "A&E Test Pass Rate" },
+  { code: "VIOLENCE_REPORT_RATE", label: "Learners Reporting School Violence" },
+  { code: "LEARNER_SATISFACTION", label: "Learner Satisfaction" },
+  { code: "RIGHTS_AWARENESS", label: "Learners Aware of Education Rights" },
+  { code: "RBE_MANIFEST", label: "Schools/LCs Manifesting RBE Indicators" },
+];
+
 /* ── Component ── */
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
@@ -143,10 +211,6 @@ export function SchoolAdminDashboard() {
         : indicatorSubmissions.filter((submission: IndicatorSubmission) => submission.academicYear?.id === effectiveAcademicYearId),
     [effectiveAcademicYearId, indicatorSubmissions],
   );
-  const latestIndicators: IndicatorSubmission | null = useMemo(
-    () => latestSubmission(filteredIndicatorsByYear),
-    [filteredIndicatorsByYear],
-  );
   const latestSubmittedIndicators: IndicatorSubmission | null = useMemo(
     () =>
       latestSubmission(
@@ -158,17 +222,17 @@ export function SchoolAdminDashboard() {
     [filteredIndicatorsByYear],
   );
 
-  const bmefFile = latestIndicators?.files?.bmef ?? null;
-  const smeaFile = latestIndicators?.files?.smea ?? null;
+  const bmefFile = latestSubmittedIndicators?.files?.bmef ?? null;
+  const smeaFile = latestSubmittedIndicators?.files?.smea ?? null;
   const bmefUploaded = bmefFile?.uploaded === true;
   const smeaUploaded = smeaFile?.uploaded === true;
 
-  const completedIndicators = latestIndicators?.summary?.metIndicators ?? 0;
-  const totalIndicators = latestIndicators?.summary?.totalIndicators ?? 0;
+  const completedIndicators = latestSubmittedIndicators?.summary?.metIndicators ?? 0;
+  const totalIndicators = latestSubmittedIndicators?.summary?.totalIndicators ?? 0;
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
-    if (!activeReportModalType || !latestIndicators?.files) return null;
-    return latestIndicators.files[activeReportModalType] ?? null;
-  }, [activeReportModalType, latestIndicators]);
+    if (!activeReportModalType || !latestSubmittedIndicators?.files) return null;
+    return latestSubmittedIndicators.files[activeReportModalType] ?? null;
+  }, [activeReportModalType, latestSubmittedIndicators]);
   const activeReportFileName = activeReportFileEntry?.originalFilename ?? null;
   const activeReportExtension = normalizeFileExtension(activeReportFileName);
   const activeSchoolYearLabel = selectedYearLabel(
@@ -180,6 +244,16 @@ export function SchoolAdminDashboard() {
     () => latestSubmittedIndicators?.indicators ?? [],
     [latestSubmittedIndicators],
   );
+
+  const submittedIndicatorByCode = useMemo(() => {
+    const map = new Map<string, IndicatorSubmissionItem>();
+    for (const item of submittedIndicatorRows) {
+      if (item.metric?.code) {
+        map.set(item.metric.code, item);
+      }
+    }
+    return map;
+  }, [submittedIndicatorRows]);
 
   const hasContextOverrides = contextAcademicYearId !== "all" || contextWorkflowStatus !== "all";
 
@@ -272,11 +346,11 @@ export function SchoolAdminDashboard() {
 
   const openReportModal = useCallback(
     (type: IndicatorSubmissionFileType) => {
-      if (!latestIndicators?.files?.[type]?.uploaded) return;
+      if (!latestSubmittedIndicators?.files?.[type]?.uploaded) return;
       setActiveReportModalType(type);
       setReportZoomLevel(1);
     },
-    [latestIndicators],
+    [latestSubmittedIndicators],
   );
 
   const closeReportModal = useCallback(() => {
@@ -285,8 +359,8 @@ export function SchoolAdminDashboard() {
   }, []);
 
   const handleDownloadActiveReport = useCallback(async () => {
-    if (!activeReportModalType || !latestIndicators) return;
-    const activeFile = latestIndicators.files?.[activeReportModalType] ?? null;
+    if (!activeReportModalType || !latestSubmittedIndicators) return;
+    const activeFile = latestSubmittedIndicators.files?.[activeReportModalType] ?? null;
 
     if (activeFile?.downloadUrl) {
       const anchor = document.createElement("a");
@@ -302,8 +376,8 @@ export function SchoolAdminDashboard() {
       return;
     }
 
-    await downloadSubmissionFile(latestIndicators.id, activeReportModalType);
-  }, [activeReportModalType, downloadSubmissionFile, latestIndicators]);
+    await downloadSubmissionFile(latestSubmittedIndicators.id, activeReportModalType);
+  }, [activeReportModalType, downloadSubmissionFile, latestSubmittedIndicators]);
 
   useEffect(() => {
     if (!activeReportModalType || typeof window === "undefined") return;
@@ -456,19 +530,19 @@ export function SchoolAdminDashboard() {
       <section id="compact-kpi" className={`mb-4 ${focusCls("compact-kpi")}`}>
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${statusChipTone(latestIndicators?.status)}`}
+            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${statusChipTone(latestSubmittedIndicators?.status)}`}
           >
             School Achievements
             <span className="rounded-sm bg-white/60 px-1 py-0.5 text-[10px]">
-              {submissionStatusLabel(latestIndicators?.status)}
+              {submissionStatusLabel(latestSubmittedIndicators?.status)}
             </span>
           </span>
           <span
-            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${statusChipTone(latestIndicators?.status)}`}
+            className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold ${statusChipTone(latestSubmittedIndicators?.status)}`}
           >
             Key Performance
             <span className="rounded-sm bg-white/60 px-1 py-0.5 text-[10px]">
-              {submissionStatusLabel(latestIndicators?.status)}
+              {submissionStatusLabel(latestSubmittedIndicators?.status)}
             </span>
           </span>
           <span
@@ -612,49 +686,18 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  <tr><td className="px-4 py-2">NAME OF SCHOOL HEAD</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">TOTAL NUMBER OF ENROLMENT</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">SBM LEVEL OF PRACTICE</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Kindergarten)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 1 to 3)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 4 to 6)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 7 to 10)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Pupil/Student Classroom Ratio (Grades 11 to 12)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Water and Sanitation facility to pupil ratio</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Number of Comfort rooms</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">a. Toilet bowl</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">b. Urinal</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Handwashing Facilities</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Ideal learning materials to learner ratio</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Pupil/student seat ratio (Overall)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">a. Kindergarten</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">b. Grades 1 - 6</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">c. Grades 7 - 10</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">d. Grades 11 - 12</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">ICT Package/E-classroom package to sections ratio</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">a. ICT Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Science Laboratory</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Do you have internet access? (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Do you have electricity (Y/N)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Do you have a complete fence/gate? (Evident/Partially/Not Evident)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">No. of Teachers</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Teachers with Physical Disability</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">a. Male</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">b. Female</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Functional SGC</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">School-Based Feeding Program Beneficiaries</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">School-Managed Canteen (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Teachers Cooperative Managed Canteen - if there is (Annual income)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">Security and Safety (Contingency Plan)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">a. Earthquake</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">b. Typhoon</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">c. COVID-19</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">d. Power interruption</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">e. In-person classes</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">No. of Teachers trained on Psychological First Aid (PFA)</td><td className="px-4 py-2 text-right">-</td></tr>
-                  <tr><td className="px-4 py-2">No. of Teachers trained on Occupational First Aid</td><td className="px-4 py-2 text-right">-</td></tr>
+                  {SCHOOL_ACHIEVEMENTS_DISPLAY.map(({ code, label }) => {
+                    const item = submittedIndicatorByCode.get(code);
+                    const value = item
+                      ? (item.actualDisplay ?? (item.actualValue !== null && item.actualValue !== undefined ? String(item.actualValue) : "")) || "-"
+                      : "-";
+                    return (
+                      <tr key={code}>
+                        <td className="px-4 py-2">{label}</td>
+                        <td className="px-4 py-2 text-right">{value}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -674,25 +717,24 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  <tr><td className="px-4 py-2">Net Enrollment Rate (NER)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Retention Rate (RR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Drop-out Rate (DR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Transition Rate (TR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Net Intake Rate (NIR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Participation Rate (PR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">ALS Completion Rate</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Gender Parity Index (GPI)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Interquartile Ratio (IQR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Completion Rate (CR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Cohort Survival Rate (CSR)</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Learning Mastery: Nearly Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Learning Mastery: Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Learning Mastery: Highly Proficient</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">A&amp;E Test Pass Rate</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Learners Reporting School Violence</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Learner Satisfaction</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Learners Aware of Education Rights</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
-                  <tr><td className="px-4 py-2">Schools/LCs Manifesting RBE Indicators</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td><td className="px-4 py-2 text-center">-</td></tr>
+                  {KEY_PERFORMANCE_DISPLAY.map(({ code, label }) => {
+                    const item = submittedIndicatorByCode.get(code);
+                    const targetVal = item
+                      ? (item.targetDisplay ?? (item.targetValue !== null && item.targetValue !== undefined ? String(item.targetValue) : "")) || "-"
+                      : "-";
+                    const actualVal = item
+                      ? (item.actualDisplay ?? (item.actualValue !== null && item.actualValue !== undefined ? String(item.actualValue) : "")) || "-"
+                      : "-";
+                    const status = item?.complianceStatus ? String(item.complianceStatus) : "-";
+                    return (
+                      <tr key={code}>
+                        <td className="px-4 py-2">{label}</td>
+                        <td className="px-4 py-2 text-center">{targetVal}</td>
+                        <td className="px-4 py-2 text-center">{actualVal}</td>
+                        <td className="px-4 py-2 text-center">{status}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
