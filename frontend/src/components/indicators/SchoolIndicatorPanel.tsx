@@ -420,6 +420,11 @@ function isSubmittedWorkflowStatus(status: string | null | undefined): boolean {
   return normalized === "submitted" || normalized === "validated";
 }
 
+function isDraftOrReturnedWorkflowStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").toLowerCase();
+  return normalized === "draft" || normalized === "returned";
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -3107,7 +3112,10 @@ export function SchoolIndicatorPanel({
       if (activeWorkspaceSubmission && !isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId)) {
         throw new Error("The selected academic year changed before saving. No stale changes were applied. Review the workspace and try again.");
       }
-      const canUpdateActiveSubmission = isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId);
+      const canUpdateActiveSubmission = (
+        isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId)
+        && isDraftOrReturnedWorkflowStatus(activeWorkspaceSubmission?.status)
+      );
       const submissionIdToUpdate = canUpdateActiveSubmission ? activeWorkspaceSubmission?.id ?? null : null;
       const result = submissionIdToUpdate
         ? await updateSubmission(submissionIdToUpdate, payload)
@@ -3193,6 +3201,13 @@ export function SchoolIndicatorPanel({
 
   const handleFormBlurAutosave = useCallback((event: FocusEvent<HTMLFormElement>) => {
     if (!isTypingTarget(event.target)) {
+      return;
+    }
+
+    // Avoid firing autosave when focus is still moving within the same form
+    // (for example: input -> submit/save button), which can block manual actions.
+    const nextFocused = event.relatedTarget;
+    if (nextFocused instanceof Node && event.currentTarget.contains(nextFocused)) {
       return;
     }
 
@@ -3553,6 +3568,9 @@ export function SchoolIndicatorPanel({
           ? activeSubmission.id
           : null
       );
+      const canUpdateActiveSubmission = Boolean(
+        submissionIdToUpdate && isDraftOrReturnedWorkflowStatus(activeSubmission?.status),
+      );
 
       if (submissionIdToUpdate && !hasUnsavedWorkspaceChanges) {
         setSubmitError("");
@@ -3564,7 +3582,7 @@ export function SchoolIndicatorPanel({
       const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
       await runCriticalWorkspaceMutation({
         mutation: () => (
-          submissionIdToUpdate
+          canUpdateActiveSubmission && submissionIdToUpdate
             ? updateSubmission(submissionIdToUpdate, payload)
             : createSubmission(payload)
         ),
@@ -3585,6 +3603,8 @@ export function SchoolIndicatorPanel({
         getSuccessMessage: (saved) => (
           saveModeAtActionStart === "blank"
             ? `Draft package #${saved.id} saved.`
+            : saveModeAtActionStart === "submitted_editing" && !canUpdateActiveSubmission
+              ? `Draft package #${saved.id} created from submitted report.`
             : saveModeAtActionStart === "submitted_editing"
               ? `Changes saved for package #${saved.id}.`
               : `Draft package #${saved.id} updated.`
@@ -3641,8 +3661,11 @@ export function SchoolIndicatorPanel({
               ? submissionToSubmit.id
               : null
           );
+          const canUpdateActiveSubmission = Boolean(
+            submissionIdToUpdate && isDraftOrReturnedWorkflowStatus(submissionToSubmit?.status),
+          );
 
-          if (!submissionIdToUpdate) {
+          if (!submissionIdToUpdate || !canUpdateActiveSubmission) {
             submissionToSubmit = await createSubmission(payload);
           } else if (hasUnsavedWorkspaceChanges) {
             submissionToSubmit = await updateSubmission(submissionIdToUpdate, payload);
@@ -3696,19 +3719,32 @@ export function SchoolIndicatorPanel({
         mutation: async () => {
           let submissionToSubmit = submission;
 
-          if (latestActiveWorkspaceSubmission?.id === submission.id && hasUnsavedWorkspaceChanges) {
+          if (latestActiveWorkspaceSubmission?.id === submission.id) {
             const prepared = buildSubmissionPayloadFromCurrentWorkspace();
             if (!prepared.payload) {
               throw new Error(prepared.reason || "Complete all required indicator cells before submitting.");
             }
-            console.log("[GroupB] payload:", prepared.payload);
-            submissionToSubmit = await updateSubmission(submission.id, prepared.payload);
-            setEditingSubmissionId(submissionToSubmit.id);
-            setPendingLocalDraft(null);
-            setAutosaveError("");
-            const savedAt = new Date().toISOString();
-            setServerAutosaveAt(savedAt);
-            lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
+
+            const canUpdateActiveSubmission = isDraftOrReturnedWorkflowStatus(submission.status);
+            if (!canUpdateActiveSubmission) {
+              console.log("[GroupB] payload:", prepared.payload);
+              submissionToSubmit = await createSubmission(prepared.payload);
+              setEditingSubmissionId(submissionToSubmit.id);
+              setPendingLocalDraft(null);
+              setAutosaveError("");
+              const savedAt = new Date().toISOString();
+              setServerAutosaveAt(savedAt);
+              lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
+            } else if (hasUnsavedWorkspaceChanges) {
+              console.log("[GroupB] payload:", prepared.payload);
+              submissionToSubmit = await updateSubmission(submission.id, prepared.payload);
+              setEditingSubmissionId(submissionToSubmit.id);
+              setPendingLocalDraft(null);
+              setAutosaveError("");
+              const savedAt = new Date().toISOString();
+              setServerAutosaveAt(savedAt);
+              lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
+            }
           }
 
           return await submitSubmission(submissionToSubmit.id);
