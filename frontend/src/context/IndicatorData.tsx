@@ -985,8 +985,6 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           method: "POST",
           token,
           body: {
-            mode: "full_replace",
-            replace_missing: true,
             academic_year_id: payload.academicYearId,
             reporting_period: payload.reportingPeriod ?? null,
             notes: payload.notes ?? null,
@@ -1056,24 +1054,32 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       }
 
       return runSubmissionMutation(async () => {
+        const body: Record<string, unknown> = {
+          academic_year_id: payload.academicYearId,
+          reporting_period: payload.reportingPeriod ?? null,
+          notes: payload.notes ?? null,
+          indicators: payload.indicators.map((entry) => ({
+            metric_id: entry.metricId,
+            target_value: entry.targetValue ?? null,
+            actual_value: entry.actualValue ?? null,
+            target: entry.target ?? null,
+            actual: entry.actual ?? null,
+            remarks: entry.remarks ?? null,
+          })),
+        };
+        if (payload.mode) {
+          body.mode = payload.mode;
+        }
+        if (typeof payload.replace_missing === "boolean") {
+          body.replace_missing = payload.replace_missing;
+        }
+
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
           method: "PUT",
           token,
           // Indicator draft updates can be slow on free-tier backend cold starts.
           timeoutMs: 90_000,
-          body: {
-            academic_year_id: payload.academicYearId,
-            reporting_period: payload.reportingPeriod ?? null,
-            notes: payload.notes ?? null,
-            indicators: payload.indicators.map((entry) => ({
-              metric_id: entry.metricId,
-              target_value: entry.targetValue ?? null,
-              actual_value: entry.actualValue ?? null,
-              target: entry.target ?? null,
-              actual: entry.actual ?? null,
-              remarks: entry.remarks ?? null,
-            })),
-          },
+          body,
         });
         return response.data;
       }, { backgroundSync: false });

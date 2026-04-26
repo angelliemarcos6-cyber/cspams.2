@@ -498,6 +498,8 @@ export interface IndicatorSubmissionPayload {
   academicYearId: number;
   reportingPeriod?: string | null;
   notes?: string | null;
+  mode?: "full_replace";
+  replace_missing?: boolean;
   indicators: Array<{
     metricId: number;
     targetValue?: number;

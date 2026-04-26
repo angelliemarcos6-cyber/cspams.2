@@ -147,6 +147,7 @@ interface YearWorkspaceState {
 }
 
 const SCHOOL_ACHIEVEMENTS_METRIC_CODES = [
+  // Keep this list aligned with backend GroupBWorkspaceDefinition::metricCodesFor(SCHOOL_ACHIEVEMENTS).
   "IMETA_HEAD_NAME",
   "IMETA_ENROLL_TOTAL",
   "IMETA_SBM_LEVEL",
@@ -193,6 +194,7 @@ const SCHOOL_ACHIEVEMENTS_METRIC_CODES = [
 ];
 
 const KEY_PERFORMANCE_METRIC_CODES = [
+  // Keep this list aligned with backend GroupBWorkspaceDefinition::metricCodesFor(KEY_PERFORMANCE).
   "NER",
   "RR",
   "DR",
@@ -3022,6 +3024,24 @@ export function SchoolIndicatorPanel({
         remarks: entry.remarks,
       })),
     };
+    const expectedMetricIds = [...new Set(
+      orderedComplianceMetrics
+        .map((metric) => Number(metric.id))
+        .filter((metricId) => Number.isFinite(metricId) && metricId > 0),
+    )].sort((a, b) => a - b);
+    const payloadMetricIds = [...new Set(
+      payload.indicators
+        .map((entry) => Number(entry.metricId))
+        .filter((metricId) => Number.isFinite(metricId) && metricId > 0),
+    )].sort((a, b) => a - b);
+    const isFullMetricPayload = expectedMetricIds.length > 0
+      && expectedMetricIds.length === payloadMetricIds.length
+      && expectedMetricIds.every((metricId, index) => metricId === payloadMetricIds[index]);
+
+    if (isFullMetricPayload) {
+      payload.mode = "full_replace";
+      payload.replace_missing = true;
+    }
 
     return { payload, reason: "", fingerprint: JSON.stringify(payload) };
   }, [activeAcademicYearId, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason, workspaceSchoolYears]);
