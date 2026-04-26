@@ -17,6 +17,7 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import type {
   AcademicYearOption,
   FormSubmissionHistoryEntry,
+  GroupBWorkspaceResetTarget,
   IndicatorMetric,
   IndicatorSubmission,
   IndicatorSubmissionItem,
@@ -1051,6 +1052,7 @@ export function SchoolIndicatorPanel({
     bootstrapSubmission,
     createSubmission,
     updateSubmission,
+    resetSubmissionWorkspace,
     uploadSubmissionFile,
     downloadSubmissionFile,
     submitSubmission,
@@ -2130,7 +2132,7 @@ export function SchoolIndicatorPanel({
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const canShowEditAction = workspaceMode === "submitted_locked";
   const canShowCancelEditAction = workspaceMode === "submitted_editing";
-  const canShowResetAction = workspaceMode === "draft";
+  const canShowResetAction = workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const isUploading = uploadingFileType !== null;
   const isGroupBActionBusy = groupBActionInFlightRef.current || isGroupBActionRunning || isSaving || isUploading || isWorkspaceTransitioning;
   const isCriticalActionInFlight = isGroupBActionBusy;
@@ -3352,6 +3354,21 @@ export function SchoolIndicatorPanel({
   const runResetWorkspaceAction = useCallback(async (message: string, onSuccess?: () => void) => {
     await resetForm({ postRefreshMessage: message, onSuccess });
   }, [resetForm]);
+  const activeWorkspaceResetTarget = useMemo<GroupBWorkspaceResetTarget | null>(() => {
+    if (activeTab?.kind === "upload") {
+      return activeTab.uploadType;
+    }
+    if (!activeCategory) {
+      return null;
+    }
+    if (activeCategory.id === "school_achievements_learning_outcomes") {
+      return "school_achievements_learning_outcomes";
+    }
+    if (activeCategory.id === "key_performance_indicators") {
+      return "key_performance_indicators";
+    }
+    return null;
+  }, [activeCategory, activeTab]);
   const handleResetDraft = useCallback(async () => {
     console.log("[GroupB] Reset clicked");
     console.log("[GroupB] mode:", workspaceMode);
@@ -3363,25 +3380,50 @@ export function SchoolIndicatorPanel({
         return;
       }
 
-      if (activeTab?.kind === "upload") {
-        setSubmitError("");
-        setUploadErrorByType((current) => ({ ...current, [activeTab.uploadType]: "" }));
-        setSaveMessage("No indicator fields to reset on this tab.");
+      if (!activeWorkspaceResetTarget) {
+        setSubmitError("No reset scope is available for the selected workspace.");
         return;
       }
 
-      if (!activeCategory || activeCategory.metrics.length === 0) {
+      const activeSubmission = (
+        latestActiveWorkspaceSubmission
+        && isSubmissionInAcademicYear(latestActiveWorkspaceSubmission, activeAcademicYearIdRef.current)
+      )
+        ? latestActiveWorkspaceSubmission
+        : null;
+      const canResetWorkspaceRemotely = Boolean(
+        activeSubmission?.id
+        && ["draft", "returned"].includes(String(activeSubmission.status ?? "").toLowerCase()),
+      );
+
+      if (canResetWorkspaceRemotely && activeSubmission?.id) {
+        await resetSubmissionWorkspace(activeSubmission.id, activeWorkspaceResetTarget);
+      }
+
+      if (activeWorkspaceResetTarget === "bmef" || activeWorkspaceResetTarget === "smea") {
+        setUploadErrorByType((current) => ({ ...current, [activeWorkspaceResetTarget]: "" }));
+        setOptimisticSubmittedByType((current) => ({ ...current, [activeWorkspaceResetTarget]: false }));
         setSubmitError("");
-        setSaveMessage("No indicator fields to reset on this tab.");
+        setSaveMessage(
+          activeWorkspaceResetTarget === "bmef"
+            ? "BMEF upload was reset for this academic year."
+            : "SMEA upload was reset for this academic year.",
+        );
         return;
       }
 
       const selectedYearScope = workspaceSchoolYears.length > 0
         ? workspaceSchoolYears
         : yearWorkspaceState.requiredYearsInScope;
+      const resetCategory = activeCategory;
+      if (!resetCategory || resetCategory.metrics.length === 0) {
+        setSubmitError("");
+        setSaveMessage("No indicator fields to reset on this tab.");
+        return;
+      }
       setMetricEntries((current) => {
         const next = { ...current };
-        for (const metric of activeCategory.metrics) {
+        for (const metric of resetCategory.metrics) {
           next[metric.id] = buildResetEntryForMetric(metric, selectedYearScope, current[metric.id]);
         }
         return next;
@@ -3392,13 +3434,17 @@ export function SchoolIndicatorPanel({
       setShowMissingFields(false);
       setMissingJumpIndex(0);
       setPendingFocusCellId(null);
-      setSaveMessage(`${categoryTabLabel(activeCategory)} values were reset to defaults for the selected academic year.`);
+      setSaveMessage(`${categoryTabLabel(resetCategory)} values were reset to defaults for the selected academic year.`);
     });
   }, [
+    activeWorkspaceResetTarget,
+    activeAcademicYearIdRef,
     activeCategory,
-    activeTab,
     hasUnsavedWorkspaceChanges,
     isGroupBActionBusy,
+    isSubmissionInAcademicYear,
+    latestActiveWorkspaceSubmission,
+    resetSubmissionWorkspace,
     runGroupBAction,
     workspaceMode,
     workspaceSchoolYears,

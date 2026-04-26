@@ -12,8 +12,10 @@ import { useAuth } from "@/context/Auth";
 import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError } from "@/lib/api";
 import type {
   AcademicYearOption,
+  GroupBWorkspaceResetTarget,
   IndicatorMetric,
   IndicatorSubmission,
+  IndicatorSubmissionFiles,
   IndicatorSubmissionFileType,
   FormSubmissionHistoryEntry,
   IndicatorSubmissionPayload,
@@ -93,6 +95,7 @@ interface LightweightIndicatorSubmission {
     hasSmeaFile: boolean;
     isComplete: boolean;
   };
+  files?: IndicatorSubmissionFiles;
   academicYear?: {
     id: string;
     name?: string | null;
@@ -123,6 +126,7 @@ export interface IndicatorDataContextType {
   bootstrapSubmission: (payload: BootstrapIndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
+  resetSubmissionWorkspace: (id: string, workspace: GroupBWorkspaceResetTarget) => Promise<IndicatorSubmission>;
   uploadSubmissionFile: (id: string, type: IndicatorSubmissionFileType, file: File) => Promise<IndicatorSubmission>;
   downloadSubmissionFile: (id: string, type: IndicatorSubmissionFileType) => Promise<void>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
@@ -316,6 +320,22 @@ function patchSubmissionWithLightweightPayload(
             : patch.completion.hasImetaFormData && patch.completion.hasBmefFile && patch.completion.hasSmeaFile,
       }
     : existingCompletion;
+  const nextFiles: IndicatorSubmission["files"] = patch.files
+    ? patch.files
+    : (nextCompletion && current.files)
+      ? {
+          bmef: {
+            ...current.files.bmef,
+            uploaded: nextCompletion.hasBmefFile,
+            downloadUrl: nextCompletion.hasBmefFile ? `/api/submissions/${patch.id}/download/bmef` : null,
+          },
+          smea: {
+            ...current.files.smea,
+            uploaded: nextCompletion.hasSmeaFile,
+            downloadUrl: nextCompletion.hasSmeaFile ? `/api/submissions/${patch.id}/download/smea` : null,
+          },
+        }
+      : current.files;
 
   return {
     ...current,
@@ -327,6 +347,7 @@ function patchSubmissionWithLightweightPayload(
     reviewedAt: patch.reviewedAt ?? current.reviewedAt,
     updatedAt: patch.updatedAt ?? current.updatedAt,
     completion: nextCompletion,
+    files: nextFiles,
     academicYear: patch.academicYear?.id
       ? {
           id: patch.academicYear.id,
@@ -1072,6 +1093,24 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [runSubmissionMutation, token],
   );
 
+  const resetSubmissionWorkspace = useCallback(
+    async (id: string, workspace: GroupBWorkspaceResetTarget): Promise<IndicatorSubmission> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      return runSubmissionMutation(async () => {
+        const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}/reset-workspace`, {
+          method: "POST",
+          token,
+          body: { workspace },
+        });
+        return response.data;
+      });
+    },
+    [runSubmissionMutation, token],
+  );
+
   const downloadSubmissionFile = useCallback(
     async (id: string, type: IndicatorSubmissionFileType): Promise<void> => {
       if (!token) {
@@ -1218,6 +1257,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       bootstrapSubmission,
       createSubmission,
       updateSubmission,
+      resetSubmissionWorkspace,
       uploadSubmissionFile,
       downloadSubmissionFile,
       submitSubmission,
@@ -1242,6 +1282,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       bootstrapSubmission,
       createSubmission,
       updateSubmission,
+      resetSubmissionWorkspace,
       uploadSubmissionFile,
       downloadSubmissionFile,
       submitSubmission,

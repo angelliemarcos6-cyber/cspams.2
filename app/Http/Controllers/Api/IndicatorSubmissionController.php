@@ -47,6 +47,86 @@ class IndicatorSubmissionController extends Controller
 
     private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
 
+    private const RESET_WORKSPACE_BMEF = 'bmef';
+
+    private const RESET_WORKSPACE_SMEA = 'smea';
+
+    private const RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS = 'school_achievements_learning_outcomes';
+
+    private const RESET_WORKSPACE_KEY_PERFORMANCE = 'key_performance_indicators';
+
+    /**
+     * @var array<string, list<string>>
+     */
+    private const WORKSPACE_METRIC_CODES = [
+        self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS => [
+            'IMETA_HEAD_NAME',
+            'IMETA_ENROLL_TOTAL',
+            'IMETA_SBM_LEVEL',
+            'PCR_K',
+            'PCR_G1_3',
+            'PCR_G4_6',
+            'PCR_G7_10',
+            'PCR_G11_12',
+            'WASH_RATIO',
+            'COMFORT_ROOMS',
+            'TOILET_BOWLS',
+            'URINALS',
+            'HANDWASH_FAC',
+            'LEARNING_MAT_RATIO',
+            'PSR_OVERALL',
+            'PSR_K',
+            'PSR_G1_6',
+            'PSR_G7_10',
+            'PSR_G11_12',
+            'ICT_RATIO',
+            'ICT_LAB',
+            'SCIENCE_LAB',
+            'INTERNET_ACCESS',
+            'ELECTRICITY',
+            'FENCE_STATUS',
+            'TEACHERS_TOTAL',
+            'TEACHERS_MALE',
+            'TEACHERS_FEMALE',
+            'TEACHERS_PWD_TOTAL',
+            'TEACHERS_PWD_MALE',
+            'TEACHERS_PWD_FEMALE',
+            'FUNCTIONAL_SGC',
+            'FEEDING_BENEFICIARIES',
+            'CANTEEN_INCOME',
+            'TEACHER_COOP_INCOME',
+            'SAFETY_PLAN',
+            'SAFETY_EARTHQUAKE',
+            'SAFETY_TYPHOON',
+            'SAFETY_COVID',
+            'SAFETY_POWER',
+            'SAFETY_IN_PERSON',
+            'TEACHERS_PFA',
+            'TEACHERS_OCC_FIRST_AID',
+        ],
+        self::RESET_WORKSPACE_KEY_PERFORMANCE => [
+            'NER',
+            'RR',
+            'DR',
+            'TR',
+            'NIR',
+            'PR',
+            'ALS_COMPLETER_PCT',
+            'GPI',
+            'IQR',
+            'CR',
+            'CSR',
+            'PLM_NEARLY_PROF',
+            'PLM_PROF',
+            'PLM_HIGH_PROF',
+            'AE_PASS_RATE',
+            'VIOLENCE_REPORT_RATE',
+            'LEARNER_SATISFACTION',
+            'RIGHTS_AWARENESS',
+            'RBE_MANIFEST',
+        ],
+    ];
+
     private static ?bool $usersHasAccountTypeColumn = null;
 
     public function __construct(
@@ -705,6 +785,70 @@ class IndicatorSubmissionController extends Controller
         return $this->lightweightSubmissionResponse($submission);
     }
 
+    public function resetWorkspace(Request $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanSubmit($user, $submission->school_id);
+
+        $fromStatus = $this->statusValue($submission->status);
+        if (! in_array($fromStatus, [
+            FormSubmissionStatus::DRAFT->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only draft or returned indicator submissions can reset a workspace.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'workspace' => [
+                'required',
+                'string',
+                Rule::in([
+                    self::RESET_WORKSPACE_BMEF,
+                    self::RESET_WORKSPACE_SMEA,
+                    self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS,
+                    self::RESET_WORKSPACE_KEY_PERFORMANCE,
+                ]),
+            ],
+        ]);
+
+        $workspace = strtolower(trim((string) $validated['workspace']));
+
+        $metadata = DB::transaction(function () use ($submission, $workspace): array {
+            if ($workspace === self::RESET_WORKSPACE_BMEF || $workspace === self::RESET_WORKSPACE_SMEA) {
+                return $this->resetWorkspaceFile($submission, $workspace);
+            }
+
+            return $this->resetWorkspaceIndicatorRows($submission, $workspace);
+        });
+
+        app(FormSubmissionHistoryLogger::class)->log(
+            formType: IndicatorSubmission::FORM_TYPE,
+            submissionId: $submission->id,
+            schoolId: $submission->school_id,
+            academicYearId: $submission->academic_year_id,
+            action: $this->historyActionForWorkspaceReset($workspace),
+            fromStatus: $fromStatus,
+            toStatus: $fromStatus ?? FormSubmissionStatus::DRAFT->value,
+            actorId: $user->id,
+            notes: $this->historyNoteForWorkspaceReset($workspace),
+            metadata: $metadata,
+        );
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'indicators',
+            'eventType' => 'indicators.workspace_reset',
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'workspace' => $workspace,
+            'status' => $fromStatus,
+        ]));
+
+        return $this->lightweightSubmissionResponse($submission);
+    }
+
     public function history(Request $request, IndicatorSubmission $submission): AnonymousResourceCollection
     {
         $user = $this->requireUser($request);
@@ -749,6 +893,26 @@ class IndicatorSubmissionController extends Controller
                     'hasBmefFile' => $hasBmefFile,
                     'hasSmeaFile' => $hasSmeaFile,
                     'isComplete' => $hasImetaFormData && $hasBmefFile && $hasSmeaFile,
+                ],
+                'files' => [
+                    'bmef' => [
+                        'type' => 'bmef',
+                        'uploaded' => $hasBmefFile,
+                        'path' => null,
+                        'originalFilename' => null,
+                        'sizeBytes' => null,
+                        'uploadedAt' => optional($submission->bmef_uploaded_at)->toISOString(),
+                        'downloadUrl' => $hasBmefFile ? "/api/submissions/{$submission->id}/download/bmef" : null,
+                    ],
+                    'smea' => [
+                        'type' => 'smea',
+                        'uploaded' => $hasSmeaFile,
+                        'path' => null,
+                        'originalFilename' => null,
+                        'sizeBytes' => null,
+                        'uploadedAt' => optional($submission->smea_uploaded_at)->toISOString(),
+                        'downloadUrl' => $hasSmeaFile ? "/api/submissions/{$submission->id}/download/smea" : null,
+                    ],
                 ],
             ],
         ], $status);
@@ -916,6 +1080,106 @@ class IndicatorSubmissionController extends Controller
             'bmef' => $submission->bmef_original_filename,
             'smea' => $submission->smea_original_filename,
             default => null,
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resetWorkspaceFile(IndicatorSubmission $submission, string $workspace): array
+    {
+        $existingPath = $this->filePathForType($submission, $workspace);
+        $deletedFile = false;
+        if (is_string($existingPath) && $existingPath !== '' && Storage::disk('local')->exists($existingPath)) {
+            $deletedFile = Storage::disk('local')->delete($existingPath);
+        }
+
+        if ($workspace === self::RESET_WORKSPACE_BMEF) {
+            $submission->forceFill([
+                'bmef_file_path' => null,
+                'bmef_original_filename' => null,
+                'bmef_uploaded_at' => null,
+                'bmef_file_size' => null,
+            ])->save();
+        } else {
+            $submission->forceFill([
+                'smea_file_path' => null,
+                'smea_original_filename' => null,
+                'smea_uploaded_at' => null,
+                'smea_file_size' => null,
+            ])->save();
+        }
+
+        return [
+            'workspace' => $workspace,
+            'deleted_file_path' => $existingPath,
+            'deleted_file_from_storage' => $deletedFile,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resetWorkspaceIndicatorRows(IndicatorSubmission $submission, string $workspace): array
+    {
+        $metricIds = $this->resolveWorkspaceMetricIds($workspace);
+        if ($metricIds->isEmpty()) {
+            return [
+                'workspace' => $workspace,
+                'metric_count' => 0,
+                'deleted_indicator_count' => 0,
+            ];
+        }
+
+        $deletedCount = $submission->items()
+            ->whereIn('performance_metric_id', $metricIds->all())
+            ->delete();
+
+        return [
+            'workspace' => $workspace,
+            'metric_count' => $metricIds->count(),
+            'deleted_indicator_count' => (int) $deletedCount,
+        ];
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    private function resolveWorkspaceMetricIds(string $workspace): Collection
+    {
+        $codes = self::WORKSPACE_METRIC_CODES[$workspace] ?? [];
+        if ($codes === []) {
+            return collect();
+        }
+
+        return PerformanceMetric::query()
+            ->get(['id', 'code'])
+            ->filter(static fn (PerformanceMetric $metric): bool => in_array(strtoupper((string) $metric->code), $codes, true))
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->values();
+    }
+
+    private function historyActionForWorkspaceReset(string $workspace): string
+    {
+        return match ($workspace) {
+            self::RESET_WORKSPACE_BMEF => 'bmef_reset',
+            self::RESET_WORKSPACE_SMEA => 'smea_reset',
+            self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS => 'school_achievements_reset',
+            self::RESET_WORKSPACE_KEY_PERFORMANCE => 'key_performance_reset',
+            default => 'workspace_reset',
+        };
+    }
+
+    private function historyNoteForWorkspaceReset(string $workspace): string
+    {
+        return match ($workspace) {
+            self::RESET_WORKSPACE_BMEF => 'BMEF workspace was reset.',
+            self::RESET_WORKSPACE_SMEA => 'SMEA workspace was reset.',
+            self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS => 'School Achievements workspace was reset.',
+            self::RESET_WORKSPACE_KEY_PERFORMANCE => 'Key Performance workspace was reset.',
+            default => 'Workspace was reset.',
         };
     }
 

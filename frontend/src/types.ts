@@ -411,6 +411,11 @@ export interface IndicatorSubmissionItem {
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
 // Monitor & School Head views updated for DepEd standards
 export type IndicatorSubmissionFileType = "bmef" | "smea";
+export type GroupBWorkspaceResetTarget =
+  | "bmef"
+  | "smea"
+  | "school_achievements_learning_outcomes"
+  | "key_performance_indicators";
 
 export interface IndicatorSubmissionFileEntry {
   type: IndicatorSubmissionFileType;

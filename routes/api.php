@@ -105,6 +105,7 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicat
     Route::patch('/submissions/{submission}', [IndicatorSubmissionController::class, 'update']);
     Route::post('/submissions/{submission}/submit', [IndicatorSubmissionController::class, 'submit']);
     Route::post('/submissions/{submission}/review', [IndicatorSubmissionController::class, 'review']);
+    Route::post('/submissions/{submission}/reset-workspace', [IndicatorSubmissionController::class, 'resetWorkspace']);
     Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
 });
 
