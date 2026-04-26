@@ -4607,7 +4607,7 @@ export function SchoolIndicatorPanel({
                             ? enumOptions.length > 0
                               ? enumOptions
                               : metric.code === "FENCE_STATUS"
-                                ? ["Evident", "Partially", "Not Evident"]
+                                ? ["Evident", "Partially Evident", "Not Evident"]
                                 : []
                             : [];
                       const useSelectInput = selectOptions.length > 0;

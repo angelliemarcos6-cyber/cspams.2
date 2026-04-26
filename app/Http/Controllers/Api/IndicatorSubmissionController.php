@@ -1372,19 +1372,31 @@ class IndicatorSubmissionController extends Controller
             ->filter(static fn (string $option): bool => $option !== '')
             ->values();
 
-        if ($value === '' || $options->isEmpty() || ! $options->contains($value)) {
+        if ($value === '') {
+            return [
+                'typed' => ['value' => ''],
+                'numeric' => 0.0,
+                'display' => '',
+                'comparable' => '',
+            ];
+        }
+
+        $resolvedValue = $this->resolveEnumOptionValue($value, $options);
+        if ($resolvedValue === null) {
             throw ValidationException::withMessages([
                 $errorPath => 'Invalid option selected for this indicator.',
             ]);
         }
 
-        $numeric = (float) ($options->search($value) + 1);
+        $numeric = $options->isEmpty()
+            ? 1.0
+            : (float) ($options->search($resolvedValue) + 1);
 
         return [
-            'typed' => ['value' => $value],
+            'typed' => ['value' => $resolvedValue],
             'numeric' => $numeric,
-            'display' => $value,
-            'comparable' => $value,
+            'display' => $resolvedValue,
+            'comparable' => $resolvedValue,
         ];
     }
 
@@ -1469,13 +1481,19 @@ class IndicatorSubmissionController extends Controller
 
             if ($valueType === 'enum') {
                 $enumValue = trim((string) $yearValue);
-                if ($enumValue === '' || $enumOptions->isEmpty() || ! $enumOptions->contains($enumValue)) {
+                if ($enumValue === '') {
+                    $normalized[$year] = '';
+                    continue;
+                }
+
+                $resolvedValue = $this->resolveEnumOptionValue($enumValue, $enumOptions);
+                if ($resolvedValue === null) {
                     throw ValidationException::withMessages([
                         $errorPath => "Invalid option for {$year}.",
                     ]);
                 }
 
-                $normalized[$year] = $enumValue;
+                $normalized[$year] = $resolvedValue;
                 continue;
             }
 
@@ -1553,6 +1571,25 @@ class IndicatorSubmissionController extends Controller
             'display' => $display,
             'comparable' => $normalized,
         ];
+    }
+
+    private function resolveEnumOptionValue(string $value, Collection $options): ?string
+    {
+        if ($options->isEmpty()) {
+            return $value;
+        }
+
+        if ($options->contains($value)) {
+            return $value;
+        }
+
+        foreach ($options as $option) {
+            if (strcasecmp((string) $option, $value) === 0) {
+                return (string) $option;
+            }
+        }
+
+        return null;
     }
 
     /**
