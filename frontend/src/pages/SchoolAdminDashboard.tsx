@@ -43,11 +43,10 @@ function resolveSelectedYearFinalizedSubmission(entries: IndicatorSubmission[]):
   const priorityByStatus: Record<string, number> = {
     submitted: 0,
     validated: 1,
-    returned: 2,
-    draft: 3,
   };
 
   const ranked = entries
+    .filter((submission) => isFinalizedSubmissionStatus(submission.status))
     .slice()
     .sort((left, right) => {
       const leftStatus = String(left.status ?? "").trim().toLowerCase();
@@ -65,7 +64,7 @@ function resolveSelectedYearFinalizedSubmission(entries: IndicatorSubmission[]):
       );
     });
 
-  return ranked.find((submission) => priorityByStatus[String(submission.status ?? "").trim().toLowerCase()] !== undefined) ?? ranked[0] ?? null;
+  return ranked[0] ?? null;
 }
 
 function normalizeFileExtension(filename: string | null | undefined): string {
