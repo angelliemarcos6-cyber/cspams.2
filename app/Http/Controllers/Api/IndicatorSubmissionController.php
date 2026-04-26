@@ -597,7 +597,7 @@ class IndicatorSubmissionController extends Controller
 
         $missingRequirements = [];
         if (! $submission->hasImetaFormData()) {
-            $missingRequirements[] = 'I-META form data';
+            $missingRequirements[] = 'I-META / Group A form data';
         }
         if (! $submission->hasBmefFile()) {
             $missingRequirements[] = 'BMEF file';

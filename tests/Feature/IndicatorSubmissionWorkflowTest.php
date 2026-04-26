@@ -266,7 +266,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.id', $submissionId)
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.summary.totalIndicators', 1)
-            ->assertJsonPath('data.completion.hasImetaFormData', true);
+            ->assertJsonPath('data.completion.hasImetaFormData', false);
     }
 
     public function test_school_head_cannot_submit_other_schools_indicator_package(): void

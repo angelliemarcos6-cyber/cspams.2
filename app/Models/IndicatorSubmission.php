@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Indicators\GroupAImetaDefinition;
 use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Domain\FormSubmissionStatus;
@@ -104,11 +105,57 @@ class IndicatorSubmission extends Model
 
     public function hasImetaFormData(): bool
     {
-        if ($this->relationLoaded('items')) {
-            return $this->items->isNotEmpty();
+        return $this->hasCompleteImetaFormData();
+    }
+
+    public function hasCompleteImetaFormData(): bool
+    {
+        $requiredCodes = GroupAImetaDefinition::requiredMetricCodes();
+        if ($requiredCodes === []) {
+            return false;
         }
 
-        return $this->items()->exists();
+        $items = $this->items()
+            ->select(['id', 'indicator_submission_id', 'performance_metric_id', 'actual_value', 'actual_typed_value', 'actual_display'])
+            ->with('metric:id,code')
+            ->get();
+
+        if ($items->isEmpty()) {
+            return false;
+        }
+
+        $itemsByCode = $items
+            ->mapWithKeys(static function (IndicatorSubmissionItem $item): array {
+                $code = strtoupper(trim((string) ($item->metric?->code ?? '')));
+                return $code !== '' ? [$code => $item] : [];
+            });
+
+        foreach (GroupAImetaDefinition::requiredMetricGroups() as $group) {
+            $groupSatisfied = false;
+            foreach ($group as $code) {
+                $normalizedCode = strtoupper(trim($code));
+                if ($normalizedCode === '') {
+                    continue;
+                }
+
+                /** @var IndicatorSubmissionItem|null $item */
+                $item = $itemsByCode->get($normalizedCode);
+                if (! $item) {
+                    continue;
+                }
+
+                if ($this->itemHasMeaningfulActualValue($item)) {
+                    $groupSatisfied = true;
+                    break;
+                }
+            }
+
+            if (! $groupSatisfied) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function hasBmefFile(): bool
@@ -126,5 +173,46 @@ class IndicatorSubmission extends Model
         return $this->hasImetaFormData()
             && $this->hasBmefFile()
             && $this->hasSmeaFile();
+    }
+
+    private function itemHasMeaningfulActualValue(IndicatorSubmissionItem $item): bool
+    {
+        if ($item->actual_typed_value !== null) {
+            return $this->hasMeaningfulTypedValue($item->actual_typed_value);
+        }
+
+        $actualDisplay = trim((string) ($item->actual_display ?? ''));
+        if ($actualDisplay !== '') {
+            return true;
+        }
+
+        return $item->actual_value !== null;
+    }
+
+    private function hasMeaningfulTypedValue(mixed $value): bool
+    {
+        if (is_array($value)) {
+            foreach ($value as $entry) {
+                if ($this->hasMeaningfulTypedValue($entry)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (is_string($value)) {
+            return trim($value) !== '';
+        }
+
+        if (is_bool($value)) {
+            return true;
+        }
+
+        if (is_numeric($value)) {
+            return true;
+        }
+
+        return $value !== null;
     }
 }

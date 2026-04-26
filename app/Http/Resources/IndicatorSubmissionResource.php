@@ -22,7 +22,7 @@ class IndicatorSubmissionResource extends JsonResource
         $complianceRate = $totalIndicators > 0
             ? round(($metIndicators / $totalIndicators) * 100, 2)
             : 0.0;
-        $hasImeta = $totalIndicators > 0;
+        $hasImeta = $this->hasImetaFormData();
         $hasBmef = is_string($this->bmef_file_path) && trim($this->bmef_file_path) !== '';
         $hasSmea = is_string($this->smea_file_path) && trim($this->smea_file_path) !== '';
 
