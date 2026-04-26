@@ -13,6 +13,7 @@ import {
 } from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target, XCircle } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
+import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type {
   AcademicYearOption,
@@ -1041,6 +1042,7 @@ export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
 }: SchoolIndicatorPanelProps) {
+  const { user } = useAuth();
   const {
     submissions: submissionSnapshot,
     allSubmissions,
@@ -1265,9 +1267,12 @@ export function SchoolIndicatorPanel({
     }
   }, [academicYearId, yearWorkspaceState.selectedAcademicYearId]);
 
+  const autosaveUserScopeId = user?.id ? String(user.id) : "anonymous";
+  const autosaveSchoolScopeId = user?.schoolId ? String(user.schoolId) : "unassigned";
   const autosaveKey = useMemo(
-    () => `${INDICATOR_DRAFT_STORAGE_KEY_PREFIX}.${activeAcademicYearId || "unselected"}`,
-    [activeAcademicYearId],
+    () =>
+      `${INDICATOR_DRAFT_STORAGE_KEY_PREFIX}:${autosaveUserScopeId}:${autosaveSchoolScopeId}:${activeAcademicYearId || "unselected"}`,
+    [activeAcademicYearId, autosaveSchoolScopeId, autosaveUserScopeId],
   );
   const localAutosaveAcademicYearRef = useRef<string | null>(activeAcademicYearId);
   const localAutosaveEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
@@ -1644,6 +1649,13 @@ export function SchoolIndicatorPanel({
   const selectedSubmissionForUploads = useMemo(() => {
     return latestActiveWorkspaceSubmission;
   }, [latestActiveWorkspaceSubmission]);
+  useEffect(() => {
+    if (!latestActiveWorkspaceSubmission) {
+      return;
+    }
+
+    setPendingLocalDraft(null);
+  }, [latestActiveWorkspaceSubmission]);
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
@@ -1963,6 +1975,8 @@ export function SchoolIndicatorPanel({
       && submittedEditPreserveContextRef.current.academicYearId === activeAcademicYearId
       && submittedEditPreserveContextRef.current.submissionId === (latestActiveWorkspaceSubmission?.id ?? null),
     );
+    // Backend submission is the source of truth. Local autosave is only used
+    // when there is no saved submission for this user/school/year scope.
     if (latestActiveWorkspaceSubmission) {
       rehydrateWorkspaceFromSubmission(latestActiveWorkspaceSubmission);
     } else {
@@ -3337,6 +3351,10 @@ export function SchoolIndicatorPanel({
       if (!pendingLocalDraft) {
         return;
       }
+      if (latestActiveWorkspaceSubmission) {
+        setSubmitError("A saved server submission already exists for this academic year. Local restore is disabled.");
+        return;
+      }
 
       if (pendingLocalDraft.academicYearId !== activeAcademicYearId) {
         setSubmitError("This local draft no longer matches the selected academic year. Re-select the year and try again.");
@@ -3356,7 +3374,7 @@ export function SchoolIndicatorPanel({
         },
       });
     });
-  }, [activeAcademicYearId, complianceMetrics, pendingLocalDraft, resolveInScopeSubmissionId, runCriticalWorkspaceTransition, runGroupBAction]);
+  }, [activeAcademicYearId, complianceMetrics, latestActiveWorkspaceSubmission, pendingLocalDraft, resolveInScopeSubmissionId, runCriticalWorkspaceTransition, runGroupBAction]);
 
   const handleRestoreServerDraft = useCallback(() => {
     void runGroupBAction("Restore server draft", async () => {
@@ -3490,7 +3508,7 @@ export function SchoolIndicatorPanel({
   }, [runCriticalWorkspaceTransition, workspaceMode]);
 
   const showRestoreBanner = !restoreBannerDismissed && (
-    Boolean(pendingLocalDraft)
+    Boolean(!latestActiveWorkspaceSubmission && pendingLocalDraft)
     || Boolean(restorableServerSubmissionInScope && restorableServerSubmissionInScope.id !== editingSubmissionId)
   );
 
