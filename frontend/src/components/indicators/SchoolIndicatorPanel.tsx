@@ -1015,6 +1015,19 @@ function resolveMetricFromIndicator(
   return null;
 }
 
+function submissionRows(submission: IndicatorSubmission | null | undefined): IndicatorSubmissionItem[] {
+  if (!submission) {
+    return [];
+  }
+
+  const directIndicators = Array.isArray(submission.indicators) ? submission.indicators : [];
+  if (directIndicators.length > 0) {
+    return directIndicators;
+  }
+
+  return Array.isArray(submission.items) ? submission.items : [];
+}
+
 function yearToken(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
@@ -1652,7 +1665,7 @@ export function SchoolIndicatorPanel({
 
     for (const submission of sortedSubmissions) {
       const indicatorByMetricId = new Map<string, IndicatorSubmissionItem>();
-      for (const indicator of submission.indicators) {
+      for (const indicator of submissionRows(submission)) {
         const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
         if (!metric) {
           continue;
@@ -1802,6 +1815,8 @@ export function SchoolIndicatorPanel({
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
   const resolvedAcademicYearBoundaryRef = useRef<string | null>(activeAcademicYearId);
+  const lastHydratedWorkspaceScopeRef = useRef<string>("");
+  const hasUnsavedWorkspaceChangesRef = useRef(false);
   const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   const postRefreshMessageRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1876,6 +1891,7 @@ export function SchoolIndicatorPanel({
     submittedEditPreserveContextRef.current = null;
     postRefreshMessageRef.current = null;
     workspaceFingerprintRef.current = "";
+    lastHydratedWorkspaceScopeRef.current = "";
   }, []);
   const invalidateAutosaveContext = useCallback((options: { resetFingerprint?: boolean } = {}) => {
     localAutosaveEpochRef.current += 1;
@@ -1935,9 +1951,11 @@ export function SchoolIndicatorPanel({
   const refreshResolvedWorkspace = useCallback(async () => {
     await refreshSubmissions();
     workspaceFingerprintRef.current = "";
+    lastHydratedWorkspaceScopeRef.current = "";
   }, [refreshSubmissions]);
   const requestResolvedWorkspaceRehydrate = useCallback(() => {
     workspaceFingerprintRef.current = "";
+    lastHydratedWorkspaceScopeRef.current = "";
   }, []);
   const workspaceSubmissionFingerprint = useMemo(
     () => buildWorkspaceSubmissionFingerprint(activeAcademicYearId, latestActiveWorkspaceSubmission),
@@ -2076,7 +2094,7 @@ export function SchoolIndicatorPanel({
     const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
 
     if (submission) {
-      for (const indicator of submission.indicators) {
+      for (const indicator of submissionRows(submission)) {
         const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
         if (!metric) continue;
 
@@ -2105,11 +2123,22 @@ export function SchoolIndicatorPanel({
       return;
     }
 
+    const workspaceScopeKey = [
+      activeAcademicYearId,
+      latestActiveWorkspaceSubmission?.id ?? "blank",
+    ].join(":");
+    const didChangeWorkspaceScope = lastHydratedWorkspaceScopeRef.current !== workspaceScopeKey;
+
+    if (!didChangeWorkspaceScope && hasUnsavedWorkspaceChangesRef.current) {
+      return;
+    }
+
     if (workspaceFingerprintRef.current === workspaceSubmissionFingerprint) {
       return;
     }
 
     workspaceFingerprintRef.current = workspaceSubmissionFingerprint;
+    lastHydratedWorkspaceScopeRef.current = workspaceScopeKey;
     const shouldPreserveSubmittedEditMode = Boolean(
       submittedEditPreserveContextRef.current
       && activeAcademicYearId
@@ -2133,7 +2162,7 @@ export function SchoolIndicatorPanel({
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
     endControlledWorkspaceTransition();
-  }, [activeAcademicYearId, workspaceSubmissionFingerprint, complianceMetrics.length, endControlledWorkspaceTransition, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear]);
+  }, [activeAcademicYearId, complianceMetrics.length, endControlledWorkspaceTransition, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, workspaceSubmissionFingerprint]);
   const groupASubmittedSubmission = useMemo(
     () =>
       scopedSubmissionsForYear
@@ -2150,7 +2179,7 @@ export function SchoolIndicatorPanel({
     const metricsByCode = new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
     const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
 
-    for (const item of groupASubmittedSubmission?.indicators ?? []) {
+    for (const item of submissionRows(groupASubmittedSubmission)) {
       const metric = resolveMetricFromIndicator(item, metricsById, metricsByCode, metricsByName);
       if (!metric) {
         continue;
@@ -2845,11 +2874,12 @@ export function SchoolIndicatorPanel({
     );
     const savedEntries = buildInitialMetricEntries(complianceMetrics, {});
 
-    for (const indicator of submission.indicators) {
-      const metric = (
-        (indicator.metric?.id ? metricsById.get(indicator.metric.id) : undefined)
-        ?? (indicator.metric?.code ? metricsByNormalizedCode.get(normalizeMetricCode(indicator.metric.code)) : undefined)
-        ?? (indicator.metric?.name ? metricsByNormalizedName.get(normalizeMetricName(indicator.metric.name)) : undefined)
+    for (const indicator of submissionRows(submission)) {
+      const metric = resolveMetricFromIndicator(
+        indicator,
+        metricsById,
+        metricsByNormalizedCode,
+        metricsByNormalizedName,
       );
       if (!metric) {
         continue;
@@ -3271,6 +3301,9 @@ export function SchoolIndicatorPanel({
     metricEntries,
     notes,
   ]);
+  useEffect(() => {
+    hasUnsavedWorkspaceChangesRef.current = hasUnsavedWorkspaceChanges;
+  }, [hasUnsavedWorkspaceChanges]);
 
   const persistDraftPayload = useCallback(
     async (
@@ -3469,11 +3502,18 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const sourceByMetricId = new Map(
-      latestValidatedSubmission.indicators
-        .map((indicator: IndicatorSubmissionItem) => [indicator.metric?.id ?? "", indicator] as const)
-        .filter(([metricId]: readonly [string, IndicatorSubmissionItem]) => metricId.length > 0),
-    );
+    const metricsById = new Map(orderedComplianceMetrics.map((metric) => [metric.id, metric]));
+    const metricsByCode = new Map(orderedComplianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
+    const metricsByName = new Map(orderedComplianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
+    const sourceByMetricId = new Map<string, IndicatorSubmissionItem>();
+    for (const indicator of submissionRows(latestValidatedSubmission)) {
+      const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
+      if (!metric) {
+        continue;
+      }
+
+      sourceByMetricId.set(metric.id, indicator);
+    }
     let copiedCount = 0;
 
     setMetricEntries((entries) => {

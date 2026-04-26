@@ -473,6 +473,7 @@ export interface IndicatorSubmission {
     isComplete: boolean;
   };
   indicators: IndicatorSubmissionItem[];
+  items?: IndicatorSubmissionItem[];
   createdBy?: {
     id: string;
     name: string;
