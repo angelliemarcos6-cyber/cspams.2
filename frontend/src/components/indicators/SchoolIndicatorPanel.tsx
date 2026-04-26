@@ -472,9 +472,21 @@ function metricDisplayLabel(metric: IndicatorMetric): string {
   return METRIC_LABEL_OVERRIDES[normalizeMetricCode(metric.code)] ?? metric.name;
 }
 
-function formatReferenceCellValue(value: string | null | undefined): string {
-  const normalized = String(value ?? "").trim();
-  return normalized.length > 0 ? normalized : "—";
+function formatDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : "-";
+  }
+
+  return String(value);
+}
+
+function formatReferenceCellValue(value: unknown): string {
+  return formatDisplayValue(value);
 }
 
 function isForceManualMetric(metric: IndicatorMetric): boolean {
@@ -831,12 +843,21 @@ function normalizeBooleanInput(value: unknown): "" | "yes" | "no" {
   return "";
 }
 
+function resolveTypedPayload(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  return raw as Record<string, unknown>;
+}
+
 function extractTypedScalar(value: Record<string, unknown> | null | undefined): string {
-  if (!value || typeof value !== "object") {
+  const typed = resolveTypedPayload(value);
+  if (!typed) {
     return "";
   }
 
-  const scalar = (value as { value?: unknown }).value;
+  const scalar = typed.value ?? typed["scalar_value"] ?? typed["raw_value"];
   if (scalar === null || scalar === undefined) {
     return "";
   }
@@ -845,11 +866,12 @@ function extractTypedScalar(value: Record<string, unknown> | null | undefined): 
 }
 
 function extractTypedMatrix(value: Record<string, unknown> | null | undefined): Record<string, string> {
-  if (!value || typeof value !== "object") {
+  const typed = resolveTypedPayload(value);
+  if (!typed) {
     return {};
   }
 
-  const values = (value as { values?: unknown }).values;
+  const values = typed.values ?? typed["matrix_values"];
   if (!values || typeof values !== "object") {
     return {};
   }
@@ -859,15 +881,37 @@ function extractTypedMatrix(value: Record<string, unknown> | null | undefined): 
   );
 }
 
+function indicatorField(indicator: IndicatorSubmissionItem, key: string): unknown {
+  return (indicator as unknown as Record<string, unknown>)[key];
+}
+
 function buildEntryFromSubmission(metric: IndicatorMetric, indicator: IndicatorSubmissionItem): MetricEntryValue {
   const entry = buildDefaultEntry(metric);
-  entry.remarks = indicator.remarks ?? "";
+  entry.remarks = String(indicatorField(indicator, "remarks") ?? "").trim();
 
   const dataType = metricDataType(metric);
+  const targetTyped = resolveTypedPayload(
+    indicatorField(indicator, "targetTypedValue")
+      ?? indicatorField(indicator, "target_typed_value")
+      ?? indicatorField(indicator, "target"),
+  );
+  const actualTyped = resolveTypedPayload(
+    indicatorField(indicator, "actualTypedValue")
+      ?? indicatorField(indicator, "actual_typed_value")
+      ?? indicatorField(indicator, "actual"),
+  );
+  const targetDisplay = indicatorField(indicator, "targetDisplay")
+    ?? indicatorField(indicator, "target_display")
+    ?? indicatorField(indicator, "targetValue")
+    ?? indicatorField(indicator, "target_value");
+  const actualDisplay = indicatorField(indicator, "actualDisplay")
+    ?? indicatorField(indicator, "actual_display")
+    ?? indicatorField(indicator, "actualValue")
+    ?? indicatorField(indicator, "actual_value");
 
   if (dataType === "yearly_matrix") {
-    const targetByYear = extractTypedMatrix(indicator.targetTypedValue ?? null);
-    const actualByYear = extractTypedMatrix(indicator.actualTypedValue ?? null);
+    const targetByYear = extractTypedMatrix(targetTyped);
+    const actualByYear = extractTypedMatrix(actualTyped);
     const metricYearList = metricYears(metric);
     const fallbackYears = [...new Set([...Object.keys(targetByYear), ...Object.keys(actualByYear)])];
     const years = metricYearList.length > 0 ? metricYearList : fallbackYears;
@@ -882,33 +926,93 @@ function buildEntryFromSubmission(metric: IndicatorMetric, indicator: IndicatorS
 
   if (dataType === "yes_no") {
     entry.targetBoolean = normalizeBooleanInput(
-      (indicator.targetTypedValue as { value?: unknown } | null | undefined)?.value
-        ?? indicator.targetDisplay
-        ?? indicator.targetValue,
+      targetTyped?.value ?? targetDisplay,
     );
     entry.actualBoolean = normalizeBooleanInput(
-      (indicator.actualTypedValue as { value?: unknown } | null | undefined)?.value
-        ?? indicator.actualDisplay
-        ?? indicator.actualValue,
+      actualTyped?.value ?? actualDisplay,
     );
     return entry;
   }
 
   if (dataType === "enum") {
-    entry.targetEnum = extractTypedScalar(indicator.targetTypedValue ?? null) || String(indicator.targetDisplay ?? "");
-    entry.actualEnum = extractTypedScalar(indicator.actualTypedValue ?? null) || String(indicator.actualDisplay ?? "");
+    entry.targetEnum = extractTypedScalar(targetTyped) || String(targetDisplay ?? "");
+    entry.actualEnum = extractTypedScalar(actualTyped) || String(actualDisplay ?? "");
     return entry;
   }
 
   if (dataType === "text") {
-    entry.targetText = extractTypedScalar(indicator.targetTypedValue ?? null) || String(indicator.targetDisplay ?? "");
-    entry.actualText = extractTypedScalar(indicator.actualTypedValue ?? null) || String(indicator.actualDisplay ?? "");
+    entry.targetText = extractTypedScalar(targetTyped) || String(targetDisplay ?? "");
+    entry.actualText = extractTypedScalar(actualTyped) || String(actualDisplay ?? "");
     return entry;
   }
 
-  entry.targetValue = Number.isFinite(Number(indicator.targetValue)) ? String(indicator.targetValue) : "";
-  entry.actualValue = Number.isFinite(Number(indicator.actualValue)) ? String(indicator.actualValue) : "";
+  entry.targetValue = Number.isFinite(Number(targetDisplay)) ? String(targetDisplay) : "";
+  entry.actualValue = Number.isFinite(Number(actualDisplay)) ? String(actualDisplay) : "";
   return entry;
+}
+
+function resolveMetricFromIndicator(
+  indicator: IndicatorSubmissionItem,
+  metricsById: Map<string, IndicatorMetric>,
+  metricsByCode: Map<string, IndicatorMetric>,
+  metricsByName: Map<string, IndicatorMetric>,
+): IndicatorMetric | null {
+  const record = indicator as unknown as Record<string, unknown>;
+  const directMetric = (record.metric ?? null) as Record<string, unknown> | null;
+  const idCandidates = [
+    directMetric?.id,
+    record.metricId,
+    record.metric_id,
+    record.performance_metric_id,
+  ];
+
+  for (const candidate of idCandidates) {
+    const metricId = String(candidate ?? "").trim();
+    if (!metricId) {
+      continue;
+    }
+
+    const metric = metricsById.get(metricId);
+    if (metric) {
+      return metric;
+    }
+  }
+
+  const codeCandidates = [
+    directMetric?.code,
+    record.metricCode,
+    record.metric_code,
+  ];
+  for (const candidate of codeCandidates) {
+    const normalizedCode = normalizeMetricCode(String(candidate ?? ""));
+    if (!normalizedCode) {
+      continue;
+    }
+
+    const metric = metricsByCode.get(normalizedCode);
+    if (metric) {
+      return metric;
+    }
+  }
+
+  const nameCandidates = [
+    directMetric?.name,
+    record.metricName,
+    record.metric_name,
+  ];
+  for (const candidate of nameCandidates) {
+    const normalizedName = normalizeMetricName(String(candidate ?? ""));
+    if (!normalizedName) {
+      continue;
+    }
+
+    const metric = metricsByName.get(normalizedName);
+    if (metric) {
+      return metric;
+    }
+  }
+
+  return null;
 }
 
 function yearToken(value: string): string {
@@ -1543,13 +1647,19 @@ export function SchoolIndicatorPanel({
   const submissionMissingSummaryById = useMemo(() => {
     const summary = new Map<string, { missingCount: number; reason: string }>();
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
+    const metricsByCode = new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
+    const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
 
     for (const submission of sortedSubmissions) {
-      const indicatorByMetricId = new Map(
-        submission.indicators
-          .map((indicator: IndicatorSubmissionItem) => [indicator.metric?.id ?? "", indicator] as const)
-          .filter(([metricId]: readonly [string, IndicatorSubmissionItem]) => metricId.length > 0),
-      );
+      const indicatorByMetricId = new Map<string, IndicatorSubmissionItem>();
+      for (const indicator of submission.indicators) {
+        const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
+        if (!metric) {
+          continue;
+        }
+
+        indicatorByMetricId.set(metric.id, indicator);
+      }
       const missingTargets: MissingFieldTarget[] = [];
 
       for (const metric of orderedComplianceMetrics) {
@@ -1628,8 +1738,35 @@ export function SchoolIndicatorPanel({
     [scopedSubmissionsForYear],
   );
   const resolvedWorkspaceSubmission = useMemo(
-    () => draftSubmissionInScope ?? latestSubmissionInScope ?? null,
-    [draftSubmissionInScope, latestSubmissionInScope],
+    () => {
+      const priorityByStatus: Record<string, number> = {
+        submitted: 0,
+        validated: 1,
+        returned: 2,
+        draft: 3,
+      };
+
+      const ranked = scopedSubmissionsForYear
+        .slice()
+        .sort((left, right) => {
+          const leftStatus = String(left.status ?? "").toLowerCase();
+          const rightStatus = String(right.status ?? "").toLowerCase();
+          const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
+          const rightRank = priorityByStatus[rightStatus] ?? Number.MAX_SAFE_INTEGER;
+
+          if (leftRank !== rightRank) {
+            return leftRank - rightRank;
+          }
+
+          return (
+            new Date(right.submittedAt ?? right.updatedAt ?? right.createdAt ?? 0).getTime()
+            - new Date(left.submittedAt ?? left.updatedAt ?? left.createdAt ?? 0).getTime()
+          );
+        });
+
+      return ranked[0] ?? latestSubmissionInScope ?? null;
+    },
+    [latestSubmissionInScope, scopedSubmissionsForYear],
   );
   const restorableServerSubmissionInScope = useMemo(
     () => draftSubmissionInScope,
@@ -1934,17 +2071,16 @@ export function SchoolIndicatorPanel({
   const rehydrateWorkspaceFromSubmission = useCallback((submission: IndicatorSubmission | null) => {
     localAutosaveEpochRef.current += 1;
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
+    const metricsByCode = new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
+    const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
     const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
 
     if (submission) {
       for (const indicator of submission.indicators) {
-        const metricId = indicator.metric?.id;
-        if (!metricId) continue;
-
-        const metric = metricsById.get(metricId);
+        const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
         if (!metric) continue;
 
-        nextEntries[metricId] = buildEntryFromSubmission(metric, indicator);
+        nextEntries[metric.id] = buildEntryFromSubmission(metric, indicator);
       }
     }
 
@@ -2010,17 +2146,21 @@ export function SchoolIndicatorPanel({
   );
   const groupASubmittedIndicatorByMetricId = useMemo(() => {
     const map = new Map<string, IndicatorSubmissionItem>();
+    const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
+    const metricsByCode = new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
+    const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
 
     for (const item of groupASubmittedSubmission?.indicators ?? []) {
-      const metricId = String(item.metric?.id ?? "");
-      if (!metricId) {
+      const metric = resolveMetricFromIndicator(item, metricsById, metricsByCode, metricsByName);
+      if (!metric) {
         continue;
       }
-      map.set(metricId, item);
+
+      map.set(metric.id, item);
     }
 
     return map;
-  }, [groupASubmittedSubmission]);
+  }, [complianceMetrics, groupASubmittedSubmission]);
   const bmefReportSubmission = useMemo(
     () =>
       scopedSubmissionsForYear.find((submission) => (
@@ -2979,6 +3119,48 @@ export function SchoolIndicatorPanel({
         };
       });
 
+    const entryHasMeaningfulPayload = (entry: (typeof entries)[number]): boolean => {
+      if ((entry.remarks ?? "").trim() !== "") {
+        return true;
+      }
+
+      if (entry.type === "number" || entry.type === "currency") {
+        if (entry.requiresTargetActual) {
+          return entry.targetValue !== undefined || entry.actualValue !== undefined;
+        }
+
+        return entry.actualValue !== undefined;
+      }
+
+      if (entry.type === "yes_no") {
+        if (entry.requiresTargetActual) {
+          return entry.target?.value !== undefined || entry.actual?.value !== undefined;
+        }
+
+        return entry.actual?.value !== undefined;
+      }
+
+      if (entry.type === "enum" || entry.type === "text") {
+        if (entry.requiresTargetActual) {
+          return String(entry.target?.value ?? "").trim() !== "" || String(entry.actual?.value ?? "").trim() !== "";
+        }
+
+        return String(entry.actual?.value ?? "").trim() !== "";
+      }
+
+      if (entry.type === "yearly_matrix") {
+        const targetValues = Object.values(entry.target?.values ?? {}).map((value) => String(value ?? "").trim());
+        const actualValues = Object.values(entry.actual?.values ?? {}).map((value) => String(value ?? "").trim());
+        return [...targetValues, ...actualValues].some((value) => value !== "");
+      }
+
+      return false;
+    };
+
+    const payloadEntries = allowIncomplete
+      ? entries.filter((entry) => entryHasMeaningfulPayload(entry))
+      : entries;
+
     if (entries.length === 0) {
       return { payload: null, reason: "No required compliance indicators are available for this school.", fingerprint: "" };
     }
@@ -3034,7 +3216,7 @@ export function SchoolIndicatorPanel({
       academicYearId: Number(activeAcademicYearId),
       reportingPeriod,
       notes: notes.trim() || null,
-      indicators: entries.map((entry) => ({
+      indicators: payloadEntries.map((entry) => ({
         metricId: entry.metricId,
         targetValue: entry.targetValue,
         actualValue: entry.actualValue,

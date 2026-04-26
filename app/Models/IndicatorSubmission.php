@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Support\Indicators\GroupAImetaDefinition;
+use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Domain\FormSubmissionStatus;
@@ -110,8 +110,8 @@ class IndicatorSubmission extends Model
 
     public function hasCompleteImetaFormData(): bool
     {
-        $requiredCodes = GroupAImetaDefinition::requiredMetricCodes();
-        if ($requiredCodes === []) {
+        $groupAMetricCodes = GroupBWorkspaceDefinition::metricCodesFor(GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS);
+        if ($groupAMetricCodes === []) {
             return false;
         }
 
@@ -124,38 +124,23 @@ class IndicatorSubmission extends Model
             return false;
         }
 
-        $itemsByCode = $items
-            ->mapWithKeys(static function (IndicatorSubmissionItem $item): array {
-                $code = strtoupper(trim((string) ($item->metric?->code ?? '')));
-                return $code !== '' ? [$code => $item] : [];
-            });
+        $groupACodeSet = array_flip(array_map(
+            static fn (string $code): string => strtoupper(trim($code)),
+            $groupAMetricCodes,
+        ));
 
-        foreach (GroupAImetaDefinition::requiredMetricGroups() as $group) {
-            $groupSatisfied = false;
-            foreach ($group as $code) {
-                $normalizedCode = strtoupper(trim($code));
-                if ($normalizedCode === '') {
-                    continue;
-                }
-
-                /** @var IndicatorSubmissionItem|null $item */
-                $item = $itemsByCode->get($normalizedCode);
-                if (! $item) {
-                    continue;
-                }
-
-                if ($this->itemHasMeaningfulActualValue($item)) {
-                    $groupSatisfied = true;
-                    break;
-                }
+        foreach ($items as $item) {
+            $code = strtoupper(trim((string) ($item->metric?->code ?? '')));
+            if ($code === '' || ! isset($groupACodeSet[$code])) {
+                continue;
             }
 
-            if (! $groupSatisfied) {
-                return false;
+            if ($this->itemHasMeaningfulActualValue($item)) {
+                return true;
             }
         }
 
-        return true;
+        return false;
     }
 
     public function hasBmefFile(): bool
