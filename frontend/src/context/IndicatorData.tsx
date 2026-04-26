@@ -78,6 +78,10 @@ interface IndicatorHistoryResponse {
   data: FormSubmissionHistoryEntry[];
 }
 
+interface SubmissionMutationOptions {
+  backgroundSync?: boolean;
+}
+
 interface LightweightIndicatorSubmission {
   id: string;
   schoolId: string;
@@ -935,7 +939,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const runSubmissionMutation = useCallback(
     async (
       action: () => Promise<IndicatorSubmission | LightweightIndicatorSubmission>,
+      options: SubmissionMutationOptions = {},
     ): Promise<IndicatorSubmission> => {
+      const shouldBackgroundSync = options.backgroundSync ?? true;
       manualMutationInFlightRef.current = true;
       syncQueuedRef.current = false;
       setIsSaving(true);
@@ -946,12 +952,16 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         if (isLightweightSubmission(submission)) {
           patchSubmissionLocally(submission);
           const materialized = materializeSubmissionFromLightweightPayload(submission);
-          void syncSubmissions(true);
+          if (shouldBackgroundSync) {
+            void syncSubmissions(true);
+          }
           return materialized;
         }
 
         upsertSubmissionLocally(submission);
-        void syncSubmissions(true);
+        if (shouldBackgroundSync) {
+          void syncSubmissions(true);
+        }
         return submission;
       } catch (err) {
         await handleApiError(err);
@@ -1064,7 +1074,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
         return response.data;
-      });
+      }, { backgroundSync: false });
     },
     [runSubmissionMutation, token],
   );
@@ -1088,7 +1098,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           body: formData,
         });
         return response.data;
-      });
+      }, { backgroundSync: false });
     },
     [runSubmissionMutation, token],
   );
@@ -1106,7 +1116,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           body: { workspace },
         });
         return response.data;
-      });
+      }, { backgroundSync: false });
     },
     [runSubmissionMutation, token],
   );
