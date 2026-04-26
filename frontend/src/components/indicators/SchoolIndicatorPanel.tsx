@@ -2009,6 +2009,15 @@ export function SchoolIndicatorPanel({
     return { payload, reason: "", fingerprint: JSON.stringify(payload) };
   }, [academicYearId, activeSchoolYears, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason]);
 
+  const hasUnsavedWorkspaceChanges = useCallback(
+    (fingerprint: string): boolean => {
+      if (!editingSubmissionId) return true;
+      const currentFp = `${editingSubmissionId}:${fingerprint}`;
+      return currentFp !== lastAutosaveFingerprintRef.current;
+    },
+    [editingSubmissionId],
+  );
+
   const persistDraftPayload = useCallback(
     async (payload: IndicatorSubmissionPayload, mode: "manual" | "autosave"): Promise<IndicatorSubmission> => {
       const result = editingSubmissionId
@@ -2284,7 +2293,13 @@ export function SchoolIndicatorPanel({
     }
 
     try {
-      await persistDraftPayload(prepared.payload, "manual");
+      if (!editingSubmissionId) {
+        await persistDraftPayload(prepared.payload, "manual");
+      } else if (hasUnsavedWorkspaceChanges(prepared.fingerprint)) {
+        await persistDraftPayload(prepared.payload, "manual");
+      } else {
+        setSaveMessage("No changes to save.");
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to save indicator package.");
     }
@@ -2310,9 +2325,20 @@ export function SchoolIndicatorPanel({
     }
 
     try {
-      const result = await persistDraftPayload(prepared.payload, "manual");
-      await submitSubmission(result.id);
-      setSaveMessage(`Package #${result.id} submitted to monitor.`);
+      let targetId: string;
+
+      if (!editingSubmissionId) {
+        const created = await persistDraftPayload(prepared.payload, "manual");
+        targetId = created.id;
+      } else {
+        if (hasUnsavedWorkspaceChanges(prepared.fingerprint)) {
+          await persistDraftPayload(prepared.payload, "manual");
+        }
+        targetId = editingSubmissionId;
+      }
+
+      await submitSubmission(targetId);
+      setSaveMessage(`Package #${targetId} submitted to monitor.`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Unable to submit package.");
     }
@@ -2383,14 +2409,26 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    if (!selectedSubmissionForUploads) {
-      setSubmitError("Save the indicator draft first before uploading BMEF or SMEA files.");
-      return;
+    let uploadTarget = selectedSubmissionForUploads;
+
+    if (!uploadTarget) {
+      const prepared = buildSubmissionPayload();
+      if (!prepared.payload) {
+        setSubmitError("Save the indicator package first before uploading files.");
+        return;
+      }
+      try {
+        const created = await persistDraftPayload(prepared.payload, "manual");
+        uploadTarget = sortedSubmissions.find((s) => s.id === created.id) ?? created;
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message : "Unable to create package for upload.");
+        return;
+      }
     }
 
     setUploadingFileType(type);
     try {
-      const updated = await uploadSubmissionFile(selectedSubmissionForUploads.id, type, file);
+      const updated = await uploadSubmissionFile(uploadTarget.id, type, file);
       setSaveMessage(`${type.toUpperCase()} file uploaded for package #${updated.id}.`);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     } catch (err) {
@@ -2401,7 +2439,7 @@ export function SchoolIndicatorPanel({
     } finally {
       setUploadingFileType(null);
     }
-  }, [selectedSubmissionForUploads, uploadSubmissionFile]);
+  }, [buildSubmissionPayload, persistDraftPayload, selectedSubmissionForUploads, sortedSubmissions, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -3200,7 +3238,15 @@ export function SchoolIndicatorPanel({
           {editingSubmissionId && (
             <button
               type="button"
-              onClick={resetForm}
+              onClick={() => {
+                const savedSubmission = sortedSubmissions.find((s) => s.id === editingSubmissionId) ?? null;
+                if (savedSubmission) {
+                  handleEditDraft(savedSubmission);
+                  setSaveMessage("Workspace restored to saved state.");
+                } else {
+                  resetForm();
+                }
+              }}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Cancel Edit
