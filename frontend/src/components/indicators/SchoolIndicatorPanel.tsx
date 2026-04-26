@@ -2353,21 +2353,29 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [pendingFocusCellId, activeCategoryId, filteredActiveMetrics.length, showAdvancedInputs]);
 
-  const resetForm = useCallback(async (options: { postRefreshMessage?: string | null; onSuccess?: () => void } = {}): Promise<boolean> => {
+  const resetForm = useCallback(async (
+    options: { postRefreshMessage?: string | null; onSuccess?: () => void; resetToBlank?: boolean } = {},
+  ): Promise<boolean> => {
     const didReset = await runCriticalWorkspaceTransition({
       dismissRestoreBanner: false,
       action: () => {
-        const activeSubmission = latestActiveWorkspaceSubmission;
-        const latestSubmission = activeSubmission?.id
-          ? submissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
-          : null;
-        console.log("[GroupB] Reset using submission:", latestSubmission?.id ?? null);
-        if (latestSubmission) {
-          rehydrateWorkspaceFromSubmission(latestSubmission);
-        } else {
+        if (options.resetToBlank) {
+          console.log("[GroupB] Reset using blank defaults for selected year");
           resetWorkspaceToBlankStateForSelectedYear();
+          setEditingSubmissionId(null);
+        } else {
+          const activeSubmission = latestActiveWorkspaceSubmission;
+          const latestSubmission = activeSubmission?.id
+            ? submissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
+            : null;
+          console.log("[GroupB] Reset using submission:", latestSubmission?.id ?? null);
+          if (latestSubmission) {
+            rehydrateWorkspaceFromSubmission(latestSubmission);
+          } else {
+            resetWorkspaceToBlankStateForSelectedYear();
+          }
+          setEditingSubmissionId(latestSubmission?.id ?? null);
         }
-        setEditingSubmissionId(latestSubmission?.id ?? null);
         if (typeof window !== "undefined") {
           localStorage.removeItem(autosaveKey);
         }
@@ -3302,9 +3310,12 @@ export function SchoolIndicatorPanel({
     console.log("[GroupB] busy:", isGroupBActionBusy);
     console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Reset draft", async () => {
-      await runResetWorkspaceAction("Draft changes were reset to the last saved values.");
+      await resetForm({
+        resetToBlank: true,
+        postRefreshMessage: "Draft changes were reset to blank defaults for this academic year.",
+      });
     });
-  }, [hasUnsavedWorkspaceChanges, isGroupBActionBusy, runGroupBAction, runResetWorkspaceAction, workspaceMode]);
+  }, [hasUnsavedWorkspaceChanges, isGroupBActionBusy, resetForm, runGroupBAction, workspaceMode]);
   const handleCancelSubmittedEdit = useCallback(async () => {
     await runGroupBAction("Cancel submitted edit", async () => {
       await runResetWorkspaceAction(
