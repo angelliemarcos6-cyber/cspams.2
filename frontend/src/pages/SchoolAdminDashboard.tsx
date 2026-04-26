@@ -40,9 +40,33 @@ function latestSubmission<T extends { updatedAt: string | null; createdAt: strin
 }
 
 function resolveSelectedYearFinalizedSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
-  return latestSubmission(
-    entries.filter((submission) => isFinalizedSubmissionStatus(submission.status)),
-  );
+  const priorityByStatus: Record<string, number> = {
+    submitted: 0,
+    validated: 1,
+    returned: 2,
+    draft: 3,
+  };
+
+  const ranked = entries
+    .filter((submission) => isFinalizedSubmissionStatus(submission.status))
+    .slice()
+    .sort((left, right) => {
+      const leftStatus = String(left.status ?? "").trim().toLowerCase();
+      const rightStatus = String(right.status ?? "").trim().toLowerCase();
+      const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
+      const rightRank = priorityByStatus[rightStatus] ?? Number.MAX_SAFE_INTEGER;
+
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+
+      return (
+        new Date(right.submittedAt ?? right.updatedAt ?? right.createdAt ?? 0).getTime()
+        - new Date(left.submittedAt ?? left.updatedAt ?? left.createdAt ?? 0).getTime()
+      );
+    });
+
+  return ranked[0] ?? null;
 }
 
 function normalizeFileExtension(filename: string | null | undefined): string {
@@ -62,6 +86,97 @@ function normalizeMetricLookupKey(label: string | null | undefined): string {
 function isFinalizedSubmissionStatus(status: string | null | undefined): boolean {
   const normalized = String(status ?? "").trim().toLowerCase();
   return normalized === "submitted" || normalized === "validated";
+}
+
+function formatDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : "-";
+  }
+
+  return String(value);
+}
+
+function resolveTypedPayload(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  return raw as Record<string, unknown>;
+}
+
+function extractTypedScalar(value: Record<string, unknown> | null | undefined): string {
+  const typed = resolveTypedPayload(value);
+  if (!typed) {
+    return "";
+  }
+
+  const scalar = typed.value ?? typed["scalar_value"] ?? typed["raw_value"];
+  if (scalar === null || scalar === undefined) {
+    return "";
+  }
+
+  return String(scalar);
+}
+
+function indicatorField(indicator: IndicatorSubmissionItem, key: string): unknown {
+  return (indicator as unknown as Record<string, unknown>)[key];
+}
+
+function submissionRows(submission: IndicatorSubmission | null | undefined): IndicatorSubmissionItem[] {
+  if (!submission) {
+    return [];
+  }
+
+  const directIndicators = Array.isArray(submission.indicators) ? submission.indicators : [];
+  if (directIndicators.length > 0) {
+    return directIndicators;
+  }
+
+  return Array.isArray(submission.items) ? submission.items : [];
+}
+
+function resolveIndicatorValue(
+  indicator: IndicatorSubmissionItem | null | undefined,
+  kind: "target" | "actual",
+): string {
+  if (!indicator) {
+    return "-";
+  }
+
+  const typed = resolveTypedPayload(
+    kind === "target"
+      ? (
+        indicatorField(indicator, "targetTypedValue")
+        ?? indicatorField(indicator, "target_typed_value")
+        ?? indicatorField(indicator, "target")
+      )
+      : (
+        indicatorField(indicator, "actualTypedValue")
+        ?? indicatorField(indicator, "actual_typed_value")
+        ?? indicatorField(indicator, "actual")
+      ),
+  );
+  const display = kind === "target"
+    ? (
+      indicatorField(indicator, "targetDisplay")
+      ?? indicatorField(indicator, "target_display")
+      ?? indicatorField(indicator, "targetValue")
+      ?? indicatorField(indicator, "target_value")
+    )
+    : (
+      indicatorField(indicator, "actualDisplay")
+      ?? indicatorField(indicator, "actual_display")
+      ?? indicatorField(indicator, "actualValue")
+      ?? indicatorField(indicator, "actual_value")
+    );
+  const scalar = extractTypedScalar(typed);
+
+  return formatDisplayValue(scalar !== "" ? scalar : display);
 }
 
 function selectedYearLabel(
@@ -415,7 +530,7 @@ export function SchoolAdminDashboard() {
   const isYearScopedLoading = (isLoading || isAllSubmissionsLoading) && effectiveAcademicYearId.length > 0;
   const groupAReportView = useMemo(() => {
     const submission = groupASubmittedSubmission;
-    const indicators = submission?.indicators ?? [];
+    const indicators = submissionRows(submission);
     const missingMappings: Array<{
       group: keyof typeof GROUP_A_METRIC_KEYS;
       key: string;
@@ -524,7 +639,7 @@ export function SchoolAdminDashboard() {
         key: row.key,
         label: row.label,
         indicator,
-        value: indicator?.actualDisplay ?? indicator?.actualValue ?? "-",
+        value: resolveIndicatorValue(indicator, "actual"),
       };
     });
     const kpiRows = KPI_ROWS.map((row) => {
@@ -533,9 +648,9 @@ export function SchoolAdminDashboard() {
         key: row.key,
         label: row.label,
         indicator,
-        target: indicator?.targetDisplay ?? indicator?.targetValue ?? "-",
-        actual: indicator?.actualDisplay ?? indicator?.actualValue ?? "-",
-        status: String(indicator?.complianceStatus ?? "-"),
+        target: resolveIndicatorValue(indicator, "target"),
+        actual: resolveIndicatorValue(indicator, "actual"),
+        status: formatDisplayValue(indicator?.complianceStatus),
       };
     });
 
@@ -941,7 +1056,7 @@ export function SchoolAdminDashboard() {
                           {item.metric?.name ?? "Unknown Metric"}
                         </td>
                         <td className="px-4 py-2.5 text-right text-slate-900">
-                          {item.actualDisplay ?? item.actualValue ?? "-"}
+                          {resolveIndicatorValue(item, "actual")}
                         </td>
                       </tr>
                     ))
@@ -981,13 +1096,13 @@ export function SchoolAdminDashboard() {
                       <tr key={`submitted-kpi-${item.id}`}>
                         <td className="px-4 py-2.5 text-slate-900">{item.metric?.name ?? "Unknown Metric"}</td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
-                          {item.targetDisplay ?? item.targetValue ?? "-"}
+                          {resolveIndicatorValue(item, "target")}
                         </td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
-                          {item.actualDisplay ?? item.actualValue ?? "-"}
+                          {resolveIndicatorValue(item, "actual")}
                         </td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
-                          {item.complianceStatus ?? "-"}
+                          {formatDisplayValue(item.complianceStatus)}
                         </td>
                       </tr>
                     ))
