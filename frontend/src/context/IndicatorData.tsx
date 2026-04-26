@@ -985,6 +985,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           method: "POST",
           token,
           body: {
+            mode: "full_replace",
+            replace_missing: true,
             academic_year_id: payload.academicYearId,
             reporting_period: payload.reportingPeriod ?? null,
             notes: payload.notes ?? null,

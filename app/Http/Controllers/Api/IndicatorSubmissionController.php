@@ -20,6 +20,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
+use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -46,86 +47,6 @@ class IndicatorSubmissionController extends Controller
     private const ROLLING_YEAR_SYNC_LOCK_KEY = 'cspams.indicators.rolling_year_window.sync_lock';
 
     private const ROLLING_YEAR_SYNC_LOCK_TTL_SECONDS = 25;
-
-    private const RESET_WORKSPACE_BMEF = 'bmef';
-
-    private const RESET_WORKSPACE_SMEA = 'smea';
-
-    private const RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS = 'school_achievements_learning_outcomes';
-
-    private const RESET_WORKSPACE_KEY_PERFORMANCE = 'key_performance_indicators';
-
-    /**
-     * @var array<string, list<string>>
-     */
-    private const WORKSPACE_METRIC_CODES = [
-        self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS => [
-            'IMETA_HEAD_NAME',
-            'IMETA_ENROLL_TOTAL',
-            'IMETA_SBM_LEVEL',
-            'PCR_K',
-            'PCR_G1_3',
-            'PCR_G4_6',
-            'PCR_G7_10',
-            'PCR_G11_12',
-            'WASH_RATIO',
-            'COMFORT_ROOMS',
-            'TOILET_BOWLS',
-            'URINALS',
-            'HANDWASH_FAC',
-            'LEARNING_MAT_RATIO',
-            'PSR_OVERALL',
-            'PSR_K',
-            'PSR_G1_6',
-            'PSR_G7_10',
-            'PSR_G11_12',
-            'ICT_RATIO',
-            'ICT_LAB',
-            'SCIENCE_LAB',
-            'INTERNET_ACCESS',
-            'ELECTRICITY',
-            'FENCE_STATUS',
-            'TEACHERS_TOTAL',
-            'TEACHERS_MALE',
-            'TEACHERS_FEMALE',
-            'TEACHERS_PWD_TOTAL',
-            'TEACHERS_PWD_MALE',
-            'TEACHERS_PWD_FEMALE',
-            'FUNCTIONAL_SGC',
-            'FEEDING_BENEFICIARIES',
-            'CANTEEN_INCOME',
-            'TEACHER_COOP_INCOME',
-            'SAFETY_PLAN',
-            'SAFETY_EARTHQUAKE',
-            'SAFETY_TYPHOON',
-            'SAFETY_COVID',
-            'SAFETY_POWER',
-            'SAFETY_IN_PERSON',
-            'TEACHERS_PFA',
-            'TEACHERS_OCC_FIRST_AID',
-        ],
-        self::RESET_WORKSPACE_KEY_PERFORMANCE => [
-            'NER',
-            'RR',
-            'DR',
-            'TR',
-            'NIR',
-            'PR',
-            'ALS_COMPLETER_PCT',
-            'GPI',
-            'IQR',
-            'CR',
-            'CSR',
-            'PLM_NEARLY_PROF',
-            'PLM_PROF',
-            'PLM_HIGH_PROF',
-            'AE_PASS_RATE',
-            'VIOLENCE_REPORT_RATE',
-            'LEARNER_SATISFACTION',
-            'RIGHTS_AWARENESS',
-            'RBE_MANIFEST',
-        ],
-    ];
 
     private static ?bool $usersHasAccountTypeColumn = null;
 
@@ -446,6 +367,9 @@ class IndicatorSubmissionController extends Controller
         $notes = $request->filled('notes')
             ? trim($request->string('notes')->toString())
             : null;
+        $mode = strtolower(trim((string) $request->input('mode', '')));
+        $shouldReplaceMissing = $request->boolean('replace_missing')
+            || $mode === 'full_replace';
         $indicatorRows = $this->buildIndicatorRows($request, (int) $submission->school_id);
 
         DB::transaction(function () use (
@@ -456,6 +380,7 @@ class IndicatorSubmissionController extends Controller
             $notes,
             $indicatorRows,
             $currentStatus,
+            $shouldReplaceMissing,
         ): void {
             $submission->forceFill([
                 'academic_year_id' => $academicYearId,
@@ -490,13 +415,16 @@ class IndicatorSubmissionController extends Controller
                 $submission->items()->create($indicatorRow);
             }
 
-            $metricsToDelete = $existingItemsByMetricId
-                ->keys()
-                ->diff(collect($incomingMetricIds)->unique()->values());
-            if ($metricsToDelete->isNotEmpty()) {
-                $submission->items()
-                    ->whereIn('performance_metric_id', $metricsToDelete->all())
-                    ->delete();
+            $deletedCount = 0;
+            if ($shouldReplaceMissing) {
+                $metricsToDelete = $existingItemsByMetricId
+                    ->keys()
+                    ->diff(collect($incomingMetricIds)->unique()->values());
+                if ($metricsToDelete->isNotEmpty()) {
+                    $deletedCount = (int) $submission->items()
+                        ->whereIn('performance_metric_id', $metricsToDelete->all())
+                        ->delete();
+                }
             }
 
             app(FormSubmissionHistoryLogger::class)->log(
@@ -513,6 +441,8 @@ class IndicatorSubmissionController extends Controller
                     'indicator_count' => $indicatorRows->count(),
                     'met_count' => $indicatorRows->where('compliance_status', 'met')->count(),
                     'below_target_count' => $indicatorRows->where('compliance_status', 'below_target')->count(),
+                    'replace_missing' => $shouldReplaceMissing,
+                    'deleted_indicator_count' => $deletedCount,
                 ],
             );
 
@@ -544,9 +474,11 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
+        $maxKb = max(1, (int) config('cspams.submission_file_max_kb', 10240));
+
         $validated = $request->validate([
             'type' => ['required', 'string', Rule::in(['bmef', 'smea'])],
-            'file' => ['required', 'file', 'max:10240', 'mimes:pdf,docx,xlsx'],
+            'file' => ['required', 'file', 'max:' . $maxKb, 'mimes:pdf,docx,xlsx'],
         ]);
 
         $fileType = strtolower(trim((string) $validated['type']));
@@ -804,23 +736,22 @@ class IndicatorSubmissionController extends Controller
             'workspace' => [
                 'required',
                 'string',
-                Rule::in([
-                    self::RESET_WORKSPACE_BMEF,
-                    self::RESET_WORKSPACE_SMEA,
-                    self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS,
-                    self::RESET_WORKSPACE_KEY_PERFORMANCE,
-                ]),
+                Rule::in(GroupBWorkspaceDefinition::resetTargets()),
             ],
         ]);
 
         $workspace = strtolower(trim((string) $validated['workspace']));
 
         $metadata = DB::transaction(function () use ($submission, $workspace): array {
-            if ($workspace === self::RESET_WORKSPACE_BMEF || $workspace === self::RESET_WORKSPACE_SMEA) {
+            if (GroupBWorkspaceDefinition::isMetricWorkspace($workspace)) {
+                return $this->resetWorkspaceIndicatorRows($submission, $workspace);
+            }
+
+            if (in_array($workspace, [GroupBWorkspaceDefinition::BMEF, GroupBWorkspaceDefinition::SMEA], true)) {
                 return $this->resetWorkspaceFile($submission, $workspace);
             }
 
-            return $this->resetWorkspaceIndicatorRows($submission, $workspace);
+            return ['workspace' => $workspace];
         });
 
         app(FormSubmissionHistoryLogger::class)->log(
@@ -828,7 +759,7 @@ class IndicatorSubmissionController extends Controller
             submissionId: $submission->id,
             schoolId: $submission->school_id,
             academicYearId: $submission->academic_year_id,
-            action: $this->historyActionForWorkspaceReset($workspace),
+            action: GroupBWorkspaceDefinition::historyActionFor($workspace),
             fromStatus: $fromStatus,
             toStatus: $fromStatus ?? FormSubmissionStatus::DRAFT->value,
             actorId: $user->id,
@@ -1094,7 +1025,7 @@ class IndicatorSubmissionController extends Controller
             $deletedFile = Storage::disk('local')->delete($existingPath);
         }
 
-        if ($workspace === self::RESET_WORKSPACE_BMEF) {
+        if ($workspace === GroupBWorkspaceDefinition::BMEF) {
             $submission->forceFill([
                 'bmef_file_path' => null,
                 'bmef_original_filename' => null,
@@ -1147,7 +1078,7 @@ class IndicatorSubmissionController extends Controller
      */
     private function resolveWorkspaceMetricIds(string $workspace): Collection
     {
-        $codes = self::WORKSPACE_METRIC_CODES[$workspace] ?? [];
+        $codes = GroupBWorkspaceDefinition::metricCodesFor($workspace);
         if ($codes === []) {
             return collect();
         }
@@ -1161,24 +1092,13 @@ class IndicatorSubmissionController extends Controller
             ->values();
     }
 
-    private function historyActionForWorkspaceReset(string $workspace): string
-    {
-        return match ($workspace) {
-            self::RESET_WORKSPACE_BMEF => 'bmef_reset',
-            self::RESET_WORKSPACE_SMEA => 'smea_reset',
-            self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS => 'school_achievements_reset',
-            self::RESET_WORKSPACE_KEY_PERFORMANCE => 'key_performance_reset',
-            default => 'workspace_reset',
-        };
-    }
-
     private function historyNoteForWorkspaceReset(string $workspace): string
     {
         return match ($workspace) {
-            self::RESET_WORKSPACE_BMEF => 'BMEF workspace was reset.',
-            self::RESET_WORKSPACE_SMEA => 'SMEA workspace was reset.',
-            self::RESET_WORKSPACE_SCHOOL_ACHIEVEMENTS => 'School Achievements workspace was reset.',
-            self::RESET_WORKSPACE_KEY_PERFORMANCE => 'Key Performance workspace was reset.',
+            GroupBWorkspaceDefinition::BMEF => 'BMEF workspace was reset.',
+            GroupBWorkspaceDefinition::SMEA => 'SMEA workspace was reset.',
+            GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS => 'School Achievements workspace was reset.',
+            GroupBWorkspaceDefinition::KEY_PERFORMANCE => 'Key Performance workspace was reset.',
             default => 'Workspace was reset.',
         };
     }
