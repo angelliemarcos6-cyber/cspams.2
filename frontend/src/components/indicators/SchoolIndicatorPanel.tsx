@@ -2355,24 +2355,7 @@ export function SchoolIndicatorPanel({
       action: () => {
         const activeSubmission = latestActiveWorkspaceSubmission;
         const latestSubmission = activeSubmission?.id
-          ? (() => {
-            const inSortedSubmissions = sortedSubmissions.find((submission) => submission.id === activeSubmission.id) ?? null;
-            const inSubmissionSnapshot = submissionSnapshot.find((submission) => submission.id === activeSubmission.id) ?? null;
-            const candidates = [inSortedSubmissions, inSubmissionSnapshot, activeSubmission].filter(
-              (candidate): candidate is IndicatorSubmission => Boolean(candidate),
-            );
-
-            // Prefer the richest in-memory record so Reset restores indicator cells even
-            // when a lightweight mutation response temporarily lacks full indicator rows.
-            return candidates.sort((left, right) => {
-              const leftScore = (left.indicators ?? []).filter((item) => Boolean(item.metric?.id)).length;
-              const rightScore = (right.indicators ?? []).filter((item) => Boolean(item.metric?.id)).length;
-              if (leftScore === rightScore) {
-                return (right.indicators?.length ?? 0) - (left.indicators?.length ?? 0);
-              }
-              return rightScore - leftScore;
-            })[0] ?? activeSubmission;
-          })()
+          ? submissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
           : null;
         if (latestSubmission) {
           rehydrateWorkspaceFromSubmission(latestSubmission);
@@ -2395,7 +2378,7 @@ export function SchoolIndicatorPanel({
       },
     });
     return didReset === true;
-  }, [autosaveKey, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, runCriticalWorkspaceTransition, sortedSubmissions, submissionSnapshot]);
+  }, [autosaveKey, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, runCriticalWorkspaceTransition, submissions]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);
@@ -2624,14 +2607,6 @@ export function SchoolIndicatorPanel({
     return { payload, fingerprint: JSON.stringify(payload) };
   }, [orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, workspaceSchoolYears]);
 
-  const comparableWorkspacePayload = useMemo(
-    () => buildComparablePayloadFromWorkspaceState({
-      academicYearId: activeAcademicYearId,
-      noteValue: notes,
-      entryState: metricEntries,
-    }),
-    [activeAcademicYearId, buildComparablePayloadFromWorkspaceState, metricEntries, notes],
-  );
   const buildComparablePayloadFromSubmission = useCallback((submission: IndicatorSubmission | null) => {
     if (!submission) {
       return { payload: null, fingerprint: "" };
@@ -2679,35 +2654,65 @@ export function SchoolIndicatorPanel({
         return false;
       }
 
-      return left.fingerprint === right.fingerprint;
+      const normalizeText = (value: unknown): string => String(value ?? "").trim();
+      const normalizeNumber = (value: unknown): string => {
+        if (value === null || value === undefined || value === "") {
+          return "";
+        }
+        const numeric = Number(value);
+        if (Number.isNaN(numeric)) {
+          return normalizeText(value);
+        }
+        return String(numeric);
+      };
+      const stable = (value: unknown): unknown => {
+        if (Array.isArray(value)) {
+          return value.map(stable);
+        }
+        if (value && typeof value === "object") {
+          return Object.fromEntries(
+            Object.entries(value as Record<string, unknown>)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([key, entry]) => [key, stable(entry)]),
+          );
+        }
+        if (value === null || value === undefined || value === "") {
+          return "";
+        }
+        if (typeof value === "number") {
+          return Number.isFinite(value) ? Number(value) : "";
+        }
+        return value;
+      };
+      const normalizeIndicators = (payload: IndicatorSubmissionPayload) =>
+        [...payload.indicators]
+          .map((entry) => ({
+            metricId: Number(entry.metricId),
+            targetValue: normalizeNumber(entry.targetValue),
+            actualValue: normalizeNumber(entry.actualValue),
+            target: stable(entry.target ?? {}),
+            actual: stable(entry.actual ?? {}),
+            remarks: normalizeText(entry.remarks),
+          }))
+          .sort((a, b) => a.metricId - b.metricId);
+
+      const leftComparable = {
+        academicYearId: normalizeText(left.payload.academicYearId),
+        reportingPeriod: normalizeText(left.payload.reportingPeriod),
+        notes: normalizeText(left.payload.notes),
+        indicators: normalizeIndicators(left.payload),
+      };
+      const rightComparable = {
+        academicYearId: normalizeText(right.payload.academicYearId),
+        reportingPeriod: normalizeText(right.payload.reportingPeriod),
+        notes: normalizeText(right.payload.notes),
+        indicators: normalizeIndicators(right.payload),
+      };
+
+      return JSON.stringify(leftComparable) === JSON.stringify(rightComparable);
     },
     [],
   );
-
-  const hasUnsavedWorkspaceChanges = useMemo(() => {
-    const activeSubmission = (
-      latestActiveWorkspaceSubmission && isSubmissionInAcademicYear(latestActiveWorkspaceSubmission, activeAcademicYearId)
-        ? latestActiveWorkspaceSubmission
-        : null
-    );
-
-    if (!activeSubmission) {
-      return hasMeaningfulMetricEntries(metricEntries) || notes.trim() !== "";
-    }
-
-    const currentPayload = comparableWorkspacePayload;
-    const savedPayload = buildComparablePayloadFromSubmission(activeSubmission);
-    return !areSubmissionPayloadsEquivalent(currentPayload, savedPayload);
-  }, [
-    activeAcademicYearId,
-    areSubmissionPayloadsEquivalent,
-    buildComparablePayloadFromSubmission,
-    comparableWorkspacePayload,
-    isSubmissionInAcademicYear,
-    latestActiveWorkspaceSubmission,
-    metricEntries,
-    notes,
-  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2740,7 +2745,7 @@ export function SchoolIndicatorPanel({
     return () => window.removeEventListener("keydown", handleMissingShortcuts);
   }, [handleJumpToNextMissing, handleJumpToPreviousMissing]);
 
-  const buildSubmissionPayload = useCallback((
+  const buildSubmissionPayloadFromCurrentWorkspace = useCallback((
     options: { allowIncomplete?: boolean } = {},
   ): { payload: IndicatorSubmissionPayload | null; reason: string; fingerprint: string } => {
     const allowIncomplete = options.allowIncomplete === true;
@@ -2958,6 +2963,31 @@ export function SchoolIndicatorPanel({
     return { payload, reason: "", fingerprint: JSON.stringify(payload) };
   }, [activeAcademicYearId, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason, workspaceSchoolYears]);
 
+  const hasUnsavedWorkspaceChanges = useMemo(() => {
+    const activeSubmission = (
+      latestActiveWorkspaceSubmission && isSubmissionInAcademicYear(latestActiveWorkspaceSubmission, activeAcademicYearId)
+        ? latestActiveWorkspaceSubmission
+        : null
+    );
+
+    if (!activeSubmission) {
+      return hasMeaningfulMetricEntries(metricEntries) || notes.trim() !== "";
+    }
+
+    const currentPayload = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
+    const savedPayload = buildComparablePayloadFromSubmission(activeSubmission);
+    return !areSubmissionPayloadsEquivalent(currentPayload, savedPayload);
+  }, [
+    activeAcademicYearId,
+    areSubmissionPayloadsEquivalent,
+    buildSubmissionPayloadFromCurrentWorkspace,
+    buildComparablePayloadFromSubmission,
+    isSubmissionInAcademicYear,
+    latestActiveWorkspaceSubmission,
+    metricEntries,
+    notes,
+  ]);
+
   const persistDraftPayload = useCallback(
     async (
       payload: IndicatorSubmissionPayload,
@@ -3021,7 +3051,7 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const prepared = buildSubmissionPayload({ allowIncomplete: true });
+    const prepared = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
     if (!prepared.payload) {
       return;
     }
@@ -3050,7 +3080,7 @@ export function SchoolIndicatorPanel({
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
     }
-  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayload, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isSaving, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayloadFromCurrentWorkspace, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isSaving, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
 
   useEffect(() => {
     if (typeof window === "undefined" || complianceMetrics.length === 0) {
@@ -3305,7 +3335,7 @@ export function SchoolIndicatorPanel({
         return;
       }
 
-      const prepared = buildSubmissionPayload({ allowIncomplete: true });
+      const prepared = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
       if (!prepared.payload) {
         if (missingFieldTargets.length > 0) {
           setSubmitError("");
@@ -3384,7 +3414,7 @@ export function SchoolIndicatorPanel({
         return;
       }
 
-      const prepared = buildSubmissionPayload();
+      const prepared = buildSubmissionPayloadFromCurrentWorkspace();
       if (!prepared.payload) {
         if (missingFieldTargets.length > 0) {
           setSubmitError("");
@@ -3441,7 +3471,7 @@ export function SchoolIndicatorPanel({
   };
 
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
-    await runGroupBAction("Submit", async () => {
+    await runGroupBAction("Re-submit", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
         return;
@@ -3459,7 +3489,7 @@ export function SchoolIndicatorPanel({
           let submissionToSubmit = submission;
 
           if (latestActiveWorkspaceSubmission?.id === submission.id && hasUnsavedWorkspaceChanges) {
-            const prepared = buildSubmissionPayload();
+            const prepared = buildSubmissionPayloadFromCurrentWorkspace();
             if (!prepared.payload) {
               throw new Error(prepared.reason || "Complete all required indicator cells before submitting.");
             }
@@ -3534,52 +3564,8 @@ export function SchoolIndicatorPanel({
     }
   };
 
-  const ensureUploadSubmission = useCallback(async (): Promise<IndicatorSubmission | null> => {
-    const guardAcademicYearId = activeAcademicYearIdRef.current;
-    if (workspaceMode === "read_only_year") {
-      setSubmitError("This academic year is not yet open for encoding.");
-      return null;
-    }
-    if (selectedSubmissionForUploads) {
-      if (!isSubmissionInAcademicYear(selectedSubmissionForUploads, activeAcademicYearId)) {
-        setSubmitError("This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.");
-        return null;
-      }
-      return selectedSubmissionForUploads;
-    }
-
-    try {
-      const prepared = buildSubmissionPayload({ allowIncomplete: true });
-      if (!prepared.payload) {
-        throw new Error(prepared.reason);
-      }
-      const created = await createSubmission(prepared.payload);
-      if (!isSubmissionInAcademicYear(created, activeAcademicYearId)) {
-        setSubmitError("The selected academic year changed before upload. No stale changes were applied. Review the workspace and try again.");
-        return null;
-      }
-      setEditingSubmissionId(created.id);
-      setPendingLocalDraft(null);
-      setAutosaveError("");
-      const savedAt = new Date().toISOString();
-      setServerAutosaveAt(savedAt);
-      lastAutosaveFingerprintRef.current = `${created.id}:${prepared.fingerprint}`;
-      if (
-        activeAcademicYearIdRef.current !== guardAcademicYearId
-        || (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== created.id)
-      ) {
-        setSubmitError("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
-        return null;
-      }
-      return created;
-    } catch (err) {
-      setSubmitError(toGroupBActionErrorMessage(err, "Unable to prepare a draft for file upload."));
-      return null;
-    }
-  }, [activeAcademicYearId, buildSubmissionPayload, createSubmission, isSubmissionInAcademicYear, selectedSubmissionForUploads, toGroupBActionErrorMessage, workspaceMode]);
-
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
-    await runGroupBAction(`Upload ${type.toUpperCase()}`, async () => {
+    await runGroupBAction("Upload", async () => {
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
       const normalizedName = file.name.toLowerCase();
@@ -3604,22 +3590,37 @@ export function SchoolIndicatorPanel({
       const uploaded = await runCriticalWorkspaceMutation({
         mutation: async () => {
           setUploadingFileType(type);
-          const submissionForUpload = await ensureUploadSubmission();
-          if (!submissionForUpload) {
-            throw new Error(`Unable to prepare package for ${type.toUpperCase()} upload.`);
+          let uploadTarget = selectedSubmissionForUploads;
+          if (uploadTarget && !isSubmissionInAcademicYear(uploadTarget, activeAcademicYearIdRef.current)) {
+            throw new Error("This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.");
+          }
+
+          if (!uploadTarget?.id) {
+            const currentPayload = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
+            if (!currentPayload.payload) {
+              throw new Error(currentPayload.reason || "Unable to prepare a draft for file upload.");
+            }
+
+            uploadTarget = await createSubmission(currentPayload.payload);
+            setEditingSubmissionId(uploadTarget.id);
+            setPendingLocalDraft(null);
+            setAutosaveError("");
+            const savedAt = new Date().toISOString();
+            setServerAutosaveAt(savedAt);
+            lastAutosaveFingerprintRef.current = `${uploadTarget.id}:${currentPayload.fingerprint}`;
           }
           if (
             activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-            || !isSubmissionInAcademicYear(submissionForUpload, activeAcademicYearIdRef.current)
+            || !isSubmissionInAcademicYear(uploadTarget, activeAcademicYearIdRef.current)
             || (
               activeWorkspaceSubmissionIdRef.current !== null
-              && activeWorkspaceSubmissionIdRef.current !== submissionForUpload.id
+              && activeWorkspaceSubmissionIdRef.current !== uploadTarget.id
             )
           ) {
             throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
           }
 
-          const updated = await uploadSubmissionFile(submissionForUpload.id, type, file);
+          const updated = await uploadSubmissionFile(uploadTarget.id, type, file);
           if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
             throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
           }
@@ -3651,7 +3652,7 @@ export function SchoolIndicatorPanel({
         postRefreshMessageRef.current = null;
       }
     });
-  }, [ensureUploadSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, toGroupBActionErrorMessage, uploadSubmissionFile]);
+  }, [buildSubmissionPayloadFromCurrentWorkspace, createSubmission, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, toGroupBActionErrorMessage, selectedSubmissionForUploads, uploadSubmissionFile]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
