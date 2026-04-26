@@ -589,6 +589,54 @@ function buildInitialMetricEntries(metrics: IndicatorMetric[], current: MetricEn
   return next;
 }
 
+function buildResetEntryForMetric(
+  metric: IndicatorMetric,
+  selectedYears: string[],
+  currentEntry?: MetricEntryValue,
+): MetricEntryValue {
+  const dataType = metricDataType(metric);
+  const defaultEntry = buildDefaultEntry(metric);
+  const nextEntry: MetricEntryValue =
+    dataType === "yearly_matrix" && currentEntry
+      ? {
+          ...defaultEntry,
+          ...currentEntry,
+          targetMatrix: {
+            ...defaultEntry.targetMatrix,
+            ...(currentEntry.targetMatrix ?? {}),
+          },
+          actualMatrix: {
+            ...defaultEntry.actualMatrix,
+            ...(currentEntry.actualMatrix ?? {}),
+          },
+        }
+      : defaultEntry;
+
+  if (dataType === "number" || dataType === "currency") {
+    nextEntry.targetValue = "0";
+    nextEntry.actualValue = "0";
+  } else if (dataType === "enum") {
+    nextEntry.targetEnum = "";
+    nextEntry.actualEnum = "";
+  } else if (dataType === "yes_no") {
+    nextEntry.targetBoolean = "";
+    nextEntry.actualBoolean = "";
+  } else if (dataType === "text") {
+    nextEntry.targetText = "";
+    nextEntry.actualText = "";
+  } else if (dataType === "yearly_matrix") {
+    const metricScopedYears = resolveMetricYearsInScope(metric, selectedYears);
+    const yearsToReset = metricScopedYears.length > 0 ? metricScopedYears : selectedYears;
+    for (const year of yearsToReset) {
+      nextEntry.targetMatrix[year] = "0";
+      nextEntry.actualMatrix[year] = "0";
+    }
+  }
+
+  nextEntry.remarks = "";
+  return nextEntry;
+}
+
 function normalizeSchoolYearLabel(value: string | null | undefined): string | null {
   const text = String(value ?? "").trim();
   if (!text) {
@@ -3310,12 +3358,52 @@ export function SchoolIndicatorPanel({
     console.log("[GroupB] busy:", isGroupBActionBusy);
     console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Reset draft", async () => {
-      await resetForm({
-        resetToBlank: true,
-        postRefreshMessage: "Draft changes were reset to blank defaults for this academic year.",
+      if (workspaceMode === "read_only_year") {
+        setSubmitError("This academic year is not yet open for encoding.");
+        return;
+      }
+
+      if (activeTab?.kind === "upload") {
+        setSubmitError("");
+        setUploadErrorByType((current) => ({ ...current, [activeTab.uploadType]: "" }));
+        setSaveMessage("No indicator fields to reset on this tab.");
+        return;
+      }
+
+      if (!activeCategory || activeCategory.metrics.length === 0) {
+        setSubmitError("");
+        setSaveMessage("No indicator fields to reset on this tab.");
+        return;
+      }
+
+      const selectedYearScope = workspaceSchoolYears.length > 0
+        ? workspaceSchoolYears
+        : yearWorkspaceState.requiredYearsInScope;
+      setMetricEntries((current) => {
+        const next = { ...current };
+        for (const metric of activeCategory.metrics) {
+          next[metric.id] = buildResetEntryForMetric(metric, selectedYearScope, current[metric.id]);
+        }
+        return next;
       });
+      setPendingLocalDraft(null);
+      setAutosaveError("");
+      setSubmitError("");
+      setShowMissingFields(false);
+      setMissingJumpIndex(0);
+      setPendingFocusCellId(null);
+      setSaveMessage(`${categoryTabLabel(activeCategory)} values were reset to defaults for the selected academic year.`);
     });
-  }, [hasUnsavedWorkspaceChanges, isGroupBActionBusy, resetForm, runGroupBAction, workspaceMode]);
+  }, [
+    activeCategory,
+    activeTab,
+    hasUnsavedWorkspaceChanges,
+    isGroupBActionBusy,
+    runGroupBAction,
+    workspaceMode,
+    workspaceSchoolYears,
+    yearWorkspaceState.requiredYearsInScope,
+  ]);
   const handleCancelSubmittedEdit = useCallback(async () => {
     await runGroupBAction("Cancel submitted edit", async () => {
       await runResetWorkspaceAction(
