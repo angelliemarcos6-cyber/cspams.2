@@ -3588,8 +3588,8 @@ export function SchoolIndicatorPanel({
       if (!pendingLocalDraft) {
         return;
       }
-      if (latestActiveWorkspaceSubmission) {
-        setSubmitError("A saved server submission already exists for this academic year. Local restore is disabled.");
+      if (isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission?.status)) {
+        setSubmitError("Submitted data already exists for this academic year. Local restore is disabled.");
         return;
       }
 
@@ -3598,7 +3598,9 @@ export function SchoolIndicatorPanel({
         return;
       }
 
-      const inScopeSubmissionId = resolveInScopeSubmissionId(pendingLocalDraft.editingSubmissionId);
+      const inScopeSubmissionId = resolveInScopeSubmissionId(
+        pendingLocalDraft.editingSubmissionId ?? latestActiveWorkspaceSubmission?.id ?? null,
+      );
 
       await runCriticalWorkspaceTransition({
         dismissRestoreBanner: true,
@@ -3745,7 +3747,13 @@ export function SchoolIndicatorPanel({
   }, [runCriticalWorkspaceTransition, workspaceMode]);
 
   const showRestoreBanner = !restoreBannerDismissed && (
-    Boolean(!latestActiveWorkspaceSubmission && pendingLocalDraft)
+    Boolean(
+      pendingLocalDraft
+      && (
+        !latestActiveWorkspaceSubmission
+        || isDraftOrReturnedWorkflowStatus(latestActiveWorkspaceSubmission.status)
+      )
+    )
     || Boolean(restorableServerSubmissionInScope && restorableServerSubmissionInScope.id !== editingSubmissionId)
   );
 
