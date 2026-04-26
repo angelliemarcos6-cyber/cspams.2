@@ -48,7 +48,6 @@ function resolveSelectedYearFinalizedSubmission(entries: IndicatorSubmission[]):
   };
 
   const ranked = entries
-    .filter((submission) => isFinalizedSubmissionStatus(submission.status))
     .slice()
     .sort((left, right) => {
       const leftStatus = String(left.status ?? "").trim().toLowerCase();
@@ -66,7 +65,7 @@ function resolveSelectedYearFinalizedSubmission(entries: IndicatorSubmission[]):
       );
     });
 
-  return ranked[0] ?? null;
+  return ranked.find((submission) => priorityByStatus[String(submission.status ?? "").trim().toLowerCase()] !== undefined) ?? ranked[0] ?? null;
 }
 
 function normalizeFileExtension(filename: string | null | undefined): string {
@@ -1219,9 +1218,9 @@ export function SchoolAdminDashboard() {
                       {submittedIndicatorRows.map((item) => (
                         <tr key={`modal-${item.id}`} className="border-b border-slate-100 text-sm text-slate-800">
                           <td className="px-3 py-2">{item.metric?.name ?? "Untitled indicator"}</td>
-                          <td className="px-3 py-2 text-right">{item.targetDisplay ?? item.targetValue ?? "-"}</td>
-                          <td className="px-3 py-2 text-right">{item.actualDisplay ?? item.actualValue ?? "-"}</td>
-                          <td className="px-3 py-2 text-center">{String(item.complianceStatus ?? "pending")}</td>
+                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "target")}</td>
+                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "actual")}</td>
+                          <td className="px-3 py-2 text-center">{formatDisplayValue(item.complianceStatus)}</td>
                         </tr>
                       ))}
                     </tbody>
