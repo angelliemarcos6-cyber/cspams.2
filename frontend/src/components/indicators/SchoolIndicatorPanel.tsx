@@ -1805,12 +1805,12 @@ export function SchoolIndicatorPanel({
     return latestActiveWorkspaceSubmission;
   }, [latestActiveWorkspaceSubmission]);
   useEffect(() => {
-    if (!latestActiveWorkspaceSubmission) {
+    if (!isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission?.status)) {
       return;
     }
 
     setPendingLocalDraft(null);
-  }, [latestActiveWorkspaceSubmission]);
+  }, [latestActiveWorkspaceSubmission?.status]);
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
