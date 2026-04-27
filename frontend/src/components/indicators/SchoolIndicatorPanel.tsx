@@ -899,8 +899,10 @@ export function SchoolIndicatorPanel({
   }, [reportRecord?.teacherCount, syncedTeacherCount]);
 
   useEffect(() => {
+    // Skip default init when a submission is already loaded — handleEditDraft owns the state.
+    if (editingSubmissionId) return;
     setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
-  }, [complianceMetrics]);
+  }, [complianceMetrics, editingSubmissionId]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -1162,6 +1164,45 @@ export function SchoolIndicatorPanel({
       ) ?? null,
     [sortedSubmissions],
   );
+  // The submission whose data should auto-populate the grid when not actively editing.
+  // Priority: submitted → validated. Returns null while the user is editing a draft.
+  const primaryDisplaySubmission = useMemo(() => {
+    if (editingSubmissionId) return null;
+
+    const scopedSubmissions =
+      academicYearId && academicYearId !== ALL_RECORDS_YEAR_ID
+        ? sortedSubmissions.filter((s) => s.academicYear?.id === academicYearId)
+        : sortedSubmissions;
+
+    return (
+      scopedSubmissions.find((s) => String(s.status ?? "").toLowerCase() === "submitted") ??
+      scopedSubmissions.find((s) => String(s.status ?? "").toLowerCase() === "validated") ??
+      null
+    );
+  }, [academicYearId, editingSubmissionId, sortedSubmissions]);
+
+  // Hydrate metricEntries from the selected submitted/validated submission.
+  // This is the authoritative write when backend data exists — it always wins over
+  // autosave restoration and default initialization.
+  useEffect(() => {
+    if (!primaryDisplaySubmission || complianceMetrics.length === 0) return;
+
+    const metricsById = new Map(complianceMetrics.map((m) => [m.id, m]));
+    const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
+
+    for (const indicator of primaryDisplaySubmission.indicators) {
+      const metricId = indicator.metric?.id;
+      if (!metricId) continue;
+
+      const metric = metricsById.get(metricId);
+      if (!metric) continue;
+
+      nextEntries[metricId] = buildEntryFromSubmission(metric, indicator);
+    }
+
+    setMetricEntries(nextEntries);
+  }, [primaryDisplaySubmission, complianceMetrics]);
+
   const compactAcademicYears = useMemo(() => {
     if (showAllAcademicYears || eligibleAcademicYears.length <= 3) {
       return eligibleAcademicYears;
@@ -2267,10 +2308,15 @@ export function SchoolIndicatorPanel({
     lastAutosaveFingerprintRef.current = "";
   }, [handleEditDraft, latestServerDraft]);
 
-  const showRestoreBanner = !restoreBannerDismissed && (
-    Boolean(pendingLocalDraft)
-    || Boolean(latestServerDraft && latestServerDraft.id !== editingSubmissionId)
-  );
+  // Suppress the restore banner entirely when a submitted/validated submission owns the
+  // display — autosave must never win over authoritative backend data.
+  const showRestoreBanner =
+    !restoreBannerDismissed
+    && !primaryDisplaySubmission
+    && (
+      Boolean(pendingLocalDraft)
+      || Boolean(latestServerDraft && latestServerDraft.id !== editingSubmissionId)
+    );
 
   const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
