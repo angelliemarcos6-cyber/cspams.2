@@ -119,16 +119,24 @@ function deriveWorkspaceModeFromSubmission(
     isSubmittedEditMode: boolean;
   },
 ): GroupBWorkspaceMode {
-  if (options.isWorkspaceReadOnly || !options.isSelectedYearEditable) {
-    return "read_only_year";
-  }
-
   if (!submission) {
+    if (options.isWorkspaceReadOnly || !options.isSelectedYearEditable) {
+      return "read_only_year";
+    }
+
     return "blank";
   }
 
   if (!isSubmittedWorkflowStatus(submission.status)) {
+    if (options.isWorkspaceReadOnly || !options.isSelectedYearEditable) {
+      return "read_only_year";
+    }
+
     return "draft";
+  }
+
+  if (options.isWorkspaceReadOnly || !options.isSelectedYearEditable) {
+    return "submitted_locked";
   }
 
   return options.isSubmittedEditMode ? "submitted_editing" : "submitted_locked";
