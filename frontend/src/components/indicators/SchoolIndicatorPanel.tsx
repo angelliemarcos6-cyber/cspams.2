@@ -1395,6 +1395,10 @@ export function SchoolIndicatorPanel({
   const localAutosaveAcademicYearRef = useRef<string | null>(activeAcademicYearId);
   const localAutosaveEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
   const localAutosaveEpochRef = useRef(0);
+  // Tracks the current workspace submission status so the autosave write effect
+  // (declared before latestActiveWorkspaceSubmission is in scope) can still
+  // read the status without a forward-reference compile error.
+  const latestWorkspaceStatusRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     localAutosaveAcademicYearRef.current = activeAcademicYearId;
   }, [activeAcademicYearId]);
@@ -1406,6 +1410,13 @@ export function SchoolIndicatorPanel({
     if (typeof window === "undefined") return;
     if (complianceMetrics.length === 0) return;
     if (!activeAcademicYearId) return;
+    // Do not overwrite autosave with submitted/validated workspace data.
+    // Autosave is only for draft/returned submissions — once a submission is
+    // submitted or validated the backend is the authoritative source of truth
+    // and we must never allow a stale autosave to shadow it on the next load.
+    // (latestWorkspaceStatusRef is used here because latestActiveWorkspaceSubmission
+    // is declared after this effect; the ref is kept in sync via a layout effect.)
+    if (isSubmittedWorkflowStatus(latestWorkspaceStatusRef.current)) return;
 
     const guardAcademicYearId = activeAcademicYearId;
     const guardWorkspaceSubmissionId = activeWorkspaceSubmissionIdRef.current;
@@ -1754,6 +1765,14 @@ export function SchoolIndicatorPanel({
   const selectedSubmissionForUploads = useMemo(() => {
     return latestActiveWorkspaceSubmission;
   }, [latestActiveWorkspaceSubmission]);
+  // Keep a stable ref so the hydration effect can read the latest submission
+  // without adding the whole object to the dep array (which would cause
+  // unnecessary re-runs on every reference identity change from refetches).
+  const latestActiveWorkspaceSubmissionRef = useRef(latestActiveWorkspaceSubmission);
+  useEffect(() => {
+    latestActiveWorkspaceSubmissionRef.current = latestActiveWorkspaceSubmission;
+    latestWorkspaceStatusRef.current = latestActiveWorkspaceSubmission?.status;
+  });
   useEffect(() => {
     if (latestActiveWorkspaceSubmission) {
       return;
@@ -2129,13 +2148,21 @@ export function SchoolIndicatorPanel({
       return;
     }
 
+    // Read the current submission from the ref so this effect is driven by
+    // primitive keys (via workspaceSubmissionFingerprint) rather than object
+    // reference identity — background refetches no longer cause spurious runs.
+    const currentSubmission = latestActiveWorkspaceSubmissionRef.current;
+
     const workspaceScopeKey = [
       activeAcademicYearId,
-      latestActiveWorkspaceSubmission?.id ?? "blank",
+      currentSubmission?.id ?? "blank",
     ].join(":");
     const didChangeWorkspaceScope = lastHydratedWorkspaceScopeRef.current !== workspaceScopeKey;
 
-    if (!didChangeWorkspaceScope && hasUnsavedWorkspaceChangesRef.current) {
+    // For submitted/validated submissions the backend is always authoritative —
+    // never let unsaved local edits block a re-hydration from the server.
+    const isSubmittedOrValidated = isSubmittedWorkflowStatus(currentSubmission?.status);
+    if (!didChangeWorkspaceScope && hasUnsavedWorkspaceChangesRef.current && !isSubmittedOrValidated) {
       return;
     }
 
@@ -2149,12 +2176,12 @@ export function SchoolIndicatorPanel({
       submittedEditPreserveContextRef.current
       && activeAcademicYearId
       && submittedEditPreserveContextRef.current.academicYearId === activeAcademicYearId
-      && submittedEditPreserveContextRef.current.submissionId === (latestActiveWorkspaceSubmission?.id ?? null),
+      && submittedEditPreserveContextRef.current.submissionId === (currentSubmission?.id ?? null),
     );
     // Backend submission is the source of truth. Local autosave is only used
     // when there is no saved submission for this user/school/year scope.
-    if (latestActiveWorkspaceSubmission) {
-      rehydrateWorkspaceFromSubmission(latestActiveWorkspaceSubmission);
+    if (currentSubmission) {
+      rehydrateWorkspaceFromSubmission(currentSubmission);
     } else {
       resetWorkspaceToBlankStateForSelectedYear();
     }
@@ -2168,7 +2195,7 @@ export function SchoolIndicatorPanel({
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
     endControlledWorkspaceTransition();
-  }, [activeAcademicYearId, complianceMetrics.length, endControlledWorkspaceTransition, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, workspaceSubmissionFingerprint]);
+  }, [activeAcademicYearId, complianceMetrics.length, endControlledWorkspaceTransition, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, workspaceSubmissionFingerprint]);
   const groupASubmittedSubmission = useMemo(
     () =>
       scopedSubmissionsForYear
