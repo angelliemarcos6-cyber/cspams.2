@@ -1759,7 +1759,13 @@ export function SchoolIndicatorPanel({
     [editingSubmissionId, scopedSubmissionsForYear],
   );
   const activeWorkspaceSubmission = useMemo(
-    () => editingSubmissionInScope ?? resolvedWorkspaceSubmission ?? null,
+    () => {
+      if (resolvedWorkspaceSubmission && isSubmittedWorkflowStatus(resolvedWorkspaceSubmission.status)) {
+        return resolvedWorkspaceSubmission;
+      }
+
+      return editingSubmissionInScope ?? resolvedWorkspaceSubmission ?? null;
+    },
     [editingSubmissionInScope, resolvedWorkspaceSubmission],
   );
   const latestActiveWorkspaceSubmission = useMemo(
@@ -1780,14 +1786,14 @@ export function SchoolIndicatorPanel({
   useEffect(() => {
     latestActiveWorkspaceSubmissionRef.current = latestActiveWorkspaceSubmission;
     latestWorkspaceStatusRef.current = latestActiveWorkspaceSubmission?.status;
-  });
+  }, [latestActiveWorkspaceSubmission]);
   useEffect(() => {
     if (latestActiveWorkspaceSubmission) {
       return;
     }
 
     setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
-  }, [complianceMetrics, latestActiveWorkspaceSubmission]);
+  }, [complianceMetrics, latestActiveWorkspaceSubmission?.id]);
   useEffect(() => {
     if (!isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission?.status)) {
       return;
@@ -1843,7 +1849,12 @@ export function SchoolIndicatorPanel({
     } catch {
       setPendingLocalDraft(null);
     }
-  }, [activeAcademicYearId, autosaveKey, latestActiveWorkspaceSubmission]);
+  }, [
+    activeAcademicYearId,
+    autosaveKey,
+    latestActiveWorkspaceSubmission?.id,
+    latestActiveWorkspaceSubmission?.status,
+  ]);
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
