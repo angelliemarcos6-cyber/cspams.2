@@ -1366,10 +1366,6 @@ export function SchoolIndicatorPanel({
     return schoolYearByAcademicYearId.get(currentAcademicYearId) ?? (visibleSchoolYears[visibleSchoolYears.length - 1] ?? null);
   }, [currentAcademicYearId, schoolYearByAcademicYearId, visibleSchoolYears]);
   useEffect(() => {
-    setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
-  }, [complianceMetrics]);
-
-  useEffect(() => {
     if (academicYearId || eligibleAcademicYears.length === 0) {
       return;
     }
@@ -1405,52 +1401,6 @@ export function SchoolIndicatorPanel({
   useEffect(() => {
     localAutosaveEditingSubmissionIdRef.current = editingSubmissionId;
   }, [editingSubmissionId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!activeAcademicYearId) {
-      setPendingLocalDraft(null);
-      return;
-    }
-
-    try {
-      const raw = localStorage.getItem(autosaveKey);
-      if (!raw) {
-        setPendingLocalDraft(null);
-        return;
-      }
-
-      const persisted = JSON.parse(raw) as {
-        academicYearId?: string;
-        notes?: string;
-        metricEntries?: MetricEntryState;
-        savedAt?: string;
-        editingSubmissionId?: string;
-      };
-
-      const hasDraft =
-        Boolean((persisted.notes ?? "").trim())
-        || hasMeaningfulMetricEntries(persisted.metricEntries);
-
-      if (!hasDraft) {
-        setPendingLocalDraft(null);
-        return;
-      }
-
-      setPendingLocalDraft({
-        academicYearId: persisted.academicYearId ?? activeAcademicYearId,
-        notes: typeof persisted.notes === "string" ? persisted.notes : "",
-        metricEntries: persisted.metricEntries && typeof persisted.metricEntries === "object" ? persisted.metricEntries : {},
-        savedAt: persisted.savedAt ?? null,
-        editingSubmissionId: typeof persisted.editingSubmissionId === "string" ? persisted.editingSubmissionId : null,
-      });
-      if (persisted.savedAt) {
-        setAutosaveAt(persisted.savedAt);
-      }
-    } catch {
-      setPendingLocalDraft(null);
-    }
-  }, [activeAcademicYearId, autosaveKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1805,12 +1755,68 @@ export function SchoolIndicatorPanel({
     return latestActiveWorkspaceSubmission;
   }, [latestActiveWorkspaceSubmission]);
   useEffect(() => {
+    if (latestActiveWorkspaceSubmission) {
+      return;
+    }
+
+    setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
+  }, [complianceMetrics, latestActiveWorkspaceSubmission]);
+  useEffect(() => {
     if (!isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission?.status)) {
       return;
     }
 
     setPendingLocalDraft(null);
   }, [latestActiveWorkspaceSubmission?.status]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!activeAcademicYearId) {
+      setPendingLocalDraft(null);
+      return;
+    }
+    if (latestActiveWorkspaceSubmission && !isDraftOrReturnedWorkflowStatus(latestActiveWorkspaceSubmission.status)) {
+      setPendingLocalDraft(null);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(autosaveKey);
+      if (!raw) {
+        setPendingLocalDraft(null);
+        return;
+      }
+
+      const persisted = JSON.parse(raw) as {
+        academicYearId?: string;
+        notes?: string;
+        metricEntries?: MetricEntryState;
+        savedAt?: string;
+        editingSubmissionId?: string;
+      };
+
+      const hasDraft =
+        Boolean((persisted.notes ?? "").trim())
+        || hasMeaningfulMetricEntries(persisted.metricEntries);
+
+      if (!hasDraft) {
+        setPendingLocalDraft(null);
+        return;
+      }
+
+      setPendingLocalDraft({
+        academicYearId: persisted.academicYearId ?? activeAcademicYearId,
+        notes: typeof persisted.notes === "string" ? persisted.notes : "",
+        metricEntries: persisted.metricEntries && typeof persisted.metricEntries === "object" ? persisted.metricEntries : {},
+        savedAt: persisted.savedAt ?? null,
+        editingSubmissionId: typeof persisted.editingSubmissionId === "string" ? persisted.editingSubmissionId : null,
+      });
+      if (persisted.savedAt) {
+        setAutosaveAt(persisted.savedAt);
+      }
+    } catch {
+      setPendingLocalDraft(null);
+    }
+  }, [activeAcademicYearId, autosaveKey, latestActiveWorkspaceSubmission]);
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
   const activeEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
