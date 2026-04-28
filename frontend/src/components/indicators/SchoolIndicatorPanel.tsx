@@ -1396,7 +1396,6 @@ export function SchoolIndicatorPanel({
       setAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
     }
   }, [academicYearId, eligibleAcademicYears.length, yearWorkspaceState.selectedAcademicYearId]);
-
   useEffect(() => {
     if (!academicYearId || !yearWorkspaceState.selectedAcademicYearId) {
       return;
@@ -1417,6 +1416,7 @@ export function SchoolIndicatorPanel({
   const localAutosaveAcademicYearRef = useRef<string | null>(activeAcademicYearId);
   const localAutosaveEditingSubmissionIdRef = useRef<string | null>(editingSubmissionId);
   const localAutosaveEpochRef = useRef(0);
+  const hasUserSelectedAcademicYearRef = useRef(false);
   // Tracks the current workspace submission status so the autosave write effect
   // (declared before latestActiveWorkspaceSubmission is in scope) can still
   // read the status without a forward-reference compile error.
@@ -1502,6 +1502,61 @@ export function SchoolIndicatorPanel({
       }),
     [academicYearFilter, sortedSubmissions, statusFilter],
   );
+  const preferredAcademicYearIdFromSubmissions = useMemo(() => {
+    const priorityByStatus: Record<string, number> = {
+      submitted: 0,
+      validated: 1,
+      returned: 2,
+      draft: 3,
+    };
+
+    const ranked = sortedSubmissions
+      .filter((submission) => submission.academicYear?.id)
+      .slice()
+      .sort((left, right) => {
+        const leftStatus = String(left.status ?? "").toLowerCase();
+        const rightStatus = String(right.status ?? "").toLowerCase();
+        const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
+        const rightRank = priorityByStatus[rightStatus] ?? Number.MAX_SAFE_INTEGER;
+
+        if (leftRank !== rightRank) {
+          return leftRank - rightRank;
+        }
+
+        return (
+          new Date(right.submittedAt ?? right.updatedAt ?? right.createdAt ?? 0).getTime()
+          - new Date(left.submittedAt ?? left.updatedAt ?? left.createdAt ?? 0).getTime()
+        );
+      });
+
+    return ranked[0]?.academicYear?.id ?? null;
+  }, [sortedSubmissions]);
+  useEffect(() => {
+    if (isSubmissionDataLoading || hasUserSelectedAcademicYearRef.current) {
+      return;
+    }
+
+    if (!preferredAcademicYearIdFromSubmissions || activeAcademicYearId === preferredAcademicYearIdFromSubmissions) {
+      return;
+    }
+
+    const activeYearHasSavedSubmission = Boolean(
+      activeAcademicYearId
+      && sortedSubmissions.some((submission) => submission.academicYear?.id === activeAcademicYearId),
+    );
+
+    if (activeYearHasSavedSubmission || pendingLocalDraft) {
+      return;
+    }
+
+    setAcademicYearId(preferredAcademicYearIdFromSubmissions);
+  }, [
+    activeAcademicYearId,
+    isSubmissionDataLoading,
+    pendingLocalDraft,
+    preferredAcademicYearIdFromSubmissions,
+    sortedSubmissions,
+  ]);
   const latestValidatedSubmission = useMemo(
     () =>
       sortedSubmissions.find(
@@ -4265,6 +4320,7 @@ export function SchoolIndicatorPanel({
       if (nextAcademicYearId === activeAcademicYearId) {
         return;
       }
+      hasUserSelectedAcademicYearRef.current = true;
       await runCriticalWorkspaceTransition({
         dismissRestoreBanner: true,
         endOnComplete: false,
