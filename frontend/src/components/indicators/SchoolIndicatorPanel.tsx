@@ -1036,6 +1036,10 @@ function submissionRows(submission: IndicatorSubmission | null | undefined): Ind
   return Array.isArray(submission.items) ? submission.items : [];
 }
 
+function submissionHasHydratableRows(submission: IndicatorSubmission | null | undefined): boolean {
+  return submissionRows(submission).length > 0;
+}
+
 function yearToken(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
@@ -1238,10 +1242,19 @@ export function SchoolIndicatorPanel({
   const groupBActionInFlightRef = useRef(false);
   const transitionEpochRef = useRef(0);
   const workspaceFingerprintRef = useRef("");
+  const metricEntriesRef = useRef<MetricEntryState>({});
+  const notesRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
   const bmefInputRef = useRef<HTMLInputElement | null>(null);
   const smeaInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    metricEntriesRef.current = metricEntries;
+  }, [metricEntries]);
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
 
   const normalizedSubmitError = useMemo(() => normalizeSessionMessage(submitError), [submitError]);
   const normalizedIndicatorError = useMemo(() => normalizeSessionMessage(error), [error]);
@@ -1807,7 +1820,7 @@ export function SchoolIndicatorPanel({
       setPendingLocalDraft(null);
       return;
     }
-    if (latestActiveWorkspaceSubmission && !isDraftOrReturnedWorkflowStatus(latestActiveWorkspaceSubmission.status)) {
+    if (latestActiveWorkspaceSubmission) {
       setPendingLocalDraft(null);
       return;
     }
@@ -2135,9 +2148,12 @@ export function SchoolIndicatorPanel({
     const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
     const metricsByCode = new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
     const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
-    const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
+    const hasHydratableRows = submissionHasHydratableRows(submission);
+    const nextEntries = submission && !hasHydratableRows
+      ? buildInitialMetricEntries(complianceMetrics, metricEntriesRef.current)
+      : buildInitialMetricEntries(complianceMetrics, {});
 
-    if (submission) {
+    if (submission && hasHydratableRows) {
       for (const indicator of submissionRows(submission)) {
         const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
         if (!metric) continue;
@@ -2147,7 +2163,7 @@ export function SchoolIndicatorPanel({
     }
 
     setEditingSubmissionId(submission?.id ?? null);
-    setNotes(submission?.notes ?? "");
+    setNotes(submission?.notes ?? (submission ? notesRef.current : ""));
     setMetricEntries(nextEntries);
     setServerAutosaveAt(submission?.updatedAt ?? null);
     setAutosaveError("");
@@ -3640,8 +3656,8 @@ export function SchoolIndicatorPanel({
       if (!pendingLocalDraft) {
         return;
       }
-      if (isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission?.status)) {
-        setSubmitError("Submitted data already exists for this academic year. Local restore is disabled.");
+      if (latestActiveWorkspaceSubmission) {
+        setSubmitError("A saved backend submission already exists for this academic year. Local restore is disabled.");
         return;
       }
 
@@ -3651,7 +3667,7 @@ export function SchoolIndicatorPanel({
       }
 
       const inScopeSubmissionId = resolveInScopeSubmissionId(
-        pendingLocalDraft.editingSubmissionId ?? latestActiveWorkspaceSubmission?.id ?? null,
+        pendingLocalDraft.editingSubmissionId ?? null,
       );
 
       await runCriticalWorkspaceTransition({
@@ -3801,10 +3817,7 @@ export function SchoolIndicatorPanel({
   const showRestoreBanner = !restoreBannerDismissed && (
     Boolean(
       pendingLocalDraft
-      && (
-        !latestActiveWorkspaceSubmission
-        || isDraftOrReturnedWorkflowStatus(latestActiveWorkspaceSubmission.status)
-      )
+      && !latestActiveWorkspaceSubmission
     )
     || Boolean(restorableServerSubmissionInScope && restorableServerSubmissionInScope.id !== editingSubmissionId)
   );
