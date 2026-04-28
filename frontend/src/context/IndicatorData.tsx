@@ -305,7 +305,8 @@ function sortSubmissionRows(rows: IndicatorSubmission[]): IndicatorSubmission[] 
 function isLightweightSubmission(
   submission: IndicatorSubmission | LightweightIndicatorSubmission,
 ): submission is LightweightIndicatorSubmission {
-  return !Array.isArray((submission as IndicatorSubmission).indicators);
+  const fullSubmission = submission as IndicatorSubmission;
+  return !Array.isArray(fullSubmission.indicators) && !Array.isArray(fullSubmission.items);
 }
 
 function patchSubmissionWithLightweightPayload(
