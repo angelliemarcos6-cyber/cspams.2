@@ -1863,12 +1863,18 @@ export function SchoolIndicatorPanel({
     setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
   }, [complianceMetrics, isSubmissionDataLoading, latestActiveWorkspaceSubmission?.id]);
   useEffect(() => {
-    if (!isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission?.status)) {
+    if (!latestActiveWorkspaceSubmission) {
       return;
     }
 
     setPendingLocalDraft(null);
-  }, [latestActiveWorkspaceSubmission?.status]);
+    if (
+      typeof window !== "undefined"
+      && isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission.status)
+    ) {
+      localStorage.removeItem(autosaveKey);
+    }
+  }, [autosaveKey, latestActiveWorkspaceSubmission]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (isSubmissionDataLoading) {
@@ -1879,6 +1885,9 @@ export function SchoolIndicatorPanel({
       return;
     }
     if (latestActiveWorkspaceSubmission) {
+      if (isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission.status)) {
+        localStorage.removeItem(autosaveKey);
+      }
       setPendingLocalDraft(null);
       return;
     }
@@ -3759,7 +3768,11 @@ export function SchoolIndicatorPanel({
         return;
       }
       if (latestActiveWorkspaceSubmission) {
-        setSubmitError("A saved backend submission already exists for this academic year. Local restore is disabled.");
+        setSubmitError(
+          isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission.status)
+            ? "A submitted backend package already exists for this academic year. Local restore is disabled."
+            : "A saved backend submission already exists for this academic year. Local restore is disabled.",
+        );
         return;
       }
 
