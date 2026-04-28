@@ -1847,12 +1847,16 @@ export function SchoolIndicatorPanel({
     latestWorkspaceStatusRef.current = latestActiveWorkspaceSubmission?.status;
   }, [latestActiveWorkspaceSubmission]);
   useEffect(() => {
+    if (isSubmissionDataLoading) {
+      return;
+    }
+
     if (latestActiveWorkspaceSubmission) {
       return;
     }
 
     setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
-  }, [complianceMetrics, latestActiveWorkspaceSubmission?.id]);
+  }, [complianceMetrics, isSubmissionDataLoading, latestActiveWorkspaceSubmission?.id]);
   useEffect(() => {
     if (!isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission?.status)) {
       return;
@@ -1862,6 +1866,9 @@ export function SchoolIndicatorPanel({
   }, [latestActiveWorkspaceSubmission?.status]);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (isSubmissionDataLoading) {
+      return;
+    }
     if (!activeAcademicYearId) {
       setPendingLocalDraft(null);
       return;
@@ -1911,6 +1918,7 @@ export function SchoolIndicatorPanel({
   }, [
     activeAcademicYearId,
     autosaveKey,
+    isSubmissionDataLoading,
     latestActiveWorkspaceSubmission?.id,
     latestActiveWorkspaceSubmission?.status,
   ]);
@@ -2273,6 +2281,9 @@ export function SchoolIndicatorPanel({
     // primitive keys (via workspaceSubmissionFingerprint) rather than object
     // reference identity — background refetches no longer cause spurious runs.
     const currentSubmission = latestActiveWorkspaceSubmissionRef.current;
+    if (!currentSubmission && isSubmissionDataLoading) {
+      return;
+    }
 
     const workspaceScopeKey = [
       activeAcademicYearId,
@@ -2316,7 +2327,7 @@ export function SchoolIndicatorPanel({
     submittedEditPreserveContextRef.current = null;
     setRestoreBannerDismissed(false);
     endControlledWorkspaceTransition();
-  }, [activeAcademicYearId, complianceMetrics.length, endControlledWorkspaceTransition, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, workspaceSubmissionFingerprint]);
+  }, [activeAcademicYearId, complianceMetrics.length, endControlledWorkspaceTransition, isSubmissionDataLoading, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, workspaceSubmissionFingerprint]);
   const groupASubmittedSubmission = useMemo(
     () =>
       scopedSubmissionsForYear
