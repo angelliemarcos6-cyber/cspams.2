@@ -130,6 +130,7 @@ export interface IndicatorDataContextType {
   bootstrapSubmission: (payload: BootstrapIndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
+  fetchSubmission: (id: string) => Promise<IndicatorSubmission>;
   resetSubmissionWorkspace: (id: string, workspace: GroupBWorkspaceResetTarget) => Promise<IndicatorSubmission>;
   uploadSubmissionFile: (id: string, type: IndicatorSubmissionFileType, file: File) => Promise<IndicatorSubmission>;
   downloadSubmissionFile: (id: string, type: IndicatorSubmissionFileType) => Promise<void>;
@@ -309,6 +310,31 @@ function isLightweightSubmission(
   return !Array.isArray(fullSubmission.indicators) && !Array.isArray(fullSubmission.items);
 }
 
+function hasSubmissionRows(submission: IndicatorSubmission | null | undefined): boolean {
+  return Array.isArray(submission?.items)
+    ? submission.items.length > 0
+    : Array.isArray(submission?.indicators) && submission.indicators.length > 0;
+}
+
+function mergeSubmissionPreservingDetails(
+  existing: IndicatorSubmission | undefined,
+  incoming: IndicatorSubmission,
+): IndicatorSubmission {
+  if (!existing) {
+    return incoming;
+  }
+
+  if (!hasSubmissionRows(incoming) && hasSubmissionRows(existing)) {
+    return {
+      ...incoming,
+      indicators: existing.indicators,
+      items: existing.items ?? existing.indicators,
+    };
+  }
+
+  return incoming;
+}
+
 function patchSubmissionWithLightweightPayload(
   current: IndicatorSubmission,
   patch: LightweightIndicatorSubmission,
@@ -442,7 +468,7 @@ function upsertSubmissionRow(rows: IndicatorSubmission[], submission: IndicatorS
   }
 
   const nextRows = rows.filter((row) => row.id !== submission.id);
-  nextRows.push(submission);
+  nextRows.push(mergeSubmissionPreservingDetails(existing, submission));
   return sortSubmissionRows(nextRows);
 }
 
@@ -1029,6 +1055,29 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [runSubmissionMutation, token],
   );
 
+  const fetchSubmission = useCallback(
+    async (id: string): Promise<IndicatorSubmission> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      setError("");
+
+      try {
+        const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
+          token,
+        });
+        const submission = response.data;
+        upsertSubmissionLocally(submission);
+        return submission;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      }
+    },
+    [handleApiError, token, upsertSubmissionLocally],
+  );
+
   const submitSubmission = useCallback(
     async (id: string): Promise<IndicatorSubmission> => {
       if (!token) {
@@ -1276,6 +1325,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       bootstrapSubmission,
       createSubmission,
       updateSubmission,
+      fetchSubmission,
       resetSubmissionWorkspace,
       uploadSubmissionFile,
       downloadSubmissionFile,
@@ -1301,6 +1351,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       bootstrapSubmission,
       createSubmission,
       updateSubmission,
+      fetchSubmission,
       resetSubmissionWorkspace,
       uploadSubmissionFile,
       downloadSubmissionFile,

@@ -1190,6 +1190,7 @@ export function SchoolIndicatorPanel({
     bootstrapSubmission,
     createSubmission,
     updateSubmission,
+    fetchSubmission,
     resetSubmissionWorkspace,
     uploadSubmissionFile,
     downloadSubmissionFile,
@@ -1796,6 +1797,7 @@ export function SchoolIndicatorPanel({
   // without adding the whole object to the dep array (which would cause
   // unnecessary re-runs on every reference identity change from refetches).
   const latestActiveWorkspaceSubmissionRef = useRef(latestActiveWorkspaceSubmission);
+  const pendingSubmissionDetailRequestRef = useRef<string | null>(null);
   useEffect(() => {
     latestActiveWorkspaceSubmissionRef.current = latestActiveWorkspaceSubmission;
     latestWorkspaceStatusRef.current = latestActiveWorkspaceSubmission?.status;
@@ -2016,6 +2018,44 @@ export function SchoolIndicatorPanel({
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
   }, []);
+  useEffect(() => {
+    const submissionId = latestActiveWorkspaceSubmission?.id ?? null;
+    if (!submissionId) {
+      pendingSubmissionDetailRequestRef.current = null;
+      return;
+    }
+
+    if (submissionHasHydratableRows(latestActiveWorkspaceSubmission)) {
+      pendingSubmissionDetailRequestRef.current = null;
+      return;
+    }
+
+    if (pendingSubmissionDetailRequestRef.current === submissionId) {
+      return;
+    }
+
+    pendingSubmissionDetailRequestRef.current = submissionId;
+    void fetchSubmission(submissionId)
+      .then((submission) => {
+        if (submission.id === submissionId) {
+          requestResolvedWorkspaceRehydrate();
+        }
+      })
+      .catch((error) => {
+        console.error("[SchoolIndicatorPanel] Unable to load full submission detail:", error);
+      })
+      .finally(() => {
+        if (pendingSubmissionDetailRequestRef.current === submissionId) {
+          pendingSubmissionDetailRequestRef.current = null;
+        }
+      });
+  }, [
+    fetchSubmission,
+    latestActiveWorkspaceSubmission,
+    latestActiveWorkspaceSubmission?.id,
+    latestActiveWorkspaceSubmission?.updatedAt,
+    requestResolvedWorkspaceRehydrate,
+  ]);
   const workspaceSubmissionFingerprint = useMemo(
     () => buildWorkspaceSubmissionFingerprint(activeAcademicYearId, latestActiveWorkspaceSubmission),
     [
