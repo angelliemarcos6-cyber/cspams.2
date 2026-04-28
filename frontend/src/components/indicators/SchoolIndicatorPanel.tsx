@@ -4054,6 +4054,7 @@ export function SchoolIndicatorPanel({
           const savedAt = new Date().toISOString();
           setServerAutosaveAt(savedAt);
           lastAutosaveFingerprintRef.current = `${saved.id}:${prepared.fingerprint}`;
+          rehydrateWorkspaceFromSubmission(saved);
           if (saveModeAtActionStart === "submitted_editing") {
             submittedEditPreserveContextRef.current = {
               academicYearId: saveAcademicYearAtActionStart,
@@ -4152,6 +4153,7 @@ export function SchoolIndicatorPanel({
             smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
           });
           setEditingSubmissionId(result.id);
+          rehydrateWorkspaceFromSubmission(result);
           setIsSubmittedEditMode(false);
           submittedEditPreserveContextRef.current = null;
           return refreshResolvedWorkspace();
@@ -4223,6 +4225,7 @@ export function SchoolIndicatorPanel({
             smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
           });
           setEditingSubmissionId(result.id);
+          rehydrateWorkspaceFromSubmission(result);
           setIsSubmittedEditMode(false);
           submittedEditPreserveContextRef.current = null;
           return refreshResolvedWorkspace();
