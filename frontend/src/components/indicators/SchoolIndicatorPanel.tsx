@@ -83,6 +83,8 @@ interface LocalDraftSnapshot {
   editingSubmissionId: string | null;
 }
 
+type WorkspaceDataOwner = "backend" | "local" | "blank";
+
 type GroupBWorkspaceMode =
   | "blank"
   | "draft"
@@ -621,6 +623,40 @@ function buildInitialMetricEntries(metrics: IndicatorMetric[], current: MetricEn
           actualMatrix: {
             ...buildDefaultEntry(metric).actualMatrix,
             ...(previous.actualMatrix ?? {}),
+          },
+        }
+      : buildDefaultEntry(metric);
+  }
+
+  return next;
+}
+
+function buildMetricEntriesForHydration(metrics: IndicatorMetric[]): MetricEntryState {
+  const next: MetricEntryState = {};
+
+  for (const metric of metrics) {
+    next[metric.id] = buildDefaultEntry(metric);
+  }
+
+  return next;
+}
+
+function buildMetricEntriesForLocalRestore(metrics: IndicatorMetric[], snapshot: MetricEntryState): MetricEntryState {
+  const next: MetricEntryState = {};
+
+  for (const metric of metrics) {
+    const restored = snapshot[metric.id];
+    next[metric.id] = restored
+      ? {
+          ...buildDefaultEntry(metric),
+          ...restored,
+          targetMatrix: {
+            ...buildDefaultEntry(metric).targetMatrix,
+            ...(restored.targetMatrix ?? {}),
+          },
+          actualMatrix: {
+            ...buildDefaultEntry(metric).actualMatrix,
+            ...(restored.actualMatrix ?? {}),
           },
         }
       : buildDefaultEntry(metric);
@@ -1842,11 +1878,20 @@ export function SchoolIndicatorPanel({
   const selectedSubmissionForUploads = useMemo(() => {
     return latestActiveWorkspaceSubmission;
   }, [latestActiveWorkspaceSubmission]);
+  const selectedSubmissionStatus = useMemo(
+    () => String(latestActiveWorkspaceSubmission?.status ?? "").toLowerCase(),
+    [latestActiveWorkspaceSubmission?.status],
+  );
+  const isSelectedSubmissionFinalized = useMemo(
+    () => selectedSubmissionStatus === "submitted" || selectedSubmissionStatus === "validated",
+    [selectedSubmissionStatus],
+  );
   // Keep a stable ref so the hydration effect can read the latest submission
   // without adding the whole object to the dep array (which would cause
   // unnecessary re-runs on every reference identity change from refetches).
   const latestActiveWorkspaceSubmissionRef = useRef(latestActiveWorkspaceSubmission);
   const pendingSubmissionDetailRequestRef = useRef<string | null>(null);
+  const workspaceDataOwnerRef = useRef<WorkspaceDataOwner>("blank");
   useEffect(() => {
     latestActiveWorkspaceSubmissionRef.current = latestActiveWorkspaceSubmission;
     latestWorkspaceStatusRef.current = latestActiveWorkspaceSubmission?.status;
@@ -1859,11 +1904,11 @@ export function SchoolIndicatorPanel({
     setPendingLocalDraft(null);
     if (
       typeof window !== "undefined"
-      && isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission.status)
+      && isSelectedSubmissionFinalized
     ) {
       localStorage.removeItem(autosaveKey);
     }
-  }, [autosaveKey, latestActiveWorkspaceSubmission]);
+  }, [autosaveKey, isSelectedSubmissionFinalized, latestActiveWorkspaceSubmission]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (isSubmissionDataLoading) {
@@ -1874,7 +1919,7 @@ export function SchoolIndicatorPanel({
       return;
     }
     if (latestActiveWorkspaceSubmission) {
-      if (isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission.status)) {
+      if (isSelectedSubmissionFinalized) {
         localStorage.removeItem(autosaveKey);
       }
       setPendingLocalDraft(null);
@@ -1923,7 +1968,7 @@ export function SchoolIndicatorPanel({
     autosaveKey,
     isSubmissionDataLoading,
     latestActiveWorkspaceSubmission?.id,
-    latestActiveWorkspaceSubmission?.status,
+    isSelectedSubmissionFinalized,
   ]);
   const activeAcademicYearIdRef = useRef<string | null>(activeAcademicYearId);
   const activeWorkspaceSubmissionIdRef = useRef<string | null>(activeWorkspaceSubmission?.id ?? null);
@@ -2247,6 +2292,7 @@ export function SchoolIndicatorPanel({
     const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
     const hasHydratableRows = submissionHasHydratableRows(submission);
     if (submission && !hasHydratableRows) {
+      workspaceDataOwnerRef.current = "backend";
       setEditingSubmissionId(submission.id);
       setServerAutosaveAt(submission.updatedAt ?? null);
       setAutosaveError("");
@@ -2255,7 +2301,7 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
+    const nextEntries = buildMetricEntriesForHydration(complianceMetrics);
 
     if (submission && hasHydratableRows) {
       for (const indicator of submissionRows(submission)) {
@@ -2266,6 +2312,7 @@ export function SchoolIndicatorPanel({
       }
     }
 
+    workspaceDataOwnerRef.current = submission ? "backend" : "blank";
     setEditingSubmissionId(submission?.id ?? null);
     setNotes(submission?.notes ?? (submission ? notesRef.current : ""));
     setMetricEntries(nextEntries);
@@ -2280,6 +2327,9 @@ export function SchoolIndicatorPanel({
     lastAutosaveFingerprintRef.current = "";
   }, [complianceMetrics]);
   const resetWorkspaceToBlankStateForSelectedYear = useCallback(() => {
+    if (latestActiveWorkspaceSubmissionRef.current) {
+      return;
+    }
     rehydrateWorkspaceFromSubmission(null);
   }, [rehydrateWorkspaceFromSubmission]);
   useEffect(() => {
@@ -3763,9 +3813,13 @@ export function SchoolIndicatorPanel({
       if (!pendingLocalDraft) {
         return;
       }
+      if (isSelectedSubmissionFinalized) {
+        setSubmitError("A submitted backend package already exists for this academic year. Local restore is disabled.");
+        return;
+      }
       if (latestActiveWorkspaceSubmission) {
         setSubmitError(
-          isSubmittedWorkflowStatus(latestActiveWorkspaceSubmission.status)
+          isSelectedSubmissionFinalized
             ? "A submitted backend package already exists for this academic year. Local restore is disabled."
             : "A saved backend submission already exists for this academic year. Local restore is disabled.",
         );
@@ -3784,15 +3838,16 @@ export function SchoolIndicatorPanel({
       await runCriticalWorkspaceTransition({
         dismissRestoreBanner: true,
         action: () => {
+          workspaceDataOwnerRef.current = "local";
           setNotes(pendingLocalDraft.notes);
-          setMetricEntries(buildInitialMetricEntries(complianceMetrics, pendingLocalDraft.metricEntries));
+          setMetricEntries(buildMetricEntriesForLocalRestore(complianceMetrics, pendingLocalDraft.metricEntries));
           setEditingSubmissionId(inScopeSubmissionId);
           setAutosaveAt(pendingLocalDraft.savedAt);
           setSaveMessage("Local draft restored.");
         },
       });
     });
-  }, [activeAcademicYearId, complianceMetrics, latestActiveWorkspaceSubmission, pendingLocalDraft, resolveInScopeSubmissionId, runCriticalWorkspaceTransition, runGroupBAction]);
+  }, [activeAcademicYearId, complianceMetrics, isSelectedSubmissionFinalized, latestActiveWorkspaceSubmission, pendingLocalDraft, resolveInScopeSubmissionId, runCriticalWorkspaceTransition, runGroupBAction]);
 
   const handleRestoreServerDraft = useCallback(() => {
     void runGroupBAction("Restore server draft", async () => {
