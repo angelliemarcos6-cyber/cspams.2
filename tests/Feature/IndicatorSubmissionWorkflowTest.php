@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
+use App\Support\Indicators\GroupBWorkspaceDefinition;
 use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -488,6 +489,216 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $history = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}/history");
         $history->assertOk()
             ->assertJsonPath('data.0.action', 'updated');
+    }
+
+    public function test_group_b_workspace_metric_codes_exist_after_seeding(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        $codes = array_values(array_unique(array_merge(
+            GroupBWorkspaceDefinition::metricCodesFor(GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS),
+            GroupBWorkspaceDefinition::metricCodesFor(GroupBWorkspaceDefinition::KEY_PERFORMANCE),
+        )));
+
+        $seededCodes = PerformanceMetric::query()
+            ->whereIn('code', $codes)
+            ->pluck('code')
+            ->all();
+
+        sort($codes);
+        sort($seededCodes);
+
+        $this->assertSame($codes, $seededCodes);
+    }
+
+    public function test_school_head_can_still_save_with_real_metric_id(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'PR')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_id' => (int) $metric->id,
+                    'target' => ['values' => [$year => 91]],
+                    'actual' => ['values' => [$year => 93]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.indicators.0.metric.id', (string) $metric->id)
+            ->assertJsonPath('data.indicators.0.metric.code', 'PR')
+            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 93);
+    }
+
+    public function test_school_head_can_save_with_metric_code_only(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'NER')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_code' => 'ner',
+                    'target' => ['values' => [$year => 95]],
+                    'actual' => ['values' => [$year => 97]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.indicators.0.metric.code', 'NER')
+            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 97);
+    }
+
+    public function test_synthetic_metric_id_with_metric_code_resolves_real_metric(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $realMetricId = (int) PerformanceMetric::query()->where('code', 'CR')->value('id');
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'CR')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_id' => 900123,
+                    'metric_code' => 'CR',
+                    'target' => ['values' => [$year => 88]],
+                    'actual' => ['values' => [$year => 91]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.indicators.0.metric.id', (string) $realMetricId)
+            ->assertJsonPath('data.indicators.0.metric.code', 'CR');
+
+        $submissionId = (string) $created->json('data.id');
+        $this->assertDatabaseHas('indicator_submission_items', [
+            'indicator_submission_id' => (int) $submissionId,
+            'performance_metric_id' => $realMetricId,
+        ]);
+    }
+
+    public function test_school_achievements_actual_only_typed_values_persist(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $headNameMetric */
+        $headNameMetric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($headNameMetric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+                [
+                    'metric_code' => 'IMETA_SBM_LEVEL',
+                    'actual' => ['values' => [$year => 'Level 2']],
+                ],
+                [
+                    'metric_code' => 'INTERNET_ACCESS',
+                    'actual' => ['values' => [$year => true]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 'Maria Santos')
+            ->assertJsonPath("data.indicators.1.actualTypedValue.values.{$year}", 'Level 2')
+            ->assertJsonPath("data.indicators.2.actualTypedValue.values.{$year}", true);
+    }
+
+    public function test_unresolved_metric_code_returns_clear_validation_error(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $response = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_id' => 900999,
+                    'metric_code' => 'UNKNOWN_CODE',
+                    'target_value' => 1,
+                    'actual_value' => 1,
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['indicators'])
+            ->assertJsonPath('errors.indicators.0', fn (string $message): bool => str_contains($message, 'UNKNOWN_CODE'));
+    }
+
+    public function test_key_performance_target_and_actual_values_persist_with_metric_code(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'NER')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_code' => 'NER',
+                    'target' => ['values' => [$year => 96]],
+                    'actual' => ['values' => [$year => 94]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.indicators.0.metric.code', 'NER')
+            ->assertJsonPath("data.indicators.0.targetTypedValue.values.{$year}", 96)
+            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 94);
     }
 
     public function test_submitted_indicator_submission_cannot_be_updated(): void

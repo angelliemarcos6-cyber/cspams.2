@@ -1139,34 +1139,65 @@ class IndicatorSubmissionController extends Controller
     {
         $rawIndicatorRows = collect($request->input('indicators', []))->values();
         $rawIndicatorRows = $this->mergeAutoCalculatedRows($rawIndicatorRows, $schoolId);
+
         $metricIds = $rawIndicatorRows
-            ->pluck('metric_id')
-            ->map(static fn (mixed $value): int => (int) $value)
+            ->map(fn (mixed $row): int => $this->normalizeMetricId(is_array($row) ? ($row['metric_id'] ?? null) : null))
             ->filter(static fn (int $value): bool => $value > 0)
             ->unique()
             ->values();
+        $metricCodes = $rawIndicatorRows
+            ->map(fn (mixed $row): string => $this->normalizeMetricCode(is_array($row) ? ($row['metric_code'] ?? null) : null))
+            ->filter(static fn (string $value): bool => $value !== '')
+            ->unique()
+            ->values();
 
-        $metricsById = PerformanceMetric::query()
-            ->whereIn('id', $metricIds)
-            ->get()
-            ->keyBy('id');
+        if ($rawIndicatorRows->isEmpty()) {
+            return collect();
+        }
+
+        $metrics = PerformanceMetric::query()
+            ->where(function (Builder $query) use ($metricIds, $metricCodes): void {
+                if ($metricIds->isNotEmpty()) {
+                    $query->whereIn('id', $metricIds->all());
+                }
+
+                if ($metricCodes->isNotEmpty()) {
+                    if ($metricIds->isNotEmpty()) {
+                        $query->orWhereIn('code', $metricCodes->all());
+                    } else {
+                        $query->whereIn('code', $metricCodes->all());
+                    }
+                }
+            })
+            ->get();
+        $metricsById = $metrics->keyBy(static fn (PerformanceMetric $metric): int => (int) $metric->id);
+        $metricsByCode = $metrics->keyBy(static fn (PerformanceMetric $metric): string => strtoupper(trim((string) $metric->code)));
+        $unresolved = [];
 
         return $rawIndicatorRows
-            ->map(function (array $row, int $index) use ($metricsById): array {
-                $metricId = (int) ($row['metric_id'] ?? 0);
+            ->map(function (array $row, int $index) use ($metricsById, $metricsByCode, &$unresolved): ?array {
+                $metricId = $this->normalizeMetricId($row['metric_id'] ?? null);
+                $metricCode = $this->normalizeMetricCode($row['metric_code'] ?? null);
+
                 /** @var PerformanceMetric|null $metric */
                 $metric = $metricsById->get($metricId);
+                if (! $metric && $metricCode !== '') {
+                    $metric = $metricsByCode->get($metricCode);
+                }
 
                 if (! $metric) {
-                    throw ValidationException::withMessages([
-                        "indicators.{$index}.metric_id" => 'Selected indicator metric does not exist.',
-                    ]);
+                    $unresolved[] = [
+                        'index' => $index,
+                        'metric_id' => $metricId > 0 ? $metricId : null,
+                        'metric_code' => $metricCode !== '' ? $metricCode : null,
+                    ];
+                    return null;
                 }
 
                 $normalized = $this->normalizeMetricValues($metric, $row, $index);
 
                 return [
-                    'performance_metric_id' => $metricId,
+                    'performance_metric_id' => (int) $metric->id,
                     'target_value' => $normalized['target_value'],
                     'target_typed_value' => $normalized['target_typed_value'],
                     'actual_value' => $normalized['actual_value'],
@@ -1178,6 +1209,30 @@ class IndicatorSubmissionController extends Controller
                     'remarks' => isset($row['remarks']) ? trim((string) $row['remarks']) : null,
                 ];
             })
+            ->tap(function () use (&$unresolved): void {
+                if ($unresolved === []) {
+                    return;
+                }
+
+                $summary = collect($unresolved)
+                    ->map(static function (array $row): string {
+                        $parts = [];
+                        if (isset($row['metric_id']) && $row['metric_id'] !== null) {
+                            $parts[] = 'metric_id=' . $row['metric_id'];
+                        }
+                        if (isset($row['metric_code']) && $row['metric_code'] !== null) {
+                            $parts[] = 'metric_code=' . $row['metric_code'];
+                        }
+
+                        return 'row ' . (((int) $row['index']) + 1) . ' (' . implode(', ', $parts) . ')';
+                    })
+                    ->implode('; ');
+
+                throw ValidationException::withMessages([
+                    'indicators' => 'Unable to resolve the following indicators against performance_metrics: ' . $summary . '.',
+                ]);
+            })
+            ->filter(static fn (?array $row): bool => is_array($row))
             ->values();
     }
 
@@ -1210,9 +1265,15 @@ class IndicatorSubmissionController extends Controller
             ? $row['actual']
             : ($row['actual_value'] ?? null);
 
+        if ($this->isActualOnlyWorkspaceMetric($metric) && $targetRaw === null && $actualRaw !== null) {
+            $targetRaw = $actualRaw;
+        }
+
         if ($targetRaw === null || $actualRaw === null) {
             throw ValidationException::withMessages([
-                "indicators.{$index}" => 'Both target and actual values are required for this indicator.',
+                "indicators.{$index}" => $this->isActualOnlyWorkspaceMetric($metric)
+                    ? 'Actual value is required for this indicator.'
+                    : 'Both target and actual values are required for this indicator.',
             ]);
         }
 
@@ -1836,18 +1897,20 @@ class IndicatorSubmissionController extends Controller
             return $rawIndicatorRows;
         }
 
-        $autoMetricsById = PerformanceMetric::query()
+        $autoMetrics = PerformanceMetric::query()
             ->whereIn('code', array_keys($derivedByCode))
             ->where('is_active', true)
             ->get(['id', 'code'])
-            ->keyBy(static fn (PerformanceMetric $metric): string => (string) $metric->id);
+            ->values();
+        $autoMetricsById = $autoMetrics->keyBy(static fn (PerformanceMetric $metric): string => (string) $metric->id);
+        $autoMetricsByCode = $autoMetrics->keyBy(static fn (PerformanceMetric $metric): string => strtoupper(trim((string) $metric->code)));
 
         if ($autoMetricsById->isEmpty()) {
             return $rawIndicatorRows;
         }
 
         return $rawIndicatorRows
-            ->map(function (mixed $row) use ($autoMetricsById, $derivedByCode): mixed {
+            ->map(function (mixed $row) use ($autoMetricsById, $autoMetricsByCode, $derivedByCode): mixed {
                 if (! is_array($row)) {
                     return $row;
                 }
@@ -1856,9 +1919,13 @@ class IndicatorSubmissionController extends Controller
                     return $row;
                 }
 
-                $metricId = (string) ((int) ($row['metric_id'] ?? 0));
+                $metricId = (string) $this->normalizeMetricId($row['metric_id'] ?? null);
+                $metricCode = $this->normalizeMetricCode($row['metric_code'] ?? null);
                 /** @var PerformanceMetric|null $metric */
                 $metric = $autoMetricsById->get($metricId);
+                if (! $metric && $metricCode !== '') {
+                    $metric = $autoMetricsByCode->get($metricCode);
+                }
                 if (! $metric) {
                     return $row;
                 }
@@ -1871,6 +1938,7 @@ class IndicatorSubmissionController extends Controller
 
                 return array_merge($row, [
                     'metric_id' => (int) $metric->id,
+                    'metric_code' => (string) $metric->code,
                     'target' => $derived['target'] ?? null,
                     'actual' => $derived['actual'] ?? null,
                     'remarks' => $row['remarks'] ?? ($derived['remarks'] ?? null),
@@ -1878,6 +1946,33 @@ class IndicatorSubmissionController extends Controller
             })
             ->filter(static fn (mixed $row): bool => is_array($row))
             ->values();
+    }
+
+    private function normalizeMetricId(mixed $value): int
+    {
+        if (! is_numeric($value)) {
+            return 0;
+        }
+
+        $metricId = (int) $value;
+
+        return $metricId > 0 ? $metricId : 0;
+    }
+
+    private function normalizeMetricCode(mixed $value): string
+    {
+        $metricCode = strtoupper(trim((string) $value));
+
+        return $metricCode !== '' ? $metricCode : '';
+    }
+
+    private function isActualOnlyWorkspaceMetric(PerformanceMetric $metric): bool
+    {
+        return in_array(
+            strtoupper(trim((string) $metric->code)),
+            GroupBWorkspaceDefinition::metricCodesFor(GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS),
+            true,
+        );
     }
 
     /**
