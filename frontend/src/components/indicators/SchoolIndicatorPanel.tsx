@@ -3894,6 +3894,7 @@ export function SchoolIndicatorPanel({
               submissionId: saved.id,
             };
           }
+          return refreshResolvedWorkspace();
         },
         getSuccessMessage: (saved) => (
           saveModeAtActionStart === "blank"
@@ -3980,8 +3981,10 @@ export function SchoolIndicatorPanel({
             bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
             smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
           });
+          setEditingSubmissionId(result.id);
           setIsSubmittedEditMode(false);
           submittedEditPreserveContextRef.current = null;
+          return refreshResolvedWorkspace();
         },
         getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
         onError: (err) => {
@@ -4049,8 +4052,10 @@ export function SchoolIndicatorPanel({
             bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
             smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
           });
+          setEditingSubmissionId(result.id);
           setIsSubmittedEditMode(false);
           submittedEditPreserveContextRef.current = null;
+          return refreshResolvedWorkspace();
         },
         getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
         onError: (err) => {
