@@ -2246,9 +2246,16 @@ export function SchoolIndicatorPanel({
     const metricsByCode = new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
     const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
     const hasHydratableRows = submissionHasHydratableRows(submission);
-    const nextEntries = submission && !hasHydratableRows
-      ? buildInitialMetricEntries(complianceMetrics, metricEntriesRef.current)
-      : buildInitialMetricEntries(complianceMetrics, {});
+    if (submission && !hasHydratableRows) {
+      setEditingSubmissionId(submission.id);
+      setServerAutosaveAt(submission.updatedAt ?? null);
+      setAutosaveError("");
+      setSubmitError("");
+      setSaveMessage("");
+      return;
+    }
+
+    const nextEntries = buildInitialMetricEntries(complianceMetrics, {});
 
     if (submission && hasHydratableRows) {
       for (const indicator of submissionRows(submission)) {
