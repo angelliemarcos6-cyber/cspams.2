@@ -1540,22 +1540,11 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const activeYearHasSavedSubmission = Boolean(
-      activeAcademicYearId
-      && sortedSubmissions.some((submission) => submission.academicYear?.id === activeAcademicYearId),
-    );
-
-    if (activeYearHasSavedSubmission || pendingLocalDraft) {
-      return;
-    }
-
     setAcademicYearId(preferredAcademicYearIdFromSubmissions);
   }, [
     activeAcademicYearId,
     isSubmissionDataLoading,
-    pendingLocalDraft,
     preferredAcademicYearIdFromSubmissions,
-    sortedSubmissions,
   ]);
   const latestValidatedSubmission = useMemo(
     () =>
