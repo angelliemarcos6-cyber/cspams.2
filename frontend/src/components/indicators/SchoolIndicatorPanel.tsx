@@ -433,6 +433,17 @@ function isDraftOrReturnedWorkflowStatus(status: string | null | undefined): boo
   return normalized === "draft" || normalized === "returned";
 }
 
+function toSubmissionRecencyScore(submission: IndicatorSubmission | null | undefined): number {
+  const timestamp = new Date(
+    submission?.submittedAt
+    ?? submission?.updatedAt
+    ?? submission?.createdAt
+    ?? 0,
+  ).getTime();
+  const version = Number(submission?.version ?? 0);
+  return timestamp * 1_000 + (Number.isFinite(version) ? version : 0);
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1523,10 +1534,7 @@ export function SchoolIndicatorPanel({
           return leftRank - rightRank;
         }
 
-        return (
-          new Date(right.submittedAt ?? right.updatedAt ?? right.createdAt ?? 0).getTime()
-          - new Date(left.submittedAt ?? left.updatedAt ?? left.createdAt ?? 0).getTime()
-        );
+        return toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left);
       });
 
     return ranked[0]?.academicYear?.id ?? null;
@@ -1794,15 +1802,12 @@ export function SchoolIndicatorPanel({
           const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
           const rightRank = priorityByStatus[rightStatus] ?? Number.MAX_SAFE_INTEGER;
 
-          if (leftRank !== rightRank) {
-            return leftRank - rightRank;
-          }
+        if (leftRank !== rightRank) {
+          return leftRank - rightRank;
+        }
 
-          return (
-            new Date(right.submittedAt ?? right.updatedAt ?? right.createdAt ?? 0).getTime()
-            - new Date(left.submittedAt ?? left.updatedAt ?? left.createdAt ?? 0).getTime()
-          );
-        });
+        return toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left);
+      });
 
       return ranked[0] ?? latestSubmissionInScope ?? null;
     },
@@ -1818,11 +1823,11 @@ export function SchoolIndicatorPanel({
   );
   const activeWorkspaceSubmission = useMemo(
     () => {
-      if (resolvedWorkspaceSubmission && isSubmittedWorkflowStatus(resolvedWorkspaceSubmission.status)) {
+      if (resolvedWorkspaceSubmission) {
         return resolvedWorkspaceSubmission;
       }
 
-      return editingSubmissionInScope ?? resolvedWorkspaceSubmission ?? null;
+      return editingSubmissionInScope ?? null;
     },
     [editingSubmissionInScope, resolvedWorkspaceSubmission],
   );
@@ -4062,6 +4067,10 @@ export function SchoolIndicatorPanel({
             submissionToSubmit = await createSubmission(payload);
           } else if (hasUnsavedWorkspaceChanges) {
             submissionToSubmit = await updateSubmission(submissionIdToUpdate, payload);
+          }
+
+          if (!submissionToSubmit) {
+            throw new Error("Unable to resolve the submission to submit.");
           }
 
           setEditingSubmissionId(submissionToSubmit.id);
