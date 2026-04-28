@@ -2878,13 +2878,11 @@ export function SchoolIndicatorPanel({
         if (nextAcademicYearId !== activeAcademicYearId) {
           setAcademicYearId(nextAcademicYearId);
           setEditingSubmissionId(submission.id);
-          setSaveMessage(`Switched to package #${submission.id}.`);
           return;
         }
 
         rehydrateWorkspaceFromSubmission(submission);
         workspaceFingerprintRef.current = "";
-        setSaveMessage(`Editing package #${submission.id}.`);
       },
     });
   };
@@ -3713,12 +3711,6 @@ export function SchoolIndicatorPanel({
     });
 
     setSubmitError("");
-    if (copiedCount > 0) {
-      setSaveMessage(`Copied previous-year values into ${copiedCount} empty cell${copiedCount === 1 ? "" : "s"}.`);
-      return;
-    }
-
-    setSaveMessage("No empty cells were eligible for previous-year copy.");
   }, [orderedComplianceMetrics, visibleSchoolYears, workspaceSchoolYears]);
 
   const handleCopyFromLatestValidated = useCallback(() => {
@@ -3800,12 +3792,6 @@ export function SchoolIndicatorPanel({
     });
 
     setSubmitError("");
-    if (copiedCount > 0) {
-      setSaveMessage(`Copied ${copiedCount} empty cell${copiedCount === 1 ? "" : "s"} from package #${latestValidatedSubmission.id}.`);
-      return;
-    }
-
-    setSaveMessage(`No empty cells could be copied from package #${latestValidatedSubmission.id}.`);
   }, [latestValidatedSubmission, orderedComplianceMetrics, visibleSchoolYears, workspaceSchoolYears]);
 
   const handleRestoreLocalDraft = useCallback(() => {
@@ -3843,7 +3829,6 @@ export function SchoolIndicatorPanel({
           setMetricEntries(buildMetricEntriesForLocalRestore(complianceMetrics, pendingLocalDraft.metricEntries));
           setEditingSubmissionId(inScopeSubmissionId);
           setAutosaveAt(pendingLocalDraft.savedAt);
-          setSaveMessage("Local draft restored.");
         },
       });
     });
@@ -3862,8 +3847,8 @@ export function SchoolIndicatorPanel({
       handleEditDraft(restorableServerSubmissionInScope);
     });
   }, [activeAcademicYearId, handleEditDraft, isSubmissionInAcademicYear, restorableServerSubmissionInScope, runGroupBAction]);
-  const runResetWorkspaceAction = useCallback(async (message: string, onSuccess?: () => void) => {
-    await resetForm({ postRefreshMessage: message, onSuccess });
+  const runResetWorkspaceAction = useCallback(async (onSuccess?: () => void) => {
+    await resetForm({ onSuccess });
   }, [resetForm]);
   const activeWorkspaceResetTarget = useMemo<GroupBWorkspaceResetTarget | null>(() => {
     if (activeTab?.kind === "upload") {
@@ -3915,11 +3900,6 @@ export function SchoolIndicatorPanel({
         setUploadErrorByType((current) => ({ ...current, [activeWorkspaceResetTarget]: "" }));
         setOptimisticSubmittedByType((current) => ({ ...current, [activeWorkspaceResetTarget]: false }));
         setSubmitError("");
-        setSaveMessage(
-          activeWorkspaceResetTarget === "bmef"
-            ? "BMEF upload was reset for this academic year."
-            : "SMEA upload was reset for this academic year.",
-        );
         return;
       }
 
@@ -3929,7 +3909,6 @@ export function SchoolIndicatorPanel({
       const resetCategory = activeCategory;
       if (!resetCategory || resetCategory.metrics.length === 0) {
         setSubmitError("");
-        setSaveMessage("No indicator fields to reset on this tab.");
         return;
       }
       setMetricEntries((current) => {
@@ -3945,7 +3924,6 @@ export function SchoolIndicatorPanel({
       setShowMissingFields(false);
       setMissingJumpIndex(0);
       setPendingFocusCellId(null);
-      setSaveMessage(`${categoryTabLabel(resetCategory)} values were reset to defaults for the selected academic year.`);
     });
   }, [
     activeWorkspaceResetTarget,
@@ -3963,10 +3941,7 @@ export function SchoolIndicatorPanel({
   ]);
   const handleCancelSubmittedEdit = useCallback(async () => {
     await runGroupBAction("Cancel submitted edit", async () => {
-      await runResetWorkspaceAction(
-        "Submitted report editing canceled. Locked view restored.",
-        () => setIsSubmittedEditMode(false),
-      );
+      await runResetWorkspaceAction(() => setIsSubmittedEditMode(false));
     });
   }, [runGroupBAction, runResetWorkspaceAction]);
   const handleOpenEditSubmittedReport = useCallback(() => {
@@ -4035,7 +4010,6 @@ export function SchoolIndicatorPanel({
 
       if (submissionIdToUpdate && !hasUnsavedWorkspaceChanges) {
         setSubmitError("");
-        setSaveMessage("No draft changes to save.");
         return;
       }
 
@@ -4252,7 +4226,6 @@ export function SchoolIndicatorPanel({
           setShowEditConfirmModal(false);
           setIsSubmittedEditMode(true);
           setOptimisticSubmittedByType({ bmef: false, smea: false });
-          setSaveMessage("Editing mode enabled for submitted report.");
           setSubmitError("");
         },
       });
@@ -5390,11 +5363,6 @@ export function SchoolIndicatorPanel({
           <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">{saveMessage}</p>
         )}
         {normalizedIndicatorError && <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{normalizedIndicatorError}</p>}
-        {(workspaceMode === "draft" || workspaceMode === "submitted_editing") && activeWorkspaceSubmissionId && (
-          <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-            Editing package #{activeWorkspaceSubmissionId}. {workspaceMode === "submitted_editing" ? "Save changes" : "Update draft"} to update this package.
-          </p>
-        )}
         {(yearWorkspaceState.isWorkspaceReadOnly || !isSelectedYearEditable) && (
           <p className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
             {yearWorkspaceState.isWorkspaceReadOnly
