@@ -1525,16 +1525,16 @@ export function SchoolIndicatorPanel({
       .filter((submission) => submission.academicYear?.id)
       .slice()
       .sort((left, right) => {
+        const recencyDelta = toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left);
+        if (recencyDelta !== 0) {
+          return recencyDelta;
+        }
+
         const leftStatus = String(left.status ?? "").toLowerCase();
         const rightStatus = String(right.status ?? "").toLowerCase();
         const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
         const rightRank = priorityByStatus[rightStatus] ?? Number.MAX_SAFE_INTEGER;
-
-        if (leftRank !== rightRank) {
-          return leftRank - rightRank;
-        }
-
-        return toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left);
+        return leftRank - rightRank;
       });
 
     return ranked[0]?.academicYear?.id ?? null;
