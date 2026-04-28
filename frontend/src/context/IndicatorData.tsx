@@ -1050,7 +1050,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
         return response.data;
-      });
+      }, { backgroundSync: false });
     },
     [runSubmissionMutation, token],
   );
@@ -1092,7 +1092,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           timeoutMs: 60_000,
         });
         return response.data;
-      });
+      }, { backgroundSync: false });
     },
     [runSubmissionMutation, token],
   );
