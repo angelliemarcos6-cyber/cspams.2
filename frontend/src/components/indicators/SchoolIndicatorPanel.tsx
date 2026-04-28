@@ -2006,6 +2006,8 @@ export function SchoolIndicatorPanel({
     clearWorkspaceTransitionIntents();
   }, [activeAcademicYearId, clearWorkspaceTransitionIntents, invalidateAutosaveContext]);
   const refreshResolvedWorkspace = useCallback(async () => {
+    workspaceFingerprintRef.current = "";
+    lastHydratedWorkspaceScopeRef.current = "";
     await refreshSubmissions();
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
