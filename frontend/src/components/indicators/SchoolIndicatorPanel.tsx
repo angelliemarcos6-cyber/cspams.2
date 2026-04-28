@@ -1852,17 +1852,6 @@ export function SchoolIndicatorPanel({
     latestWorkspaceStatusRef.current = latestActiveWorkspaceSubmission?.status;
   }, [latestActiveWorkspaceSubmission]);
   useEffect(() => {
-    if (isSubmissionDataLoading) {
-      return;
-    }
-
-    if (latestActiveWorkspaceSubmission) {
-      return;
-    }
-
-    setMetricEntries((current) => buildInitialMetricEntries(complianceMetrics, current));
-  }, [complianceMetrics, isSubmissionDataLoading, latestActiveWorkspaceSubmission?.id]);
-  useEffect(() => {
     if (!latestActiveWorkspaceSubmission) {
       return;
     }
