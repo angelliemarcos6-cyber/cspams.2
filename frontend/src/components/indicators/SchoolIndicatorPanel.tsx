@@ -1857,6 +1857,16 @@ export function SchoolIndicatorPanel({
     () => scopedSubmissionsForYear.find((submission) => submission.id === editingSubmissionId) ?? null,
     [editingSubmissionId, scopedSubmissionsForYear],
   );
+  const editableWorkspaceSubmissionInScope = useMemo(
+    () => {
+      if (editingSubmissionInScope && isDraftOrReturnedWorkflowStatus(editingSubmissionInScope.status)) {
+        return editingSubmissionInScope;
+      }
+
+      return scopedSubmissionsForYear.find((submission) => isDraftOrReturnedWorkflowStatus(submission.status)) ?? null;
+    },
+    [editingSubmissionInScope, scopedSubmissionsForYear],
+  );
   const activeWorkspaceSubmission = useMemo(
     () => {
       if (resolvedWorkspaceSubmission) {
@@ -3550,11 +3560,16 @@ export function SchoolIndicatorPanel({
       if (activeWorkspaceSubmission && !isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId)) {
         throw new Error("The selected academic year changed before saving. No stale changes were applied. Review the workspace and try again.");
       }
-      const canUpdateActiveSubmission = (
-        isSubmissionInAcademicYear(activeWorkspaceSubmission, payload.academicYearId)
-        && isDraftOrReturnedWorkflowStatus(activeWorkspaceSubmission?.status)
+      const mutableSubmission = (
+        isSubmissionInAcademicYear(editableWorkspaceSubmissionInScope, payload.academicYearId)
+          ? editableWorkspaceSubmissionInScope
+          : null
       );
-      const submissionIdToUpdate = canUpdateActiveSubmission ? activeWorkspaceSubmission?.id ?? null : null;
+      const canUpdateActiveSubmission = (
+        isSubmissionInAcademicYear(mutableSubmission, payload.academicYearId)
+        && isDraftOrReturnedWorkflowStatus(mutableSubmission?.status)
+      );
+      const submissionIdToUpdate = canUpdateActiveSubmission ? mutableSubmission?.id ?? null : null;
       const result = submissionIdToUpdate
         ? await updateSubmission(submissionIdToUpdate, payload)
         : await createSubmission(payload);
@@ -3580,7 +3595,7 @@ export function SchoolIndicatorPanel({
 
       return result;
     },
-    [activeWorkspaceSubmission, createSubmission, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission],
+    [createSubmission, editableWorkspaceSubmissionInScope, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission],
   );
 
   const triggerServerAutosave = useCallback(async () => {
@@ -3998,7 +4013,7 @@ export function SchoolIndicatorPanel({
       }
       const payload = prepared.payload;
       console.log("[GroupB] payload:", payload);
-      const activeSubmission = latestActiveWorkspaceSubmission;
+      const activeSubmission = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
       const submissionIdToUpdate = (
         activeSubmission && isSubmissionInAcademicYear(activeSubmission, payload.academicYearId)
           ? activeSubmission.id
@@ -4092,7 +4107,7 @@ export function SchoolIndicatorPanel({
 
       await runCriticalWorkspaceMutation({
         mutation: async () => {
-          let submissionToSubmit = latestActiveWorkspaceSubmission;
+          let submissionToSubmit = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
           const submissionIdToUpdate = (
             submissionToSubmit && isSubmissionInAcademicYear(submissionToSubmit, payload.academicYearId)
               ? submissionToSubmit.id
@@ -4161,9 +4176,16 @@ export function SchoolIndicatorPanel({
 
       await runCriticalWorkspaceMutation({
         mutation: async () => {
-          let submissionToSubmit = submission;
+          let submissionToSubmit = (
+            latestActiveWorkspaceSubmission?.id === submission.id && editableWorkspaceSubmissionInScope
+              ? editableWorkspaceSubmissionInScope
+              : submission
+          );
 
-          if (latestActiveWorkspaceSubmission?.id === submission.id) {
+          if (
+            latestActiveWorkspaceSubmission?.id === submission.id
+            || editableWorkspaceSubmissionInScope?.id === submission.id
+          ) {
             const prepared = buildSubmissionPayloadFromCurrentWorkspace();
             if (!prepared.payload) {
               throw new Error(prepared.reason || "Complete all required indicator cells before submitting.");
