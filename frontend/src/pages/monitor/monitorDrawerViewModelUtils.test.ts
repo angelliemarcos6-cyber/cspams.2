@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
+import { formatSubmittedReportValue, resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import type { IndicatorSubmissionItem } from "@/types";
 
 function item(overrides: Partial<IndicatorSubmissionItem>): IndicatorSubmissionItem {
@@ -68,5 +68,19 @@ describe("resolveSubmissionItemDisplayValue", () => {
     });
 
     expect(resolveSubmissionItemDisplayValue(indicator, "target")).toBe("-");
+  });
+});
+
+describe("formatSubmittedReportValue", () => {
+  it("strips leading academic year prefixes from submitted report cells", () => {
+    expect(formatSubmittedReportValue("2025-2026 64.29")).toBe("64.29");
+    expect(formatSubmittedReportValue("2025-2026: 64.29")).toBe("64.29");
+  });
+
+  it("preserves legitimate zero and yes/no values", () => {
+    expect(formatSubmittedReportValue(0)).toBe("0");
+    expect(formatSubmittedReportValue("0.00")).toBe("0.00");
+    expect(formatSubmittedReportValue(false)).toBe("No");
+    expect(formatSubmittedReportValue("no")).toBe("no");
   });
 });

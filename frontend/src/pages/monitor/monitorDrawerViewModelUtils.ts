@@ -115,6 +115,52 @@ export function toDisplayValue(value: unknown): string {
   return String(value).trim();
 }
 
+export function formatSubmittedReportValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "-";
+    }
+
+    const cleaned = trimmed.replace(/^\d{4}-\d{4}\s*:?\s*/, "").trim();
+    return cleaned || "-";
+  }
+
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((entry) => formatSubmittedReportValue(entry))
+      .filter((entry) => entry !== "-")
+      .join(", ");
+    return joined || "-";
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return formatSubmittedReportValue(
+      record.display
+      ?? record.label
+      ?? record.value
+      ?? record.scalar_value
+      ?? record.raw_value
+      ?? "",
+    );
+  }
+
+  return String(value);
+}
+
 export function typedYearValues(payload: Record<string, unknown> | null | undefined): Record<string, string> {
   if (!payload || typeof payload !== "object") {
     return {};
@@ -161,12 +207,9 @@ function typedCompositeValue(payload: Record<string, unknown> | null | undefined
   }
 
   return sortedYears
-    .map((year) => {
-      const value = valuesByYear[year];
-      return value ? `${year}: ${value}` : "";
-    })
+    .map((year) => valuesByYear[year] ?? "")
     .filter((value) => value.length > 0)
-    .join("; ");
+    .join(", ");
 }
 
 export function resolveSubmissionItemDisplayValue(
@@ -191,12 +234,12 @@ export function resolveSubmissionItemDisplayValue(
     ? (typedRaw as Record<string, unknown>)
     : null;
 
-  return (
+  return formatSubmittedReportValue(
     toDisplayValue(displayRaw)
     || typedScalarValue(typed)
     || typedCompositeValue(typed)
     || toDisplayValue(valueRaw)
-    || "-"
+    || "-",
   );
 }
 

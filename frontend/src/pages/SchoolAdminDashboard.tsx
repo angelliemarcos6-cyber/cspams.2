@@ -1057,7 +1057,9 @@ export function SchoolAdminDashboard() {
                           {item.metric?.name ?? "Unknown Metric"}
                         </td>
                         <td className="px-4 py-2.5 text-right text-slate-900">
-                          {resolveIndicatorValue(item, "actual")}
+                          <span className="font-semibold text-slate-900">
+                            {resolveIndicatorValue(item, "actual")}
+                          </span>
                         </td>
                       </tr>
                     ))
@@ -1068,7 +1070,9 @@ export function SchoolAdminDashboard() {
                           {row.label}
                         </td>
                         <td className="px-4 py-2.5 text-right text-slate-900">
-                          {row.value}
+                          <span className="font-semibold text-slate-900">
+                            {row.value}
+                          </span>
                         </td>
                       </tr>
                     ))
@@ -1097,10 +1101,14 @@ export function SchoolAdminDashboard() {
                       <tr key={`submitted-kpi-${item.id}`}>
                         <td className="px-4 py-2.5 text-slate-900">{item.metric?.name ?? "Unknown Metric"}</td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
-                          {resolveIndicatorValue(item, "target")}
+                          <span className="font-semibold text-slate-900">
+                            {resolveIndicatorValue(item, "target")}
+                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
-                          {resolveIndicatorValue(item, "actual")}
+                          <span className="font-semibold text-slate-900">
+                            {resolveIndicatorValue(item, "actual")}
+                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
                           {formatDisplayValue(item.complianceStatus)}
@@ -1112,10 +1120,14 @@ export function SchoolAdminDashboard() {
                       <tr key={row.key}>
                         <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
-                          {row.target}
+                          <span className="font-semibold text-slate-900">
+                            {row.target}
+                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
-                          {row.actual}
+                          <span className="font-semibold text-slate-900">
+                            {row.actual}
+                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-center text-slate-900">
                           {row.status}
