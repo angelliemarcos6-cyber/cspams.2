@@ -47,15 +47,18 @@ function submissionRecencyScore(submission: IndicatorSubmission): number {
   return (Number.isFinite(timestamp) ? timestamp : 0) * 1_000 + (Number.isFinite(version) ? version : 0);
 }
 
-function resolveSelectedYearReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
+export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
+  const finalizedEntries = entries.filter((entry) => isFinalizedSubmissionStatus(entry.status));
+  if (finalizedEntries.length === 0) {
+    return null;
+  }
+
   const priorityByStatus: Record<string, number> = {
     submitted: 0,
     validated: 1,
-    returned: 2,
-    draft: 3,
   };
 
-  const ranked = entries
+  const ranked = finalizedEntries
     .slice()
     .sort((left, right) => {
       const freshnessDelta = submissionRecencyScore(right) - submissionRecencyScore(left);
@@ -967,9 +970,9 @@ export function SchoolAdminDashboard() {
           )}
           {!isYearScopedLoading && !groupASubmittedSubmission && (
             <div className="mb-3 space-y-1">
-              <p className="text-xs font-medium text-slate-500">No saved report package for the selected academic year.</p>
+              <p className="text-xs font-medium text-slate-500">No submitted report package yet.</p>
               <p className="text-xs text-slate-500">
-                Use the submission workspace below to prepare and submit this year&apos;s report package.
+                Save Draft keeps your editable package in the workspace below. This report package updates only after you click Submit.
               </p>
             </div>
           )}
