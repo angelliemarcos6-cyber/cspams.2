@@ -272,6 +272,47 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.completion.hasImetaFormData', false);
     }
 
+    public function test_updating_indicator_draft_returns_full_submission_resource(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $metricId = (int) PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->value('id');
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $updated = $this->withToken($token)->putJson("/api/indicators/submissions/{$submissionId}", [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'actual' => [
+                        'values' => [
+                            '2026-2027' => 'Dr. Elena Cruz',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $updated->assertOk()
+            ->assertJsonPath('data.id', $submissionId)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonCount(1, 'data.indicators')
+            ->assertJsonPath('data.indicators.0.metric.code', 'IMETA_HEAD_NAME')
+            ->assertJsonPath('data.indicators.0.actualTypedValue.values.2026-2027', 'Dr. Elena Cruz');
+    }
+
     public function test_school_head_cannot_submit_other_schools_indicator_package(): void
     {
         $this->seedIndicatorFixtures();

@@ -21,6 +21,7 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
+import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import type {
   IndicatorSubmission,
   IndicatorSubmissionFileEntry,
@@ -112,32 +113,6 @@ function formatDisplayValue(value: unknown): string {
   return String(value);
 }
 
-function resolveTypedPayload(raw: unknown): Record<string, unknown> | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-
-  return raw as Record<string, unknown>;
-}
-
-function extractTypedScalar(value: Record<string, unknown> | null | undefined): string {
-  const typed = resolveTypedPayload(value);
-  if (!typed) {
-    return "";
-  }
-
-  const scalar = typed.value ?? typed["scalar_value"] ?? typed["raw_value"];
-  if (scalar === null || scalar === undefined) {
-    return "";
-  }
-
-  return String(scalar);
-}
-
-function indicatorField(indicator: IndicatorSubmissionItem, key: string): unknown {
-  return (indicator as unknown as Record<string, unknown>)[key];
-}
-
 function submissionRows(submission: IndicatorSubmission | null | undefined): IndicatorSubmissionItem[] {
   if (!submission) {
     return [];
@@ -155,39 +130,7 @@ function resolveIndicatorValue(
   indicator: IndicatorSubmissionItem | null | undefined,
   kind: "target" | "actual",
 ): string {
-  if (!indicator) {
-    return "-";
-  }
-
-  const typed = resolveTypedPayload(
-    kind === "target"
-      ? (
-        indicatorField(indicator, "targetTypedValue")
-        ?? indicatorField(indicator, "target_typed_value")
-        ?? indicatorField(indicator, "target")
-      )
-      : (
-        indicatorField(indicator, "actualTypedValue")
-        ?? indicatorField(indicator, "actual_typed_value")
-        ?? indicatorField(indicator, "actual")
-      ),
-  );
-  const display = kind === "target"
-    ? (
-      indicatorField(indicator, "targetDisplay")
-      ?? indicatorField(indicator, "target_display")
-      ?? indicatorField(indicator, "targetValue")
-      ?? indicatorField(indicator, "target_value")
-    )
-    : (
-      indicatorField(indicator, "actualDisplay")
-      ?? indicatorField(indicator, "actual_display")
-      ?? indicatorField(indicator, "actualValue")
-      ?? indicatorField(indicator, "actual_value")
-    );
-  const scalar = extractTypedScalar(typed);
-
-  return formatDisplayValue(scalar !== "" ? scalar : display);
+  return resolveSubmissionItemDisplayValue(indicator, kind);
 }
 
 function selectedYearLabel(

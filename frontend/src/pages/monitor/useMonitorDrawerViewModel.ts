@@ -9,13 +9,13 @@ import type {
   SchoolIndicatorRowGroup,
 } from "@/pages/monitor/monitorDrawerTypes";
 import {
+  resolveSubmissionItemDisplayValue,
   SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL,
   deriveSchoolYearLabel,
   indicatorCategoryLabel,
   indicatorDisplayLabel,
   schoolTypeLabel,
   sortSchoolYears,
-  toDisplayValue,
   typedYearValues,
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import type { IndicatorSubmission, SchoolRecord } from "@/types";
@@ -133,7 +133,7 @@ export function useMonitorDrawerViewModel({
             const targetValue =
               targetYears[normalizedYear] ||
               (hasSingleFallbackYear
-                ? toDisplayValue(entry.targetDisplay) || toDisplayValue(entry.targetValue)
+                ? resolveSubmissionItemDisplayValue(entry, "target").replace(/^-$/, "")
                 : "");
             if (targetValue.length > 0) {
               row.valuesByYear[normalizedYear].target = targetValue;
@@ -144,7 +144,7 @@ export function useMonitorDrawerViewModel({
             const actualValue =
               actualYears[normalizedYear] ||
               (hasSingleFallbackYear
-                ? toDisplayValue(entry.actualDisplay) || toDisplayValue(entry.actualValue)
+                ? resolveSubmissionItemDisplayValue(entry, "actual").replace(/^-$/, "")
                 : "");
             if (actualValue.length > 0) {
               row.valuesByYear[normalizedYear].actual = actualValue;

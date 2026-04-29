@@ -456,7 +456,7 @@ class IndicatorSubmissionController extends Controller
             ]));
         });
 
-        return $this->lightweightSubmissionResponse($submission);
+        return $this->fullSubmissionResponse($submission);
     }
 
     public function uploadFile(Request $request, IndicatorSubmission $submission): JsonResponse

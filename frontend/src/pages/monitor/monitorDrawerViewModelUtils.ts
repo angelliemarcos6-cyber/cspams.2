@@ -1,3 +1,5 @@
+import type { IndicatorSubmissionItem } from "@/types";
+
 const SCHOOL_YEAR_START_MONTH = 6;
 
 export const SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL = "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES";
@@ -132,6 +134,70 @@ export function typedYearValues(payload: Record<string, unknown> | null | undefi
   }
 
   return values;
+}
+
+function typedScalarValue(payload: Record<string, unknown> | null | undefined): string {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const typed = payload as Record<string, unknown>;
+  return (
+    toDisplayValue(typed.value)
+    || toDisplayValue(typed.scalar_value)
+    || toDisplayValue(typed.raw_value)
+  );
+}
+
+function typedCompositeValue(payload: Record<string, unknown> | null | undefined): string {
+  const valuesByYear = typedYearValues(payload);
+  const sortedYears = sortSchoolYears(Object.keys(valuesByYear));
+  if (sortedYears.length === 0) {
+    return "";
+  }
+
+  if (sortedYears.length === 1) {
+    return valuesByYear[sortedYears[0]] ?? "";
+  }
+
+  return sortedYears
+    .map((year) => {
+      const value = valuesByYear[year];
+      return value ? `${year}: ${value}` : "";
+    })
+    .filter((value) => value.length > 0)
+    .join("; ");
+}
+
+export function resolveSubmissionItemDisplayValue(
+  indicator: IndicatorSubmissionItem | null | undefined,
+  kind: "target" | "actual",
+): string {
+  if (!indicator) {
+    return "-";
+  }
+
+  const typedRaw = kind === "target"
+    ? indicator.targetTypedValue
+    : indicator.actualTypedValue;
+  const displayRaw = kind === "target"
+    ? indicator.targetDisplay
+    : indicator.actualDisplay;
+  const valueRaw = kind === "target"
+    ? indicator.targetValue
+    : indicator.actualValue;
+
+  const typed = typedRaw && typeof typedRaw === "object"
+    ? (typedRaw as Record<string, unknown>)
+    : null;
+
+  return (
+    toDisplayValue(displayRaw)
+    || typedScalarValue(typed)
+    || typedCompositeValue(typed)
+    || toDisplayValue(valueRaw)
+    || "-"
+  );
 }
 
 export function indicatorCategoryLabel(metricCode: string | null | undefined): string {
