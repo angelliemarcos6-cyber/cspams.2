@@ -66,6 +66,7 @@ class IndicatorSubmissionResource extends JsonResource
                     'sizeBytes' => $this->bmef_file_size ? (int) $this->bmef_file_size : null,
                     'uploadedAt' => optional($this->bmef_uploaded_at)->toISOString(),
                     'downloadUrl' => $hasBmef ? "/api/submissions/{$this->id}/download/bmef" : null,
+                    'viewUrl' => $hasBmef ? "/api/submissions/{$this->id}/view/bmef" : null,
                 ],
                 'smea' => [
                     'type' => 'smea',
@@ -75,6 +76,7 @@ class IndicatorSubmissionResource extends JsonResource
                     'sizeBytes' => $this->smea_file_size ? (int) $this->smea_file_size : null,
                     'uploadedAt' => optional($this->smea_uploaded_at)->toISOString(),
                     'downloadUrl' => $hasSmea ? "/api/submissions/{$this->id}/download/smea" : null,
+                    'viewUrl' => $hasSmea ? "/api/submissions/{$this->id}/view/smea" : null,
                 ],
             ],
             'completion' => [

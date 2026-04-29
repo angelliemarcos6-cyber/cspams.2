@@ -118,6 +118,7 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('notific
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('submissions')->group(function (): void {
     // BMEF/SMEA upload support added per redesign doc
     Route::post('/{submission}/upload-file', [IndicatorSubmissionController::class, 'uploadFile']);
+    Route::get('/{submission}/view/{type}', [IndicatorSubmissionController::class, 'viewFile']);
     Route::get('/{submission}/download/{type}', [IndicatorSubmissionController::class, 'downloadFile']);
 });
 

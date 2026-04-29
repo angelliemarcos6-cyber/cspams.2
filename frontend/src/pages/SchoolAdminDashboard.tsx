@@ -19,6 +19,7 @@ import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPan
 import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
+import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import type {
   IndicatorSubmission,
@@ -39,16 +40,28 @@ function latestSubmission<T extends { updatedAt: string | null; createdAt: strin
   return sorted[0] ?? null;
 }
 
-function resolveSelectedYearFinalizedSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
+function submissionRecencyScore(submission: IndicatorSubmission): number {
+  const timestamp = new Date(submission.updatedAt ?? submission.submittedAt ?? submission.createdAt ?? 0).getTime();
+  const version = Number(submission.version ?? 0);
+  return (Number.isFinite(timestamp) ? timestamp : 0) * 1_000 + (Number.isFinite(version) ? version : 0);
+}
+
+function resolveSelectedYearReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
   const priorityByStatus: Record<string, number> = {
     submitted: 0,
     validated: 1,
+    returned: 2,
+    draft: 3,
   };
 
   const ranked = entries
-    .filter((submission) => isFinalizedSubmissionStatus(submission.status))
     .slice()
     .sort((left, right) => {
+      const freshnessDelta = submissionRecencyScore(right) - submissionRecencyScore(left);
+      if (freshnessDelta !== 0) {
+        return freshnessDelta;
+      }
+
       const leftStatus = String(left.status ?? "").trim().toLowerCase();
       const rightStatus = String(right.status ?? "").trim().toLowerCase();
       const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
@@ -465,13 +478,14 @@ function isSubItemMetric(label: string): boolean {
 
 /* ── Component ── */
 export function SchoolAdminDashboard() {
-  const { user } = useAuth();
+  const { user, apiToken } = useAuth();
   const { records, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
   const {
     submissions: submissionSnapshot,
     allSubmissions,
     academicYears,
     downloadSubmissionFile,
+    fetchSubmission,
     isLoading,
     isAllSubmissionsLoading,
     refreshSubmissions,
@@ -511,7 +525,7 @@ export function SchoolAdminDashboard() {
     [allSubmissions, submissionSnapshot],
   );
   const groupASubmittedSubmission = useMemo(
-    () => resolveSelectedYearFinalizedSubmission(
+    () => resolveSelectedYearReportSubmission(
       indicatorSubmissions.filter((submission) => {
         const matchesAcademicYear =
           effectiveAcademicYearId.length > 0
@@ -526,6 +540,18 @@ export function SchoolAdminDashboard() {
     [effectiveAcademicYearId, indicatorSubmissions, selectedSchoolId],
   );
   const isYearScopedLoading = (isLoading || isAllSubmissionsLoading) && effectiveAcademicYearId.length > 0;
+
+  useEffect(() => {
+    if (!groupASubmittedSubmission?.id) return;
+
+    const hasRows = Array.isArray(groupASubmittedSubmission.indicators)
+      ? groupASubmittedSubmission.indicators.length > 0
+      : Array.isArray(groupASubmittedSubmission.items) && groupASubmittedSubmission.items.length > 0;
+
+    if (hasRows) return;
+
+    void fetchSubmission(groupASubmittedSubmission.id).catch(() => undefined);
+  }, [fetchSubmission, groupASubmittedSubmission?.id, groupASubmittedSubmission?.indicators, groupASubmittedSubmission?.items]);
   const groupAReportView = useMemo(() => {
     const submission = groupASubmittedSubmission;
     const indicators = submissionRows(submission);
@@ -821,12 +847,46 @@ export function SchoolAdminDashboard() {
   const focusCls = (id: string) => (focusedSectionId === id ? "dashboard-focus-glow" : "");
 
   const openReportModal = useCallback(
-    (type: IndicatorSubmissionFileType) => {
-      if (!groupAReportView.submission?.files?.[type]?.uploaded) return;
-      setActiveReportModalType(type);
-      setReportZoomLevel(1);
+    async (type: IndicatorSubmissionFileType) => {
+      const submission = groupAReportView.submission;
+      const fileEntry = submission?.files?.[type] ?? null;
+      if (!submission || !fileEntry?.uploaded) return;
+
+      const previewWindow = window.open("", "_blank", "noopener,noreferrer");
+      if (!previewWindow) return;
+
+      try {
+        const relativeUrl = fileEntry.viewUrl ?? fileEntry.downloadUrl;
+        if (!relativeUrl) {
+          throw new Error("Preview URL is unavailable for this report.");
+        }
+
+        const endpoint = new URL(relativeUrl, getApiBaseUrl()).toString();
+        const headers = new Headers({ Accept: "*/*" });
+        if (apiToken !== COOKIE_SESSION_TOKEN) {
+          headers.set("Authorization", `Bearer ${apiToken}`);
+        }
+
+        const response = await fetch(endpoint, {
+          method: "GET",
+          credentials: apiToken === COOKIE_SESSION_TOKEN ? "include" : "omit",
+          headers,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Unable to open report preview (status ${response.status}).`);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        previewWindow.location.href = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } catch {
+        previewWindow.close();
+        await downloadSubmissionFile(submission.id, type);
+      }
     },
-    [groupAReportView],
+    [apiToken, downloadSubmissionFile, groupAReportView],
   );
 
   const closeReportModal = useCallback(() => {
@@ -964,7 +1024,7 @@ export function SchoolAdminDashboard() {
           )}
           {!isYearScopedLoading && !groupASubmittedSubmission && (
             <div className="mb-3 space-y-1">
-              <p className="text-xs font-medium text-slate-500">No submitted report package for the selected academic year.</p>
+              <p className="text-xs font-medium text-slate-500">No saved report package for the selected academic year.</p>
               <p className="text-xs text-slate-500">
                 Use the submission workspace below to prepare and submit this year&apos;s report package.
               </p>

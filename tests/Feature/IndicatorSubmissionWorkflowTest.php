@@ -13,6 +13,8 @@ use App\Support\Indicators\GroupBWorkspaceDefinition;
 use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -699,6 +701,152 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.indicators.0.metric.code', 'NER')
             ->assertJsonPath("data.indicators.0.targetTypedValue.values.{$year}", 96)
             ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 94);
+    }
+
+    public function test_submit_fails_when_bmef_and_smea_are_missing_even_if_group_b_values_exist(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.completion.hasImetaFormData', true);
+
+        $submissionId = (string) $created->json('data.id');
+
+        $submitted = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+        $submitted->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', fn (string $message): bool =>
+                str_contains($message, 'BMEF file') && str_contains($message, 'SMEA file')
+            );
+    }
+
+    public function test_submit_with_group_b_values_and_uploaded_files_returns_full_submission_resource(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+                [
+                    'metric_code' => 'NER',
+                    'target' => ['values' => [$year => 0]],
+                    'actual' => ['values' => [$year => 0]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->withToken($token)
+            ->postJson("/api/submissions/{$submissionId}/upload-file", [
+                'type' => 'bmef',
+                'file' => UploadedFile::fake()->create('bmef-report.pdf', 64, 'application/pdf'),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef");
+
+        $this->withToken($token)
+            ->postJson("/api/submissions/{$submissionId}/upload-file", [
+                'type' => 'smea',
+                'file' => UploadedFile::fake()->create('smea-report.xlsx', 64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.files.smea.uploaded', true)
+            ->assertJsonPath('data.files.smea.viewUrl', "/api/submissions/{$submissionId}/view/smea");
+
+        $submitted = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+
+        $submitted->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.smea.uploaded', true)
+            ->assertJsonPath('data.completion.hasImetaFormData', true);
+
+        $refetched = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}");
+        $refetched->assertOk();
+
+        $this->assertTrue(
+            collect($refetched->json('data.indicators', []))->contains(
+                static fn (mixed $row): bool =>
+                    is_array($row) && data_get($row, "actualTypedValue.values.{$year}") === 'Maria Santos',
+            ),
+        );
+    }
+
+    public function test_view_file_endpoint_returns_inline_response(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->withToken($token)
+            ->postJson("/api/submissions/{$submissionId}/upload-file", [
+                'type' => 'bmef',
+                'file' => UploadedFile::fake()->create('bmef-report.pdf', 64, 'application/pdf'),
+            ])
+            ->assertOk();
+
+        $view = $this->withToken($token)->get("/api/submissions/{$submissionId}/view/bmef");
+
+        $view->assertOk();
+        $this->assertStringContainsString('inline;', (string) $view->headers->get('content-disposition'));
+        $this->assertStringContainsString('application/pdf', (string) $view->headers->get('content-type'));
     }
 
     public function test_submitted_indicator_submission_cannot_be_updated(): void

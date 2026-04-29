@@ -359,11 +359,13 @@ function patchSubmissionWithLightweightPayload(
             ...current.files.bmef,
             uploaded: nextCompletion.hasBmefFile,
             downloadUrl: nextCompletion.hasBmefFile ? `/api/submissions/${patch.id}/download/bmef` : null,
+            viewUrl: nextCompletion.hasBmefFile ? `/api/submissions/${patch.id}/view/bmef` : null,
           },
           smea: {
             ...current.files.smea,
             uploaded: nextCompletion.hasSmeaFile,
             downloadUrl: nextCompletion.hasSmeaFile ? `/api/submissions/${patch.id}/download/smea` : null,
+            viewUrl: nextCompletion.hasSmeaFile ? `/api/submissions/${patch.id}/view/smea` : null,
           },
         }
       : current.files;
@@ -432,6 +434,7 @@ function materializeSubmissionFromLightweightPayload(
         sizeBytes: null,
         uploadedAt: null,
         downloadUrl: hasBmefFile ? `/api/submissions/${patch.id}/download/bmef` : null,
+        viewUrl: hasBmefFile ? `/api/submissions/${patch.id}/view/bmef` : null,
       },
       smea: {
         type: "smea",
@@ -441,6 +444,7 @@ function materializeSubmissionFromLightweightPayload(
         sizeBytes: null,
         uploadedAt: null,
         downloadUrl: hasSmeaFile ? `/api/submissions/${patch.id}/download/smea` : null,
+        viewUrl: hasSmeaFile ? `/api/submissions/${patch.id}/view/smea` : null,
       },
     },
     completion: {

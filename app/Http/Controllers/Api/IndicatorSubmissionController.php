@@ -551,7 +551,7 @@ class IndicatorSubmissionController extends Controller
             'fileType' => $fileType,
         ]));
 
-        return $this->lightweightSubmissionResponse($submission);
+        return $this->fullSubmissionResponse($submission);
     }
 
     public function downloadFile(Request $request, IndicatorSubmission $submission, string $type)
@@ -578,6 +578,37 @@ class IndicatorSubmissionController extends Controller
             : $fallbackFilename;
 
         return Storage::disk('local')->download($path, $downloadFilename);
+    }
+
+    public function viewFile(Request $request, IndicatorSubmission $submission, string $type)
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanView($user, $submission->school_id);
+
+        $fileType = strtolower(trim($type));
+        if (! in_array($fileType, ['bmef', 'smea'], true)) {
+            throw ValidationException::withMessages([
+                'type' => 'View type must be either bmef or smea.',
+            ]);
+        }
+
+        $path = $this->filePathForType($submission, $fileType);
+        $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
+        if (! is_string($path) || trim($path) === '' || ! Storage::disk('local')->exists($path)) {
+            abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
+        }
+
+        $absolutePath = Storage::disk('local')->path($path);
+        $filename = is_string($originalFilename) && trim($originalFilename) !== ''
+            ? trim($originalFilename)
+            : basename($path);
+        $mimeType = Storage::disk('local')->mimeType($path) ?: 'application/octet-stream';
+
+        return response()->file($absolutePath, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function submit(Request $request, IndicatorSubmission $submission): JsonResponse
@@ -714,7 +745,7 @@ class IndicatorSubmissionController extends Controller
             'notes' => $notes,
         ]));
 
-        return $this->lightweightSubmissionResponse($submission);
+        return $this->fullSubmissionResponse($submission);
     }
 
     public function resetWorkspace(Request $request, IndicatorSubmission $submission): JsonResponse
@@ -834,6 +865,7 @@ class IndicatorSubmissionController extends Controller
                         'sizeBytes' => null,
                         'uploadedAt' => optional($submission->bmef_uploaded_at)->toISOString(),
                         'downloadUrl' => $hasBmefFile ? "/api/submissions/{$submission->id}/download/bmef" : null,
+                        'viewUrl' => $hasBmefFile ? "/api/submissions/{$submission->id}/view/bmef" : null,
                     ],
                     'smea' => [
                         'type' => 'smea',
@@ -843,9 +875,26 @@ class IndicatorSubmissionController extends Controller
                         'sizeBytes' => null,
                         'uploadedAt' => optional($submission->smea_uploaded_at)->toISOString(),
                         'downloadUrl' => $hasSmeaFile ? "/api/submissions/{$submission->id}/download/smea" : null,
+                        'viewUrl' => $hasSmeaFile ? "/api/submissions/{$submission->id}/view/smea" : null,
                     ],
                 ],
             ],
+        ], $status);
+    }
+
+    private function fullSubmissionResponse(IndicatorSubmission $submission, int $status = 200): JsonResponse
+    {
+        $submission->refresh()->load([
+            'school:id,school_code,name',
+            'academicYear:id,name',
+            'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'createdBy:id,name,email',
+            'submittedBy:id,name,email',
+            'reviewedBy:id,name,email',
+        ]);
+
+        return response()->json([
+            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
         ], $status);
     }
 

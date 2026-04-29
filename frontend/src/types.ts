@@ -425,6 +425,7 @@ export interface IndicatorSubmissionFileEntry {
   sizeBytes: number | null;
   uploadedAt: string | null;
   downloadUrl: string | null;
+  viewUrl?: string | null;
 }
 
 export interface IndicatorSubmissionFiles {
