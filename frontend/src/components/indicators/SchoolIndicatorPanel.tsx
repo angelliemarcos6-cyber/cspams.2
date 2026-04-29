@@ -2126,6 +2126,17 @@ export function SchoolIndicatorPanel({
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
   }, [refreshSubmissions]);
+  const fetchFreshWorkspaceSubmission = useCallback(
+    async (submission: IndicatorSubmission): Promise<IndicatorSubmission> => {
+      const fresh = await fetchSubmission(submission.id).catch(() => submission);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(autosaveKey);
+      }
+      setPendingLocalDraft(null);
+      return fresh;
+    },
+    [autosaveKey, fetchSubmission],
+  );
   const requestResolvedWorkspaceRehydrate = useCallback(() => {
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
@@ -4039,20 +4050,22 @@ export function SchoolIndicatorPanel({
             : createSubmission(payload)
         ),
         onSuccess: (saved) => {
-          setEditingSubmissionId(saved.id);
-          setPendingLocalDraft(null);
-          setAutosaveError("");
-          const savedAt = new Date().toISOString();
-          setServerAutosaveAt(savedAt);
-          lastAutosaveFingerprintRef.current = `${saved.id}:${prepared.fingerprint}`;
-          rehydrateWorkspaceFromSubmission(saved);
-          if (saveModeAtActionStart === "submitted_editing") {
-            submittedEditPreserveContextRef.current = {
-              academicYearId: saveAcademicYearAtActionStart,
-              submissionId: saved.id,
-            };
-          }
-          return refreshResolvedWorkspace();
+          return fetchFreshWorkspaceSubmission(saved).then((freshSaved) => {
+            setEditingSubmissionId(freshSaved.id);
+            setPendingLocalDraft(null);
+            setAutosaveError("");
+            const savedAt = new Date().toISOString();
+            setServerAutosaveAt(savedAt);
+            lastAutosaveFingerprintRef.current = `${freshSaved.id}:${prepared.fingerprint}`;
+            rehydrateWorkspaceFromSubmission(freshSaved);
+            if (saveModeAtActionStart === "submitted_editing") {
+              submittedEditPreserveContextRef.current = {
+                academicYearId: saveAcademicYearAtActionStart,
+                submissionId: freshSaved.id,
+              };
+            }
+            return refreshResolvedWorkspace();
+          });
         },
         getSuccessMessage: (saved) => (
           saveModeAtActionStart === "blank"
@@ -4139,15 +4152,17 @@ export function SchoolIndicatorPanel({
           return await submitSubmission(submissionToSubmit.id);
         },
         onSuccess: (result) => {
-          setOptimisticSubmittedByType({
-            bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
-            smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
+          return fetchFreshWorkspaceSubmission(result).then((freshResult) => {
+            setOptimisticSubmittedByType({
+              bmef: hasUploadedReportFile(freshResult.files?.bmef ?? null) || Boolean(freshResult.completion?.hasBmefFile),
+              smea: hasUploadedReportFile(freshResult.files?.smea ?? null) || Boolean(freshResult.completion?.hasSmeaFile),
+            });
+            setEditingSubmissionId(freshResult.id);
+            rehydrateWorkspaceFromSubmission(freshResult);
+            setIsSubmittedEditMode(false);
+            submittedEditPreserveContextRef.current = null;
+            return refreshResolvedWorkspace();
           });
-          setEditingSubmissionId(result.id);
-          rehydrateWorkspaceFromSubmission(result);
-          setIsSubmittedEditMode(false);
-          submittedEditPreserveContextRef.current = null;
-          return refreshResolvedWorkspace();
         },
         getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
         onError: (err) => {
@@ -4218,15 +4233,17 @@ export function SchoolIndicatorPanel({
           return await submitSubmission(submissionToSubmit.id);
         },
         onSuccess: (result) => {
-          setOptimisticSubmittedByType({
-            bmef: hasUploadedReportFile(result.files?.bmef ?? null) || Boolean(result.completion?.hasBmefFile),
-            smea: hasUploadedReportFile(result.files?.smea ?? null) || Boolean(result.completion?.hasSmeaFile),
+          return fetchFreshWorkspaceSubmission(result).then((freshResult) => {
+            setOptimisticSubmittedByType({
+              bmef: hasUploadedReportFile(freshResult.files?.bmef ?? null) || Boolean(freshResult.completion?.hasBmefFile),
+              smea: hasUploadedReportFile(freshResult.files?.smea ?? null) || Boolean(freshResult.completion?.hasSmeaFile),
+            });
+            setEditingSubmissionId(freshResult.id);
+            rehydrateWorkspaceFromSubmission(freshResult);
+            setIsSubmittedEditMode(false);
+            submittedEditPreserveContextRef.current = null;
+            return refreshResolvedWorkspace();
           });
-          setEditingSubmissionId(result.id);
-          rehydrateWorkspaceFromSubmission(result);
-          setIsSubmittedEditMode(false);
-          submittedEditPreserveContextRef.current = null;
-          return refreshResolvedWorkspace();
         },
         getSuccessMessage: (result) => `Package #${result.id} submitted to monitor.`,
         onError: (err) => {
