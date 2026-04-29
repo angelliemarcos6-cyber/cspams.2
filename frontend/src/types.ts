@@ -396,9 +396,9 @@ export interface AcademicYearOption {
 export interface IndicatorSubmissionItem {
   id: string;
   metric?: IndicatorMetric;
-  targetValue: number;
-  actualValue: number;
-  varianceValue: number;
+  targetValue: number | null;
+  actualValue: number | null;
+  varianceValue: number | null;
   targetTypedValue?: Record<string, unknown> | null;
   actualTypedValue?: Record<string, unknown> | null;
   targetDisplay?: string | null;

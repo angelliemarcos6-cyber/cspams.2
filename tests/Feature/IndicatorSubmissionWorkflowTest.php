@@ -797,11 +797,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.smea.uploaded', true)
             ->assertJsonPath('data.completion.hasImetaFormData', true);
 
-        $refetched = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}");
-        $refetched->assertOk();
-
         $this->assertTrue(
-            collect($refetched->json('data.indicators', []))->contains(
+            collect($submitted->json('data.indicators', []))->contains(
                 static fn (mixed $row): bool =>
                     is_array($row) && data_get($row, "actualTypedValue.values.{$year}") === 'Maria Santos',
             ),

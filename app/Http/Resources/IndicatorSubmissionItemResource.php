@@ -14,6 +14,10 @@ class IndicatorSubmissionItemResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $targetValue = $this->target_value;
+        $actualValue = $this->actual_value;
+        $varianceValue = $this->variance_value;
+
         return [
             'id' => (string) $this->id,
             'metric' => $this->when(
@@ -29,9 +33,9 @@ class IndicatorSubmissionItemResource extends JsonResource
                     'unit' => $this->metric->unit,
                 ],
             ),
-            'targetValue' => (float) $this->target_value,
-            'actualValue' => (float) $this->actual_value,
-            'varianceValue' => (float) $this->variance_value,
+            'targetValue' => $targetValue === null ? null : (float) $targetValue,
+            'actualValue' => $actualValue === null ? null : (float) $actualValue,
+            'varianceValue' => $varianceValue === null ? null : (float) $varianceValue,
             'targetTypedValue' => $this->target_typed_value,
             'actualTypedValue' => $this->actual_typed_value,
             'targetDisplay' => $this->target_display,

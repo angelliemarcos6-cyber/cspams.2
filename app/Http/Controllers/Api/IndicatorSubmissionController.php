@@ -673,7 +673,7 @@ class IndicatorSubmissionController extends Controller
             'status' => FormSubmissionStatus::SUBMITTED->value,
         ]));
 
-        return $this->lightweightSubmissionResponse($submission);
+        return $this->fullSubmissionResponse($submission);
     }
 
     public function review(ReviewIndicatorSubmissionRequest $request, IndicatorSubmission $submission): JsonResponse
