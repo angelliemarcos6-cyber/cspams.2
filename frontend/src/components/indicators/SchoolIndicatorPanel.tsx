@@ -15,6 +15,7 @@ import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2,
 import { FileUploadField } from "@/components/indicators/FileUploadField";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
+import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import type {
   AcademicYearOption,
   FormSubmissionHistoryEntry,
@@ -1223,7 +1224,7 @@ export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
 }: SchoolIndicatorPanelProps) {
-  const { user } = useAuth();
+  const { user, apiToken } = useAuth();
   const {
     submissions: submissionSnapshot,
     allSubmissions,
@@ -4511,20 +4512,48 @@ export function SchoolIndicatorPanel({
       ? source.submission.files?.bmef ?? null
       : source.submission.files?.smea ?? null;
 
-    if (entry?.downloadUrl) {
-      window.open(entry.downloadUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
-
     try {
-      await downloadSubmissionFile(source.submission.id, type);
+      const previewWindow = window.open("", "_blank", "noopener,noreferrer");
+      if (!previewWindow) {
+        throw new Error("Preview tab could not be opened.");
+      }
+
+      const relativeUrl = entry?.viewUrl ?? entry?.downloadUrl;
+      if (!relativeUrl) {
+        throw new Error("Preview URL is unavailable for this report.");
+      }
+
+      const isAbsoluteUrl = /^https?:\/\//i.test(relativeUrl);
+      const endpoint = isAbsoluteUrl
+        ? relativeUrl
+        : `${getApiBaseUrl()}${relativeUrl.startsWith("/") ? relativeUrl : `/${relativeUrl}`}`;
+      const headers: HeadersInit = {};
+      if (apiToken && apiToken !== COOKIE_SESSION_TOKEN) {
+        headers.Authorization = `Bearer ${apiToken}`;
+      }
+
+      const response = await fetch(endpoint, {
+        method: "GET",
+        credentials: apiToken === COOKIE_SESSION_TOKEN ? "include" : "omit",
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Preview request failed with status ${response.status}.`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      previewWindow.location.href = objectUrl;
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (err) {
+      await downloadSubmissionFile(source.submission.id, type).catch(() => undefined);
       setUploadErrorByType((current) => ({
         ...current,
         [type]: err instanceof Error ? err.message : `Unable to open ${type.toUpperCase()} report.`,
       }));
     }
-  }, [downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);
+  }, [apiToken, downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);
 
   const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
     if (type === "bmef") {
