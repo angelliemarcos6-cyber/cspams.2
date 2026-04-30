@@ -129,6 +129,14 @@ function submissionRows(submission: IndicatorSubmission | null | undefined): Ind
   return Array.isArray(submission.items) ? submission.items : [];
 }
 
+function submissionHasRenderableIndicatorDetails(submission: IndicatorSubmission | null | undefined): boolean {
+  return submissionRows(submission).some((item) => {
+    const metricCode = String(item.metric?.code ?? "").trim();
+    const metricName = String(item.metric?.name ?? "").trim();
+    return metricCode.length > 0 || metricName.length > 0;
+  });
+}
+
 function resolveIndicatorValue(
   indicator: IndicatorSubmissionItem | null | undefined,
   kind: "target" | "actual",
@@ -490,14 +498,13 @@ export function SchoolAdminDashboard() {
   useEffect(() => {
     if (!groupASubmittedSubmission?.id) return;
 
-    const hasRows = Array.isArray(groupASubmittedSubmission.indicators)
-      ? groupASubmittedSubmission.indicators.length > 0
-      : Array.isArray(groupASubmittedSubmission.items) && groupASubmittedSubmission.items.length > 0;
+    const hasRows = submissionRows(groupASubmittedSubmission).length > 0;
+    const hasRenderableDetails = submissionHasRenderableIndicatorDetails(groupASubmittedSubmission);
 
-    if (hasRows) return;
+    if (hasRows && hasRenderableDetails) return;
 
     void fetchSubmission(groupASubmittedSubmission.id).catch(() => undefined);
-  }, [fetchSubmission, groupASubmittedSubmission?.id, groupASubmittedSubmission?.indicators, groupASubmittedSubmission?.items]);
+  }, [fetchSubmission, groupASubmittedSubmission]);
   const groupAReportView = useMemo(() => {
     const submission = groupASubmittedSubmission;
     const indicators = submissionRows(submission);
