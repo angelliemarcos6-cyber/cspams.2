@@ -29,6 +29,8 @@ import type {
   IndicatorSubmissionItem,
 } from "@/types";
 
+const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashboard:view-year";
+
 /* ── Quick-jump targets ── */
 /* ── Helpers ── */
 function latestSubmission<T extends { updatedAt: string | null; createdAt: string | null }>(entries: T[]): T | null {
@@ -506,6 +508,10 @@ export function SchoolAdminDashboard() {
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
   const selectedSchoolId = String(user?.schoolId ?? "").trim();
+  const dashboardYearSelectionStorageKey = useMemo(
+    () => (selectedSchoolId ? `${DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX}:${selectedSchoolId}` : ""),
+    [selectedSchoolId],
+  );
 
   const currentAcademicYearOption = useMemo(
     () => orderedAcademicYears.find((y) => y.isCurrent) ?? orderedAcademicYears[0] ?? null,
@@ -796,11 +802,28 @@ export function SchoolAdminDashboard() {
 
   useEffect(() => {
     if (initialAcademicYearAppliedRef.current) return;
-    const initialAcademicYearId = preferredSubmittedReportAcademicYearId ?? currentAcademicYearOption?.id ?? "";
+    const storedAcademicYearId = (
+      typeof window !== "undefined" && dashboardYearSelectionStorageKey
+        ? window.sessionStorage.getItem(dashboardYearSelectionStorageKey) ?? ""
+        : ""
+    );
+    const initialAcademicYearId = (
+      storedAcademicYearId && orderedAcademicYears.some((year) => year.id === storedAcademicYearId)
+        ? storedAcademicYearId
+        : preferredSubmittedReportAcademicYearId ?? currentAcademicYearOption?.id ?? ""
+    );
     if (!initialAcademicYearId) return;
     setDashboardViewAcademicYearId(initialAcademicYearId);
     initialAcademicYearAppliedRef.current = true;
-  }, [currentAcademicYearOption, preferredSubmittedReportAcademicYearId]);
+  }, [currentAcademicYearOption, dashboardYearSelectionStorageKey, orderedAcademicYears, preferredSubmittedReportAcademicYearId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !dashboardYearSelectionStorageKey || !dashboardViewAcademicYearId) {
+      return;
+    }
+
+    window.sessionStorage.setItem(dashboardYearSelectionStorageKey, dashboardViewAcademicYearId);
+  }, [dashboardViewAcademicYearId, dashboardYearSelectionStorageKey]);
 
   const handleDashboardViewAcademicYearChange = useCallback(async (nextYearId: string) => {
     if (nextYearId === dashboardViewAcademicYearId) {

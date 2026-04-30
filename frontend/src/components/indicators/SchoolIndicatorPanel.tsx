@@ -62,6 +62,8 @@ interface SchoolIndicatorPanelProps {
   initialAcademicYearId?: string;
 }
 
+const WORKSPACE_YEAR_STORAGE_KEY_PREFIX = "cspams:school-indicator-panel:workspace-year";
+
 interface MissingFieldTarget {
   key: string;
   categoryId: string;
@@ -1313,6 +1315,13 @@ function SchoolIndicatorPanelComponent({
     bmef: "",
     smea: "",
   });
+  const workspaceYearSelectionStorageKey = useMemo(() => {
+    const schoolScopeId = user?.schoolId ? String(user.schoolId) : "";
+    const userScopeId = user?.id ? String(user.id) : "anonymous";
+    return schoolScopeId
+      ? `${WORKSPACE_YEAR_STORAGE_KEY_PREFIX}:${userScopeId}:${schoolScopeId}`
+      : "";
+  }, [user?.id, user?.schoolId]);
 
   const autosaveInFlightRef = useRef(false);
   const lastAutosaveFingerprintRef = useRef("");
@@ -1469,18 +1478,35 @@ function SchoolIndicatorPanelComponent({
       return;
     }
 
+    const storedAcademicYearId = (
+      typeof window !== "undefined" && workspaceYearSelectionStorageKey
+        ? window.sessionStorage.getItem(workspaceYearSelectionStorageKey) ?? ""
+        : ""
+    );
+    const preferredStoredAcademicYearId = storedAcademicYearId
+      && eligibleAcademicYears.some((year) => year.id === storedAcademicYearId)
+      ? storedAcademicYearId
+      : "";
     const preferredInitialAcademicYearId = initialAcademicYearId
       && eligibleAcademicYears.some((year) => year.id === initialAcademicYearId)
       ? initialAcademicYearId
       : "";
 
-    const nextAcademicYearId = preferredInitialAcademicYearId || yearWorkspaceState.selectedAcademicYearId;
+    const nextAcademicYearId = preferredStoredAcademicYearId || preferredInitialAcademicYearId || yearWorkspaceState.selectedAcademicYearId;
     if (!nextAcademicYearId) {
       return;
     }
 
     setWorkspaceAcademicYearId(nextAcademicYearId);
-  }, [eligibleAcademicYears, initialAcademicYearId, workspaceAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
+  }, [eligibleAcademicYears, initialAcademicYearId, workspaceAcademicYearId, workspaceYearSelectionStorageKey, yearWorkspaceState.selectedAcademicYearId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !workspaceYearSelectionStorageKey || !workspaceAcademicYearId) {
+      return;
+    }
+
+    window.sessionStorage.setItem(workspaceYearSelectionStorageKey, workspaceAcademicYearId);
+  }, [workspaceAcademicYearId, workspaceYearSelectionStorageKey]);
 
   const autosaveUserScopeId = user?.id ? String(user.id) : "anonymous";
   const autosaveSchoolScopeId = user?.schoolId ? String(user.schoolId) : "unassigned";
