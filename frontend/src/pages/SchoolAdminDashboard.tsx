@@ -813,28 +813,8 @@ export function SchoolAdminDashboard() {
       lastLoadedYearKeyRef.current = "";
       setDashboardViewSubmissions([]);
       setIsDashboardYearSwitching(false);
-      return;
     }
-
-    const key = buildSelectedYearLoadKey(selectedSchoolId, nextYearId);
-    lastLoadedYearKeyRef.current = key;
-    setIsDashboardYearSwitching(true);
-
-    try {
-      const rows = await loadSubmissionsForYear(selectedSchoolId, nextYearId);
-      if (lastLoadedYearKeyRef.current === key) {
-        setDashboardViewSubmissions(rows);
-      }
-    } catch {
-      if (lastLoadedYearKeyRef.current === key) {
-        setDashboardViewSubmissions([]);
-      }
-    } finally {
-      if (lastLoadedYearKeyRef.current === key) {
-        setIsDashboardYearSwitching(false);
-      }
-    }
-  }, [dashboardViewAcademicYearId, loadSubmissionsForYear, selectedSchoolId]);
+  }, [dashboardViewAcademicYearId, selectedSchoolId]);
 
   useEffect(() => {
     if (!selectedSchoolId || !dashboardViewAcademicYearId || dashboardViewAcademicYearId === "all") {

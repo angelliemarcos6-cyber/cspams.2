@@ -1465,31 +1465,22 @@ function SchoolIndicatorPanelComponent({
     return schoolYearByAcademicYearId.get(currentAcademicYearId) ?? (visibleSchoolYears[visibleSchoolYears.length - 1] ?? null);
   }, [currentAcademicYearId, schoolYearByAcademicYearId, visibleSchoolYears]);
   useEffect(() => {
-    if (!initialAcademicYearId || workspaceAcademicYearId || eligibleAcademicYears.length === 0) {
-      return;
-    }
-
-    setWorkspaceAcademicYearId(initialAcademicYearId);
-  }, [eligibleAcademicYears.length, initialAcademicYearId, workspaceAcademicYearId]);
-
-  useEffect(() => {
     if (workspaceAcademicYearId || eligibleAcademicYears.length === 0) {
       return;
     }
 
-    if (yearWorkspaceState.selectedAcademicYearId) {
-      setWorkspaceAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
-    }
-  }, [eligibleAcademicYears.length, workspaceAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
-  useEffect(() => {
-    if (!workspaceAcademicYearId || !yearWorkspaceState.selectedAcademicYearId) {
+    const preferredInitialAcademicYearId = initialAcademicYearId
+      && eligibleAcademicYears.some((year) => year.id === initialAcademicYearId)
+      ? initialAcademicYearId
+      : "";
+
+    const nextAcademicYearId = preferredInitialAcademicYearId || yearWorkspaceState.selectedAcademicYearId;
+    if (!nextAcademicYearId) {
       return;
     }
 
-    if (workspaceAcademicYearId !== yearWorkspaceState.selectedAcademicYearId) {
-      setWorkspaceAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
-    }
-  }, [workspaceAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
+    setWorkspaceAcademicYearId(nextAcademicYearId);
+  }, [eligibleAcademicYears, initialAcademicYearId, workspaceAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
 
   const autosaveUserScopeId = user?.id ? String(user.id) : "anonymous";
   const autosaveSchoolScopeId = user?.schoolId ? String(user.schoolId) : "unassigned";
@@ -1601,20 +1592,20 @@ function SchoolIndicatorPanelComponent({
     return ranked[0]?.academicYear?.id ?? null;
   }, [sortedSubmissions]);
   useEffect(() => {
-    if (initialAcademicYearId || isSubmissionDataLoading || hasUserSelectedAcademicYearRef.current) {
+    if (workspaceAcademicYearId || initialAcademicYearId || isSubmissionDataLoading || hasUserSelectedAcademicYearRef.current) {
       return;
     }
 
-    if (!preferredAcademicYearIdFromSubmissions || activeAcademicYearId === preferredAcademicYearIdFromSubmissions) {
+    if (!preferredAcademicYearIdFromSubmissions) {
       return;
     }
 
     setWorkspaceAcademicYearId(preferredAcademicYearIdFromSubmissions);
   }, [
-    activeAcademicYearId,
     initialAcademicYearId,
     isSubmissionDataLoading,
     preferredAcademicYearIdFromSubmissions,
+    workspaceAcademicYearId,
   ]);
   const latestValidatedSubmission = useMemo(
     () =>
