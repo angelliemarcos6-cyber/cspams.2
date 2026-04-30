@@ -62,6 +62,8 @@ type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" 
 interface SchoolIndicatorPanelProps {
   statusFilter?: IndicatorWorkflowStatusFilter;
   academicYearFilter?: string;
+  selectedAcademicYearId?: string;
+  onAcademicYearChange?: (academicYearId: string) => void;
 }
 
 interface MissingFieldTarget {
@@ -1223,6 +1225,8 @@ function toGroupBActionErrorMessage(error: unknown, fallback: string): string {
 export function SchoolIndicatorPanel({
   statusFilter = "all",
   academicYearFilter = "all",
+  selectedAcademicYearId,
+  onAcademicYearChange,
 }: SchoolIndicatorPanelProps) {
   const { user, apiToken } = useAuth();
   const {
@@ -1436,6 +1440,16 @@ export function SchoolIndicatorPanel({
     return schoolYearByAcademicYearId.get(currentAcademicYearId) ?? (visibleSchoolYears[visibleSchoolYears.length - 1] ?? null);
   }, [currentAcademicYearId, schoolYearByAcademicYearId, visibleSchoolYears]);
   useEffect(() => {
+    if (!selectedAcademicYearId) {
+      return;
+    }
+
+    if (selectedAcademicYearId !== academicYearId) {
+      setAcademicYearId(selectedAcademicYearId);
+    }
+  }, [academicYearId, selectedAcademicYearId]);
+
+  useEffect(() => {
     if (academicYearId || eligibleAcademicYears.length === 0) {
       return;
     }
@@ -1453,6 +1467,13 @@ export function SchoolIndicatorPanel({
       setAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
     }
   }, [academicYearId, yearWorkspaceState.selectedAcademicYearId]);
+  useEffect(() => {
+    if (!onAcademicYearChange || !yearWorkspaceState.selectedAcademicYearId) {
+      return;
+    }
+
+    onAcademicYearChange(yearWorkspaceState.selectedAcademicYearId);
+  }, [onAcademicYearChange, yearWorkspaceState.selectedAcademicYearId]);
 
   const autosaveUserScopeId = user?.id ? String(user.id) : "anonymous";
   const autosaveSchoolScopeId = user?.schoolId ? String(user.schoolId) : "unassigned";
@@ -1891,8 +1912,8 @@ export function SchoolIndicatorPanel({
     [activeWorkspaceSubmission, sortedSubmissions],
   );
   const selectedSubmissionForUploads = useMemo(() => {
-    return latestActiveWorkspaceSubmission;
-  }, [latestActiveWorkspaceSubmission]);
+    return editableWorkspaceSubmissionInScope;
+  }, [editableWorkspaceSubmissionInScope]);
   const selectedSubmissionStatus = useMemo(
     () => String(latestActiveWorkspaceSubmission?.status ?? "").toLowerCase(),
     [latestActiveWorkspaceSubmission?.status],
@@ -4969,7 +4990,7 @@ export function SchoolIndicatorPanel({
                 const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isManualActionBlocked || isUploading || workspaceMode === "read_only_year";
+                const uploadDisabled = isManualActionBlocked || isUploading || !canShowSaveAndSubmitActions;
                 const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (

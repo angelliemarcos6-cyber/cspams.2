@@ -1296,6 +1296,8 @@ export function SchoolAdminDashboard() {
         </div>
         <SchoolIndicatorPanel
           statusFilter="all"
+          selectedAcademicYearId={effectiveAcademicYearId}
+          onAcademicYearChange={setContextAcademicYearId}
         />
       </section>
       </div>
