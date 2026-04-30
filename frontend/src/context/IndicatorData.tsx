@@ -1064,7 +1064,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           },
         });
         return response.data;
-      });
+      }, { backgroundSync: false });
     },
     [runSubmissionMutation, token],
   );
