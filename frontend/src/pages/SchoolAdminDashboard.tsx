@@ -481,6 +481,7 @@ export function SchoolAdminDashboard() {
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
   const [reportZoomLevel, setReportZoomLevel] = useState(1);
+  const [hydratedSubmittedReportSubmission, setHydratedSubmittedReportSubmission] = useState<IndicatorSubmission | null>(null);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
@@ -531,7 +532,17 @@ export function SchoolAdminDashboard() {
   const isYearScopedLoading = (isLoading || isAllSubmissionsLoading) && effectiveAcademicYearId.length > 0;
 
   useEffect(() => {
-    if (!groupASubmittedSubmission?.id) return;
+    if (!groupASubmittedSubmission?.id) {
+      finalizedSubmissionRefreshRef.current = "";
+      setHydratedSubmittedReportSubmission(null);
+      return;
+    }
+
+    setHydratedSubmittedReportSubmission((current) => (
+      current?.id === groupASubmittedSubmission.id
+        ? { ...current, ...groupASubmittedSubmission, indicators: current.indicators, items: current.items }
+        : groupASubmittedSubmission
+    ));
 
     const refreshFingerprint = buildSubmissionRefreshFingerprint(groupASubmittedSubmission);
     if (finalizedSubmissionRefreshRef.current === refreshFingerprint) {
@@ -539,10 +550,18 @@ export function SchoolAdminDashboard() {
     }
 
     finalizedSubmissionRefreshRef.current = refreshFingerprint;
-    void fetchSubmission(groupASubmittedSubmission.id).catch(() => undefined);
+    void fetchSubmission(groupASubmittedSubmission.id)
+      .then((submission) => {
+        setHydratedSubmittedReportSubmission(submission);
+      })
+      .catch(() => undefined);
   }, [fetchSubmission, groupASubmittedSubmission]);
   const groupAReportView = useMemo(() => {
-    const submission = groupASubmittedSubmission;
+    const submission = (
+      hydratedSubmittedReportSubmission?.id === groupASubmittedSubmission?.id
+        ? hydratedSubmittedReportSubmission
+        : groupASubmittedSubmission
+    ) ?? null;
     const indicators = submissionRows(submission);
     const missingMappings: Array<{
       group: keyof typeof GROUP_A_METRIC_KEYS;
@@ -703,7 +722,7 @@ export function SchoolAdminDashboard() {
       schoolAchievementRows,
       kpiRows,
     };
-  }, [groupASubmittedSubmission]);
+  }, [groupASubmittedSubmission, hydratedSubmittedReportSubmission]);
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
     if (!activeReportModalType || !groupAReportView.submission?.files) return null;
     return groupAReportView.submission.files[activeReportModalType] ?? null;

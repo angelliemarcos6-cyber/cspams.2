@@ -1291,9 +1291,9 @@ class IndicatorSubmissionController extends Controller
      * @param int $index
      *
      * @return array{
-     *     target_value: float,
-     *     actual_value: float,
-     *     variance_value: float,
+     *     target_value: ?float,
+     *     actual_value: ?float,
+     *     variance_value: ?float,
      *     target_typed_value: array<string, mixed>,
      *     actual_typed_value: array<string, mixed>,
      *     target_display: string,
@@ -1328,17 +1328,26 @@ class IndicatorSubmissionController extends Controller
 
         $targetParsed = $this->parseMetricValue($dataType, $targetRaw, $schema, "indicators.{$index}.target");
         $actualParsed = $this->parseMetricValue($dataType, $actualRaw, $schema, "indicators.{$index}.actual");
-        $varianceValue = round($actualParsed['numeric'] - $targetParsed['numeric'], 2);
+        $varianceValue = (
+            $actualParsed['numeric'] !== null
+            && $targetParsed['numeric'] !== null
+        )
+            ? round($actualParsed['numeric'] - $targetParsed['numeric'], 2)
+            : null;
 
-        $complianceStatus = $this->isCompliant(
-            $comparison,
-            $targetParsed['comparable'],
-            $actualParsed['comparable'],
+        $complianceStatus = (
+            $targetParsed['comparable'] !== null
+            && $actualParsed['comparable'] !== null
+            && $this->isCompliant(
+                $comparison,
+                $targetParsed['comparable'],
+                $actualParsed['comparable'],
+            )
         ) ? 'met' : 'below_target';
 
         return [
-            'target_value' => round($targetParsed['numeric'], 2),
-            'actual_value' => round($actualParsed['numeric'], 2),
+            'target_value' => $targetParsed['numeric'] === null ? null : round($targetParsed['numeric'], 2),
+            'actual_value' => $actualParsed['numeric'] === null ? null : round($actualParsed['numeric'], 2),
             'variance_value' => $varianceValue,
             'target_typed_value' => $targetParsed['typed'],
             'actual_typed_value' => $actualParsed['typed'],
@@ -1363,7 +1372,7 @@ class IndicatorSubmissionController extends Controller
      *
      * @return array{
      *     typed: array<string, mixed>,
-     *     numeric: float,
+     *     numeric: ?float,
      *     display: string,
      *     comparable: mixed
      * }
@@ -1472,7 +1481,7 @@ class IndicatorSubmissionController extends Controller
     /**
      * @param array<string, mixed> $schema
      *
-     * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: string}
+     * @return array{typed: array<string, mixed>, numeric: ?float, display: string, comparable: ?string}
      */
     private function parseEnumValue(mixed $raw, array $schema, string $errorPath): array
     {
@@ -1484,10 +1493,10 @@ class IndicatorSubmissionController extends Controller
 
         if ($value === '') {
             return [
-                'typed' => ['value' => ''],
-                'numeric' => 0.0,
+                'typed' => ['value' => null],
+                'numeric' => null,
                 'display' => '',
-                'comparable' => '',
+                'comparable' => null,
             ];
         }
 
