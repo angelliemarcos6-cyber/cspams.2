@@ -91,6 +91,12 @@ type GroupBWorkspaceMode =
   | "submitted_editing"
   | "read_only_year";
 
+type WorkspaceSaveSection =
+  | "school_achievements"
+  | "key_performance"
+  | "bmef"
+  | "smea";
+
 function buildWorkspaceSubmissionFingerprint(
   academicYearId: string | null,
   submission: IndicatorSubmission | null,
@@ -543,6 +549,31 @@ function categoryTabLabel(category: ComplianceCategory): string {
   if (category.id === "school_achievements_learning_outcomes") return "School Achievements";
   if (category.id === "key_performance_indicators") return "Key Performance";
   return category.label;
+}
+
+function workspaceSaveSectionForCategory(categoryId: string | null | undefined): WorkspaceSaveSection | null {
+  if (categoryId === "school_achievements_learning_outcomes") {
+    return "school_achievements";
+  }
+  if (categoryId === "key_performance_indicators") {
+    return "key_performance";
+  }
+  return null;
+}
+
+function workspaceSaveSectionLabel(section: WorkspaceSaveSection | null): string {
+  switch (section) {
+    case "school_achievements":
+      return "School Achievements";
+    case "key_performance":
+      return "Key Performance";
+    case "bmef":
+      return "BMEF";
+    case "smea":
+      return "SMEA";
+    default:
+      return "Workspace";
+  }
 }
 
 function currentSchoolYearStart(now: Date = new Date()): number {
@@ -1269,6 +1300,7 @@ function SchoolIndicatorPanelComponent({
   const [autosaveError, setAutosaveError] = useState("");
   const [isAutosavingDraft, setIsAutosavingDraft] = useState(false);
   const [uploadingFileType, setUploadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
+  const [savingSection, setSavingSection] = useState<WorkspaceSaveSection | null>(null);
   const [isWorkspaceTransitioning, setIsWorkspaceTransitioning] = useState(false);
   const [isGroupBActionRunning, setIsGroupBActionRunning] = useState(false);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
@@ -1985,6 +2017,7 @@ function SchoolIndicatorPanelComponent({
   const lastHydratedWorkspaceScopeRef = useRef<string>("");
   const hasUnsavedWorkspaceChangesRef = useRef(false);
   const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
+  const preserveLocalWorkspaceAfterMutationRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   const postRefreshMessageRef = useRef<string | null>(null);
   useEffect(() => {
     activeAcademicYearIdRef.current = activeAcademicYearId;
@@ -2389,16 +2422,29 @@ function SchoolIndicatorPanelComponent({
       && submittedEditPreserveContextRef.current.academicYearId === activeAcademicYearId
       && submittedEditPreserveContextRef.current.submissionId === (currentSubmission?.id ?? null),
     );
+    const shouldPreserveLocalWorkspace = Boolean(
+      preserveLocalWorkspaceAfterMutationRef.current
+      && activeAcademicYearId
+      && preserveLocalWorkspaceAfterMutationRef.current.academicYearId === activeAcademicYearId
+      && preserveLocalWorkspaceAfterMutationRef.current.submissionId === (currentSubmission?.id ?? null),
+    );
     // Backend submission is the source of truth. Local autosave is only used
     // when there is no saved submission for this user/school/year scope.
-    if (currentSubmission) {
+    if (currentSubmission && !shouldPreserveLocalWorkspace) {
       rehydrateWorkspaceFromSubmission(currentSubmission);
-    } else {
+    } else if (!currentSubmission) {
       resetWorkspaceToBlankStateForSelectedYear();
+    } else {
+      workspaceDataOwnerRef.current = "backend";
+      setEditingSubmissionId(currentSubmission.id);
+      setPendingLocalDraft(null);
+      setAutosaveError("");
+      setServerAutosaveAt(currentSubmission.updatedAt ?? null);
     }
     if (shouldPreserveSubmittedEditMode) {
       setIsSubmittedEditMode(true);
     }
+    preserveLocalWorkspaceAfterMutationRef.current = null;
     if (postRefreshMessageRef.current) {
       setSaveMessage(postRefreshMessageRef.current);
       postRefreshMessageRef.current = null;
@@ -2460,27 +2506,57 @@ function SchoolIndicatorPanelComponent({
       ?? null,
     [groupASubmittedIndicatorByMetricId, groupASubmittedSubmission, scopedSubmissionsForYear],
   );
-  const bmefFileEntry = bmefReportSubmission?.files?.bmef ?? null;
-  const smeaFileEntry = smeaReportSubmission?.files?.smea ?? null;
+  const bmefWorkspaceSubmission = useMemo(
+    () => {
+      const workspaceCandidate = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission ?? null;
+      if (
+        workspaceCandidate
+        && (
+          hasUploadedReportFile(workspaceCandidate.files?.bmef ?? null)
+          || Boolean(workspaceCandidate.completion?.hasBmefFile)
+        )
+      ) {
+        return workspaceCandidate;
+      }
+      return bmefReportSubmission;
+    },
+    [bmefReportSubmission, editableWorkspaceSubmissionInScope, latestActiveWorkspaceSubmission],
+  );
+  const smeaWorkspaceSubmission = useMemo(
+    () => {
+      const workspaceCandidate = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission ?? null;
+      if (
+        workspaceCandidate
+        && (
+          hasUploadedReportFile(workspaceCandidate.files?.smea ?? null)
+          || Boolean(workspaceCandidate.completion?.hasSmeaFile)
+        )
+      ) {
+        return workspaceCandidate;
+      }
+      return smeaReportSubmission;
+    },
+    [editableWorkspaceSubmissionInScope, latestActiveWorkspaceSubmission, smeaReportSubmission],
+  );
+  const bmefFileEntry = bmefWorkspaceSubmission?.files?.bmef ?? null;
+  const smeaFileEntry = smeaWorkspaceSubmission?.files?.smea ?? null;
   const activeFormSubmission = latestActiveWorkspaceSubmission;
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
   const activeWorkspaceSubmissionId = activeWorkspaceSubmission?.id ?? null;
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
   const isFormSubmitted = isSubmittedWorkflowStatus(activeFormStatus);
-  const bmefSubmissionStatus = String(bmefReportSubmission?.status ?? "").toLowerCase();
-  const smeaSubmissionStatus = String(smeaReportSubmission?.status ?? "").toLowerCase();
+  const bmefSubmissionStatus = String(bmefWorkspaceSubmission?.status ?? "").toLowerCase();
+  const smeaSubmissionStatus = String(smeaWorkspaceSubmission?.status ?? "").toLowerCase();
   const isBmefSubmissionSubmitted = isSubmittedWorkflowStatus(bmefSubmissionStatus);
   const isSmeaSubmissionSubmitted = isSubmittedWorkflowStatus(smeaSubmissionStatus);
   const bmefSubmitted = optimisticSubmittedByType.bmef
-    || (isBmefSubmissionSubmitted && (
-      hasUploadedReportFile(bmefFileEntry)
-      || Boolean(bmefReportSubmission?.completion?.hasBmefFile)
-    ));
+    || hasUploadedReportFile(bmefFileEntry)
+    || Boolean(bmefWorkspaceSubmission?.completion?.hasBmefFile)
+    || (isBmefSubmissionSubmitted && Boolean(bmefWorkspaceSubmission));
   const smeaSubmitted = optimisticSubmittedByType.smea
-    || (isSmeaSubmissionSubmitted && (
-      hasUploadedReportFile(smeaFileEntry)
-      || Boolean(smeaReportSubmission?.completion?.hasSmeaFile)
-    ));
+    || hasUploadedReportFile(smeaFileEntry)
+    || Boolean(smeaWorkspaceSubmission?.completion?.hasSmeaFile)
+    || (isSmeaSubmissionSubmitted && Boolean(smeaWorkspaceSubmission));
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
     ?? activeFormSubmission?.createdBy?.name
@@ -2524,6 +2600,12 @@ function SchoolIndicatorPanelComponent({
       : null),
     [activeTab, visibleCategoryMetrics],
   );
+  const activeSaveSection = useMemo<WorkspaceSaveSection | null>(() => {
+    if (activeTab?.kind === "upload") {
+      return activeTab.uploadType;
+    }
+    return workspaceSaveSectionForCategory(activeCategory?.id);
+  }, [activeCategory?.id, activeTab]);
   const isActiveCategoryLocked = Boolean(activeCategory && isFormLocked);
   const isSelectedYearEditable = Boolean(
     selectedSchoolYearLabel && yearWorkspaceState.editableSchoolYears.includes(selectedSchoolYearLabel),
@@ -2564,6 +2646,7 @@ function SchoolIndicatorPanelComponent({
     return "Draft";
   }, [workspaceMode]);
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
+  const canShowSectionSaveAction = canShowSaveAndSubmitActions && Boolean(activeCategory);
   const canShowEditAction = workspaceMode === "submitted_locked";
   const canShowCancelEditAction = workspaceMode === "submitted_editing";
   const canShowResetAction = workspaceMode === "draft" || workspaceMode === "submitted_editing";
@@ -2572,10 +2655,14 @@ function SchoolIndicatorPanelComponent({
   const isCriticalActionInFlight = isGroupBActionBusy;
   const isManualActionBlocked = isGroupBActionBusy || isAutosavingDraft;
   const saveActionLabel = useMemo(() => {
-    if (workspaceMode === "blank") return "Save Draft";
-    if (workspaceMode === "submitted_editing") return "Save Changes";
-    return "Update Draft";
-  }, [workspaceMode]);
+    if (!activeCategory) {
+      return "Save Draft";
+    }
+    const sectionLabel = workspaceSaveSectionLabel(activeSaveSection);
+    if (workspaceMode === "blank") return `Save ${sectionLabel}`;
+    if (workspaceMode === "submitted_editing") return `Save ${sectionLabel}`;
+    return `Update ${sectionLabel}`;
+  }, [activeCategory, activeSaveSection, workspaceMode]);
   const submitActionLabel = workspaceMode === "submitted_editing" ? "Re-submit" : "Submit";
   const showSubmitEligibilityHelper = canShowSaveAndSubmitActions && missingFieldTargets.length > 0;
   const saveActionDisabledTitle = isWorkspaceReadOnly
@@ -2631,14 +2718,12 @@ function SchoolIndicatorPanelComponent({
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
   useEffect(() => {
-    const serverBmefSubmitted = isBmefSubmissionSubmitted && (
-      hasUploadedReportFile(bmefFileEntry)
-      || Boolean(bmefReportSubmission?.completion?.hasBmefFile)
-    );
-    const serverSmeaSubmitted = isSmeaSubmissionSubmitted && (
-      hasUploadedReportFile(smeaFileEntry)
-      || Boolean(smeaReportSubmission?.completion?.hasSmeaFile)
-    );
+    const serverBmefSubmitted = hasUploadedReportFile(bmefFileEntry)
+      || Boolean(bmefWorkspaceSubmission?.completion?.hasBmefFile)
+      || (isBmefSubmissionSubmitted && Boolean(bmefWorkspaceSubmission));
+    const serverSmeaSubmitted = hasUploadedReportFile(smeaFileEntry)
+      || Boolean(smeaWorkspaceSubmission?.completion?.hasSmeaFile)
+      || (isSmeaSubmissionSubmitted && Boolean(smeaWorkspaceSubmission));
 
     setOptimisticSubmittedByType({
       bmef: serverBmefSubmitted,
@@ -2651,12 +2736,12 @@ function SchoolIndicatorPanelComponent({
   }, [
     activeFormSubmissionId,
     bmefFileEntry,
-    bmefReportSubmission?.completion?.hasBmefFile,
+    bmefWorkspaceSubmission?.completion?.hasBmefFile,
     isBmefSubmissionSubmitted,
     isFormSubmitted,
     isSmeaSubmissionSubmitted,
     smeaFileEntry,
-    smeaReportSubmission?.completion?.hasSmeaFile,
+    smeaWorkspaceSubmission?.completion?.hasSmeaFile,
   ]);
 
   const filteredActiveMetrics = useMemo(() => {
@@ -3251,23 +3336,26 @@ function SchoolIndicatorPanelComponent({
   }, [handleJumpToNextMissing, handleJumpToPreviousMissing]);
 
   const buildSubmissionPayloadFromCurrentWorkspace = useCallback((
-    options: { allowIncomplete?: boolean; includeAllEntries?: boolean } = {},
+    options: { allowIncomplete?: boolean; includeAllEntries?: boolean; metrics?: IndicatorMetric[] } = {},
   ): { payload: IndicatorSubmissionPayload | null; reason: string; fingerprint: string } => {
     const allowIncomplete = options.allowIncomplete === true;
     const includeAllEntries = options.includeAllEntries === true;
+    const metricsToSerialize = options.metrics ?? orderedComplianceMetrics;
+    const metricIdsInScope = new Set(metricsToSerialize.map((metric) => String(metric.id)));
+    const relevantMissingFieldTargets = missingFieldTargets.filter((target) => metricIdsInScope.has(String(target.metricId)));
     if (!activeAcademicYearId) {
       return { payload: null, reason: "Select an academic year.", fingerprint: "" };
     }
 
-    if (!allowIncomplete && missingFieldTargets.length > 0) {
+    if (!allowIncomplete && relevantMissingFieldTargets.length > 0) {
       return {
         payload: null,
-        reason: submitBlockedReason || "Complete all required indicator cells before saving.",
+        reason: buildMissingReason(relevantMissingFieldTargets.length, missingCountByCategory) || "Complete all required indicator cells before saving.",
         fingerprint: "",
       };
     }
 
-    const entries = orderedComplianceMetrics
+    const entries = metricsToSerialize
       .map((metric) => {
         const value = metricEntries[metric.id] ?? buildDefaultEntry(metric);
         const scopedYears = resolveMetricYearsInScope(metric, workspaceSchoolYears);
@@ -3493,7 +3581,7 @@ function SchoolIndicatorPanelComponent({
     if (invalidEntry) {
       return {
         payload: null,
-        reason: submitBlockedReason || "Complete all required indicator cells before saving.",
+        reason: buildMissingReason(relevantMissingFieldTargets.length, missingCountByCategory) || "Complete all required indicator cells before saving.",
         fingerprint: "",
       };
     }
@@ -3522,7 +3610,8 @@ function SchoolIndicatorPanelComponent({
         .map((entry) => Number(entry.metricId))
         .filter((metricId) => Number.isFinite(metricId) && metricId > 0),
     )].sort((a, b) => a - b);
-    const isFullMetricPayload = expectedMetricIds.length > 0
+    const isFullMetricPayload = metricsToSerialize.length === orderedComplianceMetrics.length
+      && expectedMetricIds.length > 0
       && expectedMetricIds.length === payloadMetricIds.length
       && expectedMetricIds.every((metricId, index) => metricId === payloadMetricIds[index]);
 
@@ -3532,7 +3621,7 @@ function SchoolIndicatorPanelComponent({
     }
 
     return { payload, reason: "", fingerprint: JSON.stringify(payload) };
-  }, [activeAcademicYearId, metricEntries, missingFieldTargets.length, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, submitBlockedReason, workspaceSchoolYears]);
+  }, [activeAcademicYearId, metricEntries, missingCountByCategory, missingFieldTargets, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, workspaceSchoolYears]);
 
   const hasUnsavedWorkspaceChanges = useMemo(() => {
     const activeSubmission = (
@@ -3625,6 +3714,40 @@ function SchoolIndicatorPanelComponent({
     },
     [createSubmission, editableWorkspaceSubmissionInScope, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission],
   );
+
+  const ensureWorkspaceSubmission = useCallback(async (): Promise<IndicatorSubmission> => {
+    if (!activeAcademicYearId) {
+      throw new Error("Select an academic year.");
+    }
+
+    const existingDraft = (
+      editableWorkspaceSubmissionInScope
+      && isSubmissionInAcademicYear(editableWorkspaceSubmissionInScope, activeAcademicYearId)
+    )
+      ? editableWorkspaceSubmissionInScope
+      : null;
+
+    if (existingDraft) {
+      return existingDraft;
+    }
+
+    const bootstrapped = await bootstrapSubmission({
+      academicYearId: Number(activeAcademicYearId),
+      reportingPeriod,
+    });
+
+    preserveLocalWorkspaceAfterMutationRef.current = {
+      academicYearId: activeAcademicYearId,
+      submissionId: bootstrapped.id,
+    };
+    setEditingSubmissionId(bootstrapped.id);
+    setPendingLocalDraft(null);
+    setAutosaveError("");
+    setServerAutosaveAt(bootstrapped.updatedAt ?? new Date().toISOString());
+    lastAutosaveFingerprintRef.current = "";
+
+    return bootstrapped;
+  }, [activeAcademicYearId, bootstrapSubmission, editableWorkspaceSubmissionInScope, isSubmissionInAcademicYear, reportingPeriod]);
 
   const triggerServerAutosave = useCallback(async () => {
     if (!canShowSaveAndSubmitActions) {
@@ -4013,15 +4136,18 @@ function SchoolIndicatorPanelComponent({
     || Boolean(restorableServerSubmissionInScope && restorableServerSubmissionInScope.id !== editingSubmissionId)
   );
 
-  const handleCreateSubmission = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSaveActiveSection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    console.log("[GroupB] Save Draft clicked");
+    console.log("[GroupB] Save section clicked");
     console.log("[GroupB] mode:", workspaceMode);
     console.log("[GroupB] busy:", isGroupBActionBusy);
     console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
-    await runGroupBAction("Save draft", async () => {
+    await runGroupBAction("Save section", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
+        return;
+      }
+      if (!activeCategory) {
         return;
       }
       if (isActiveCategoryLocked) {
@@ -4032,84 +4158,65 @@ function SchoolIndicatorPanelComponent({
         return;
       }
 
-      const activeSubmission = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
-      const shouldPersistFullWorkspace = Boolean(
-        activeSubmission
-        && isSubmissionInAcademicYear(activeSubmission, activeAcademicYearId),
-      );
+      const sectionToSave = workspaceSaveSectionForCategory(activeCategory.id);
+      if (!sectionToSave) {
+        setSubmitError("No save scope is available for the selected workspace section.");
+        return;
+      }
+
       const prepared = buildSubmissionPayloadFromCurrentWorkspace({
-        allowIncomplete: true,
-        includeAllEntries: shouldPersistFullWorkspace,
+        metrics: activeCategory.metrics,
       });
       if (!prepared.payload) {
-        if (missingFieldTargets.length > 0) {
-          setSubmitError("Please complete all required fields before saving your draft.");
+        const sectionMetricIds = new Set(activeCategory.metrics.map((metric) => String(metric.id)));
+        const sectionMissingTargets = missingFieldTargets.filter((target) => sectionMetricIds.has(String(target.metricId)));
+        if (sectionMissingTargets.length > 0) {
+          setSubmitError(`Please complete all required ${categoryTabLabel(activeCategory)} fields before saving.`);
           setShowMissingFields(true);
-          const firstMissing = missingFieldTargets[0];
+          const firstMissing = sectionMissingTargets[0];
           if (firstMissing) {
-            focusMissingTarget(firstMissing, missingFieldTargets.length > 1 ? 1 : 0);
+            focusMissingTarget(firstMissing, sectionMissingTargets.length > 1 ? 1 : 0);
           }
           return;
         }
         setSubmitError(prepared.reason);
         return;
       }
-      const payload = prepared.payload;
-      console.log("[GroupB] payload:", payload);
-      const submissionIdToUpdate = (
-        activeSubmission && isSubmissionInAcademicYear(activeSubmission, payload.academicYearId)
-          ? activeSubmission.id
-          : null
-      );
-      const canUpdateActiveSubmission = Boolean(
-        submissionIdToUpdate && isDraftOrReturnedWorkflowStatus(activeSubmission?.status),
-      );
-
-      if (submissionIdToUpdate && !hasUnsavedWorkspaceChanges) {
-        setSubmitError("");
+      if (prepared.payload.indicators.length === 0) {
+        setSubmitError(`No ${categoryTabLabel(activeCategory)} changes are ready to save.`);
         return;
       }
-
-      const saveModeAtActionStart = workspaceMode;
-      const saveAcademicYearAtActionStart = activeAcademicYearIdRef.current;
+      const payload = {
+        ...prepared.payload,
+        replace_missing: false,
+      } satisfies IndicatorSubmissionPayload;
+      console.log("[GroupB] payload:", payload);
+      setSavingSection(sectionToSave);
       await runCriticalWorkspaceMutation({
         mutation: () => (
-          canUpdateActiveSubmission && submissionIdToUpdate
-            ? updateSubmission(submissionIdToUpdate, payload)
+          editableWorkspaceSubmissionInScope?.id
+            ? updateSubmission(editableWorkspaceSubmissionInScope.id, payload)
             : createSubmission(payload)
         ),
         onSuccess: (saved) => {
-          return fetchFreshWorkspaceSubmission(saved).then((freshSaved) => {
-            setEditingSubmissionId(freshSaved.id);
-            setPendingLocalDraft(null);
-            setAutosaveError("");
-            const savedAt = new Date().toISOString();
-            setServerAutosaveAt(savedAt);
-            lastAutosaveFingerprintRef.current = `${freshSaved.id}:${prepared.fingerprint}`;
-            rehydrateWorkspaceFromSubmission(freshSaved);
-            if (saveModeAtActionStart === "submitted_editing") {
-              submittedEditPreserveContextRef.current = {
-                academicYearId: saveAcademicYearAtActionStart,
-                submissionId: freshSaved.id,
-              };
-            }
-            return refreshResolvedWorkspace();
-          });
+          preserveLocalWorkspaceAfterMutationRef.current = {
+            academicYearId: activeAcademicYearIdRef.current,
+            submissionId: saved.id,
+          };
+          setEditingSubmissionId(saved.id);
+          setPendingLocalDraft(null);
+          setAutosaveError("");
+          const savedAt = new Date().toISOString();
+          setServerAutosaveAt(saved.updatedAt ?? savedAt);
+          lastAutosaveFingerprintRef.current = `${saved.id}:${prepared.fingerprint}`;
         },
-        getSuccessMessage: (saved) => (
-          saveModeAtActionStart === "blank"
-            ? `Draft package #${saved.id} saved.`
-            : saveModeAtActionStart === "submitted_editing" && !canUpdateActiveSubmission
-              ? `Draft package #${saved.id} created from submitted report.`
-            : saveModeAtActionStart === "submitted_editing"
-              ? `Changes saved for package #${saved.id}.`
-              : `Draft package #${saved.id} updated.`
-        ),
+        getSuccessMessage: (saved) => `${workspaceSaveSectionLabel(sectionToSave)} saved for package #${saved.id}.`,
         onError: (err) => {
           console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to save indicator package."));
         },
       });
+      setSavingSection(null);
     });
   };
 
@@ -4332,6 +4439,7 @@ function SchoolIndicatorPanelComponent({
     console.log("[GroupB] busy:", isGroupBActionBusy);
     console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Upload", async () => {
+      setSavingSection(type);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
       const normalizedName = file.name.toLowerCase();
@@ -4362,19 +4470,7 @@ function SchoolIndicatorPanelComponent({
           }
 
           if (!uploadTarget?.id) {
-            const currentPayload = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
-            if (!currentPayload.payload) {
-              throw new Error(currentPayload.reason || "Unable to prepare a draft for file upload.");
-            }
-            console.log("[GroupB] payload:", currentPayload.payload);
-
-            uploadTarget = await createSubmission(currentPayload.payload);
-            setEditingSubmissionId(uploadTarget.id);
-            setPendingLocalDraft(null);
-            setAutosaveError("");
-            const savedAt = new Date().toISOString();
-            setServerAutosaveAt(savedAt);
-            lastAutosaveFingerprintRef.current = `${uploadTarget.id}:${currentPayload.fingerprint}`;
+            uploadTarget = await ensureWorkspaceSubmission();
           }
           if (
             activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
@@ -4403,6 +4499,14 @@ function SchoolIndicatorPanelComponent({
           if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== updated.id) {
             throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
           }
+          preserveLocalWorkspaceAfterMutationRef.current = {
+            academicYearId: activeAcademicYearIdRef.current,
+            submissionId: updated.id,
+          };
+          setEditingSubmissionId(updated.id);
+          setPendingLocalDraft(null);
+          setAutosaveError("");
+          setServerAutosaveAt(updated.updatedAt ?? new Date().toISOString());
           setUploadingFileType(null);
           setUploadErrorByType((current) => ({ ...current, [type]: "" }));
         },
@@ -4419,8 +4523,9 @@ function SchoolIndicatorPanelComponent({
       if (!uploaded) {
         postRefreshMessageRef.current = null;
       }
+      setSavingSection(null);
     });
-  }, [buildSubmissionPayloadFromCurrentWorkspace, createSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, toGroupBActionErrorMessage, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
+  }, [ensureWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -4450,7 +4555,7 @@ function SchoolIndicatorPanelComponent({
 
   const resolveFileSourceSubmission = useCallback(
     (type: IndicatorSubmissionFileType): { submission: IndicatorSubmission | null; error: string | null } => {
-      const sourceSubmission = type === "bmef" ? bmefReportSubmission : smeaReportSubmission;
+      const sourceSubmission = type === "bmef" ? bmefWorkspaceSubmission : smeaWorkspaceSubmission;
       const selectedYearId = activeAcademicYearIdRef.current;
 
       if (!sourceSubmission) {
@@ -4479,7 +4584,7 @@ function SchoolIndicatorPanelComponent({
 
       return { submission: sourceSubmission, error: null };
     },
-    [bmefReportSubmission, isSubmissionInAcademicYear, smeaReportSubmission],
+    [bmefWorkspaceSubmission, isSubmissionInAcademicYear, smeaWorkspaceSubmission],
   );
 
   const handleDownloadUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
@@ -4705,7 +4810,7 @@ function SchoolIndicatorPanelComponent({
           </div>
         </div>
       </div>
-      <form className="space-y-4 border-b border-slate-100 bg-slate-50/30 px-4 py-4" onSubmit={handleCreateSubmission} onBlurCapture={handleFormBlurAutosave}>
+      <form className="space-y-4 border-b border-slate-100 bg-slate-50/30 px-4 py-4" onSubmit={handleSaveActiveSection} onBlurCapture={handleFormBlurAutosave}>
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <label htmlFor="indicator-school-year" className="mb-1 block text-[12px] font-medium tracking-normal text-slate-500">
@@ -5494,7 +5599,7 @@ function SchoolIndicatorPanelComponent({
               Cancel Edit
             </button>
           )}
-          {canShowSaveAndSubmitActions && (
+          {canShowSectionSaveAction && (
             <>
               <button
                 type="submit"
@@ -5503,25 +5608,27 @@ function SchoolIndicatorPanelComponent({
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Target className="h-4 w-4" />
-                {isSaving ? "Saving..." : saveActionLabel}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleCreateAndSubmit()}
-                disabled={
-                  isManualActionBlocked
-                  || isSubmissionDataLoading
-                  || complianceMetrics.length === 0
-                  || isWorkspaceReadOnly
-                  || missingFieldTargets.length > 0
-                }
-                title={submitActionTitle}
-                className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <Send className="h-4 w-4" />
-                {submitActionLabel}
+                {savingSection === activeSaveSection || isSaving ? "Saving..." : saveActionLabel}
               </button>
             </>
+          )}
+          {canShowSaveAndSubmitActions && (
+            <button
+              type="button"
+              onClick={() => void handleCreateAndSubmit()}
+              disabled={
+                isManualActionBlocked
+                || isSubmissionDataLoading
+                || complianceMetrics.length === 0
+                || isWorkspaceReadOnly
+                || missingFieldTargets.length > 0
+              }
+              title={submitActionTitle}
+              className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <Send className="h-4 w-4" />
+              {submitActionLabel}
+            </button>
           )}
           {canShowEditAction && (
             <button
