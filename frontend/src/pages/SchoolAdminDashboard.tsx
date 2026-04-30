@@ -47,6 +47,22 @@ function submissionRecencyScore(submission: IndicatorSubmission): number {
   return (Number.isFinite(timestamp) ? timestamp : 0) * 1_000 + (Number.isFinite(version) ? version : 0);
 }
 
+export function resolvePreferredSubmittedReportAcademicYearId(
+  entries: IndicatorSubmission[],
+  selectedSchoolId: string,
+): string | null {
+  const finalizedEntries = entries
+    .filter((entry) => isFinalizedSubmissionStatus(entry.status))
+    .filter((entry) => (
+      selectedSchoolId.length === 0
+      || String(entry.school?.id ?? "") === selectedSchoolId
+    ))
+    .slice()
+    .sort((left, right) => submissionRecencyScore(right) - submissionRecencyScore(left));
+
+  return finalizedEntries[0]?.academicYear?.id ?? null;
+}
+
 export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
   const finalizedEntries = entries.filter((entry) => isFinalizedSubmissionStatus(entry.status));
   if (finalizedEntries.length === 0) {
@@ -478,6 +494,10 @@ export function SchoolAdminDashboard() {
     () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
     [allSubmissions, submissionSnapshot],
   );
+  const preferredSubmittedReportAcademicYearId = useMemo(
+    () => resolvePreferredSubmittedReportAcademicYearId(indicatorSubmissions, selectedSchoolId),
+    [indicatorSubmissions, selectedSchoolId],
+  );
   const groupASubmittedSubmission = useMemo(
     () => resolveSelectedYearReportSubmission(
       indicatorSubmissions.filter((submission) => {
@@ -773,10 +793,11 @@ export function SchoolAdminDashboard() {
 
   useEffect(() => {
     if (initialAcademicYearAppliedRef.current) return;
-    if (!currentAcademicYearOption?.id) return;
-    setContextAcademicYearId(currentAcademicYearOption.id);
+    const initialAcademicYearId = preferredSubmittedReportAcademicYearId ?? currentAcademicYearOption?.id ?? "";
+    if (!initialAcademicYearId) return;
+    setContextAcademicYearId(initialAcademicYearId);
     initialAcademicYearAppliedRef.current = true;
-  }, [currentAcademicYearOption]);
+  }, [currentAcademicYearOption, preferredSubmittedReportAcademicYearId]);
 
   useEffect(() => {
     setActiveReportModalType(null);

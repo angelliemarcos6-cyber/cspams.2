@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveSelectedYearReportSubmission } from "@/pages/SchoolAdminDashboard";
+import {
+  resolvePreferredSubmittedReportAcademicYearId,
+  resolveSelectedYearReportSubmission,
+} from "@/pages/SchoolAdminDashboard";
 import type { IndicatorSubmission } from "@/types";
 
 function submission(overrides: Partial<IndicatorSubmission>): IndicatorSubmission {
@@ -53,5 +56,38 @@ describe("resolveSelectedYearReportSubmission", () => {
     ]);
 
     expect(result?.id).toBe("validated-1");
+  });
+});
+
+describe("resolvePreferredSubmittedReportAcademicYearId", () => {
+  it("prefers the academic year of the latest finalized submission", () => {
+    const result = resolvePreferredSubmittedReportAcademicYearId([
+      submission({
+        id: "submitted-old",
+        status: "submitted",
+        statusLabel: "Submitted",
+        academicYear: { id: "year-1", name: "2025-2026" },
+        updatedAt: "2026-04-29T00:00:00.000Z",
+        school: { id: "school-1", schoolCode: "001", name: "Test School" },
+      }),
+      submission({
+        id: "validated-new",
+        status: "validated",
+        statusLabel: "Validated",
+        academicYear: { id: "year-2", name: "2026-2027" },
+        updatedAt: "2026-04-30T00:00:00.000Z",
+        school: { id: "school-1", schoolCode: "001", name: "Test School" },
+      }),
+      submission({
+        id: "draft-newest",
+        status: "draft",
+        statusLabel: "Draft",
+        academicYear: { id: "year-3", name: "2027-2028" },
+        updatedAt: "2026-05-01T00:00:00.000Z",
+        school: { id: "school-1", schoolCode: "001", name: "Test School" },
+      }),
+    ], "school-1");
+
+    expect(result).toBe("year-2");
   });
 });
