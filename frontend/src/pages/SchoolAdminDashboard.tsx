@@ -803,6 +803,10 @@ export function SchoolAdminDashboard() {
   }, [currentAcademicYearOption, preferredSubmittedReportAcademicYearId]);
 
   const handleAcademicYearChange = useCallback(async (nextYearId: string) => {
+    if (nextYearId === contextAcademicYearId) {
+      return;
+    }
+
     setContextAcademicYearId(nextYearId);
 
     if (!selectedSchoolId || !nextYearId || nextYearId === "all") {
@@ -830,7 +834,7 @@ export function SchoolAdminDashboard() {
         setIsYearSwitching(false);
       }
     }
-  }, [loadSubmissionsForYear, selectedSchoolId]);
+  }, [contextAcademicYearId, loadSubmissionsForYear, selectedSchoolId]);
 
   useEffect(() => {
     if (!selectedSchoolId || !contextAcademicYearId || contextAcademicYearId === "all") {
@@ -865,6 +869,39 @@ export function SchoolAdminDashboard() {
         }
       });
   }, [contextAcademicYearId, loadSubmissionsForYear, selectedSchoolId]);
+
+  useEffect(() => {
+    if (!selectedSchoolId || !contextAcademicYearId || contextAcademicYearId === "all" || isYearSwitching) {
+      return;
+    }
+
+    const matchingRows = indicatorSubmissions
+      .filter((submission) => (
+        String(submission.academicYear?.id ?? "") === String(contextAcademicYearId)
+        && String(submission.school?.id ?? selectedSchoolId) === String(selectedSchoolId)
+      ))
+      .sort((a, b) => (
+        new Date(b.updatedAt ?? b.createdAt ?? 0).getTime()
+        - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime()
+      ));
+
+    if (matchingRows.length === 0 && selectedYearSubmissions.length === 0) {
+      return;
+    }
+
+    setSelectedYearSubmissions((current) => {
+      const currentIds = current.map((submission) => submission.id).join("|");
+      const nextIds = matchingRows.map((submission) => submission.id).join("|");
+      const currentFingerprint = current.map((submission) => buildSubmissionRefreshFingerprint(submission)).join("|");
+      const nextFingerprint = matchingRows.map((submission) => buildSubmissionRefreshFingerprint(submission)).join("|");
+
+      if (currentIds === nextIds && currentFingerprint === nextFingerprint) {
+        return current;
+      }
+
+      return matchingRows;
+    });
+  }, [contextAcademicYearId, indicatorSubmissions, isYearSwitching, selectedSchoolId, selectedYearSubmissions.length]);
 
   useEffect(() => {
     setActiveReportModalType(null);
@@ -1325,6 +1362,8 @@ export function SchoolAdminDashboard() {
         <SchoolIndicatorPanel
           statusFilter="all"
           selectedAcademicYearId={effectiveAcademicYearId}
+          yearScopedSubmissions={effectiveAcademicYearId && effectiveAcademicYearId !== "all" ? selectedYearSubmissions : undefined}
+          isYearScopedLoading={isYearSwitching}
           onAcademicYearChange={(academicYearId) => {
             void handleAcademicYearChange(academicYearId);
           }}

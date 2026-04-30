@@ -64,6 +64,8 @@ interface SchoolIndicatorPanelProps {
   academicYearFilter?: string;
   selectedAcademicYearId?: string;
   onAcademicYearChange?: (academicYearId: string) => void;
+  yearScopedSubmissions?: IndicatorSubmission[];
+  isYearScopedLoading?: boolean;
 }
 
 interface MissingFieldTarget {
@@ -1227,6 +1229,8 @@ export function SchoolIndicatorPanel({
   academicYearFilter = "all",
   selectedAcademicYearId,
   onAcademicYearChange,
+  yearScopedSubmissions,
+  isYearScopedLoading = false,
 }: SchoolIndicatorPanelProps) {
   const { user, apiToken } = useAuth();
   const {
@@ -1472,8 +1476,15 @@ export function SchoolIndicatorPanel({
       return;
     }
 
+    if (
+      selectedAcademicYearId
+      && String(selectedAcademicYearId) === String(yearWorkspaceState.selectedAcademicYearId)
+    ) {
+      return;
+    }
+
     onAcademicYearChange(yearWorkspaceState.selectedAcademicYearId);
-  }, [onAcademicYearChange, yearWorkspaceState.selectedAcademicYearId]);
+  }, [onAcademicYearChange, selectedAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
 
   const autosaveUserScopeId = user?.id ? String(user.id) : "anonymous";
   const autosaveSchoolScopeId = user?.schoolId ? String(user.schoolId) : "unassigned";
@@ -1544,11 +1555,20 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [activeAcademicYearId, autosaveKey, complianceMetrics.length, editingSubmissionId, metricEntries, notes]);
 
+  const hasExternallyScopedYearSubmissions = Boolean(selectedAcademicYearId && selectedAcademicYearId !== "all");
   const submissions = useMemo(
-    () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
-    [allSubmissions, submissionSnapshot],
+    () => {
+      if (hasExternallyScopedYearSubmissions) {
+        return yearScopedSubmissions ?? [];
+      }
+
+      return allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot;
+    },
+    [allSubmissions, hasExternallyScopedYearSubmissions, submissionSnapshot, yearScopedSubmissions],
   );
-  const isSubmissionDataLoading = isLoading || isAllSubmissionsLoading;
+  const isSubmissionDataLoading = hasExternallyScopedYearSubmissions
+    ? isYearScopedLoading
+    : (isLoading || isAllSubmissionsLoading);
   const sortedSubmissions = useMemo(
     () =>
       [...submissions].sort((a, b) => {
@@ -1598,7 +1618,7 @@ export function SchoolIndicatorPanel({
     return ranked[0]?.academicYear?.id ?? null;
   }, [sortedSubmissions]);
   useEffect(() => {
-    if (isSubmissionDataLoading || hasUserSelectedAcademicYearRef.current) {
+    if (selectedAcademicYearId || isSubmissionDataLoading || hasUserSelectedAcademicYearRef.current) {
       return;
     }
 
@@ -1611,6 +1631,7 @@ export function SchoolIndicatorPanel({
     activeAcademicYearId,
     isSubmissionDataLoading,
     preferredAcademicYearIdFromSubmissions,
+    selectedAcademicYearId,
   ]);
   const latestValidatedSubmission = useMemo(
     () =>
