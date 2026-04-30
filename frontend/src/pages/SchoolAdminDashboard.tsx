@@ -121,6 +121,10 @@ function isFinalizedSubmissionStatus(status: string | null | undefined): boolean
   return normalized === "submitted" || normalized === "validated";
 }
 
+function filterFinalizedDashboardSubmissions(entries: IndicatorSubmission[]): IndicatorSubmission[] {
+  return entries.filter((entry) => isFinalizedSubmissionStatus(entry.status));
+}
+
 function formatDisplayValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "-";
@@ -531,7 +535,7 @@ export function SchoolAdminDashboard() {
       return dashboardViewSubmissions;
     }
 
-    return indicatorSubmissions;
+    return filterFinalizedDashboardSubmissions(indicatorSubmissions);
   }, [dashboardViewSubmissions, effectiveAcademicYearId, indicatorSubmissions]);
   const groupASubmittedSubmission = useMemo(
     () => resolveSelectedYearReportSubmission(submissionsForSelectedContext),
@@ -858,7 +862,7 @@ export function SchoolAdminDashboard() {
     void loadSubmissionsForYear(selectedSchoolId, dashboardViewAcademicYearId)
       .then((rows) => {
         if (lastLoadedYearKeyRef.current === key) {
-          setDashboardViewSubmissions(rows);
+          setDashboardViewSubmissions(filterFinalizedDashboardSubmissions(rows));
         }
       })
       .catch(() => {
@@ -882,6 +886,7 @@ export function SchoolAdminDashboard() {
       .filter((submission) => (
         String(submission.academicYear?.id ?? "") === String(dashboardViewAcademicYearId)
         && String(submission.school?.id ?? selectedSchoolId) === String(selectedSchoolId)
+        && isFinalizedSubmissionStatus(submission.status)
       ))
       .sort((a, b) => (
         new Date(b.updatedAt ?? b.createdAt ?? 0).getTime()
