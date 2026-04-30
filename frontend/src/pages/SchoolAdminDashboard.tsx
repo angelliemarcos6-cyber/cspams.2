@@ -153,6 +153,20 @@ function submissionHasRenderableIndicatorDetails(submission: IndicatorSubmission
   });
 }
 
+function buildSubmissionRefreshFingerprint(submission: IndicatorSubmission | null | undefined): string {
+  if (!submission?.id) {
+    return "";
+  }
+
+  return [
+    submission.id,
+    submission.status ?? "",
+    submission.version ?? "",
+    submission.updatedAt ?? "",
+    submission.submittedAt ?? "",
+  ].join(":");
+}
+
 function resolveIndicatorValue(
   indicator: IndicatorSubmissionItem | null | undefined,
   kind: "target" | "actual",
@@ -472,6 +486,7 @@ export function SchoolAdminDashboard() {
   );
   const initialLoadStartedRef = useRef(false);
   const initialAcademicYearAppliedRef = useRef(false);
+  const finalizedSubmissionRefreshRef = useRef("");
 
   /* ── Derived data ── */
   const orderedAcademicYears = useMemo(
@@ -518,11 +533,12 @@ export function SchoolAdminDashboard() {
   useEffect(() => {
     if (!groupASubmittedSubmission?.id) return;
 
-    const hasRows = submissionRows(groupASubmittedSubmission).length > 0;
-    const hasRenderableDetails = submissionHasRenderableIndicatorDetails(groupASubmittedSubmission);
+    const refreshFingerprint = buildSubmissionRefreshFingerprint(groupASubmittedSubmission);
+    if (finalizedSubmissionRefreshRef.current === refreshFingerprint) {
+      return;
+    }
 
-    if (hasRows && hasRenderableDetails) return;
-
+    finalizedSubmissionRefreshRef.current = refreshFingerprint;
     void fetchSubmission(groupASubmittedSubmission.id).catch(() => undefined);
   }, [fetchSubmission, groupASubmittedSubmission]);
   const groupAReportView = useMemo(() => {
@@ -708,51 +724,6 @@ export function SchoolAdminDashboard() {
     () => groupAReportView.indicators,
     [groupAReportView],
   );
-  const submittedReportTableRows = useMemo(() => {
-    const normalize = (value: string | null | undefined) => String(value ?? "").trim().toLowerCase();
-
-    const achievementRows: IndicatorSubmissionItem[] = [];
-    const kpiRows: IndicatorSubmissionItem[] = [];
-
-    for (const item of submittedIndicatorRows) {
-      const framework = normalize(item.metric?.framework);
-      const category = normalize(item.metric?.category);
-      const code = normalize(item.metric?.code);
-
-      const isAchievement =
-        framework === "i_meta"
-        || code === "salo";
-      const isKpi =
-        (framework === "targets_met" && category === "learner")
-        || code === "rbe_manifest";
-
-      if (isAchievement && !isKpi) {
-        achievementRows.push(item);
-        continue;
-      }
-      if (isKpi && !isAchievement) {
-        kpiRows.push(item);
-        continue;
-      }
-
-      // Keep uncertain rows visible in at least one submitted table.
-      achievementRows.push(item);
-    }
-
-    if (submittedIndicatorRows.length > 0 && (achievementRows.length === 0 || kpiRows.length === 0)) {
-      return {
-        achievementRows: submittedIndicatorRows,
-        kpiRows: submittedIndicatorRows,
-        isUnified: true,
-      };
-    }
-
-    return {
-      achievementRows,
-      kpiRows,
-      isUnified: false,
-    };
-  }, [submittedIndicatorRows]);
 
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
@@ -1081,33 +1052,18 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5E7EB]">
-                  {submittedIndicatorRows.length > 0 ? (
-                    submittedReportTableRows.achievementRows.map((item) => (
-                      <tr key={`submitted-achievement-${item.id}`}>
-                        <td className="px-4 py-2.5 text-slate-900">
-                          {item.metric?.name ?? "Unknown Metric"}
-                        </td>
-                        <td className="px-4 py-2.5 text-right text-slate-900">
-                          <span className="font-semibold text-slate-900">
-                            {resolveIndicatorValue(item, "actual")}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    groupAReportView.schoolAchievementRows.map((row) => (
-                      <tr key={row.key}>
-                        <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
-                          {row.label}
-                        </td>
-                        <td className="px-4 py-2.5 text-right text-slate-900">
-                          <span className="font-semibold text-slate-900">
-                            {row.value}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  {groupAReportView.schoolAchievementRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
+                        {row.label}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-900">
+                        <span className="font-semibold text-slate-900">
+                          {row.value}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1127,52 +1083,26 @@ export function SchoolAdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5E7EB]">
-                  {submittedIndicatorRows.length > 0 ? (
-                    submittedReportTableRows.kpiRows.map((item) => (
-                      <tr key={`submitted-kpi-${item.id}`}>
-                        <td className="px-4 py-2.5 text-slate-900">{item.metric?.name ?? "Unknown Metric"}</td>
-                        <td className="px-4 py-2.5 text-center text-slate-900">
-                          <span className="font-semibold text-slate-900">
-                            {resolveIndicatorValue(item, "target")}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center text-slate-900">
-                          <span className="font-semibold text-slate-900">
-                            {resolveIndicatorValue(item, "actual")}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center text-slate-900">
-                          {formatDisplayValue(item.complianceStatus)}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    groupAReportView.kpiRows.map((row) => (
-                      <tr key={row.key}>
-                        <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
-                        <td className="px-4 py-2.5 text-center text-slate-900">
-                          <span className="font-semibold text-slate-900">
-                            {row.target}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center text-slate-900">
-                          <span className="font-semibold text-slate-900">
-                            {row.actual}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center text-slate-900">
-                          {row.status}
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  {groupAReportView.kpiRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        <span className="font-semibold text-slate-900">
+                          {row.target}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        <span className="font-semibold text-slate-900">
+                          {row.actual}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        {row.status}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-              {submittedIndicatorRows.length > 0 && submittedReportTableRows.isUnified && (
-                <p className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500">
-                  Category/framework split was unavailable for this submission, so a unified submitted indicator list is shown.
-                </p>
-              )}
             </div>
           </div>
         </div>
