@@ -1860,15 +1860,18 @@ export function SchoolIndicatorPanel({
     [editingSubmissionId, scopedSubmissionsForYear],
   );
   const editableWorkspaceSubmissionInScope = useMemo(
-    () => {
-      if (editingSubmissionInScope && isDraftOrReturnedWorkflowStatus(editingSubmissionInScope.status)) {
-        return editingSubmissionInScope;
-      }
+      () => {
+        if (editingSubmissionInScope && isDraftOrReturnedWorkflowStatus(editingSubmissionInScope.status)) {
+          return editingSubmissionInScope;
+        }
 
-      return scopedSubmissionsForYear.find((submission) => isDraftOrReturnedWorkflowStatus(submission.status)) ?? null;
-    },
-    [editingSubmissionInScope, scopedSubmissionsForYear],
-  );
+        return scopedSubmissionsForYear
+          .filter((submission) => isDraftOrReturnedWorkflowStatus(submission.status))
+          .slice()
+          .sort((left, right) => toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left))[0] ?? null;
+      },
+      [editingSubmissionInScope, scopedSubmissionsForYear],
+    );
   const activeWorkspaceSubmission = useMemo(
     () => {
       if (resolvedWorkspaceSubmission) {
@@ -2995,6 +2998,7 @@ export function SchoolIndicatorPanel({
       if (isAutoCalculated) {
         return {
           metricId: Number(metric.id),
+          metricCode: normalizeMetricCode(metric.code),
           targetValue: undefined,
           actualValue: undefined,
           target: undefined,
@@ -3080,6 +3084,7 @@ export function SchoolIndicatorPanel({
 
       return {
         metricId: Number(metric.id),
+        metricCode: normalizeMetricCode(metric.code),
         targetValue,
         actualValue,
         target: targetPayload,
@@ -3188,13 +3193,20 @@ export function SchoolIndicatorPanel({
         [...payload.indicators]
           .map((entry) => ({
             metricId: Number(entry.metricId),
+            metricCode: normalizeMetricCode(entry.metricCode ?? ""),
             targetValue: normalizeNumber(entry.targetValue),
             actualValue: normalizeNumber(entry.actualValue),
             target: stable(entry.target ?? {}),
             actual: stable(entry.actual ?? {}),
             remarks: normalizeText(entry.remarks),
           }))
-          .sort((a, b) => a.metricId - b.metricId);
+          .sort((a, b) => {
+            const codeDelta = a.metricCode.localeCompare(b.metricCode);
+            if (codeDelta !== 0) {
+              return codeDelta;
+            }
+            return a.metricId - b.metricId;
+          });
 
       const leftComparable = {
         academicYearId: normalizeText(left.payload.academicYearId),
@@ -3246,9 +3258,10 @@ export function SchoolIndicatorPanel({
   }, [handleJumpToNextMissing, handleJumpToPreviousMissing]);
 
   const buildSubmissionPayloadFromCurrentWorkspace = useCallback((
-    options: { allowIncomplete?: boolean } = {},
+    options: { allowIncomplete?: boolean; includeAllEntries?: boolean } = {},
   ): { payload: IndicatorSubmissionPayload | null; reason: string; fingerprint: string } => {
     const allowIncomplete = options.allowIncomplete === true;
+    const includeAllEntries = options.includeAllEntries === true;
     if (!activeAcademicYearId) {
       return { payload: null, reason: "Select an academic year.", fingerprint: "" };
     }
@@ -3275,6 +3288,7 @@ export function SchoolIndicatorPanel({
         if (isAutoCalculated) {
           return {
             metricId: Number(metric.id),
+            metricCode: normalizeMetricCode(metric.code),
             targetValue: undefined,
             actualValue: undefined,
             target: undefined,
@@ -3381,6 +3395,7 @@ export function SchoolIndicatorPanel({
 
         return {
           metricId: Number(metric.id),
+          metricCode: normalizeMetricCode(metric.code),
           targetValue,
           actualValue,
           target: targetPayload,
@@ -3433,7 +3448,9 @@ export function SchoolIndicatorPanel({
       return false;
     };
 
-    const payloadEntries = allowIncomplete
+    const payloadEntries = includeAllEntries
+      ? entries
+      : allowIncomplete
       ? entries.filter((entry) => entryHasMeaningfulPayload(entry))
       : entries;
 
@@ -3494,6 +3511,7 @@ export function SchoolIndicatorPanel({
       notes: notes.trim() || null,
       indicators: payloadEntries.map((entry) => ({
         metricId: entry.metricId,
+        metricCode: entry.metricCode,
         targetValue: entry.targetValue,
         actualValue: entry.actualValue,
         target: entry.target,
@@ -3529,12 +3547,16 @@ export function SchoolIndicatorPanel({
         ? latestActiveWorkspaceSubmission
         : null
     );
+    const shouldCompareFullWorkspace = Boolean(activeSubmission);
 
     if (!activeSubmission) {
       return hasMeaningfulMetricEntries(metricEntries) || notes.trim() !== "";
     }
 
-    const currentPayload = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
+    const currentPayload = buildSubmissionPayloadFromCurrentWorkspace({
+      allowIncomplete: true,
+      includeAllEntries: shouldCompareFullWorkspace,
+    });
     const savedPayload = buildComparablePayloadFromSubmission(activeSubmission);
     return !areSubmissionPayloadsEquivalent(currentPayload, savedPayload);
   }, [
@@ -3622,7 +3644,14 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    const prepared = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
+    const shouldPersistFullWorkspace = Boolean(
+      activeWorkspaceSubmission
+      && isSubmissionInAcademicYear(activeWorkspaceSubmission, activeAcademicYearId),
+    );
+    const prepared = buildSubmissionPayloadFromCurrentWorkspace({
+      allowIncomplete: true,
+      includeAllEntries: shouldPersistFullWorkspace,
+    });
     if (!prepared.payload) {
       return;
     }
@@ -4010,7 +4039,15 @@ export function SchoolIndicatorPanel({
         return;
       }
 
-      const prepared = buildSubmissionPayloadFromCurrentWorkspace({ allowIncomplete: true });
+      const activeSubmission = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
+      const shouldPersistFullWorkspace = Boolean(
+        activeSubmission
+        && isSubmissionInAcademicYear(activeSubmission, activeAcademicYearId),
+      );
+      const prepared = buildSubmissionPayloadFromCurrentWorkspace({
+        allowIncomplete: true,
+        includeAllEntries: shouldPersistFullWorkspace,
+      });
       if (!prepared.payload) {
         if (missingFieldTargets.length > 0) {
           setSubmitError("Please complete all required fields before saving your draft.");
@@ -4026,7 +4063,6 @@ export function SchoolIndicatorPanel({
       }
       const payload = prepared.payload;
       console.log("[GroupB] payload:", payload);
-      const activeSubmission = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
       const submissionIdToUpdate = (
         activeSubmission && isSubmissionInAcademicYear(activeSubmission, payload.academicYearId)
           ? activeSubmission.id

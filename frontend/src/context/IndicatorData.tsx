@@ -1043,8 +1043,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
             academic_year_id: payload.academicYearId,
             reporting_period: payload.reportingPeriod ?? null,
             notes: payload.notes ?? null,
+            mode: payload.mode ?? null,
+            replace_missing: typeof payload.replace_missing === "boolean" ? payload.replace_missing : null,
             indicators: payload.indicators.map((entry) => ({
               metric_id: entry.metricId,
+              metric_code: entry.metricCode ?? null,
               target_value: entry.targetValue ?? null,
               actual_value: entry.actualValue ?? null,
               target: entry.target ?? null,
@@ -1114,6 +1117,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           notes: payload.notes ?? null,
           indicators: payload.indicators.map((entry) => ({
             metric_id: entry.metricId,
+            metric_code: entry.metricCode ?? null,
             target_value: entry.targetValue ?? null,
             actual_value: entry.actualValue ?? null,
             target: entry.target ?? null,

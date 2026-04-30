@@ -504,6 +504,7 @@ export interface IndicatorSubmissionPayload {
   replace_missing?: boolean;
   indicators: Array<{
     metricId: number;
+    metricCode?: string;
     targetValue?: number;
     actualValue?: number;
     target?: IndicatorTypedValuePayload;
