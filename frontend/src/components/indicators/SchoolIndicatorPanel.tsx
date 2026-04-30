@@ -57,15 +57,8 @@ interface ComplianceCategory {
   metricCodes: string[];
 }
 
-type IndicatorWorkflowStatusFilter = "all" | "draft" | "submitted" | "returned" | "validated";
-
 interface SchoolIndicatorPanelProps {
-  statusFilter?: IndicatorWorkflowStatusFilter;
-  academicYearFilter?: string;
-  selectedAcademicYearId?: string;
-  onAcademicYearChange?: (academicYearId: string) => void;
-  yearScopedSubmissions?: IndicatorSubmission[];
-  isYearScopedLoading?: boolean;
+  initialAcademicYearId?: string;
 }
 
 interface MissingFieldTarget {
@@ -1225,12 +1218,7 @@ function toGroupBActionErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function SchoolIndicatorPanel({
-  statusFilter = "all",
-  academicYearFilter = "all",
-  selectedAcademicYearId,
-  onAcademicYearChange,
-  yearScopedSubmissions,
-  isYearScopedLoading = false,
+  initialAcademicYearId,
 }: SchoolIndicatorPanelProps) {
   const { user, apiToken } = useAuth();
   const {
@@ -1254,7 +1242,7 @@ export function SchoolIndicatorPanel({
     loadHistory,
   } = useIndicatorData();
 
-  const [academicYearId, setAcademicYearId] = useState("");
+  const [workspaceAcademicYearId, setWorkspaceAcademicYearId] = useState("");
   const reportingPeriod = "ANNUAL";
   const [notes, setNotes] = useState("");
   const [metricEntries, setMetricEntries] = useState<MetricEntryState>({});
@@ -1415,14 +1403,14 @@ export function SchoolIndicatorPanel({
   const yearWorkspaceState = useMemo(
     () =>
       deriveYearWorkspaceState({
-        selectedAcademicYearId: academicYearId,
+        selectedAcademicYearId: workspaceAcademicYearId,
         eligibleAcademicYears,
         visibleSchoolYears,
         schoolYearByAcademicYearId,
         academicYearBySchoolYearLabel,
         currentSchoolYearStartValue: currentSchoolYearStart(),
       }),
-    [academicYearId, academicYearBySchoolYearLabel, eligibleAcademicYears, schoolYearByAcademicYearId, visibleSchoolYears],
+    [workspaceAcademicYearId, academicYearBySchoolYearLabel, eligibleAcademicYears, schoolYearByAcademicYearId, visibleSchoolYears],
   );
   const activeAcademicYearId = yearWorkspaceState.selectedAcademicYearId;
   const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
@@ -1444,47 +1432,31 @@ export function SchoolIndicatorPanel({
     return schoolYearByAcademicYearId.get(currentAcademicYearId) ?? (visibleSchoolYears[visibleSchoolYears.length - 1] ?? null);
   }, [currentAcademicYearId, schoolYearByAcademicYearId, visibleSchoolYears]);
   useEffect(() => {
-    if (!selectedAcademicYearId) {
+    if (!initialAcademicYearId || workspaceAcademicYearId || eligibleAcademicYears.length === 0) {
       return;
     }
 
-    if (selectedAcademicYearId !== academicYearId) {
-      setAcademicYearId(selectedAcademicYearId);
-    }
-  }, [academicYearId, selectedAcademicYearId]);
+    setWorkspaceAcademicYearId(initialAcademicYearId);
+  }, [eligibleAcademicYears.length, initialAcademicYearId, workspaceAcademicYearId]);
 
   useEffect(() => {
-    if (academicYearId || eligibleAcademicYears.length === 0) {
+    if (workspaceAcademicYearId || eligibleAcademicYears.length === 0) {
       return;
     }
 
     if (yearWorkspaceState.selectedAcademicYearId) {
-      setAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
+      setWorkspaceAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
     }
-  }, [academicYearId, eligibleAcademicYears.length, yearWorkspaceState.selectedAcademicYearId]);
+  }, [eligibleAcademicYears.length, workspaceAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
   useEffect(() => {
-    if (!academicYearId || !yearWorkspaceState.selectedAcademicYearId) {
+    if (!workspaceAcademicYearId || !yearWorkspaceState.selectedAcademicYearId) {
       return;
     }
 
-    if (academicYearId !== yearWorkspaceState.selectedAcademicYearId) {
-      setAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
+    if (workspaceAcademicYearId !== yearWorkspaceState.selectedAcademicYearId) {
+      setWorkspaceAcademicYearId(yearWorkspaceState.selectedAcademicYearId);
     }
-  }, [academicYearId, yearWorkspaceState.selectedAcademicYearId]);
-  useEffect(() => {
-    if (!onAcademicYearChange || !yearWorkspaceState.selectedAcademicYearId) {
-      return;
-    }
-
-    if (
-      selectedAcademicYearId
-      && String(selectedAcademicYearId) === String(yearWorkspaceState.selectedAcademicYearId)
-    ) {
-      return;
-    }
-
-    onAcademicYearChange(yearWorkspaceState.selectedAcademicYearId);
-  }, [onAcademicYearChange, selectedAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
+  }, [workspaceAcademicYearId, yearWorkspaceState.selectedAcademicYearId]);
 
   const autosaveUserScopeId = user?.id ? String(user.id) : "anonymous";
   const autosaveSchoolScopeId = user?.schoolId ? String(user.schoolId) : "unassigned";
@@ -1555,20 +1527,11 @@ export function SchoolIndicatorPanel({
     return () => window.clearTimeout(timer);
   }, [activeAcademicYearId, autosaveKey, complianceMetrics.length, editingSubmissionId, metricEntries, notes]);
 
-  const hasExternallyScopedYearSubmissions = Boolean(selectedAcademicYearId && selectedAcademicYearId !== "all");
   const submissions = useMemo(
-    () => {
-      if (hasExternallyScopedYearSubmissions) {
-        return yearScopedSubmissions ?? [];
-      }
-
-      return allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot;
-    },
-    [allSubmissions, hasExternallyScopedYearSubmissions, submissionSnapshot, yearScopedSubmissions],
+    () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
+    [allSubmissions, submissionSnapshot],
   );
-  const isSubmissionDataLoading = hasExternallyScopedYearSubmissions
-    ? isYearScopedLoading
-    : (isLoading || isAllSubmissionsLoading);
+  const isSubmissionDataLoading = isLoading || isAllSubmissionsLoading;
   const sortedSubmissions = useMemo(
     () =>
       [...submissions].sort((a, b) => {
@@ -1577,19 +1540,6 @@ export function SchoolIndicatorPanel({
         return bDate - aDate;
       }),
     [submissions],
-  );
-  const filteredSubmissions = useMemo(
-    () =>
-      sortedSubmissions.filter((submission) => {
-        const matchesYear = academicYearFilter === "all" || submission.academicYear?.id === academicYearFilter;
-        const normalizedStatus = String(submission.status ?? "").toLowerCase();
-        const matchesStatus =
-          statusFilter === "all" ||
-          normalizedStatus === statusFilter;
-
-        return matchesYear && matchesStatus;
-      }),
-    [academicYearFilter, sortedSubmissions, statusFilter],
   );
   const preferredAcademicYearIdFromSubmissions = useMemo(() => {
     const priorityByStatus: Record<string, number> = {
@@ -1618,7 +1568,7 @@ export function SchoolIndicatorPanel({
     return ranked[0]?.academicYear?.id ?? null;
   }, [sortedSubmissions]);
   useEffect(() => {
-    if (selectedAcademicYearId || isSubmissionDataLoading || hasUserSelectedAcademicYearRef.current) {
+    if (initialAcademicYearId || isSubmissionDataLoading || hasUserSelectedAcademicYearRef.current) {
       return;
     }
 
@@ -1626,12 +1576,12 @@ export function SchoolIndicatorPanel({
       return;
     }
 
-    setAcademicYearId(preferredAcademicYearIdFromSubmissions);
+    setWorkspaceAcademicYearId(preferredAcademicYearIdFromSubmissions);
   }, [
     activeAcademicYearId,
+    initialAcademicYearId,
     isSubmissionDataLoading,
     preferredAcademicYearIdFromSubmissions,
-    selectedAcademicYearId,
   ]);
   const latestValidatedSubmission = useMemo(
     () =>
@@ -2944,7 +2894,7 @@ export function SchoolIndicatorPanel({
       endOnComplete: nextAcademicYearId === activeAcademicYearId,
       action: () => {
         if (nextAcademicYearId !== activeAcademicYearId) {
-          setAcademicYearId(nextAcademicYearId);
+          setWorkspaceAcademicYearId(nextAcademicYearId);
           setEditingSubmissionId(submission.id);
           return;
         }
@@ -4492,7 +4442,7 @@ export function SchoolIndicatorPanel({
       await runCriticalWorkspaceTransition({
         dismissRestoreBanner: true,
         endOnComplete: false,
-        action: () => setAcademicYearId(nextAcademicYearId),
+        action: () => setWorkspaceAcademicYearId(nextAcademicYearId),
       });
     });
   }, [activeAcademicYearId, runCriticalWorkspaceTransition, runGroupBAction]);
