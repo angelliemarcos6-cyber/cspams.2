@@ -1,5 +1,6 @@
 import {
   Fragment,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -1217,7 +1218,7 @@ function toGroupBActionErrorMessage(error: unknown, fallback: string): string {
   return message;
 }
 
-export function SchoolIndicatorPanel({
+function SchoolIndicatorPanelComponent({
   initialAcademicYearId,
 }: SchoolIndicatorPanelProps) {
   const { user, apiToken } = useAuth();
@@ -5565,3 +5566,6 @@ export function SchoolIndicatorPanel({
     </section>
   );
 }
+
+export const SchoolIndicatorPanel = memo(SchoolIndicatorPanelComponent);
+SchoolIndicatorPanel.displayName = "SchoolIndicatorPanel";
