@@ -219,6 +219,10 @@ function compareAcademicYearsAscending(a: { name: string }, b: { name: string })
   return String(a.name).localeCompare(String(b.name));
 }
 
+function buildSelectedYearLoadKey(schoolId: string, academicYearId: string): string {
+  return `${schoolId}:${academicYearId}`;
+}
+
 const MOBILE_BREAKPOINT = 768;
 const SCHOOL_ACHIEVEMENT_ROWS = [
   { key: "school_head_name", label: "NAME OF SCHOOL HEAD" },
@@ -470,13 +474,14 @@ export function SchoolAdminDashboard() {
     academicYears,
     downloadSubmissionFile,
     fetchSubmission,
-    isLoading,
-    isAllSubmissionsLoading,
+    loadSubmissionsForYear,
     refreshSubmissions,
   } = useIndicatorData();
 
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [contextAcademicYearId, setContextAcademicYearId] = useState("");
+  const [selectedYearSubmissions, setSelectedYearSubmissions] = useState<IndicatorSubmission[]>([]);
+  const [isYearSwitching, setIsYearSwitching] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
@@ -488,6 +493,7 @@ export function SchoolAdminDashboard() {
   const initialLoadStartedRef = useRef(false);
   const initialAcademicYearAppliedRef = useRef(false);
   const finalizedSubmissionRefreshRef = useRef("");
+  const lastLoadedYearKeyRef = useRef("");
 
   /* ── Derived data ── */
   const orderedAcademicYears = useMemo(
@@ -514,22 +520,18 @@ export function SchoolAdminDashboard() {
     () => resolvePreferredSubmittedReportAcademicYearId(indicatorSubmissions, selectedSchoolId),
     [indicatorSubmissions, selectedSchoolId],
   );
-  const groupASubmittedSubmission = useMemo(
-    () => resolveSelectedYearReportSubmission(
-      indicatorSubmissions.filter((submission) => {
-        const matchesAcademicYear =
-          effectiveAcademicYearId.length > 0
-          && String(submission.academicYear?.id ?? "") === String(effectiveAcademicYearId);
-        const matchesSchool =
-          selectedSchoolId.length === 0
-          || String(submission.school?.id ?? selectedSchoolId) === selectedSchoolId;
+  const submissionsForSelectedContext = useMemo(() => {
+    if (effectiveAcademicYearId && effectiveAcademicYearId !== "all") {
+      return selectedYearSubmissions;
+    }
 
-        return matchesAcademicYear && matchesSchool;
-      }),
-    ),
-    [effectiveAcademicYearId, indicatorSubmissions, selectedSchoolId],
+    return indicatorSubmissions;
+  }, [effectiveAcademicYearId, indicatorSubmissions, selectedYearSubmissions]);
+  const groupASubmittedSubmission = useMemo(
+    () => resolveSelectedYearReportSubmission(submissionsForSelectedContext),
+    [submissionsForSelectedContext],
   );
-  const isYearScopedLoading = (isLoading || isAllSubmissionsLoading) && effectiveAcademicYearId.length > 0;
+  const isYearScopedLoading = isYearSwitching;
 
   useEffect(() => {
     if (!groupASubmittedSubmission?.id) {
@@ -545,16 +547,27 @@ export function SchoolAdminDashboard() {
     ));
 
     const refreshFingerprint = buildSubmissionRefreshFingerprint(groupASubmittedSubmission);
+    let cancelled = false;
+    const submissionId = groupASubmittedSubmission.id;
+
     if (finalizedSubmissionRefreshRef.current === refreshFingerprint) {
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
     finalizedSubmissionRefreshRef.current = refreshFingerprint;
-    void fetchSubmission(groupASubmittedSubmission.id)
+    void fetchSubmission(submissionId)
       .then((submission) => {
-        setHydratedSubmittedReportSubmission(submission);
+        if (!cancelled && submission.id === submissionId) {
+          setHydratedSubmittedReportSubmission(submission);
+        }
       })
       .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
   }, [fetchSubmission, groupASubmittedSubmission]);
   const groupAReportView = useMemo(() => {
     const submission = (
@@ -789,6 +802,70 @@ export function SchoolAdminDashboard() {
     initialAcademicYearAppliedRef.current = true;
   }, [currentAcademicYearOption, preferredSubmittedReportAcademicYearId]);
 
+  const handleAcademicYearChange = useCallback(async (nextYearId: string) => {
+    setContextAcademicYearId(nextYearId);
+
+    if (!selectedSchoolId || !nextYearId || nextYearId === "all") {
+      lastLoadedYearKeyRef.current = "";
+      setSelectedYearSubmissions([]);
+      setIsYearSwitching(false);
+      return;
+    }
+
+    const key = buildSelectedYearLoadKey(selectedSchoolId, nextYearId);
+    lastLoadedYearKeyRef.current = key;
+    setIsYearSwitching(true);
+
+    try {
+      const rows = await loadSubmissionsForYear(selectedSchoolId, nextYearId);
+      if (lastLoadedYearKeyRef.current === key) {
+        setSelectedYearSubmissions(rows);
+      }
+    } catch {
+      if (lastLoadedYearKeyRef.current === key) {
+        setSelectedYearSubmissions([]);
+      }
+    } finally {
+      if (lastLoadedYearKeyRef.current === key) {
+        setIsYearSwitching(false);
+      }
+    }
+  }, [loadSubmissionsForYear, selectedSchoolId]);
+
+  useEffect(() => {
+    if (!selectedSchoolId || !contextAcademicYearId || contextAcademicYearId === "all") {
+      if (contextAcademicYearId === "all") {
+        setSelectedYearSubmissions([]);
+      }
+      return;
+    }
+
+    const key = buildSelectedYearLoadKey(selectedSchoolId, contextAcademicYearId);
+    if (lastLoadedYearKeyRef.current === key) {
+      return;
+    }
+
+    lastLoadedYearKeyRef.current = key;
+    setIsYearSwitching(true);
+
+    void loadSubmissionsForYear(selectedSchoolId, contextAcademicYearId)
+      .then((rows) => {
+        if (lastLoadedYearKeyRef.current === key) {
+          setSelectedYearSubmissions(rows);
+        }
+      })
+      .catch(() => {
+        if (lastLoadedYearKeyRef.current === key) {
+          setSelectedYearSubmissions([]);
+        }
+      })
+      .finally(() => {
+        if (lastLoadedYearKeyRef.current === key) {
+          setIsYearSwitching(false);
+        }
+      });
+  }, [contextAcademicYearId, loadSubmissionsForYear, selectedSchoolId]);
+
   useEffect(() => {
     setActiveReportModalType(null);
   }, [effectiveAcademicYearId, groupASubmittedSubmission?.id]);
@@ -959,7 +1036,9 @@ export function SchoolAdminDashboard() {
           <div className="relative mt-2">
             <select
               value={effectiveAcademicYearId}
-              onChange={(event) => setContextAcademicYearId(event.target.value)}
+              onChange={(event) => {
+                void handleAcademicYearChange(event.target.value);
+              }}
               className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2.5 pr-8 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               aria-label="Academic year filter"
             >
@@ -1246,7 +1325,9 @@ export function SchoolAdminDashboard() {
         <SchoolIndicatorPanel
           statusFilter="all"
           selectedAcademicYearId={effectiveAcademicYearId}
-          onAcademicYearChange={setContextAcademicYearId}
+          onAcademicYearChange={(academicYearId) => {
+            void handleAcademicYearChange(academicYearId);
+          }}
         />
       </section>
       </div>

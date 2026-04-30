@@ -235,6 +235,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       refreshSubmissions: vi.fn(),
       refreshAllSubmissions: vi.fn(),
       listSubmissions: vi.fn(),
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
       listSubmissionsForSchool: vi.fn().mockResolvedValue([]),
       loadAllSubmissions: vi.fn(),
       bootstrapSubmission: vi.fn(),

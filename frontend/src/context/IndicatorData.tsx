@@ -125,6 +125,7 @@ export interface IndicatorDataContextType {
   refreshSubmissions: () => Promise<void>;
   refreshAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<void>;
   listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
+  loadSubmissionsForYear: (schoolId: string, academicYearId: string, status?: string) => Promise<IndicatorSubmission[]>;
   listSubmissionsForSchool: (schoolId: string, options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   bootstrapSubmission: (payload: BootstrapIndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
@@ -536,6 +537,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const syncQueuedRef = useRef(false);
   const submissionsEtagRef = useRef<string>("");
   const schoolSubmissionsCacheRef = useRef<Map<string, { versionKey: string; rows: IndicatorSubmission[] }>>(new Map());
+  const yearSubmissionsCacheRef = useRef<Map<string, IndicatorSubmission[]>>(new Map());
   const allSubmissionsCacheRef = useRef<{ versionKey: string; rows: IndicatorSubmission[] } | null>(null);
   const allSubmissionsInFlightRef = useRef<{ versionKey: string; promise: Promise<IndicatorSubmission[]> } | null>(null);
   const previousSessionKeyRef = useRef<string>("");
@@ -557,6 +559,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     referenceDataSyncedAtRef.current = 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
+    yearSubmissionsCacheRef.current.clear();
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
     setSubmissions([]);
@@ -682,6 +685,40 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [buildAllSubmissionsVersionKey, listSubmissions, token],
   );
 
+  const loadSubmissionsForYear = useCallback(
+    async (schoolId: string, academicYearId: string, status?: string): Promise<IndicatorSubmission[]> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const normalizedSchoolId = normalizeFilterValue(schoolId);
+      const normalizedAcademicYearId = normalizeFilterValue(academicYearId);
+      const normalizedStatus = normalizeFilterValue(status);
+
+      if (!normalizedSchoolId || !normalizedAcademicYearId || normalizedAcademicYearId === "all") {
+        return [];
+      }
+
+      const cacheKey = `${sessionKey}:${normalizedSchoolId}:${normalizedAcademicYearId}:${normalizedStatus || "all"}`;
+      const cached = yearSubmissionsCacheRef.current.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const result = await listSubmissions({
+        schoolId: normalizedSchoolId,
+        academicYearId: normalizedAcademicYearId,
+        status: normalizedStatus || null,
+        perPage: MAX_LIST_PER_PAGE,
+      });
+
+      const rows = [...result.data].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
+      yearSubmissionsCacheRef.current.set(cacheKey, rows);
+      return rows;
+    },
+    [listSubmissions, sessionKey, token],
+  );
+
   const readAllSubmissions = useCallback(
     async (signal?: AbortSignal): Promise<IndicatorSubmission[]> => {
       const allRows: IndicatorSubmission[] = [];
@@ -795,6 +832,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
+    yearSubmissionsCacheRef.current.clear();
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
     lastLocalMutationAtRef.current = Date.now();
@@ -812,6 +850,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
+    yearSubmissionsCacheRef.current.clear();
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
     lastLocalMutationAtRef.current = Date.now();
@@ -862,6 +901,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         setAcademicYears([]);
         referenceDataSyncedAtRef.current = 0;
         submissionsEtagRef.current = "";
+        schoolSubmissionsCacheRef.current.clear();
+        yearSubmissionsCacheRef.current.clear();
         allSubmissionsCacheRef.current = null;
         allSubmissionsInFlightRef.current = null;
         setIsLoading(false);
@@ -920,6 +961,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const submissionsChanged = submissionsResponse.status !== 304;
         if (submissionsChanged) {
           schoolSubmissionsCacheRef.current.clear();
+          yearSubmissionsCacheRef.current.clear();
           allSubmissionsCacheRef.current = null;
           allSubmissionsInFlightRef.current = null;
           const incomingRows = readSubmissionRows(submissionsResponse.data);
@@ -1328,6 +1370,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       refreshSubmissions,
       refreshAllSubmissions,
       listSubmissions,
+      loadSubmissionsForYear,
       listSubmissionsForSchool,
       loadAllSubmissions,
       bootstrapSubmission,
@@ -1354,6 +1397,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       refreshSubmissions,
       refreshAllSubmissions,
       listSubmissions,
+      loadSubmissionsForYear,
       listSubmissionsForSchool,
       loadAllSubmissions,
       bootstrapSubmission,
