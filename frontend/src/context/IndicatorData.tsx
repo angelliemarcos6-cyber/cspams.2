@@ -106,6 +106,13 @@ interface LightweightIndicatorSubmission {
   };
 }
 
+interface LocalIndicatorMutationEcho {
+  entity: "indicators";
+  submissionId: string;
+  academicYearId: string;
+  occurredAt: number;
+}
+
 export interface BootstrapIndicatorSubmissionPayload {
   academicYearId: string | number;
   reportingPeriod?: string | null;
@@ -546,6 +553,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const allSubmissionsLoadingCountRef = useRef(0);
   const manualMutationInFlightRef = useRef(false);
   const lastLocalMutationAtRef = useRef(0);
+  const lastLocalIndicatorMutationEchoRef = useRef<LocalIndicatorMutationEcho | null>(null);
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -572,6 +580,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     setIsSaving(false);
     setError("");
     setLastSyncedAt(null);
+    lastLocalIndicatorMutationEchoRef.current = null;
   }, [sessionKey]);
 
   const handleApiError = useCallback(
@@ -828,6 +837,25 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [buildAllSubmissionsVersionKey, loadAllSubmissions],
   );
 
+  const rememberLocalIndicatorMutationEcho = useCallback((submission: {
+    id: string;
+    academicYear?: { id?: string | null } | null;
+    academicYearId?: string | null;
+  }) => {
+    const submissionId = String(submission.id ?? "").trim();
+    const academicYearId = String(submission.academicYear?.id ?? submission.academicYearId ?? "").trim();
+    if (!submissionId || !academicYearId) {
+      return;
+    }
+
+    lastLocalIndicatorMutationEchoRef.current = {
+      entity: "indicators",
+      submissionId,
+      academicYearId,
+      occurredAt: Date.now(),
+    };
+  }, []);
+
   const upsertSubmissionLocally = useCallback((submission: IndicatorSubmission) => {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
     submissionsEtagRef.current = "";
@@ -836,6 +864,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
     lastLocalMutationAtRef.current = Date.now();
+    rememberLocalIndicatorMutationEcho(submission);
 
     setSubmissions((current) => upsertSubmissionRow(current, submission));
     setAllSubmissions((current) => (
@@ -844,7 +873,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         : current
     ));
     setLastSyncedAt(new Date().toISOString());
-  }, [allSubmissions.length]);
+  }, [allSubmissions.length, rememberLocalIndicatorMutationEcho]);
 
   const patchSubmissionLocally = useCallback((patch: LightweightIndicatorSubmission) => {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
@@ -854,6 +883,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     allSubmissionsCacheRef.current = null;
     allSubmissionsInFlightRef.current = null;
     lastLocalMutationAtRef.current = Date.now();
+    rememberLocalIndicatorMutationEcho(patch);
 
     setSubmissions((current) => {
       const existing = current.find((row) => row.id === patch.id);
@@ -877,7 +907,37 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     });
 
     setLastSyncedAt(new Date().toISOString());
-  }, [allSubmissions.length]);
+  }, [allSubmissions.length, rememberLocalIndicatorMutationEcho]);
+
+  const shouldSuppressRealtimeIndicatorEcho = useCallback((payload?: {
+    entity?: string;
+    submissionId?: string;
+    academicYearId?: string;
+  }): boolean => {
+    if (payload?.entity !== "indicators") {
+      return false;
+    }
+
+    const lastMutation = lastLocalIndicatorMutationEchoRef.current;
+    if (!lastMutation) {
+      return false;
+    }
+
+    if (Date.now() - lastMutation.occurredAt > POST_MUTATION_AUTO_SYNC_GRACE_MS) {
+      lastLocalIndicatorMutationEchoRef.current = null;
+      return false;
+    }
+
+    const submissionId = String(payload.submissionId ?? "").trim();
+    const academicYearId = String(payload.academicYearId ?? "").trim();
+
+    return (
+      submissionId !== ""
+      && academicYearId !== ""
+      && submissionId === lastMutation.submissionId
+      && academicYearId === lastMutation.academicYearId
+    );
+  }, []);
 
   const shouldSkipBackgroundSync = useCallback((): boolean => {
     if (manualMutationInFlightRef.current || syncInFlightRef.current) {
@@ -1337,9 +1397,16 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       if (shouldSkipBackgroundSync()) {
         return;
       }
-      const payload = (event as CustomEvent<{ entity?: string }>).detail;
+      const payload = (event as CustomEvent<{
+        entity?: string;
+        submissionId?: string;
+        academicYearId?: string;
+      }>).detail;
       if (!payload?.entity) return;
       if (payload.entity === "indicators") {
+        if (shouldSuppressRealtimeIndicatorEcho(payload)) {
+          return;
+        }
         void syncSubmissions(true);
       }
     };
@@ -1354,7 +1421,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", syncOnFocus);
       window.removeEventListener("cspams:update", syncOnRealtime);
     };
-  }, [shouldSkipBackgroundSync, syncSubmissions, token]);
+  }, [shouldSkipBackgroundSync, shouldSuppressRealtimeIndicatorEcho, syncSubmissions, token]);
 
   const value = useMemo<IndicatorDataContextType>(
     () => ({
