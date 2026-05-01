@@ -4299,17 +4299,16 @@ function SchoolIndicatorPanelComponent({
       }
       const payload = {
         ...prepared.payload,
+        mode: "partial",
         replace_missing: false,
       } satisfies IndicatorSubmissionPayload;
       console.log("[GroupB] payload:", payload);
       setSavingSection(sectionToSave);
-      const editableSubmissionForSave = mutableActiveWorkspaceSubmission ?? editableWorkspaceSubmissionInScope;
       await runCriticalWorkspaceMutation({
-        mutation: () => (
-          editableSubmissionForSave?.id
-            ? updateSubmission(editableSubmissionForSave.id, payload)
-            : createSubmission(payload)
-        ),
+        mutation: async () => {
+          const submissionToSave = await ensureWorkspaceSubmission();
+          return updateSubmission(submissionToSave.id, payload);
+        },
         onSuccess: (saved) => {
           preserveLocalWorkspaceAfterMutationRef.current = {
             academicYearId: activeAcademicYearIdRef.current,
