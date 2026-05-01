@@ -1916,13 +1916,17 @@ function SchoolIndicatorPanelComponent({
     );
   const activeWorkspaceSubmission = useMemo(
     () => {
-      if (resolvedWorkspaceSubmission) {
-        return resolvedWorkspaceSubmission;
+      if (editingSubmissionInScope) {
+        return editingSubmissionInScope;
       }
 
-      return editingSubmissionInScope ?? null;
+      if (editableWorkspaceSubmissionInScope) {
+        return editableWorkspaceSubmissionInScope;
+      }
+
+      return resolvedWorkspaceSubmission ?? null;
     },
-    [editingSubmissionInScope, resolvedWorkspaceSubmission],
+    [editingSubmissionInScope, editableWorkspaceSubmissionInScope, resolvedWorkspaceSubmission],
   );
   const latestActiveWorkspaceSubmission = useMemo(
     () => (
