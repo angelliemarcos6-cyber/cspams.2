@@ -2348,6 +2348,8 @@ function SchoolIndicatorPanelComponent({
         postRefreshMessageRef.current = options.getSuccessMessage?.(result) ?? null;
         if (!options.skipResolvedWorkspaceRehydrate) {
           requestResolvedWorkspaceRehydrate();
+        } else {
+          endControlledWorkspaceTransition();
         }
         if (transitionEpochRef.current !== actionEpoch) {
           postRefreshMessageRef.current = null;
