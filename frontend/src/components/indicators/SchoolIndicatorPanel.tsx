@@ -2327,6 +2327,7 @@ function SchoolIndicatorPanelComponent({
         onSuccess?: (result: T) => Promise<void> | void;
         getSuccessMessage?: (result: T) => string | null;
         onError?: (err: unknown) => void;
+        skipResolvedWorkspaceRehydrate?: boolean;
       },
     ): Promise<T | null> => {
       if (blockIfManualActionBusy()) {
@@ -2345,7 +2346,9 @@ function SchoolIndicatorPanelComponent({
           throw new Error("The workspace changed before this action completed. No stale changes were applied. Review the workspace and try again.");
         }
         postRefreshMessageRef.current = options.getSuccessMessage?.(result) ?? null;
-        requestResolvedWorkspaceRehydrate();
+        if (!options.skipResolvedWorkspaceRehydrate) {
+          requestResolvedWorkspaceRehydrate();
+        }
         if (transitionEpochRef.current !== actionEpoch) {
           postRefreshMessageRef.current = null;
           return null;
@@ -4323,6 +4326,7 @@ function SchoolIndicatorPanelComponent({
           lastAutosaveFingerprintRef.current = `${saved.id}:${prepared.fingerprint}`;
         },
         getSuccessMessage: (saved) => `${workspaceSaveSectionLabel(sectionToSave)} saved for package #${saved.id}.`,
+        skipResolvedWorkspaceRehydrate: true,
         onError: (err) => {
           console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to save indicator package."));
@@ -4630,6 +4634,7 @@ function SchoolIndicatorPanelComponent({
           setUploadErrorByType((current) => ({ ...current, [type]: "" }));
         },
         getSuccessMessage: (updated) => `${type.toUpperCase()} file uploaded for package #${updated.id}.`,
+        skipResolvedWorkspaceRehydrate: true,
         onError: (err) => {
           console.error("[GroupB] API error:", err);
           setUploadingFileType(null);
