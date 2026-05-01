@@ -4566,90 +4566,93 @@ function SchoolIndicatorPanelComponent({
       setSavingSection(type);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
-      const normalizedName = file.name.toLowerCase();
-      const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
-      if (!validExtension) {
-        setUploadErrorByType((current) => ({
-          ...current,
-          [type]: "Only PDF, DOCX, and XLSX files are allowed.",
-        }));
-        return;
-      }
-
-      if (file.size > 10 * 1024 * 1024) {
-        setUploadErrorByType((current) => ({
-          ...current,
-          [type]: "File size must not exceed 10MB.",
-        }));
-        return;
-      }
-
-      const uploadGuardAcademicYearId = activeAcademicYearIdRef.current;
-      const uploaded = await runCriticalWorkspaceMutation({
-        mutation: async () => {
-          setUploadingFileType(type);
-          let uploadTarget = selectedSubmissionForUploads;
-          if (uploadTarget && !isSubmissionInAcademicYear(uploadTarget, activeAcademicYearIdRef.current)) {
-            throw new Error("This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.");
-          }
-
-          if (!uploadTarget?.id) {
-            uploadTarget = await ensureWorkspaceSubmission();
-          }
-          if (
-            activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-            || !isSubmissionInAcademicYear(uploadTarget, activeAcademicYearIdRef.current)
-            || (
-              activeWorkspaceSubmissionIdRef.current !== null
-              && activeWorkspaceSubmissionIdRef.current !== uploadTarget.id
-            )
-          ) {
-            throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
-          }
-
-          const updated = await uploadSubmissionFile(uploadTarget.id, type, file);
-          if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
-            throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
-          }
-          if (
-            activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
-            || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
-          ) {
-            throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
-          }
-          return updated;
-        },
-        onSuccess: (updated) => {
-          if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== updated.id) {
-            throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
-          }
-          preserveLocalWorkspaceAfterMutationRef.current = {
-            academicYearId: activeAcademicYearIdRef.current,
-            submissionId: updated.id,
-          };
-          setActiveWorkspaceSubmission(updated);
-          setEditingSubmissionId(updated.id);
-          setPendingLocalDraft(null);
-          setAutosaveError("");
-          setServerAutosaveAt(updated.updatedAt ?? new Date().toISOString());
-          setUploadingFileType(null);
-          setUploadErrorByType((current) => ({ ...current, [type]: "" }));
-        },
-        getSuccessMessage: (updated) => `${type.toUpperCase()} file uploaded for package #${updated.id}.`,
-        skipResolvedWorkspaceRehydrate: true,
-        onError: (err) => {
-          console.error("[GroupB] API error:", err);
-          setUploadingFileType(null);
+      try {
+        const normalizedName = file.name.toLowerCase();
+        const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
+        if (!validExtension) {
           setUploadErrorByType((current) => ({
             ...current,
-            [type]: toGroupBActionErrorMessage(err, `Unable to upload ${type.toUpperCase()} file.`),
+            [type]: "Only PDF, DOCX, and XLSX files are allowed.",
           }));
-        },
-      });
-      if (!uploaded) {
-        postRefreshMessageRef.current = null;
+          return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+          setUploadErrorByType((current) => ({
+            ...current,
+            [type]: "File size must not exceed 10MB.",
+          }));
+          return;
+        }
+
+        const uploadGuardAcademicYearId = activeAcademicYearIdRef.current;
+        const uploaded = await runCriticalWorkspaceMutation({
+          mutation: async () => {
+            setUploadingFileType(type);
+            let uploadTarget = selectedSubmissionForUploads;
+            if (uploadTarget && !isSubmissionInAcademicYear(uploadTarget, activeAcademicYearIdRef.current)) {
+              throw new Error("This file source no longer matches the selected academic year. No stale changes were applied. Re-select the year and try again.");
+            }
+
+            if (!uploadTarget?.id) {
+              uploadTarget = await ensureWorkspaceSubmission();
+            }
+            if (
+              activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
+              || !isSubmissionInAcademicYear(uploadTarget, activeAcademicYearIdRef.current)
+              || (
+                activeWorkspaceSubmissionIdRef.current !== null
+                && activeWorkspaceSubmissionIdRef.current !== uploadTarget.id
+              )
+            ) {
+              throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
+            }
+
+            const updated = await uploadSubmissionFile(uploadTarget.id, type, file);
+            if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
+              throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
+            }
+            if (
+              activeAcademicYearIdRef.current !== uploadGuardAcademicYearId
+              || !isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)
+            ) {
+              throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
+            }
+            return updated;
+          },
+          onSuccess: (updated) => {
+            if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== updated.id) {
+              throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
+            }
+            preserveLocalWorkspaceAfterMutationRef.current = {
+              academicYearId: activeAcademicYearIdRef.current,
+              submissionId: updated.id,
+            };
+            setActiveWorkspaceSubmission(updated);
+            setEditingSubmissionId(updated.id);
+            setPendingLocalDraft(null);
+            setAutosaveError("");
+            setServerAutosaveAt(updated.updatedAt ?? new Date().toISOString());
+            setUploadingFileType(null);
+            setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+          },
+          getSuccessMessage: (updated) => `${type.toUpperCase()} file uploaded for package #${updated.id}.`,
+          skipResolvedWorkspaceRehydrate: true,
+          onError: (err) => {
+            console.error("[GroupB] API error:", err);
+            setUploadingFileType(null);
+            setUploadErrorByType((current) => ({
+              ...current,
+              [type]: toGroupBActionErrorMessage(err, `Unable to upload ${type.toUpperCase()} file.`),
+            }));
+          },
+        });
+        if (!uploaded) {
+          postRefreshMessageRef.current = null;
+        }
+      } finally {
+        setSavingSection(null);
       }
-      setSavingSection(null);
     });
   }, [ensureWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
 
