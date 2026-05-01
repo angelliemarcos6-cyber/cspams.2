@@ -154,7 +154,7 @@ function deriveWorkspaceModeFromSubmission(
 interface YearWorkspaceState {
   visibleSchoolYears: string[];
   visibleAcademicYears: AcademicYearOption[];
-  selectedAcademicYearId: string;
+  workspaceAcademicYearId: string;
   selectedSchoolYearLabel: string | null;
   workspaceSchoolYears: string[];
   editableSchoolYears: string[];
@@ -802,7 +802,7 @@ function compareAcademicYearOptions(a: AcademicYearOption, b: AcademicYearOption
 }
 
 function deriveYearWorkspaceState(params: {
-  selectedAcademicYearId: string;
+  workspaceAcademicYearId: string;
   eligibleAcademicYears: AcademicYearOption[];
   visibleSchoolYears: string[];
   schoolYearByAcademicYearId: Map<string, string>;
@@ -810,7 +810,7 @@ function deriveYearWorkspaceState(params: {
   currentSchoolYearStartValue: number;
 }): YearWorkspaceState {
   const {
-    selectedAcademicYearId,
+    workspaceAcademicYearId,
     eligibleAcademicYears,
     visibleSchoolYears,
     schoolYearByAcademicYearId,
@@ -840,10 +840,10 @@ function deriveYearWorkspaceState(params: {
   const fallbackAcademicYearId = visibleAcademicYears.find((year) => year.isCurrent)?.id
     ?? visibleAcademicYears[0]?.id
     ?? "";
-  const selectedAcademicYearInWindow = visibleAcademicYears.some((year) => year.id === selectedAcademicYearId)
-    ? selectedAcademicYearId
+  const workspaceAcademicYearInWindow = visibleAcademicYears.some((year) => year.id === workspaceAcademicYearId)
+    ? workspaceAcademicYearId
     : fallbackAcademicYearId;
-  const selectedSchoolYearLabel = schoolYearByAcademicYearId.get(selectedAcademicYearInWindow) ?? null;
+  const selectedSchoolYearLabel = schoolYearByAcademicYearId.get(workspaceAcademicYearInWindow) ?? null;
   const workspaceSchoolYears = selectedSchoolYearLabel ? [selectedSchoolYearLabel] : [];
   const requiredSchoolYears = visibleSchoolYears.filter((year) => {
     const yearStart = schoolYearStartValue(year);
@@ -866,7 +866,7 @@ function deriveYearWorkspaceState(params: {
   return {
     visibleSchoolYears,
     visibleAcademicYears,
-    selectedAcademicYearId: selectedAcademicYearInWindow,
+    workspaceAcademicYearId: workspaceAcademicYearInWindow,
     selectedSchoolYearLabel,
     workspaceSchoolYears,
     editableSchoolYears,
@@ -1448,7 +1448,7 @@ function SchoolIndicatorPanelComponent({
   const yearWorkspaceState = useMemo(
     () =>
       deriveYearWorkspaceState({
-        selectedAcademicYearId: workspaceAcademicYearId,
+        workspaceAcademicYearId,
         eligibleAcademicYears,
         visibleSchoolYears,
         schoolYearByAcademicYearId,
@@ -1457,7 +1457,7 @@ function SchoolIndicatorPanelComponent({
       }),
     [workspaceAcademicYearId, academicYearBySchoolYearLabel, eligibleAcademicYears, schoolYearByAcademicYearId, visibleSchoolYears],
   );
-  const activeAcademicYearId = yearWorkspaceState.selectedAcademicYearId;
+  const activeAcademicYearId = yearWorkspaceState.workspaceAcademicYearId;
   const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
   const workspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
   const requiredSchoolYears = useMemo(
@@ -1495,13 +1495,13 @@ function SchoolIndicatorPanelComponent({
       ? initialAcademicYearId
       : "";
 
-    const nextAcademicYearId = preferredStoredAcademicYearId || preferredInitialAcademicYearId || yearWorkspaceState.selectedAcademicYearId;
+    const nextAcademicYearId = preferredStoredAcademicYearId || preferredInitialAcademicYearId || yearWorkspaceState.workspaceAcademicYearId;
     if (!nextAcademicYearId) {
       return;
     }
 
     setWorkspaceAcademicYearId(nextAcademicYearId);
-  }, [eligibleAcademicYears, initialAcademicYearId, workspaceAcademicYearId, workspaceYearSelectionStorageKey, yearWorkspaceState.selectedAcademicYearId]);
+  }, [eligibleAcademicYears, initialAcademicYearId, workspaceAcademicYearId, workspaceYearSelectionStorageKey, yearWorkspaceState.workspaceAcademicYearId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !workspaceYearSelectionStorageKey || !workspaceAcademicYearId) {
