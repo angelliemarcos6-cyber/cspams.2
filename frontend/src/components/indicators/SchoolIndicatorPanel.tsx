@@ -85,6 +85,11 @@ interface LocalDraftSnapshot {
 }
 
 type WorkspaceDataOwner = "backend" | "local" | "blank";
+type RecentlyMaterializedWorkspaceSubmission = {
+  submissionId: string;
+  academicYearId: string;
+  occurredAt: number;
+};
 
 type GroupBWorkspaceMode =
   | "blank"
@@ -98,6 +103,8 @@ type WorkspaceSaveSection =
   | "key_performance"
   | "bmef"
   | "smea";
+
+const LOCAL_WORKSPACE_HYDRATION_GRACE_MS = 5_000;
 
 function buildWorkspaceSubmissionFingerprint(
   academicYearId: string | null,
@@ -2027,6 +2034,7 @@ function SchoolIndicatorPanelComponent({
   const latestActiveWorkspaceSubmissionRef = useRef(latestActiveWorkspaceSubmission);
   const pendingSubmissionDetailRequestRef = useRef<string | null>(null);
   const workspaceDataOwnerRef = useRef<WorkspaceDataOwner>("blank");
+  const recentlyMaterializedWorkspaceSubmissionRef = useRef<RecentlyMaterializedWorkspaceSubmission | null>(null);
   useEffect(() => {
     latestActiveWorkspaceSubmissionRef.current = latestActiveWorkspaceSubmission;
     latestWorkspaceStatusRef.current = latestActiveWorkspaceSubmission?.status;
@@ -2265,6 +2273,40 @@ function SchoolIndicatorPanelComponent({
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
   }, []);
+  const markRecentlyMaterializedWorkspaceSubmission = useCallback((submission: IndicatorSubmission | null) => {
+    const submissionId = String(submission?.id ?? "").trim();
+    const academicYearId = String(submission?.academicYear?.id ?? "").trim();
+    if (!submissionId || !academicYearId) {
+      recentlyMaterializedWorkspaceSubmissionRef.current = null;
+      return;
+    }
+
+    recentlyMaterializedWorkspaceSubmissionRef.current = {
+      submissionId,
+      academicYearId,
+      occurredAt: Date.now(),
+    };
+  }, []);
+  const shouldSuppressFallbackWorkspaceDetailHydration = useCallback((submission: IndicatorSubmission | null | undefined): boolean => {
+    if (!submission) {
+      return false;
+    }
+
+    const recent = recentlyMaterializedWorkspaceSubmissionRef.current;
+    if (!recent) {
+      return false;
+    }
+
+    if (Date.now() - recent.occurredAt > LOCAL_WORKSPACE_HYDRATION_GRACE_MS) {
+      recentlyMaterializedWorkspaceSubmissionRef.current = null;
+      return false;
+    }
+
+    return (
+      String(submission.id) === recent.submissionId
+      && String(submission.academicYear?.id ?? "") === recent.academicYearId
+    );
+  }, []);
   useEffect(() => {
     const submissionId = latestActiveWorkspaceSubmission?.id ?? null;
     if (!submissionId) {
@@ -2273,6 +2315,11 @@ function SchoolIndicatorPanelComponent({
     }
 
     if (submissionHasHydratableRows(latestActiveWorkspaceSubmission)) {
+      pendingSubmissionDetailRequestRef.current = null;
+      return;
+    }
+
+    if (shouldSuppressFallbackWorkspaceDetailHydration(latestActiveWorkspaceSubmission)) {
       pendingSubmissionDetailRequestRef.current = null;
       return;
     }
@@ -2305,6 +2352,7 @@ function SchoolIndicatorPanelComponent({
     latestActiveWorkspaceSubmission?.id,
     latestActiveWorkspaceSubmission?.updatedAt,
     requestResolvedWorkspaceRehydrate,
+    shouldSuppressFallbackWorkspaceDetailHydration,
   ]);
   const workspaceSubmissionFingerprint = useMemo(
     () => buildWorkspaceSubmissionFingerprint(activeAcademicYearId, latestActiveWorkspaceSubmission),
@@ -2448,6 +2496,7 @@ function SchoolIndicatorPanelComponent({
     const hasHydratableRows = submissionHasHydratableRows(submission);
     if (submission && !hasHydratableRows) {
       workspaceDataOwnerRef.current = "backend";
+      markRecentlyMaterializedWorkspaceSubmission(submission);
       setActiveWorkspaceSubmission(submission);
       setEditingSubmissionId(submission.id);
       setServerAutosaveAt(submission.updatedAt ?? null);
@@ -2469,6 +2518,7 @@ function SchoolIndicatorPanelComponent({
     }
 
     workspaceDataOwnerRef.current = submission ? "backend" : "blank";
+    markRecentlyMaterializedWorkspaceSubmission(submission);
     setActiveWorkspaceSubmission(submission);
     setEditingSubmissionId(submission?.id ?? null);
     setNotes(submission?.notes ?? (submission ? notesRef.current : ""));
@@ -2482,7 +2532,7 @@ function SchoolIndicatorPanelComponent({
     setMissingJumpIndex(0);
     setPendingFocusCellId(null);
     lastAutosaveFingerprintRef.current = "";
-  }, [complianceMetrics]);
+  }, [complianceMetrics, markRecentlyMaterializedWorkspaceSubmission]);
   const resetWorkspaceToBlankStateForSelectedYear = useCallback(() => {
     if (latestActiveWorkspaceSubmissionRef.current) {
       return;
@@ -3855,6 +3905,7 @@ function SchoolIndicatorPanelComponent({
       academicYearId: activeAcademicYearId,
       submissionId: bootstrapped.id,
     };
+    markRecentlyMaterializedWorkspaceSubmission(bootstrapped);
     setActiveWorkspaceSubmission(bootstrapped);
     setEditingSubmissionId(bootstrapped.id);
     setPendingLocalDraft(null);
@@ -3863,7 +3914,7 @@ function SchoolIndicatorPanelComponent({
     lastAutosaveFingerprintRef.current = "";
 
     return bootstrapped;
-  }, [activeAcademicYearId, bootstrapSubmission, editableWorkspaceSubmissionInScope, isSubmissionInAcademicYear, mutableActiveWorkspaceSubmission, reportingPeriod]);
+  }, [activeAcademicYearId, bootstrapSubmission, editableWorkspaceSubmissionInScope, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, mutableActiveWorkspaceSubmission, reportingPeriod]);
 
   const triggerServerAutosave = useCallback(async () => {
     if (!canShowSaveAndSubmitActions) {
@@ -4319,6 +4370,7 @@ function SchoolIndicatorPanelComponent({
             academicYearId: activeAcademicYearIdRef.current,
             submissionId: saved.id,
           };
+          markRecentlyMaterializedWorkspaceSubmission(saved);
           setActiveWorkspaceSubmission(saved);
           setEditingSubmissionId(saved.id);
           setPendingLocalDraft(null);
@@ -4628,6 +4680,7 @@ function SchoolIndicatorPanelComponent({
               academicYearId: activeAcademicYearIdRef.current,
               submissionId: updated.id,
             };
+            markRecentlyMaterializedWorkspaceSubmission(updated);
             setActiveWorkspaceSubmission(updated);
             setEditingSubmissionId(updated.id);
             setPendingLocalDraft(null);
@@ -4654,7 +4707,7 @@ function SchoolIndicatorPanelComponent({
         setSavingSection(null);
       }
     });
-  }, [ensureWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
+  }, [ensureWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
