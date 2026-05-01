@@ -1944,15 +1944,11 @@ function SchoolIndicatorPanelComponent({
       )
         ? (scopedSubmissionsForYear.find((submission) => submission.id === current.id) ?? current)
         : null;
-      const nextSubmission = currentInScope ?? preferredWorkspaceSubmission;
-      const currentFingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, currentInScope);
-      const nextFingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, nextSubmission);
-
-      if (currentFingerprint === nextFingerprint) {
+      if (currentInScope) {
         return currentInScope;
       }
 
-      return nextSubmission;
+      return preferredWorkspaceSubmission;
     });
   }, [activeAcademicYearId, preferredWorkspaceSubmission, scopedSubmissionsForYear]);
   useEffect(() => {
@@ -1989,11 +1985,9 @@ function SchoolIndicatorPanelComponent({
           )
             ? current
             : null;
-          const currentFingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, currentInScope);
-          const nextFingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, preferredSubmission);
-
-          if (currentFingerprint === nextFingerprint) {
-            return currentInScope;
+          if (currentInScope) {
+            const matchingRow = inScopeRows.find((submission) => submission.id === currentInScope.id);
+            return matchingRow ?? currentInScope;
           }
 
           return preferredSubmission;
@@ -2005,17 +1999,20 @@ function SchoolIndicatorPanelComponent({
       cancelled = true;
     };
   }, [activeAcademicYearId, editingSubmissionId, loadSubmissionsForYear, user?.schoolId]);
-  const latestActiveWorkspaceSubmission = useMemo(
+  const latestActiveWorkspaceSubmission = activeWorkspaceSubmission;
+  const mutableActiveWorkspaceSubmission = useMemo(
     () => (
-      activeWorkspaceSubmission?.id
-        ? sortedSubmissions.find((submission) => submission.id === activeWorkspaceSubmission.id) ?? activeWorkspaceSubmission
-        : activeWorkspaceSubmission
+      latestActiveWorkspaceSubmission
+      && String(latestActiveWorkspaceSubmission.academicYear?.id ?? "") === String(activeAcademicYearId ?? "")
+      && isDraftOrReturnedWorkflowStatus(latestActiveWorkspaceSubmission.status)
+        ? latestActiveWorkspaceSubmission
+        : null
     ),
-    [activeWorkspaceSubmission, sortedSubmissions],
+    [activeAcademicYearId, latestActiveWorkspaceSubmission],
   );
   const selectedSubmissionForUploads = useMemo(() => {
-    return editableWorkspaceSubmissionInScope;
-  }, [editableWorkspaceSubmissionInScope]);
+    return mutableActiveWorkspaceSubmission ?? editableWorkspaceSubmissionInScope;
+  }, [editableWorkspaceSubmissionInScope, mutableActiveWorkspaceSubmission]);
   const selectedSubmissionStatus = useMemo(
     () => String(latestActiveWorkspaceSubmission?.status ?? "").toLowerCase(),
     [latestActiveWorkspaceSubmission?.status],
@@ -2288,6 +2285,9 @@ function SchoolIndicatorPanelComponent({
     void fetchSubmission(submissionId)
       .then((submission) => {
         if (submission.id === submissionId) {
+          setActiveWorkspaceSubmission((current) => (
+            current && current.id === submission.id ? submission : current
+          ));
           requestResolvedWorkspaceRehydrate();
         }
       })
@@ -3781,8 +3781,10 @@ function SchoolIndicatorPanelComponent({
         throw new Error("The selected academic year changed before saving. No stale changes were applied. Review the workspace and try again.");
       }
       const mutableSubmission = (
-        isSubmissionInAcademicYear(editableWorkspaceSubmissionInScope, payload.academicYearId)
-          ? editableWorkspaceSubmissionInScope
+        isSubmissionInAcademicYear(mutableActiveWorkspaceSubmission, payload.academicYearId)
+          ? mutableActiveWorkspaceSubmission
+          : isSubmissionInAcademicYear(editableWorkspaceSubmissionInScope, payload.academicYearId)
+            ? editableWorkspaceSubmissionInScope
           : null
       );
       const canUpdateActiveSubmission = (
@@ -3815,7 +3817,7 @@ function SchoolIndicatorPanelComponent({
 
       return result;
     },
-    [createSubmission, editableWorkspaceSubmissionInScope, isAcademicYearValueAligned, isSubmissionInAcademicYear, updateSubmission],
+    [createSubmission, editableWorkspaceSubmissionInScope, isAcademicYearValueAligned, isSubmissionInAcademicYear, mutableActiveWorkspaceSubmission, updateSubmission],
   );
 
   const ensureWorkspaceSubmission = useCallback(async (): Promise<IndicatorSubmission> => {
@@ -3824,9 +3826,14 @@ function SchoolIndicatorPanelComponent({
     }
 
     const existingDraft = (
-      editableWorkspaceSubmissionInScope
-      && isSubmissionInAcademicYear(editableWorkspaceSubmissionInScope, activeAcademicYearId)
+      mutableActiveWorkspaceSubmission
+      && isSubmissionInAcademicYear(mutableActiveWorkspaceSubmission, activeAcademicYearId)
     )
+      ? mutableActiveWorkspaceSubmission
+      : (
+        editableWorkspaceSubmissionInScope
+        && isSubmissionInAcademicYear(editableWorkspaceSubmissionInScope, activeAcademicYearId)
+      )
       ? editableWorkspaceSubmissionInScope
       : null;
 
@@ -3834,24 +3841,24 @@ function SchoolIndicatorPanelComponent({
       return existingDraft;
     }
 
-      const bootstrapped = await bootstrapSubmission({
-        academicYearId: Number(activeAcademicYearId),
-        reportingPeriod,
-      });
+    const bootstrapped = await bootstrapSubmission({
+      academicYearId: Number(activeAcademicYearId),
+      reportingPeriod,
+    });
 
-      preserveLocalWorkspaceAfterMutationRef.current = {
-        academicYearId: activeAcademicYearId,
-        submissionId: bootstrapped.id,
-      };
-      setActiveWorkspaceSubmission(bootstrapped);
-      setEditingSubmissionId(bootstrapped.id);
-      setPendingLocalDraft(null);
-      setAutosaveError("");
-      setServerAutosaveAt(bootstrapped.updatedAt ?? new Date().toISOString());
-      lastAutosaveFingerprintRef.current = "";
+    preserveLocalWorkspaceAfterMutationRef.current = {
+      academicYearId: activeAcademicYearId,
+      submissionId: bootstrapped.id,
+    };
+    setActiveWorkspaceSubmission(bootstrapped);
+    setEditingSubmissionId(bootstrapped.id);
+    setPendingLocalDraft(null);
+    setAutosaveError("");
+    setServerAutosaveAt(bootstrapped.updatedAt ?? new Date().toISOString());
+    lastAutosaveFingerprintRef.current = "";
 
     return bootstrapped;
-  }, [activeAcademicYearId, bootstrapSubmission, editableWorkspaceSubmissionInScope, isSubmissionInAcademicYear, reportingPeriod]);
+  }, [activeAcademicYearId, bootstrapSubmission, editableWorkspaceSubmissionInScope, isSubmissionInAcademicYear, mutableActiveWorkspaceSubmission, reportingPeriod]);
 
   const triggerServerAutosave = useCallback(async () => {
     if (!canShowSaveAndSubmitActions) {
@@ -4296,10 +4303,11 @@ function SchoolIndicatorPanelComponent({
       } satisfies IndicatorSubmissionPayload;
       console.log("[GroupB] payload:", payload);
       setSavingSection(sectionToSave);
+      const editableSubmissionForSave = mutableActiveWorkspaceSubmission ?? editableWorkspaceSubmissionInScope;
       await runCriticalWorkspaceMutation({
         mutation: () => (
-          editableWorkspaceSubmissionInScope?.id
-            ? updateSubmission(editableWorkspaceSubmissionInScope.id, payload)
+          editableSubmissionForSave?.id
+            ? updateSubmission(editableSubmissionForSave.id, payload)
             : createSubmission(payload)
         ),
         onSuccess: (saved) => {
@@ -4363,7 +4371,7 @@ function SchoolIndicatorPanelComponent({
 
       await runCriticalWorkspaceMutation({
         mutation: async () => {
-          let submissionToSubmit = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
+          let submissionToSubmit = mutableActiveWorkspaceSubmission ?? editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
           const submissionIdToUpdate = (
             submissionToSubmit && isSubmissionInAcademicYear(submissionToSubmit, payload.academicYearId)
               ? submissionToSubmit.id
@@ -4437,13 +4445,14 @@ function SchoolIndicatorPanelComponent({
       await runCriticalWorkspaceMutation({
         mutation: async () => {
           let submissionToSubmit = (
-            latestActiveWorkspaceSubmission?.id === submission.id && editableWorkspaceSubmissionInScope
-              ? editableWorkspaceSubmissionInScope
+            latestActiveWorkspaceSubmission?.id === submission.id && (mutableActiveWorkspaceSubmission ?? editableWorkspaceSubmissionInScope)
+              ? (mutableActiveWorkspaceSubmission ?? editableWorkspaceSubmissionInScope)
               : submission
           );
 
           if (
             latestActiveWorkspaceSubmission?.id === submission.id
+            || mutableActiveWorkspaceSubmission?.id === submission.id
             || editableWorkspaceSubmissionInScope?.id === submission.id
           ) {
             const prepared = buildSubmissionPayloadFromCurrentWorkspace();
