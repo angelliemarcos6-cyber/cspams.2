@@ -1265,6 +1265,7 @@ function SchoolIndicatorPanelComponent({
     isSaving,
     error,
     refreshSubmissions,
+    loadSubmissionsForYear,
     bootstrapSubmission,
     createSubmission,
     updateSubmission,
@@ -1329,6 +1330,7 @@ function SchoolIndicatorPanelComponent({
   const criticalActionInFlightRef = useRef(false);
   const groupBActionInFlightRef = useRef(false);
   const transitionEpochRef = useRef(0);
+  const workspaceYearRequestRef = useRef(0);
   const workspaceFingerprintRef = useRef("");
   const metricEntriesRef = useRef<MetricEntryState>({});
   const notesRef = useRef("");
@@ -1953,6 +1955,56 @@ function SchoolIndicatorPanelComponent({
       return nextSubmission;
     });
   }, [activeAcademicYearId, preferredWorkspaceSubmission, scopedSubmissionsForYear]);
+  useEffect(() => {
+    const schoolId = user?.schoolId ? String(user.schoolId) : "";
+    if (!schoolId || !activeAcademicYearId) {
+      return;
+    }
+
+    let cancelled = false;
+    const requestId = ++workspaceYearRequestRef.current;
+
+    void loadSubmissionsForYear(schoolId, activeAcademicYearId)
+      .then((rows) => {
+        if (cancelled || workspaceYearRequestRef.current !== requestId) {
+          return;
+        }
+
+        const inScopeRows = [...rows]
+          .filter((submission) => String(submission.academicYear?.id ?? "") === String(activeAcademicYearId))
+          .sort((left, right) => toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left));
+        const preferredSubmission = (
+          inScopeRows.find((submission) => String(submission.status ?? "").toLowerCase() === "returned")
+          ?? inScopeRows.find((submission) => String(submission.status ?? "").toLowerCase() === "draft")
+          ?? inScopeRows.find((submission) => submission.id === editingSubmissionId)
+          ?? inScopeRows.find((submission) => String(submission.status ?? "").toLowerCase() === "submitted")
+          ?? inScopeRows[0]
+          ?? null
+        );
+
+        setActiveWorkspaceSubmission((current) => {
+          const currentInScope = (
+            current
+            && String(current.academicYear?.id ?? "") === String(activeAcademicYearId)
+          )
+            ? current
+            : null;
+          const currentFingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, currentInScope);
+          const nextFingerprint = buildWorkspaceSubmissionFingerprint(activeAcademicYearId, preferredSubmission);
+
+          if (currentFingerprint === nextFingerprint) {
+            return currentInScope;
+          }
+
+          return preferredSubmission;
+        });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAcademicYearId, editingSubmissionId, loadSubmissionsForYear, user?.schoolId]);
   const latestActiveWorkspaceSubmission = useMemo(
     () => (
       activeWorkspaceSubmission?.id
