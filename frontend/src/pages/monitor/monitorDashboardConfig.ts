@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   ListChecks,
   TrendingUp,
-  Users,
 } from "lucide-react";
 import type {
   MonitorTopNavigatorId,
@@ -69,7 +68,7 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
     objective: "Open school-level records and verify synchronized student and teacher data.",
     actions: [
       "Use search and school filters to find the school you need quickly.",
-      "Inspect school details and learner records without leaving the dashboard.",
+      "Inspect school details without leaving the dashboard.",
     ],
     doneWhen: "The selected school context is verified and ready for review.",
   },
@@ -126,9 +125,7 @@ export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]>
     { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },
     { id: "queue_workspace", label: "Review Workspace", targetId: "monitor-queue-workspace", icon: ClipboardList },
   ],
-  schools: [
-    { id: "school_learners", label: "Learner Panel", targetId: "monitor-school-learners", icon: Users },
-  ],
+  schools: [],
 };
 
 export const REQUIREMENT_PAGE_SIZE = 10;

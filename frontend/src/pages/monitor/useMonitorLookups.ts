@@ -89,8 +89,6 @@ interface UseMonitorLookupsArgs {
   teacherLookupTick: number;
   showMoreFilters: boolean;
   showAdvancedFilters: boolean;
-  setShowSchoolLearnerRecords: Dispatch<SetStateAction<boolean>>;
-  onOpenLearnerRecords: () => void;
 }
 
 export interface UseMonitorLookupsResult {
@@ -229,8 +227,6 @@ export function useMonitorLookups({
   teacherLookupTick,
   showMoreFilters,
   showAdvancedFilters,
-  setShowSchoolLearnerRecords,
-  onOpenLearnerRecords,
 }: UseMonitorLookupsArgs): UseMonitorLookupsResult {
   const [schoolScopeQuery, setSchoolScopeQuery] = useState("");
   const debouncedSchoolScopeQuery = useDebouncedValue(schoolScopeQuery, MONITOR_SEARCH_DEBOUNCE_MS);
@@ -763,11 +759,6 @@ export function useMonitorLookups({
     setSelectedSchoolScopeKey(selectedTeacherLookup.schoolKey);
   }, [selectedSchoolScopeKey, selectedTeacherLookup, setSelectedSchoolScopeKey]);
 
-  useEffect(() => {
-    if (!selectedStudentLookup && !selectedTeacherLookup) return;
-    setShowSchoolLearnerRecords(true);
-  }, [selectedStudentLookup, selectedTeacherLookup, setShowSchoolLearnerRecords]);
-
   const toggleScopeDropdown = useCallback((dropdownId: ScopeDropdownId) => {
     setOpenScopeDropdownId((current) => (current === dropdownId ? null : dropdownId));
   }, []);
@@ -805,9 +796,8 @@ export function useMonitorLookups({
       }
       setStudentLookupQuery(option.fullName);
       setOpenScopeDropdownId(null);
-      onOpenLearnerRecords();
     },
-    [onOpenLearnerRecords, setSelectedSchoolScopeKey, setSelectedStudentLookupId],
+    [setSelectedSchoolScopeKey, setSelectedStudentLookupId],
   );
 
   const handleClearTeacherLookup = useCallback(() => {
@@ -826,9 +816,8 @@ export function useMonitorLookups({
       }
       setTeacherLookupQuery(option.name);
       setOpenScopeDropdownId(null);
-      onOpenLearnerRecords();
     },
-    [onOpenLearnerRecords, setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
+    [setSelectedSchoolScopeKey, setSelectedStudentLookupId, setSelectedTeacherLookupId],
   );
 
   return {

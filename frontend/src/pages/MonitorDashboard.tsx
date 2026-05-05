@@ -12,7 +12,6 @@ import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 import { MonitorDashboardToolbar } from "@/pages/monitor/MonitorDashboardToolbar";
 import { MonitorFiltersPanel } from "@/pages/monitor/MonitorFiltersPanel";
-import { MonitorLearnerRecordsSection } from "@/pages/monitor/MonitorLearnerRecordsSection";
 import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
 import { MonitorMobileNavigator } from "@/pages/monitor/MonitorMobileNavigator";
 import { MonitorDashboardShellActions } from "@/pages/monitor/MonitorDashboardShellActions";
@@ -184,25 +183,9 @@ export function MonitorDashboard() {
     focusAndScrollTo,
     sectionFocusClass,
   } = useMonitorDashboardShell();
-  const [showSchoolLearnerRecords, setShowSchoolLearnerRecords] = useState(false);
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
   const initialLoadStartedRef = useRef(false);
-  const openStudentRecordsFromCard = () => {
-    setShowSchoolLearnerRecords(true);
-    setShowNavigatorManual(false);
-    setActiveTopNavigator("schools");
-
-    if (isMobileViewport) {
-      setIsNavigatorVisible(false);
-    }
-
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => {
-        focusAndScrollTo("monitor-school-learners");
-      }, 50);
-    }
-  };
   const {
     schoolScopeQuery,
     setSchoolScopeQuery,
@@ -229,7 +212,6 @@ export function MonitorDashboard() {
     selectedTeacherSchoolKeys,
     selectedStudentLabel,
     selectedTeacherLabel,
-    studentRecordsLookupTerm,
     isStudentLookupSyncing,
     isTeacherLookupSyncing,
     handleSelectAllSchools,
@@ -256,8 +238,6 @@ export function MonitorDashboard() {
     teacherLookupTick,
     showMoreFilters,
     showAdvancedFilters,
-    setShowSchoolLearnerRecords,
-    onOpenLearnerRecords: openStudentRecordsFromCard,
   });
   const { monitorRadarTotals } = useMonitorRadarTotals({
     authSessionKey,
@@ -331,7 +311,6 @@ export function MonitorDashboard() {
     visibleRequirementFilterIds,
     visibleRequirementFilterOptions,
     filteredRequirementRows,
-    filteredSchoolKeys,
     requirementCounts,
     needsActionCount,
     actionQueueRows,
@@ -959,50 +938,41 @@ export function MonitorDashboard() {
           )}
 
           {!showNavigatorManual && activeTopNavigator === "schools" && (
-            <>
-              <MonitorSchoolsSection
-                sectionFocusClass={sectionFocusClass}
-                isMobileViewport={isMobileViewport}
-                quickJumpBindings={quickJumpBindings}
-                totalSchoolsInScope={totalSchoolsInScope}
-                monitorRadarTotals={monitorRadarTotals}
-                schoolScopeRadarSelectorProps={schoolScopeRadarSelectorProps}
-                studentRadarSelectorProps={studentRadarSelectorProps}
-                teacherRadarSelectorProps={teacherRadarSelectorProps}
-                paginatedCompactSchoolRowsCount={paginatedCompactSchoolRows.length}
-                compactSchoolRowsCount={compactSchoolRows.length}
-                schoolActionsMenuRef={schoolsSectionApi.schoolActionsMenuRef}
-                bulkImportInputRef={schoolsSectionApi.bulkImportInputRef}
-                onBulkImportFileChange={schoolsSectionApi.handleBulkImportFileChange}
-                onOpenCreateRecordForm={schoolsSectionApi.openCreateRecordForm}
-                onToggleAccountsPanel={schoolsSectionApi.toggleSchoolHeadAccountsPanel}
-                showSchoolHeadAccountsPanel={schoolsSectionApi.showSchoolHeadAccountsPanel}
-                onToggleActionsMenu={schoolsSectionApi.toggleActionsMenu}
-                isSchoolActionsMenuOpen={schoolsSectionApi.isSchoolActionsMenuOpen}
-                onOpenBulkImportPicker={schoolsSectionApi.openBulkImportPicker}
-                isBulkImporting={schoolsSectionApi.isBulkImporting}
-                onToggleArchivedRecords={() => {
-                  void schoolsSectionApi.toggleArchivedRecords();
-                }}
-                showArchivedRecords={schoolsSectionApi.showArchivedRecords}
-                onShowMfaResetApprovals={() => {
-                  schoolsSectionApi.closeActionsMenu();
-                  setShowMfaResetApprovalsDialog(true);
-                }}
-                schoolHeadAccountsPanelProps={schoolsSectionApi.schoolHeadAccountsPanelProps}
-                messages={schoolsSectionApi.schoolMessagesProps}
-                schoolRecordFormProps={schoolsSectionApi.schoolRecordFormProps}
-                schoolRecordsListProps={schoolsSectionApi.schoolRecordsListProps}
-                archivedSchoolsProps={schoolsSectionApi.archivedSchoolsProps}
-              />
-              <MonitorLearnerRecordsSection
-                sectionFocusClass={sectionFocusClass}
-                showSchoolLearnerRecords={showSchoolLearnerRecords}
-                setShowSchoolLearnerRecords={setShowSchoolLearnerRecords}
-                filteredSchoolKeys={filteredSchoolKeys}
-                studentRecordsLookupTerm={studentRecordsLookupTerm}
-              />
-            </>
+            <MonitorSchoolsSection
+              sectionFocusClass={sectionFocusClass}
+              isMobileViewport={isMobileViewport}
+              quickJumpBindings={quickJumpBindings}
+              totalSchoolsInScope={totalSchoolsInScope}
+              monitorRadarTotals={monitorRadarTotals}
+              schoolScopeRadarSelectorProps={schoolScopeRadarSelectorProps}
+              studentRadarSelectorProps={studentRadarSelectorProps}
+              teacherRadarSelectorProps={teacherRadarSelectorProps}
+              paginatedCompactSchoolRowsCount={paginatedCompactSchoolRows.length}
+              compactSchoolRowsCount={compactSchoolRows.length}
+              schoolActionsMenuRef={schoolsSectionApi.schoolActionsMenuRef}
+              bulkImportInputRef={schoolsSectionApi.bulkImportInputRef}
+              onBulkImportFileChange={schoolsSectionApi.handleBulkImportFileChange}
+              onOpenCreateRecordForm={schoolsSectionApi.openCreateRecordForm}
+              onToggleAccountsPanel={schoolsSectionApi.toggleSchoolHeadAccountsPanel}
+              showSchoolHeadAccountsPanel={schoolsSectionApi.showSchoolHeadAccountsPanel}
+              onToggleActionsMenu={schoolsSectionApi.toggleActionsMenu}
+              isSchoolActionsMenuOpen={schoolsSectionApi.isSchoolActionsMenuOpen}
+              onOpenBulkImportPicker={schoolsSectionApi.openBulkImportPicker}
+              isBulkImporting={schoolsSectionApi.isBulkImporting}
+              onToggleArchivedRecords={() => {
+                void schoolsSectionApi.toggleArchivedRecords();
+              }}
+              showArchivedRecords={schoolsSectionApi.showArchivedRecords}
+              onShowMfaResetApprovals={() => {
+                schoolsSectionApi.closeActionsMenu();
+                setShowMfaResetApprovalsDialog(true);
+              }}
+              schoolHeadAccountsPanelProps={schoolsSectionApi.schoolHeadAccountsPanelProps}
+              messages={schoolsSectionApi.schoolMessagesProps}
+              schoolRecordFormProps={schoolsSectionApi.schoolRecordFormProps}
+              schoolRecordsListProps={schoolsSectionApi.schoolRecordsListProps}
+              archivedSchoolsProps={schoolsSectionApi.archivedSchoolsProps}
+            />
           )}
 
           <MonitorSchoolDrawer {...schoolDrawerProps} />
