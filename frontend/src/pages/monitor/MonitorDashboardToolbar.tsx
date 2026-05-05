@@ -1,6 +1,5 @@
 import type { Ref } from "react";
 import { Filter, RefreshCw, Save, Search } from "lucide-react";
-import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardConfig";
 import type { SchoolQuickPreset } from "@/pages/monitor/monitorFilters";
 
 interface ActiveScreenMeta {
@@ -183,6 +182,18 @@ export function MonitorDashboardToolbar({
               </button>
               <button
                 type="button"
+                title="Schools with no compliance or indicator submission yet."
+                onClick={() => onSelectSchoolQuickPreset("no_submission")}
+                className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                  schoolQuickPreset === "no_submission"
+                    ? "border-slate-400 bg-slate-200 text-slate-900"
+                    : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                No Submission: {schoolPresetCounts.no_submission}
+              </button>
+              <button
+                type="button"
                 title="Refresh dashboard data."
                 onClick={onRefresh}
                 disabled={isDashboardSyncing}
@@ -195,33 +206,6 @@ export function MonitorDashboardToolbar({
                     ? `Sync: ${new Date(dashboardLastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
                     : "Sync: N/A"}
               </button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Presets</span>
-              {SCHOOL_QUICK_PRESET_OPTIONS.map((preset) => {
-                const isActive = schoolQuickPreset === preset.id;
-                const count = schoolPresetCounts[preset.id];
-
-                return (
-                  <button
-                    key={`sticky-preset-${preset.id}`}
-                    type="button"
-                    title={preset.hint}
-                    onClick={() => onSelectSchoolQuickPreset(preset.id)}
-                    className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] font-semibold transition ${
-                      isActive
-                        ? "border-primary-300 bg-primary-100 text-primary-800"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    <span>{preset.label}</span>
-                    <span className="rounded-sm bg-slate-100 px-1 text-[10px] font-bold text-slate-700">
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
             </div>
           </div>
         </div>

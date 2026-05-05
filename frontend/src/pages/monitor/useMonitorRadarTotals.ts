@@ -4,8 +4,8 @@ import type { TeacherDataContextType } from "@/context/TeacherData";
 import type { MonitorTopNavigatorId } from "./monitorFilters";
 
 export interface MonitorRadarTotals {
-  students: number;
-  teachers: number;
+  students: number | null;
+  teachers: number | null;
   syncedAt: string | null;
   isLoading: boolean;
   error: string;
@@ -26,8 +26,8 @@ interface UseMonitorRadarTotalsResult {
 }
 
 const EMPTY_MONITOR_RADAR_TOTALS: MonitorRadarTotals = {
-  students: 0,
-  teachers: 0,
+  students: null,
+  teachers: null,
   syncedAt: null,
   isLoading: false,
   error: "",
@@ -71,7 +71,7 @@ export function useMonitorRadarTotals({
       }));
 
       try {
-        const [studentsResult, teachersResult] = await Promise.all([
+        const [studentsResult, teachersResult] = await Promise.allSettled([
           queryStudents({
             page: 1,
             perPage: 1,
@@ -91,12 +91,41 @@ export function useMonitorRadarTotals({
           return;
         }
 
-        setMonitorRadarTotals({
-          students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? 0),
-          teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? 0),
-          syncedAt: new Date().toISOString(),
-          isLoading: false,
-          error: "",
+        const nextErrorMessages: string[] = [];
+        const nextSyncedAt = new Date().toISOString();
+
+        setMonitorRadarTotals((current) => {
+          const nextStudents =
+            studentsResult.status === "fulfilled"
+              ? Number(studentsResult.value.meta.total ?? studentsResult.value.meta.recordCount ?? 0)
+              : current.students;
+          const nextTeachers =
+            teachersResult.status === "fulfilled"
+              ? Number(teachersResult.value.meta.total ?? teachersResult.value.meta.recordCount ?? 0)
+              : current.teachers;
+
+          if (studentsResult.status === "rejected") {
+            const studentMessage =
+              studentsResult.reason instanceof Error ? studentsResult.reason.message : "Unexpected student totals error.";
+            nextErrorMessages.push(`Student totals unavailable: ${studentMessage}`);
+          }
+
+          if (teachersResult.status === "rejected") {
+            const teacherMessage =
+              teachersResult.reason instanceof Error ? teachersResult.reason.message : "Unexpected teacher totals error.";
+            nextErrorMessages.push(`Teacher totals unavailable: ${teacherMessage}`);
+          }
+
+          return {
+            students: nextStudents,
+            teachers: nextTeachers,
+            syncedAt:
+              studentsResult.status === "fulfilled" || teachersResult.status === "fulfilled"
+                ? nextSyncedAt
+                : current.syncedAt,
+            isLoading: false,
+            error: nextErrorMessages.join(" "),
+          };
         });
       } catch (err) {
         if (!active) {

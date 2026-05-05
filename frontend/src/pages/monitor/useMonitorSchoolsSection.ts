@@ -278,6 +278,7 @@ export function useMonitorSchoolsSection({
   const schoolRecordsListProps: MonitorSchoolRecordsListProps = {
     showLoadingSkeleton: isLoading && recordsLength === 0,
     compactSchoolRowsCount: compactSchoolRows.length,
+    suppressEmptyState: recordFormApi.showRecordForm && recordFormApi.editingRecordId === null,
     paginatedRows: paginatedCompactSchoolRows,
     statusFilter,
     requirementFilter,

@@ -135,7 +135,7 @@ export function useMonitorDashboardCommands({
         return {
           title: "Schools",
           description: "Open school-level records and synchronized totals.",
-          primaryLabel: "Open School",
+          primaryLabel: "Open Selected School",
         };
       case "reviews":
       default:

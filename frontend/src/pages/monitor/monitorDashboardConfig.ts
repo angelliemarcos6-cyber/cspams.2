@@ -128,8 +128,8 @@ export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]>
   ],
   schools: [
     { id: "filters_schools", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "school_records", label: "School List", targetId: "monitor-school-records", icon: Building2 },
-    { id: "school_learners", label: "Learner Records", targetId: "monitor-school-learners", icon: Users },
+    { id: "school_records", label: "School Records", targetId: "monitor-school-records", icon: Building2 },
+    { id: "school_learners", label: "Learner Panel", targetId: "monitor-school-learners", icon: Users },
   ],
 };
 

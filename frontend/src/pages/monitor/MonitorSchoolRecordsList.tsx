@@ -26,6 +26,7 @@ export interface MonitorSchoolRecordsListRow {
 export interface MonitorSchoolRecordsListProps {
   showLoadingSkeleton: boolean;
   compactSchoolRowsCount: number;
+  suppressEmptyState?: boolean;
   paginatedRows: MonitorSchoolRecordsListRow[];
   statusFilter: SchoolStatus | "all";
   requirementFilter: RequirementFilter;
@@ -53,6 +54,7 @@ export interface MonitorSchoolRecordsListProps {
 export function MonitorSchoolRecordsList({
   showLoadingSkeleton,
   compactSchoolRowsCount,
+  suppressEmptyState = false,
   paginatedRows,
   statusFilter,
   requirementFilter,
@@ -91,7 +93,7 @@ export function MonitorSchoolRecordsList({
     );
   }
 
-  if (compactSchoolRowsCount === 0) {
+  if (compactSchoolRowsCount === 0 && !suppressEmptyState) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
         <AlertCircle className="h-9 w-9 text-slate-400" />

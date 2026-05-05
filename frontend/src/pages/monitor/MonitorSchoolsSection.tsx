@@ -110,7 +110,11 @@ export function MonitorSchoolsSection({
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Students</p>
                 <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
-                  {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.students.toLocaleString()}
+                  {monitorRadarTotals.isLoading
+                    ? "..."
+                    : monitorRadarTotals.students === null
+                      ? "--"
+                      : monitorRadarTotals.students.toLocaleString()}
                 </p>
               </div>
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
@@ -125,7 +129,11 @@ export function MonitorSchoolsSection({
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Teachers</p>
                 <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
-                  {monitorRadarTotals.isLoading ? "..." : monitorRadarTotals.teachers.toLocaleString()}
+                  {monitorRadarTotals.isLoading
+                    ? "..."
+                    : monitorRadarTotals.teachers === null
+                      ? "--"
+                      : monitorRadarTotals.teachers.toLocaleString()}
                 </p>
               </div>
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">

@@ -50,7 +50,7 @@ export function MonitorLearnerRecordsSection({
         />
       ) : (
         <div className="px-5 py-8 text-sm text-slate-500">
-          Learner records are hidden. Use <span className="font-semibold text-slate-700">Show Learner Records</span> to open this panel.
+          Learner records are hidden. Use the <span className="font-semibold text-slate-700">Show Learner Records</span> button above to open this panel.
         </div>
       )}
     </section>
