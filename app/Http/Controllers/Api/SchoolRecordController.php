@@ -14,17 +14,13 @@ use App\Models\School;
 use App\Models\Section;
 use App\Models\Student;
 use App\Models\User;
-use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
-use App\Support\Auth\SchoolHeadAccountLifecycleService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use App\Support\Domain\SchoolStatus;
 use App\Support\Domain\StudentStatus;
-use App\Support\Mail\MailDelivery;
-use Carbon\CarbonImmutable;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -34,7 +30,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -45,7 +40,6 @@ class SchoolRecordController extends Controller
     private static ?bool $usersHaveAccountTypeColumnCache = null;
 
     public function __construct(
-        private readonly SchoolHeadAccountLifecycleService $schoolHeadAccountLifecycleService,
         private readonly FilterService $filterService,
     ) {
     }
@@ -617,12 +611,6 @@ class SchoolRecordController extends Controller
     {
         $schoolCode = $this->normalizeSchoolCode($request->string('schoolId')->toString());
 
-        if ($request->filled('schoolHeadAccount') && ! $this->schoolHeadAccountLifecycleService->storageAvailable()) {
-            throw ValidationException::withMessages([
-                'schoolHeadAccount' => 'Account setup link storage is unavailable. Check database migrations and cache configuration before provisioning a School Head account.',
-            ]);
-        }
-
         $existing = School::withTrashed()
             ->where('school_code_normalized', strtolower($schoolCode))
             ->first();
@@ -815,8 +803,7 @@ class SchoolRecordController extends Controller
             ]);
         }
 
-        $duplicateQuery = $this->schoolHeadAccountLifecycleService
-            ->schoolHeadCandidatesQuery()
+        $duplicateQuery = $this->schoolHeadCandidatesQuery()
             ->where('school_id', $school->id);
 
         if ($duplicateQuery->exists()) {
@@ -828,55 +815,25 @@ class SchoolRecordController extends Controller
         $account = new User();
         $account->name = $name;
         $account->email = $email;
-        $account->password = Hash::make(Str::password(40));
-        $account->must_reset_password = true;
-        $account->password_changed_at = null;
-        $account->account_status = AccountStatus::PENDING_SETUP->value;
+        $temporaryPassword = $this->generateTemporaryPassword();
+        $account->password = Hash::make($temporaryPassword);
+        $account->must_reset_password = false;
+        $account->password_changed_at = now();
+        $account->account_status = AccountStatus::ACTIVE->value;
         $account->school_id = $school->id;
+        $account->email_verified_at = now();
+        $account->verified_by_user_id = $monitor->id;
+        $account->verified_at = now();
+        $account->verification_notes = 'Provisioned by Division Monitor with a one-time temporary password.';
         if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }
         $account->save();
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
-        $this->schoolHeadAccountLifecycleService->synchronizeSchoolHeadIdentity($account);
-
-        $issuedSetup = $this->schoolHeadAccountLifecycleService->issueSetupLink(
-            $account,
-            $monitor,
-            $request->ip(),
-            $request->userAgent(),
-        );
-
-        if (($issuedSetup['status'] ?? null) !== 'issued') {
-            throw ValidationException::withMessages([
-                'schoolHeadAccount' => 'Account setup link storage is unavailable. Check database migrations and cache configuration before provisioning a School Head account.',
-            ]);
-        }
-
-        $deliveryStatus = 'sent';
-        $deliveryMessage = 'Setup link sent to the School Head email.';
-
-        if (MailDelivery::isSimulated()) {
-            $deliveryStatus = MailDelivery::simulatedStatus();
-            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
-        }
-        try {
-            $account->notify(
-                new SchoolHeadAccountSetupNotification(
-                    $school,
-                    $issuedSetup['setup']['setupUrl'],
-                    CarbonImmutable::parse($issuedSetup['setup']['expiresAt']),
-                ),
-            );
-        } catch (\Throwable $exception) {
-            report($exception);
-            $deliveryStatus = 'failed';
-            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
-        }
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
-            'action' => 'account.setup_link_issued',
+            'action' => 'account.temporary_password_issued',
             'auditable_type' => User::class,
             'auditable_id' => $account->id,
             'metadata' => [
@@ -888,9 +845,6 @@ class SchoolRecordController extends Controller
                 'account_status' => $account->accountStatus()->value,
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
-                'setup_link_expires_at' => $issuedSetup['setup']['expiresAt'],
-                'delivery_status' => $deliveryStatus,
-                'delivery_message' => $deliveryMessage,
                 'reason' => 'account_created',
             ],
             'ip_address' => $request->ip(),
@@ -902,12 +856,38 @@ class SchoolRecordController extends Controller
             'id' => (string) $account->id,
             'name' => $account->name,
             'email' => $account->email,
-            'mustResetPassword' => true,
+            'mustResetPassword' => false,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLinkExpiresAt' => $issuedSetup['setup']['expiresAt'],
-            'setupLinkDelivery' => $deliveryStatus,
-            'setupLinkDeliveryMessage' => $deliveryMessage,
+            'temporaryPassword' => $temporaryPassword,
         ];
+    }
+
+    private function generateTemporaryPassword(): string
+    {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        $maxIndex = strlen($alphabet) - 1;
+        $password = '';
+
+        for ($index = 0; $index < 8; $index++) {
+            $password .= $alphabet[random_int(0, $maxIndex)];
+        }
+
+        return $password;
+    }
+
+    private function schoolHeadCandidatesQuery(): Builder
+    {
+        $query = User::query()->orderByDesc('id');
+
+        if ($this->usersHaveAccountTypeColumn()) {
+            return $query->where('account_type', UserRoleResolver::SCHOOL_HEAD);
+        }
+
+        $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+
+        return $query->whereHas('roles', static function ($builder) use ($aliases): void {
+            $builder->whereIn('name', $aliases);
+        });
     }
 
     private function normalizeSchoolCode(string $value): string

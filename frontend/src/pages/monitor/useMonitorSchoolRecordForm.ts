@@ -94,6 +94,7 @@ export function useMonitorSchoolRecordForm({
   const [recordFormErrors, setRecordFormErrors] = useState<Partial<Record<MonitorSchoolRecordFormField, string>>>({});
   const [recordFormError, setRecordFormError] = useState("");
   const [recordFormMessage, setRecordFormMessage] = useState("");
+  const [recordFormProvisioning, setRecordFormProvisioning] = useState<SchoolHeadAccountProvisioningReceipt | null>(null);
 
   const resetRecordForm = useCallback(() => {
     setEditingRecordId(null);
@@ -101,6 +102,7 @@ export function useMonitorSchoolRecordForm({
     setRecordFormErrors({});
     setRecordFormError("");
     setRecordFormMessage("");
+    setRecordFormProvisioning(null);
   }, []);
 
   const openCreateRecordForm = useCallback(() => {
@@ -165,6 +167,7 @@ export function useMonitorSchoolRecordForm({
       setRecordFormErrors({});
       setRecordFormError("");
       setRecordFormMessage("");
+      setRecordFormProvisioning(null);
       clearDeleteError();
       clearBulkImportError();
 
@@ -190,24 +193,35 @@ export function useMonitorSchoolRecordForm({
       };
 
       try {
+        let shouldAutoClose = true;
+
         if (editingRecordId) {
           await updateRecord(editingRecordId, payload);
           setRecordFormMessage("School record updated.");
         } else {
           const provisioning = await addRecord(payload);
-          const deliveryFailed = String(provisioning?.setupLinkDelivery ?? "").toLowerCase() === "failed";
-          setRecordFormMessage(
-            provisioning
-              ? deliveryFailed
-                ? "School record created. The setup email could not be delivered to the School Head account."
-                : "School record created. A setup email was sent to the School Head account."
-              : "School record created.",
-          );
+          if (provisioning?.temporaryPassword) {
+            setRecordFormProvisioning(provisioning);
+            setRecordFormMessage("School record created. School Head account created successfully.");
+            setRecordForm(EMPTY_MONITOR_RECORD_FORM);
+            shouldAutoClose = false;
+          } else {
+            const deliveryFailed = String(provisioning?.setupLinkDelivery ?? "").toLowerCase() === "failed";
+            setRecordFormMessage(
+              provisioning
+                ? deliveryFailed
+                  ? "School record created. The setup email could not be delivered to the School Head account."
+                  : "School record created. A setup email was sent to the School Head account."
+                : "School record created.",
+            );
+          }
         }
 
-        window.setTimeout(() => {
-          closeRecordForm();
-        }, 800);
+        if (shouldAutoClose) {
+          window.setTimeout(() => {
+            closeRecordForm();
+          }, 800);
+        }
       } catch (err) {
         if (isApiError(err)) {
           const apiFieldErrors = extractApiValidationErrors(err.payload);
@@ -269,6 +283,20 @@ export function useMonitorSchoolRecordForm({
     }));
   }, []);
 
+  const handleCopyTemporaryPassword = useCallback(async () => {
+    const password = recordFormProvisioning?.temporaryPassword;
+    if (!password || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(password);
+      setRecordFormMessage("School record created. Temporary password copied.");
+    } catch {
+      setRecordFormMessage("School record created. Copy the temporary password manually.");
+    }
+  }, [recordFormProvisioning?.temporaryPassword]);
+
   return {
     showRecordForm,
     editingRecordId,
@@ -282,10 +310,12 @@ export function useMonitorSchoolRecordForm({
       recordFormErrors,
       recordFormError,
       recordFormMessage,
+      recordFormProvisioning,
       onClose: closeRecordForm,
       onSubmit: handleRecordSubmit,
       onFieldChange: handleRecordFormFieldChange,
       onCreateSchoolHeadAccountChange: handleCreateSchoolHeadAccountChange,
+      onCopyTemporaryPassword: handleCopyTemporaryPassword,
     },
   };
 }

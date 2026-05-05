@@ -137,9 +137,10 @@ export interface SchoolHeadAccountProvisioningReceipt {
   email: string;
   mustResetPassword: boolean;
   accountStatus: AccountStatus | string;
-  setupLinkExpiresAt: string;
-  setupLinkDelivery: "sent" | "failed" | string;
-  setupLinkDeliveryMessage: string;
+  temporaryPassword?: string | null;
+  setupLinkExpiresAt?: string | null;
+  setupLinkDelivery?: "sent" | "failed" | string | null;
+  setupLinkDeliveryMessage?: string | null;
 }
 
 export interface SessionUser {

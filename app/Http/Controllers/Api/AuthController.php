@@ -58,8 +58,8 @@ class AuthController extends Controller
     {
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
         $rawLogin = trim($request->string('login')->toString());
-        $login = $role === UserRoleResolver::SCHOOL_HEAD
-            ? (string) $this->normalizeSchoolCode($rawLogin)
+        $login = $role === UserRoleResolver::MONITOR
+            ? strtolower($rawLogin)
             : $rawLogin;
         $password = $request->string('password')->toString();
 
@@ -77,7 +77,7 @@ class AuthController extends Controller
             );
 
             $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid school code or password.'
+                ? 'Invalid School Head email/school code or password.'
                 : 'Invalid credentials for the selected role.';
 
             return response()->json(
@@ -247,7 +247,7 @@ class AuthController extends Controller
             );
 
             $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid school code or password.'
+                ? 'Invalid School Head email/school code or password.'
                 : 'Invalid credentials for the selected role.';
 
             return response()->json(
@@ -1954,13 +1954,6 @@ class AuthController extends Controller
     private function resolveUserForLogin(string $role, string $login): ?User
     {
         if ($role === UserRoleResolver::SCHOOL_HEAD) {
-            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
-            if ($normalizedSchoolCode === null) {
-                return null;
-            }
-
-            $normalizedSchoolCodeKey = strtolower($normalizedSchoolCode);
-
             $baseQuery = User::query()
                 ->select([
                     'id',
@@ -1977,10 +1970,31 @@ class AuthController extends Controller
                     'last_login_user_agent',
                 ])
                 ->with(['school:id,school_code,name'])
-                ->whereHas('school', function ($builder) use ($normalizedSchoolCodeKey): void {
-                    $builder->where('school_code_normalized', $normalizedSchoolCodeKey);
-                })
                 ->orderByDesc('id');
+
+            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
+            $normalizedEmail = strtolower(trim($login));
+            $isEmailLogin = filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL) !== false;
+
+            if ($normalizedSchoolCode === null && ! $isEmailLogin) {
+                return null;
+            }
+
+            $baseQuery->where(function ($builder) use ($isEmailLogin, $normalizedEmail, $normalizedSchoolCode): void {
+                if ($normalizedSchoolCode !== null) {
+                    $builder->whereHas('school', function ($schoolQuery) use ($normalizedSchoolCode): void {
+                        $schoolQuery->where('school_code_normalized', strtolower($normalizedSchoolCode));
+                    });
+                }
+
+                if ($isEmailLogin) {
+                    if ($normalizedSchoolCode !== null) {
+                        $builder->orWhere('email_normalized', $normalizedEmail);
+                    } else {
+                        $builder->where('email_normalized', $normalizedEmail);
+                    }
+                }
+            });
 
             if ($this->usersHaveAccountTypeColumn()) {
                 return $baseQuery

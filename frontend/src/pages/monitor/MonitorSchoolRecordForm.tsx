@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { Save, X } from "lucide-react";
+import type { SchoolHeadAccountProvisioningReceipt } from "@/types";
 
 const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
 
@@ -35,10 +36,12 @@ export interface MonitorSchoolRecordFormProps {
   recordFormErrors: Partial<Record<MonitorSchoolRecordFormField, string>>;
   recordFormError: string;
   recordFormMessage: string;
+  recordFormProvisioning: SchoolHeadAccountProvisioningReceipt | null;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
   onFieldChange: (field: MonitorSchoolRecordFormField, value: string) => void;
   onCreateSchoolHeadAccountChange: (checked: boolean) => void;
+  onCopyTemporaryPassword: () => void | Promise<void>;
 }
 
 export function MonitorSchoolRecordForm({
@@ -49,10 +52,12 @@ export function MonitorSchoolRecordForm({
   recordFormErrors,
   recordFormError,
   recordFormMessage,
+  recordFormProvisioning,
   onClose,
   onSubmit,
   onFieldChange,
   onCreateSchoolHeadAccountChange,
+  onCopyTemporaryPassword,
 }: MonitorSchoolRecordFormProps) {
   if (!show) {
     return null;
@@ -240,8 +245,7 @@ export function MonitorSchoolRecordForm({
                   )}
                 </div>
                 <p className="md:col-span-2 rounded-sm border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-semibold text-primary-800">
-                  A one-time setup email/link (24h expiry) will be sent after save. The account becomes active + verified once
-                  the School Head completes setup.
+                  A temporary password will be generated after save. Copy it immediately because it is shown only once.
                 </p>
               </div>
             )}
@@ -265,9 +269,25 @@ export function MonitorSchoolRecordForm({
               </p>
             )}
             {recordFormMessage && (
-              <p className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                {recordFormMessage}
-              </p>
+              <div className="rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+                <p>{recordFormMessage}</p>
+                {recordFormProvisioning?.temporaryPassword ? (
+                  <div className="mt-2 space-y-1">
+                    <p>Email: {recordFormProvisioning.email}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>Temporary password: {recordFormProvisioning.temporaryPassword}</span>
+                      <button
+                        type="button"
+                        onClick={onCopyTemporaryPassword}
+                        className="inline-flex items-center rounded-sm border border-primary-200 bg-white px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-50"
+                      >
+                        Copy password
+                      </button>
+                    </div>
+                    <p>Copy this password now. It will not be shown again.</p>
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
         )}

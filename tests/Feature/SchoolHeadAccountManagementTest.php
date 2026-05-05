@@ -4,11 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\School;
 use App\Models\User;
-use App\Notifications\SchoolHeadAccountSetupNotification;
+use App\Models\AccountSetupToken;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
@@ -20,7 +21,7 @@ class SchoolHeadAccountManagementTest extends TestCase
     use InteractsWithSeededCredentials;
     use RefreshDatabase;
 
-    public function test_monitor_can_create_school_head_with_pending_setup_and_one_time_link(): void
+    public function test_monitor_can_create_school_head_with_temporary_password_and_immediate_login(): void
     {
         $this->seed();
         Notification::fake();
@@ -51,28 +52,46 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::PENDING_SETUP->value);
+            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('meta.schoolHeadAccount.email', 'setup.head@cspams.local');
 
         /** @var array<string, mixed> $provisioning */
         $provisioning = (array) $response->json('meta.schoolHeadAccount');
-        $this->assertArrayNotHasKey('setupLink', $provisioning);
+        $this->assertArrayHasKey('temporaryPassword', $provisioning);
+        $this->assertIsString($provisioning['temporaryPassword']);
+        $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', (string) $provisioning['temporaryPassword']);
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'setup.head@cspams.local')->firstOrFail();
-        $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
-        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertNotNull($schoolHead->password_changed_at);
+        $this->assertNotNull($schoolHead->email_verified_at);
+        $this->assertNotNull($schoolHead->verified_by_user_id);
+        $this->assertNotNull($schoolHead->verified_at);
+        $this->assertTrue(Hash::check((string) $provisioning['temporaryPassword'], (string) $schoolHead->password));
+        $this->assertNotSame((string) $provisioning['temporaryPassword'], (string) $schoolHead->password);
 
-        Notification::assertSentTo($schoolHead, SchoolHeadAccountSetupNotification::class);
-        $sent = Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class);
-        /** @var SchoolHeadAccountSetupNotification|null $notification */
-        $notification = $sent->last();
-        $setupLink = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
-        $this->assertNotSame('', $setupLink);
+        Notification::assertNothingSent();
 
-        $this->assertDatabaseHas('account_setup_tokens', [
-            'user_id' => $schoolHead->id,
-            'used_at' => null,
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => 'setup.head@cspams.local',
+            'password' => (string) $provisioning['temporaryPassword'],
         ]);
+
+        $login->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.email', 'setup.head@cspams.local');
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+
+        $createdRecord = collect($records->json('data'))
+            ->firstWhere('schoolId', '911111');
+
+        $this->assertIsArray($createdRecord);
+        $this->assertArrayNotHasKey('temporaryPassword', (array) ($createdRecord['schoolHeadAccount'] ?? []));
     }
 
     public function test_school_head_setup_completion_requires_monitor_activation_before_login(): void
@@ -315,7 +334,7 @@ class SchoolHeadAccountManagementTest extends TestCase
             ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
     }
 
-    public function test_creating_school_head_account_returns_service_unavailable_when_account_setup_token_storage_is_missing(): void
+    public function test_creating_school_head_account_still_works_when_account_setup_token_storage_is_missing(): void
     {
         $this->seed();
 
@@ -346,8 +365,18 @@ class SchoolHeadAccountManagementTest extends TestCase
             ],
         ]);
 
-        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+        $response->assertOk()
+            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('meta.schoolHeadAccount.email', 'no.token.head@cspams.local');
+
+        /** @var array<string, mixed> $provisioning */
+        $provisioning = (array) $response->json('meta.schoolHeadAccount');
+        $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', (string) $provisioning['temporaryPassword']);
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'no.token.head@cspams.local')->firstOrFail();
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
     }
 
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void
@@ -409,18 +438,18 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var array<string, mixed> $emailChangePayload */
         $emailChangePayload = (array) $emailChange->json('data');
         $this->assertArrayNotHasKey('setupLink', $emailChangePayload);
-
-        Notification::assertSentTo($schoolHead, SchoolHeadAccountSetupNotification::class);
-        $sent = Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class);
-        $this->assertCount(1, $sent);
-        /** @var SchoolHeadAccountSetupNotification|null $notification */
-        $notification = $sent->last();
-        $setupLink = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
-        $this->assertNotSame('', $setupLink);
+        $this->assertContains((string) ($emailChangePayload['delivery'] ?? ''), ['sent', 'logged']);
+        $this->assertIsString($emailChangePayload['expiresAt'] ?? null);
+        $this->assertNotSame('', (string) ($emailChangePayload['expiresAt'] ?? ''));
 
         $schoolHead->refresh();
         $this->assertSame('changed.schoolhead@cspams.local', $schoolHead->email);
         $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
+        $this->assertSame(1, AccountSetupToken::query()->where('user_id', $schoolHead->id)->count());
+        $this->assertDatabaseHas('account_setup_tokens', [
+            'user_id' => $schoolHead->id,
+            'used_at' => null,
+        ]);
 
         $schoolHead->forceFill(['account_status' => AccountStatus::LOCKED->value])->save();
 
@@ -448,13 +477,14 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $lockedEmailChange->assertOk()
             ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value)
+            ->assertJsonPath('data.delivery', null)
+            ->assertJsonPath('data.expiresAt', null)
             ->assertJsonMissing(['setupLink' => null]);
-
-        $this->assertCount(1, Notification::sent($schoolHead, SchoolHeadAccountSetupNotification::class));
 
         $schoolHead->refresh();
         $this->assertSame('locked.schoolhead@cspams.local', $schoolHead->email);
         $this->assertSame(AccountStatus::LOCKED->value, $schoolHead->accountStatus()->value);
+        $this->assertSame(1, AccountSetupToken::query()->where('user_id', $schoolHead->id)->count());
     }
 
     public function test_locked_school_head_email_change_forces_password_reset_and_blocks_old_credentials_after_reactivation(): void
@@ -631,7 +661,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $loginOld->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('message', 'Invalid school code or password.');
+            ->assertJsonPath('message', 'Invalid School Head email/school code or password.');
 
         $loginNew = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
