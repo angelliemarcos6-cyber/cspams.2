@@ -127,8 +127,6 @@ export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]>
     { id: "queue_workspace", label: "Review Workspace", targetId: "monitor-queue-workspace", icon: ClipboardList },
   ],
   schools: [
-    { id: "filters_schools", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "school_records", label: "School Records", targetId: "monitor-school-records", icon: Building2 },
     { id: "school_learners", label: "Learner Panel", targetId: "monitor-school-learners", icon: Users },
   ],
 };

@@ -46,8 +46,6 @@ interface MonitorSchoolsSectionProps {
   isBulkImporting: boolean;
   onToggleArchivedRecords: () => void;
   showArchivedRecords: boolean;
-  onToggleSchoolLearnerRecords: () => void;
-  showSchoolLearnerRecords: boolean;
   onShowMfaResetApprovals: () => void;
   schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null;
   messages: MonitorSchoolMessagesProps;
@@ -79,8 +77,6 @@ export function MonitorSchoolsSection({
   isBulkImporting,
   onToggleArchivedRecords,
   showArchivedRecords,
-  onToggleSchoolLearnerRecords,
-  showSchoolLearnerRecords,
   onShowMfaResetApprovals,
   schoolHeadAccountsPanelProps,
   messages,
@@ -228,14 +224,6 @@ export function MonitorSchoolsSection({
                   >
                     <Trash2 className="h-3.5 w-3.5 text-primary-600" />
                     {showArchivedRecords ? "Hide Archived" : "Show Archived"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onToggleSchoolLearnerRecords}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <Users className="h-3.5 w-3.5 text-primary-600" />
-                    {showSchoolLearnerRecords ? "Hide Learners" : "Show Learners"}
                   </button>
                   <button
                     type="button"

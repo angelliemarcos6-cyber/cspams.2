@@ -7,6 +7,8 @@ import type {
 } from "@/pages/monitor/MonitorSchoolRecordForm";
 import type { SchoolHeadAccountProvisioningReceipt, SchoolRecordPayload } from "@/types";
 
+const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
+
 const EMPTY_MONITOR_RECORD_FORM: MonitorSchoolRecordFormState = {
   schoolId: "",
   schoolName: "",
@@ -43,6 +45,20 @@ function extractApiValidationErrors(payload: unknown): Record<string, string> {
   }
 
   return fieldErrors;
+}
+
+function normalizeSchoolLevel(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/[_-]+/g, " ");
+
+  if (normalized === "high school" || normalized === "secondary") {
+    return "High School";
+  }
+
+  if (normalized === "elementary") {
+    return "Elementary";
+  }
+
+  return SCHOOL_LEVEL_OPTIONS[0];
 }
 
 interface UseMonitorSchoolRecordFormOptions {
@@ -104,7 +120,7 @@ export function useMonitorSchoolRecordForm({
     const formErrors: Partial<Record<MonitorSchoolRecordFormField, string>> = {};
     const schoolId = recordForm.schoolId.trim().toUpperCase();
     const schoolName = recordForm.schoolName.trim();
-    const level = recordForm.level.trim();
+    const level = normalizeSchoolLevel(recordForm.level);
     const district = recordForm.district.trim();
     const region = recordForm.region.trim();
     const address = recordForm.address.trim();
@@ -159,7 +175,7 @@ export function useMonitorSchoolRecordForm({
       const payload: SchoolRecordPayload = {
         schoolId: recordForm.schoolId.trim().toUpperCase(),
         schoolName: recordForm.schoolName.trim(),
-        level: recordForm.level.trim(),
+        level: normalizeSchoolLevel(recordForm.level),
         type: recordForm.type,
         address: recordForm.address.trim(),
         district: recordForm.district.trim() || undefined,
@@ -236,6 +252,10 @@ export function useMonitorSchoolRecordForm({
 
     if (field === "type") {
       normalizedValue = value === "private" ? "private" : "public";
+    }
+
+    if (field === "level") {
+      normalizedValue = normalizeSchoolLevel(value);
     }
 
     setRecordForm((current) => ({ ...current, [field]: normalizedValue }));

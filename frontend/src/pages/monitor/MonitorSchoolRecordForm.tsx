@@ -1,6 +1,8 @@
 import type { FormEvent } from "react";
 import { Save, X } from "lucide-react";
 
+const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
+
 export interface MonitorSchoolRecordFormState {
   schoolId: string;
   schoolName: string;
@@ -111,15 +113,20 @@ export function MonitorSchoolRecordForm({
           <label htmlFor="monitor-level" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Level
           </label>
-          <input
+          <select
             id="monitor-level"
-            type="text"
             value={recordForm.level}
             onChange={(event) => onFieldChange("level", event.target.value)}
             className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
               recordFormErrors.level ? "border-primary-300" : "border-slate-200"
             }`}
-          />
+          >
+            {SCHOOL_LEVEL_OPTIONS.map((levelOption) => (
+              <option key={levelOption} value={levelOption}>
+                {levelOption}
+              </option>
+            ))}
+          </select>
           {recordFormErrors.level && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.level}</p>}
         </div>
         <div>

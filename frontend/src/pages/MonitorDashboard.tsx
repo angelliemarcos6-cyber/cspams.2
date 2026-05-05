@@ -985,11 +985,6 @@ export function MonitorDashboard() {
                   void schoolsSectionApi.toggleArchivedRecords();
                 }}
                 showArchivedRecords={schoolsSectionApi.showArchivedRecords}
-                onToggleSchoolLearnerRecords={() => {
-                  schoolsSectionApi.closeActionsMenu();
-                  setShowSchoolLearnerRecords((current) => !current);
-                }}
-                showSchoolLearnerRecords={showSchoolLearnerRecords}
                 onShowMfaResetApprovals={() => {
                   schoolsSectionApi.closeActionsMenu();
                   setShowMfaResetApprovalsDialog(true);

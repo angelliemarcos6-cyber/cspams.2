@@ -34,7 +34,18 @@ class UpsertSchoolRecordRequest extends FormRequest
         }
 
         if ($this->has('level')) {
-            $payload['level'] = $normalize($this->input('level'));
+            $normalizedLevel = $normalize($this->input('level'));
+            $normalizedLevelToken = $normalizedLevel !== null
+                ? strtolower(str_replace(['_', '-'], ' ', $normalizedLevel))
+                : null;
+
+            if ($normalizedLevelToken === 'elementary') {
+                $payload['level'] = 'Elementary';
+            } elseif (in_array($normalizedLevelToken, ['high school', 'secondary'], true)) {
+                $payload['level'] = 'High School';
+            } else {
+                $payload['level'] = $normalizedLevel;
+            }
         }
 
         if ($this->has('district')) {
@@ -98,7 +109,7 @@ class UpsertSchoolRecordRequest extends FormRequest
                 $schoolIdRule,
             ],
             'schoolName' => [$isMonitorStore ? 'required' : 'sometimes', 'string', 'max:255'],
-            'level' => [$isMonitorStore ? 'required' : 'sometimes', 'string', 'max:100'],
+            'level' => [$isMonitorStore ? 'required' : 'sometimes', 'string', Rule::in(['Elementary', 'High School'])],
             'studentCount' => [$requiresOperationalFields ? 'required' : 'sometimes', 'integer', 'min:0'],
             'teacherCount' => [$requiresOperationalFields ? 'required' : 'sometimes', 'integer', 'min:0'],
             'region' => ['sometimes', 'nullable', 'string', 'max:255'],
