@@ -75,9 +75,6 @@ interface UseMonitorDashboardBindingsArgs {
 interface UseMonitorDashboardBindingsResult {
   quickJumpBindings: MonitorQuickJumpBindings;
   quickFiltersProps: QuickFiltersProps;
-  schoolScopeRadarSelectorProps: SchoolScopeSelectorProps;
-  studentRadarSelectorProps: StudentLookupSelectorProps;
-  teacherRadarSelectorProps: TeacherLookupSelectorProps;
   schoolDrawerProps: SchoolDrawerProps;
 }
 
@@ -233,38 +230,11 @@ export function useMonitorDashboardBindings({
     onClearFilterChip: clearFilterChip,
   };
 
-  const schoolScopeRadarSelectorProps = {
-    ...schoolScopeSelectorSharedProps,
-    dropdownId: "schools_radar",
-    isOpen: openScopeDropdownId === "schools_radar",
-    rootClassName: "relative mt-2",
-    onToggle: () => toggleScopeDropdown("schools_radar"),
-  };
-
-  const studentRadarSelectorProps = {
-    ...studentLookupSelectorSharedProps,
-    dropdownId: "students_radar",
-    isOpen: openScopeDropdownId === "students_radar",
-    rootClassName: "relative mt-2",
-    onToggle: () => toggleScopeDropdown("students_radar"),
-  };
-
-  const teacherRadarSelectorProps = {
-    ...teacherLookupSelectorSharedProps,
-    dropdownId: "teachers_radar",
-    isOpen: openScopeDropdownId === "teachers_radar",
-    rootClassName: "relative mt-2",
-    onToggle: () => toggleScopeDropdown("teachers_radar"),
-  };
-
   const schoolDrawerProps = buildMonitorSchoolDrawerProps(schoolDrawerBuildArgs);
 
   return {
     quickJumpBindings,
     quickFiltersProps,
-    schoolScopeRadarSelectorProps,
-    studentRadarSelectorProps,
-    teacherRadarSelectorProps,
     schoolDrawerProps,
   };
 }

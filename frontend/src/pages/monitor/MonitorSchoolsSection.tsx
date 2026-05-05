@@ -18,9 +18,6 @@ import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/
 import { MonitorSchoolRecordForm, type MonitorSchoolRecordFormProps } from "@/pages/monitor/MonitorSchoolRecordForm";
 import { MonitorSchoolRecordsList, type MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
-import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
-import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
-import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import type { MonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 
 interface MonitorSchoolsSectionProps {
@@ -29,9 +26,6 @@ interface MonitorSchoolsSectionProps {
   quickJumpBindings: MonitorQuickJumpBindings;
   totalSchoolsInScope: number;
   monitorRadarTotals: MonitorRadarTotals;
-  schoolScopeRadarSelectorProps: ComponentProps<typeof SchoolScopeSelector>;
-  studentRadarSelectorProps: ComponentProps<typeof StudentLookupSelector>;
-  teacherRadarSelectorProps: ComponentProps<typeof TeacherLookupSelector>;
   paginatedCompactSchoolRowsCount: number;
   compactSchoolRowsCount: number;
   schoolActionsMenuRef: RefObject<HTMLDivElement>;
@@ -60,9 +54,6 @@ export function MonitorSchoolsSection({
   quickJumpBindings,
   totalSchoolsInScope,
   monitorRadarTotals,
-  schoolScopeRadarSelectorProps,
-  studentRadarSelectorProps,
-  teacherRadarSelectorProps,
   paginatedCompactSchoolRowsCount,
   compactSchoolRowsCount,
   schoolActionsMenuRef,
@@ -98,7 +89,6 @@ export function MonitorSchoolsSection({
                 <Building2 className="h-5 w-5" />
               </span>
             </div>
-            <SchoolScopeSelector {...schoolScopeRadarSelectorProps} />
           </article>
 
           <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -117,7 +107,6 @@ export function MonitorSchoolsSection({
                 <GraduationCap className="h-5 w-5" />
               </span>
             </div>
-            <StudentLookupSelector {...studentRadarSelectorProps} />
           </article>
 
           <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -136,7 +125,6 @@ export function MonitorSchoolsSection({
                 <Users className="h-5 w-5" />
               </span>
             </div>
-            <TeacherLookupSelector {...teacherRadarSelectorProps} />
           </article>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
@@ -147,7 +135,7 @@ export function MonitorSchoolsSection({
                 ? `Synced ${new Date(monitorRadarTotals.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
                 : "Waiting for sync"}
           </span>
-          <span>Totals are read live from students and teachers records.</span>
+          <span>Totals are read live from synchronized student and teacher records.</span>
         </div>
       </div>
 

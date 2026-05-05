@@ -645,9 +645,6 @@ export function MonitorDashboard() {
   const {
     quickJumpBindings,
     quickFiltersProps,
-    schoolScopeRadarSelectorProps,
-    studentRadarSelectorProps,
-    teacherRadarSelectorProps,
     schoolDrawerProps,
   } = useMonitorDashboardBindings({
     quickJumpItems,
@@ -944,9 +941,6 @@ export function MonitorDashboard() {
               quickJumpBindings={quickJumpBindings}
               totalSchoolsInScope={totalSchoolsInScope}
               monitorRadarTotals={monitorRadarTotals}
-              schoolScopeRadarSelectorProps={schoolScopeRadarSelectorProps}
-              studentRadarSelectorProps={studentRadarSelectorProps}
-              teacherRadarSelectorProps={teacherRadarSelectorProps}
               paginatedCompactSchoolRowsCount={paginatedCompactSchoolRows.length}
               compactSchoolRowsCount={compactSchoolRows.length}
               schoolActionsMenuRef={schoolsSectionApi.schoolActionsMenuRef}
