@@ -94,9 +94,9 @@ export function MonitorDashboardToolbar({
         </div>
       </section>
 
-      <section className="dashboard-shell dashboard-shell-visible mb-5 rounded-sm">
-        <div className="dashboard-nav-shell border-b border-slate-200 bg-white/95 p-2 backdrop-blur">
-          <div className="flex flex-col gap-2">
+      <section className="dashboard-shell dashboard-shell-visible mb-5 rounded-sm border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="dashboard-nav-shell rounded-sm border border-slate-200 bg-slate-50/60 p-3">
+          <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <label className="relative w-full lg:max-w-lg">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
