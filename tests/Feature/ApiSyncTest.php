@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\StudentStatusLog;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Models\AcademicYear;
 use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Support\Domain\StudentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -116,6 +117,78 @@ class ApiSyncTest extends TestCase
 
         $notModified->assertStatus(Response::HTTP_NOT_MODIFIED)
             ->assertHeader('X-Sync-Scope', 'division');
+    }
+
+    public function test_monitor_can_list_student_totals_for_dashboard_cards(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $students = $this->withToken($token)->getJson('/api/dashboard/students?page=1&per_page=1');
+
+        $students->assertOk()
+            ->assertJsonPath('meta.scope', 'division')
+            ->assertJsonPath('meta.currentPage', 1)
+            ->assertJsonPath('meta.perPage', 1)
+            ->assertJsonPath('meta.total', 120)
+            ->assertJsonPath('meta.recordCount', 120);
+    }
+
+    public function test_monitor_student_totals_support_school_codes_scope_and_no_current_academic_year(): void
+    {
+        $this->seed();
+
+        AcademicYear::query()->update(['is_current' => false]);
+        /** @var School $school */
+        $school = School::query()->where('school_code', '900001')->firstOrFail();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $students = $this->withToken($token)->getJson('/api/dashboard/students?page=1&per_page=1&schoolCodes=900001');
+
+        $students->assertOk()
+            ->assertJsonPath('meta.scope', 'division')
+            ->assertJsonPath('meta.currentPage', 1)
+            ->assertJsonPath('meta.perPage', 1)
+            ->assertJsonPath('meta.total', 40)
+            ->assertJsonPath('meta.recordCount', 40)
+            ->assertJsonPath('data.0.school.schoolCode', (string) $school->school_code);
+    }
+
+    public function test_monitor_student_totals_return_zero_meta_for_empty_school_scope(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $login->assertOk();
+        $token = (string) $login->json('token');
+
+        $students = $this->withToken($token)->getJson('/api/dashboard/students?page=1&per_page=1&schoolCodes=999999');
+
+        $students->assertOk()
+            ->assertJsonPath('meta.scope', 'division')
+            ->assertJsonPath('meta.currentPage', 1)
+            ->assertJsonPath('meta.perPage', 1)
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('meta.recordCount', 0)
+            ->assertJsonCount(0, 'data');
     }
 
     public function test_school_head_is_scope_limited_and_cannot_edit_other_schools(): void
