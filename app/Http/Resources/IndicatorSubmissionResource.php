@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\IndicatorSubmission;
 use App\Support\Domain\FormSubmissionStatus;
+use App\Support\Indicators\SubmissionFileDefinition;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,8 +24,14 @@ class IndicatorSubmissionResource extends JsonResource
             ? round(($metIndicators / $totalIndicators) * 100, 2)
             : 0.0;
         $hasImeta = $this->hasImetaFormData();
-        $hasBmef = is_string($this->bmef_file_path) && trim($this->bmef_file_path) !== '';
-        $hasSmea = is_string($this->smea_file_path) && trim($this->smea_file_path) !== '';
+        $hasBmef = $this->hasBmefFile();
+        $hasSmea = $this->hasSmeaFile();
+        $uploadedFileTypes = $this->uploadedSubmissionFileTypes();
+        $requiredFileTypes = ['bmef', 'smea'];
+        $missingFileTypes = array_values(array_filter(
+            $requiredFileTypes,
+            fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
+        ));
 
         return [
             'id' => (string) $this->id,
@@ -56,34 +63,15 @@ class IndicatorSubmissionResource extends JsonResource
                 'belowTargetIndicators' => $belowTargetIndicators,
                 'complianceRatePercent' => $complianceRate,
             ],
-            // BMEF/SMEA upload support added per redesign doc
-            'files' => [
-                'bmef' => [
-                    'type' => 'bmef',
-                    'uploaded' => $hasBmef,
-                    'path' => $this->bmef_file_path,
-                    'originalFilename' => $this->bmef_original_filename,
-                    'sizeBytes' => $this->bmef_file_size ? (int) $this->bmef_file_size : null,
-                    'uploadedAt' => optional($this->bmef_uploaded_at)->toISOString(),
-                    'downloadUrl' => $hasBmef ? "/api/submissions/{$this->id}/download/bmef" : null,
-                    'viewUrl' => $hasBmef ? "/api/submissions/{$this->id}/view/bmef" : null,
-                ],
-                'smea' => [
-                    'type' => 'smea',
-                    'uploaded' => $hasSmea,
-                    'path' => $this->smea_file_path,
-                    'originalFilename' => $this->smea_original_filename,
-                    'sizeBytes' => $this->smea_file_size ? (int) $this->smea_file_size : null,
-                    'uploadedAt' => optional($this->smea_uploaded_at)->toISOString(),
-                    'downloadUrl' => $hasSmea ? "/api/submissions/{$this->id}/download/smea" : null,
-                    'viewUrl' => $hasSmea ? "/api/submissions/{$this->id}/view/smea" : null,
-                ],
-            ],
+            'files' => $this->buildSubmissionFiles(),
             'completion' => [
                 'hasImetaFormData' => $hasImeta,
                 'hasBmefFile' => $hasBmef,
                 'hasSmeaFile' => $hasSmea,
                 'isComplete' => $hasImeta && $hasBmef && $hasSmea,
+                'requiredFileTypes' => $requiredFileTypes,
+                'uploadedFileTypes' => $uploadedFileTypes,
+                'missingFileTypes' => $missingFileTypes,
             ],
             'indicators' => IndicatorSubmissionItemResource::collection($itemCollection),
             'createdBy' => $this->when(
@@ -134,5 +122,29 @@ class IndicatorSubmissionResource extends JsonResource
         }
 
         return FormSubmissionStatus::options()[$value] ?? ucfirst(str_replace('_', ' ', $value));
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function buildSubmissionFiles(): array
+    {
+        $files = [];
+
+        foreach (SubmissionFileDefinition::types() as $type) {
+            $uploaded = $this->hasSubmissionFileType($type);
+            $files[$type] = [
+                'type' => $type,
+                'uploaded' => $uploaded,
+                'path' => $this->submissionFilePathForType($type),
+                'originalFilename' => $this->submissionFileOriginalNameForType($type),
+                'sizeBytes' => $this->submissionFileSizeForType($type),
+                'uploadedAt' => optional($this->submissionFileUploadedAtForType($type))->toISOString(),
+                'downloadUrl' => $uploaded ? "/api/submissions/{$this->id}/download/{$type}" : null,
+                'viewUrl' => $uploaded ? "/api/submissions/{$this->id}/view/{$type}" : null,
+            ];
+        }
+
+        return $files;
     }
 }

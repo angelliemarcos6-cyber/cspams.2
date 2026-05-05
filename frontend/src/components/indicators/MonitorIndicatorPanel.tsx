@@ -14,6 +14,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
+import { SUBMISSION_FILE_DEFINITIONS, SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type { FormSubmissionHistoryEntry, IndicatorSubmission, IndicatorSubmissionFileType, SchoolRecord } from "@/types";
@@ -43,7 +44,7 @@ type ReviewSavedView = "needs_action" | "my_queue" | "unassigned" | "overdue_72h
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
 // Monitor & School Head views updated for DepEd standards
-type DetailTab = "overview" | "imeta" | "bmef" | "smea" | "history";
+type DetailTab = "overview" | "imeta" | IndicatorSubmissionFileType | "history";
 type QueueDensity = "comfortable" | "compact";
 
 interface ReviewQueueRow {
@@ -2112,75 +2113,66 @@ export function MonitorIndicatorPanel({
             </div>
 
             <div className="border-b border-slate-200 px-5 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {/* NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET */}
-                {/* 4-tab layout (School Achievements | Key Performance | BMEF | SMEA) */}
-                {/* Monitor & School Head views updated for DepEd standards */}
-                <button
-                  type="button"
-                  onClick={() => setDetailTab("overview")}
-                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                    detailTab === "overview"
-                      ? "border-primary-200 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  Overview
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDetailTab("imeta")}
-                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                    detailTab === "imeta"
-                      ? "border-primary-200 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  I-META
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDetailTab("bmef")}
-                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                    detailTab === "bmef"
-                      ? "border-primary-200 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  BMEF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDetailTab("smea")}
-                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                    detailTab === "smea"
-                      ? "border-primary-200 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  SMEA
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDetailTab("history")}
-                  className={`inline-flex rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
-                    detailTab === "history"
-                      ? "border-primary-200 bg-primary-50 text-primary-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  History
-                </button>
-                <span className="ml-auto text-[11px] text-slate-500">Keyboard: V validate, R return, N next</span>
-                {hasNextDetailRow && (
+              <div className="overflow-x-auto">
+                <div className="flex min-w-max items-center gap-2 whitespace-nowrap pr-2">
                   <button
                     type="button"
-                    onClick={openNextDetailRow}
-                    className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    onClick={() => setDetailTab("overview")}
+                    className={`inline-flex shrink-0 rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                      detailTab === "overview"
+                        ? "border-primary-200 bg-primary-50 text-primary-700"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
                   >
-                    Next Row
+                    Overview
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setDetailTab("imeta")}
+                    className={`inline-flex shrink-0 rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                      detailTab === "imeta"
+                        ? "border-primary-200 bg-primary-50 text-primary-700"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    I-META
+                  </button>
+                  {SUBMISSION_FILE_DEFINITIONS.map((definition) => (
+                    <button
+                      key={definition.type}
+                      type="button"
+                      onClick={() => setDetailTab(definition.type)}
+                      className={`inline-flex shrink-0 rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                        detailTab === definition.type
+                          ? "border-primary-200 bg-primary-50 text-primary-700"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      {definition.shortLabel}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setDetailTab("history")}
+                    className={`inline-flex shrink-0 rounded-sm border px-2.5 py-1 text-xs font-semibold transition ${
+                      detailTab === "history"
+                        ? "border-primary-200 bg-primary-50 text-primary-700"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    History
+                  </button>
+                  <span className="ml-2 shrink-0 text-[11px] text-slate-500">Keyboard: V validate, R return, N next</span>
+                  {hasNextDetailRow && (
+                    <button
+                      type="button"
+                      onClick={openNextDetailRow}
+                      className="inline-flex shrink-0 items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Next Row
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2347,9 +2339,10 @@ export function MonitorIndicatorPanel({
               </div>
             )}
 
-            {(detailTab === "bmef" || detailTab === "smea") && (() => {
-              const fileType: IndicatorSubmissionFileType = detailTab === "bmef" ? "bmef" : "smea";
-              const fileLabel = fileType === "bmef" ? "BMEF" : "SMEA";
+            {detailTab !== "overview" && detailTab !== "imeta" && detailTab !== "history" && (() => {
+              const fileType: IndicatorSubmissionFileType = detailTab;
+              const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[fileType];
+              const fileLabel = fileDefinition.label;
               const fileEntry = detailRow.submission.files?.[fileType] ?? null;
               const isUploaded = Boolean(fileEntry?.uploaded);
               const isDownloading = downloadingFileType === fileType;
@@ -2358,7 +2351,7 @@ export function MonitorIndicatorPanel({
                 <div className="px-5 py-4">
                   <article className="rounded-sm border border-slate-200 bg-white p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{fileLabel} Document</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{fileDefinition.shortLabel} Document</p>
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                           isUploaded
@@ -2372,7 +2365,7 @@ export function MonitorIndicatorPanel({
 
                     {isUploaded ? (
                       <div className="mt-2 rounded-sm border border-primary-200 bg-primary-50/50 p-3">
-                        <p className="text-xs font-semibold text-slate-900">{fileEntry?.originalFilename || `${fileLabel} file`}</p>
+                        <p className="text-xs font-semibold text-slate-900">{fileEntry?.originalFilename || `${fileDefinition.shortLabel} file`}</p>
                         <p className="mt-1 text-xs text-slate-600">
                           Uploaded: {formatDateTime(fileEntry?.uploadedAt ?? null)} | Size: {formatFileSize(fileEntry?.sizeBytes ?? null)}
                         </p>
@@ -2383,12 +2376,12 @@ export function MonitorIndicatorPanel({
                           className="mt-2 inline-flex items-center gap-1 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           <Download className="h-3.5 w-3.5" />
-                          {isDownloading ? "Downloading..." : `Download ${fileLabel}`}
+                          {isDownloading ? "Downloading..." : `Download ${fileDefinition.shortLabel}`}
                         </button>
                       </div>
                     ) : (
                       <p className="mt-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                        No {fileLabel} file uploaded for this package yet.
+                        No {fileDefinition.shortLabel} file uploaded for this package yet.
                       </p>
                     )}
 

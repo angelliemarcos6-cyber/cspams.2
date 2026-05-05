@@ -14,6 +14,11 @@ import {
 } from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target, XCircle } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
+import {
+  SUBMISSION_FILE_DEFINITIONS,
+  SUBMISSION_FILE_DEFINITION_BY_TYPE,
+  SUBMISSION_FILE_TYPES,
+} from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
@@ -101,10 +106,50 @@ type GroupBWorkspaceMode =
 type WorkspaceSaveSection =
   | "school_achievements"
   | "key_performance"
-  | "bmef"
-  | "smea";
+  | IndicatorSubmissionFileType;
 
 const LOCAL_WORKSPACE_HYDRATION_GRACE_MS = 5_000;
+
+function createInitialSubmittedByTypeState(): Record<IndicatorSubmissionFileType, boolean> {
+  return SUBMISSION_FILE_TYPES.reduce((accumulator, type) => {
+    accumulator[type] = false;
+    return accumulator;
+  }, {} as Record<IndicatorSubmissionFileType, boolean>);
+}
+
+function createInitialUploadErrorState(): Record<IndicatorSubmissionFileType, string> {
+  return SUBMISSION_FILE_TYPES.reduce((accumulator, type) => {
+    accumulator[type] = "";
+    return accumulator;
+  }, {} as Record<IndicatorSubmissionFileType, string>);
+}
+
+function isSubmissionFileType(value: string | null | undefined): value is IndicatorSubmissionFileType {
+  return Boolean(value && SUBMISSION_FILE_DEFINITION_BY_TYPE[value as IndicatorSubmissionFileType]);
+}
+
+function hasUploadedSubmissionFile(
+  submission: IndicatorSubmission | null | undefined,
+  type: IndicatorSubmissionFileType,
+): boolean {
+  if (!submission) {
+    return false;
+  }
+
+  if (hasUploadedReportFile(submission.files?.[type] ?? null)) {
+    return true;
+  }
+
+  if (type === "bmef") {
+    return Boolean(submission.completion?.hasBmefFile);
+  }
+
+  if (type === "smea") {
+    return Boolean(submission.completion?.hasSmeaFile);
+  }
+
+  return Boolean(submission.completion?.uploadedFileTypes?.includes(type));
+}
 
 function buildWorkspaceSubmissionFingerprint(
   academicYearId: string | null,
@@ -122,8 +167,7 @@ function buildWorkspaceSubmissionFingerprint(
     submission?.updatedAt ?? "",
     submission?.submittedAt ?? "",
     submission?.reviewedAt ?? "",
-    submission?.completion?.hasBmefFile ? "bmef:1" : "bmef:0",
-    submission?.completion?.hasSmeaFile ? "smea:1" : "smea:0",
+    ...SUBMISSION_FILE_TYPES.map((type) => `${type}:${hasUploadedSubmissionFile(submission, type) ? 1 : 0}`),
   ].join(":");
 }
 
@@ -269,11 +313,6 @@ const BASE_SCHOOL_YEAR_START = 2025;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_YEAR_START_MONTH = 6;
 const INDICATOR_DRAFT_STORAGE_KEY_PREFIX = "cspams.schoolhead.indicator.autosave";
-const BMEF_TAB_ID = "bmef_upload";
-const SMEA_TAB_ID = "smea_upload";
-// NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
-// 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
-// Monitor & School Head views updated for DepEd standards
 
 const METRIC_LABEL_OVERRIDES: Record<string, string> = {
   IMETA_HEAD_NAME: "NAME OF SCHOOL HEAD",
@@ -571,15 +610,15 @@ function workspaceSaveSectionForCategory(categoryId: string | null | undefined):
 }
 
 function workspaceSaveSectionLabel(section: WorkspaceSaveSection | null): string {
+  if (section && SUBMISSION_FILE_DEFINITION_BY_TYPE[section as IndicatorSubmissionFileType]) {
+    return SUBMISSION_FILE_DEFINITION_BY_TYPE[section as IndicatorSubmissionFileType].shortLabel;
+  }
+
   switch (section) {
     case "school_achievements":
       return "School Achievements";
     case "key_performance":
       return "Key Performance";
-    case "bmef":
-      return "BMEF";
-    case "smea":
-      return "SMEA";
     default:
       return "Workspace";
   }
@@ -1316,14 +1355,12 @@ function SchoolIndicatorPanelComponent({
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [isSubmittedEditMode, setIsSubmittedEditMode] = useState(false);
   const [activeWorkspaceSubmission, setActiveWorkspaceSubmission] = useState<IndicatorSubmission | null>(null);
-  const [optimisticSubmittedByType, setOptimisticSubmittedByType] = useState<{
-    bmef: boolean;
-    smea: boolean;
-  }>({ bmef: false, smea: false });
-  const [uploadErrorByType, setUploadErrorByType] = useState<Record<IndicatorSubmissionFileType, string>>({
-    bmef: "",
-    smea: "",
-  });
+  const [optimisticSubmittedByType, setOptimisticSubmittedByType] = useState<Record<IndicatorSubmissionFileType, boolean>>(
+    () => createInitialSubmittedByTypeState(),
+  );
+  const [uploadErrorByType, setUploadErrorByType] = useState<Record<IndicatorSubmissionFileType, string>>(
+    () => createInitialUploadErrorState(),
+  );
   const workspaceYearSelectionStorageKey = useMemo(() => {
     const schoolScopeId = user?.schoolId ? String(user.schoolId) : "";
     const userScopeId = user?.id ? String(user.id) : "anonymous";
@@ -1343,8 +1380,7 @@ function SchoolIndicatorPanelComponent({
   const notesRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
-  const bmefInputRef = useRef<HTMLInputElement | null>(null);
-  const smeaInputRef = useRef<HTMLInputElement | null>(null);
+  const fileUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     metricEntriesRef.current = metricEntries;
@@ -2211,7 +2247,7 @@ function SchoolIndicatorPanelComponent({
     clearTransientWorkspaceUiState(options);
     clearWorkspaceTransitionIntents();
     setIsSubmittedEditMode(false);
-    setOptimisticSubmittedByType({ bmef: false, smea: false });
+    setOptimisticSubmittedByType(createInitialSubmittedByTypeState());
   }, [clearTransientWorkspaceUiState, clearWorkspaceTransitionIntents]);
   const endControlledWorkspaceTransition = useCallback(() => {
     criticalActionInFlightRef.current = false;
@@ -2635,83 +2671,62 @@ function SchoolIndicatorPanelComponent({
 
     return map;
   }, [complianceMetrics, groupASubmittedSubmission]);
-  const bmefReportSubmission = useMemo(
+  const fileReportSubmissionByType = useMemo(
     () =>
-      scopedSubmissionsForYear.find((submission) => (
-        isSubmittedWorkflowStatus(submission.status)
-        && (
-          hasUploadedReportFile(submission.files?.bmef ?? null)
-          || Boolean(submission.completion?.hasBmefFile)
-        )
-      ))
-      ?? groupASubmittedSubmission
-      ?? null,
-    [groupASubmittedIndicatorByMetricId, groupASubmittedSubmission, scopedSubmissionsForYear],
+      SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, IndicatorSubmission | null>>((accumulator, type) => {
+        accumulator[type] = scopedSubmissionsForYear.find((submission) => (
+          isSubmittedWorkflowStatus(submission.status) && hasUploadedSubmissionFile(submission, type)
+        )) ?? groupASubmittedSubmission ?? null;
+        return accumulator;
+      }, {} as Record<IndicatorSubmissionFileType, IndicatorSubmission | null>),
+    [groupASubmittedSubmission, scopedSubmissionsForYear],
   );
-  const smeaReportSubmission = useMemo(
-    () =>
-      scopedSubmissionsForYear.find((submission) => (
-        isSubmittedWorkflowStatus(submission.status)
-        && (
-          hasUploadedReportFile(submission.files?.smea ?? null)
-          || Boolean(submission.completion?.hasSmeaFile)
-        )
-      ))
-      ?? groupASubmittedSubmission
-      ?? null,
-    [groupASubmittedIndicatorByMetricId, groupASubmittedSubmission, scopedSubmissionsForYear],
-  );
-  const bmefWorkspaceSubmission = useMemo(
+  const fileWorkspaceSubmissionByType = useMemo(
     () => {
       const workspaceCandidate = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission ?? null;
-      if (
-        workspaceCandidate
-        && (
-          hasUploadedReportFile(workspaceCandidate.files?.bmef ?? null)
-          || Boolean(workspaceCandidate.completion?.hasBmefFile)
-        )
-      ) {
-        return workspaceCandidate;
-      }
-      return bmefReportSubmission;
+
+      return SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, IndicatorSubmission | null>>((accumulator, type) => {
+        accumulator[type] = workspaceCandidate && hasUploadedSubmissionFile(workspaceCandidate, type)
+          ? workspaceCandidate
+          : fileReportSubmissionByType[type];
+        return accumulator;
+      }, {} as Record<IndicatorSubmissionFileType, IndicatorSubmission | null>);
     },
-    [bmefReportSubmission, editableWorkspaceSubmissionInScope, latestActiveWorkspaceSubmission],
+    [editableWorkspaceSubmissionInScope, fileReportSubmissionByType, latestActiveWorkspaceSubmission],
   );
-  const smeaWorkspaceSubmission = useMemo(
-    () => {
-      const workspaceCandidate = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission ?? null;
-      if (
-        workspaceCandidate
-        && (
-          hasUploadedReportFile(workspaceCandidate.files?.smea ?? null)
-          || Boolean(workspaceCandidate.completion?.hasSmeaFile)
-        )
-      ) {
-        return workspaceCandidate;
-      }
-      return smeaReportSubmission;
-    },
-    [editableWorkspaceSubmissionInScope, latestActiveWorkspaceSubmission, smeaReportSubmission],
+  const fileEntryByType = useMemo(
+    () =>
+      SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, IndicatorSubmissionFileEntry | null>>((accumulator, type) => {
+        accumulator[type] = fileWorkspaceSubmissionByType[type]?.files?.[type] ?? null;
+        return accumulator;
+      }, {} as Record<IndicatorSubmissionFileType, IndicatorSubmissionFileEntry | null>),
+    [fileWorkspaceSubmissionByType],
   );
-  const bmefFileEntry = bmefWorkspaceSubmission?.files?.bmef ?? null;
-  const smeaFileEntry = smeaWorkspaceSubmission?.files?.smea ?? null;
   const activeFormSubmission = latestActiveWorkspaceSubmission;
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
   const activeWorkspaceSubmissionId = activeWorkspaceSubmission?.id ?? null;
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
   const isFormSubmitted = isSubmittedWorkflowStatus(activeFormStatus);
-  const bmefSubmissionStatus = String(bmefWorkspaceSubmission?.status ?? "").toLowerCase();
-  const smeaSubmissionStatus = String(smeaWorkspaceSubmission?.status ?? "").toLowerCase();
-  const isBmefSubmissionSubmitted = isSubmittedWorkflowStatus(bmefSubmissionStatus);
-  const isSmeaSubmissionSubmitted = isSubmittedWorkflowStatus(smeaSubmissionStatus);
-  const bmefSubmitted = optimisticSubmittedByType.bmef
-    || hasUploadedReportFile(bmefFileEntry)
-    || Boolean(bmefWorkspaceSubmission?.completion?.hasBmefFile)
-    || (isBmefSubmissionSubmitted && Boolean(bmefWorkspaceSubmission));
-  const smeaSubmitted = optimisticSubmittedByType.smea
-    || hasUploadedReportFile(smeaFileEntry)
-    || Boolean(smeaWorkspaceSubmission?.completion?.hasSmeaFile)
-    || (isSmeaSubmissionSubmitted && Boolean(smeaWorkspaceSubmission));
+  const serverSubmittedByType = useMemo(
+    () =>
+      SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((accumulator, type) => {
+        const sourceSubmission = fileWorkspaceSubmissionByType[type];
+        const isSubmittedPackage = isSubmittedWorkflowStatus(String(sourceSubmission?.status ?? "").toLowerCase());
+        accumulator[type] = hasUploadedSubmissionFile(sourceSubmission, type) || (isSubmittedPackage && Boolean(sourceSubmission));
+        return accumulator;
+      }, {} as Record<IndicatorSubmissionFileType, boolean>),
+    [fileWorkspaceSubmissionByType],
+  );
+  const submittedByFileType = useMemo(
+    () =>
+      SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((accumulator, type) => {
+        accumulator[type] = optimisticSubmittedByType[type] || serverSubmittedByType[type];
+        return accumulator;
+      }, {} as Record<IndicatorSubmissionFileType, boolean>),
+    [optimisticSubmittedByType, serverSubmittedByType],
+  );
+  const bmefSubmitted = submittedByFileType.bmef;
+  const smeaSubmitted = submittedByFileType.smea;
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
     ?? activeFormSubmission?.createdBy?.name
@@ -2729,18 +2744,12 @@ function SchoolIndicatorPanelComponent({
         kind: "category" as const,
         label: categoryTabLabel(category),
       })),
-      {
-        id: BMEF_TAB_ID,
+      ...SUBMISSION_FILE_DEFINITIONS.map((fileDefinition) => ({
+        id: fileDefinition.type,
         kind: "upload" as const,
-        label: "BMEF",
-        uploadType: "bmef" as const,
-      },
-      {
-        id: SMEA_TAB_ID,
-        kind: "upload" as const,
-        label: "SMEA",
-        uploadType: "smea" as const,
-      },
+        label: fileDefinition.shortLabel,
+        uploadType: fileDefinition.type,
+      })),
     ],
     [visibleCategoryMetrics],
   );
@@ -2873,30 +2882,15 @@ function SchoolIndicatorPanelComponent({
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
   useEffect(() => {
-    const serverBmefSubmitted = hasUploadedReportFile(bmefFileEntry)
-      || Boolean(bmefWorkspaceSubmission?.completion?.hasBmefFile)
-      || (isBmefSubmissionSubmitted && Boolean(bmefWorkspaceSubmission));
-    const serverSmeaSubmitted = hasUploadedReportFile(smeaFileEntry)
-      || Boolean(smeaWorkspaceSubmission?.completion?.hasSmeaFile)
-      || (isSmeaSubmissionSubmitted && Boolean(smeaWorkspaceSubmission));
-
-    setOptimisticSubmittedByType({
-      bmef: serverBmefSubmitted,
-      smea: serverSmeaSubmitted,
-    });
+    setOptimisticSubmittedByType(serverSubmittedByType);
 
     if (!isFormSubmitted) {
       setIsSubmittedEditMode(false);
     }
   }, [
     activeFormSubmissionId,
-    bmefFileEntry,
-    bmefWorkspaceSubmission?.completion?.hasBmefFile,
-    isBmefSubmissionSubmitted,
     isFormSubmitted,
-    isSmeaSubmissionSubmitted,
-    smeaFileEntry,
-    smeaWorkspaceSubmission?.completion?.hasSmeaFile,
+    serverSubmittedByType,
   ]);
 
   const filteredActiveMetrics = useMemo(() => {
@@ -4236,7 +4230,7 @@ function SchoolIndicatorPanelComponent({
         await resetSubmissionWorkspace(activeSubmission.id, activeWorkspaceResetTarget);
       }
 
-      if (activeWorkspaceResetTarget === "bmef" || activeWorkspaceResetTarget === "smea") {
+      if (isSubmissionFileType(activeWorkspaceResetTarget)) {
         setUploadErrorByType((current) => ({ ...current, [activeWorkspaceResetTarget]: "" }));
         setOptimisticSubmittedByType((current) => ({ ...current, [activeWorkspaceResetTarget]: false }));
         setSubmitError("");
@@ -4460,10 +4454,12 @@ function SchoolIndicatorPanelComponent({
         },
         onSuccess: (result) => {
           return fetchFreshWorkspaceSubmission(result).then((freshResult) => {
-            setOptimisticSubmittedByType({
-              bmef: hasUploadedReportFile(freshResult.files?.bmef ?? null) || Boolean(freshResult.completion?.hasBmefFile),
-              smea: hasUploadedReportFile(freshResult.files?.smea ?? null) || Boolean(freshResult.completion?.hasSmeaFile),
-            });
+            setOptimisticSubmittedByType(
+              SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((accumulator, type) => {
+                accumulator[type] = hasUploadedSubmissionFile(freshResult, type);
+                return accumulator;
+              }, {} as Record<IndicatorSubmissionFileType, boolean>),
+            );
             setActiveWorkspaceSubmission(freshResult);
             setEditingSubmissionId(freshResult.id);
             rehydrateWorkspaceFromSubmission(freshResult);
@@ -4545,10 +4541,12 @@ function SchoolIndicatorPanelComponent({
         },
         onSuccess: (result) => {
           return fetchFreshWorkspaceSubmission(result).then((freshResult) => {
-            setOptimisticSubmittedByType({
-              bmef: hasUploadedReportFile(freshResult.files?.bmef ?? null) || Boolean(freshResult.completion?.hasBmefFile),
-              smea: hasUploadedReportFile(freshResult.files?.smea ?? null) || Boolean(freshResult.completion?.hasSmeaFile),
-            });
+            setOptimisticSubmittedByType(
+              SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((accumulator, type) => {
+                accumulator[type] = hasUploadedSubmissionFile(freshResult, type);
+                return accumulator;
+              }, {} as Record<IndicatorSubmissionFileType, boolean>),
+            );
             setActiveWorkspaceSubmission(freshResult);
             setEditingSubmissionId(freshResult.id);
             rehydrateWorkspaceFromSubmission(freshResult);
@@ -4578,7 +4576,7 @@ function SchoolIndicatorPanelComponent({
         action: () => {
           setShowEditConfirmModal(false);
           setIsSubmittedEditMode(true);
-          setOptimisticSubmittedByType({ bmef: false, smea: false });
+          setOptimisticSubmittedByType(createInitialSubmittedByTypeState());
           setSubmitError("");
         },
       });
@@ -4610,6 +4608,7 @@ function SchoolIndicatorPanelComponent({
   };
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
+    const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
     console.log("[GroupB] Upload clicked");
     console.log("[GroupB] mode:", workspaceMode);
     console.log("[GroupB] busy:", isGroupBActionBusy);
@@ -4696,7 +4695,7 @@ function SchoolIndicatorPanelComponent({
             setUploadingFileType(null);
             setUploadErrorByType((current) => ({
               ...current,
-              [type]: toGroupBActionErrorMessage(err, `Unable to upload ${type.toUpperCase()} file.`),
+              [type]: toGroupBActionErrorMessage(err, `Unable to upload ${fileDefinition.shortLabel} file.`),
             }));
           },
         });
@@ -4737,7 +4736,7 @@ function SchoolIndicatorPanelComponent({
 
   const resolveFileSourceSubmission = useCallback(
     (type: IndicatorSubmissionFileType): { submission: IndicatorSubmission | null; error: string | null } => {
-      const sourceSubmission = type === "bmef" ? bmefWorkspaceSubmission : smeaWorkspaceSubmission;
+      const sourceSubmission = fileWorkspaceSubmissionByType[type];
       const selectedYearId = activeAcademicYearIdRef.current;
 
       if (!sourceSubmission) {
@@ -4753,11 +4752,7 @@ function SchoolIndicatorPanelComponent({
         };
       }
 
-      const hasFile = type === "bmef"
-        ? hasUploadedReportFile(sourceSubmission.files?.bmef ?? null) || Boolean(sourceSubmission.completion?.hasBmefFile)
-        : hasUploadedReportFile(sourceSubmission.files?.smea ?? null) || Boolean(sourceSubmission.completion?.hasSmeaFile);
-
-      if (!hasFile) {
+      if (!hasUploadedSubmissionFile(sourceSubmission, type)) {
         return {
           submission: null,
           error: "No submitted file is available for the selected academic year. Re-select the year and try again.",
@@ -4766,7 +4761,7 @@ function SchoolIndicatorPanelComponent({
 
       return { submission: sourceSubmission, error: null };
     },
-    [bmefWorkspaceSubmission, isSubmissionInAcademicYear, smeaWorkspaceSubmission],
+    [fileWorkspaceSubmissionByType, isSubmissionInAcademicYear],
   );
 
   const handleDownloadUploadedFile = useCallback(async (type: IndicatorSubmissionFileType) => {
@@ -4803,9 +4798,10 @@ function SchoolIndicatorPanelComponent({
     try {
       await downloadSubmissionFile(source.submission.id, type);
     } catch (err) {
+      const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`,
+        [type]: err instanceof Error ? err.message : `Unable to download ${fileDefinition.shortLabel} file.`,
       }));
     }
   }, [downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);
@@ -4841,9 +4837,7 @@ function SchoolIndicatorPanelComponent({
       return;
     }
 
-    const entry = type === "bmef"
-      ? source.submission.files?.bmef ?? null
-      : source.submission.files?.smea ?? null;
+    const entry = source.submission.files?.[type] ?? null;
 
     try {
       const previewWindow = window.open("", "_blank", "noopener,noreferrer");
@@ -4880,21 +4874,17 @@ function SchoolIndicatorPanelComponent({
       previewWindow.location.href = objectUrl;
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (err) {
+      const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
       await downloadSubmissionFile(source.submission.id, type).catch(() => undefined);
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: err instanceof Error ? err.message : `Unable to open ${type.toUpperCase()} report.`,
+        [type]: err instanceof Error ? err.message : `Unable to open ${fileDefinition.shortLabel} report.`,
       }));
     }
   }, [apiToken, downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);
 
   const openUploadPicker = useCallback((type: IndicatorSubmissionFileType) => {
-    if (type === "bmef") {
-      bmefInputRef.current?.click();
-      return;
-    }
-
-    smeaInputRef.current?.click();
+    fileUploadInputRef.current?.click();
   }, []);
 
   const handleRequestUpload = useCallback((type: IndicatorSubmissionFileType) => {
@@ -4960,6 +4950,22 @@ function SchoolIndicatorPanelComponent({
                 >
                   SMEA: {smeaSubmitted ? "Submitted" : "Not Submitted"}
                 </span>
+                {SUBMISSION_FILE_DEFINITIONS.filter((definition) => !definition.core).map((definition) => {
+                  const submitted = submittedByFileType[definition.type];
+
+                  return (
+                    <span
+                      key={definition.type}
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                        submitted
+                          ? "border-primary-300 bg-primary-50 text-primary-700"
+                          : "border-amber-300 bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {definition.shortLabel}: {submitted ? "Submitted" : "Not Submitted"}
+                    </span>
+                  );
+                })}
               </div>
               {(workspaceMode === "submitted_locked" || workspaceMode === "submitted_editing") && submittedAtLabel && (
                 <p className="mt-1 text-[11px] font-medium text-slate-500">
@@ -5092,7 +5098,7 @@ function SchoolIndicatorPanelComponent({
               </button>
 
               <div ref={categoryRailRef} className="min-w-0 flex-1 overflow-x-auto scroll-smooth">
-                <div className="flex min-w-max items-stretch gap-1 pr-1">
+                <div className="flex min-w-max items-stretch gap-1 whitespace-nowrap pr-1">
                   {complianceTabs.map((tab) => {
                     const category = visibleCategoryMetrics.find((candidate) => candidate.id === tab.id) ?? null;
                     const progress = category
@@ -5103,7 +5109,7 @@ function SchoolIndicatorPanelComponent({
                       : null;
                     const isActive = activeCategoryId === tab.id;
                     const uploadSubmitted = tab.kind === "upload"
-                      ? (tab.uploadType === "bmef" ? bmefSubmitted : smeaSubmitted)
+                      ? submittedByFileType[tab.uploadType]
                       : null;
                     const categoryRailBadge = tab.kind === "category"
                       ? getCategoryRailBadge(missingCount ?? 0)
@@ -5116,7 +5122,7 @@ function SchoolIndicatorPanelComponent({
                         type="button"
                         onClick={() => handleSelectCategory(tab.id)}
                         disabled={isWorkspaceReadOnly}
-                        className={`inline-flex min-w-[188px] items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-left transition ${
+                        className={`inline-flex min-w-[188px] shrink-0 items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-left transition ${
                           isActive
                             ? "border-primary-300 bg-primary-50 text-primary-700"
                             : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -5230,33 +5236,30 @@ function SchoolIndicatorPanelComponent({
           {activeUploadType && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <input
-                ref={bmefInputRef}
+                ref={fileUploadInputRef}
                 type="file"
                 accept=".pdf,.docx,.xlsx"
                 className="hidden"
-                onChange={(event) => void handleFileInputChange("bmef", event)}
-              />
-              <input
-                ref={smeaInputRef}
-                type="file"
-                accept=".pdf,.docx,.xlsx"
-                className="hidden"
-                onChange={(event) => void handleFileInputChange("smea", event)}
+                onChange={(event) => {
+                  if (activeUploadType) {
+                    void handleFileInputChange(activeUploadType, event);
+                  }
+                }}
               />
 
               {(() => {
-                const fileEntry = activeUploadType === "bmef" ? bmefFileEntry : smeaFileEntry;
-                const uploaded = activeUploadType === "bmef" ? bmefSubmitted : smeaSubmitted;
+                const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[activeUploadType];
+                const fileEntry = fileEntryByType[activeUploadType];
+                const uploaded = submittedByFileType[activeUploadType];
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
                 const uploadDisabled = isManualActionBlocked || isUploading || !canShowSaveAndSubmitActions;
-                const uploadTypeLabel = activeUploadType === "bmef" ? "BMEF" : "SMEA";
 
                 return (
                   <div className="space-y-3">
                     <FileUploadField
-                      label={uploadTypeLabel}
-                      description="Upload-only section. Accepted formats: PDF, DOCX, XLSX (max 10MB)."
+                      label={fileDefinition.label}
+                      description={fileDefinition.description}
                       file={fileEntry
                         ? {
                           filename: fileEntry.originalFilename,

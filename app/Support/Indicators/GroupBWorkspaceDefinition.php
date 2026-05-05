@@ -90,8 +90,7 @@ final class GroupBWorkspaceDefinition
     public static function resetTargets(): array
     {
         return [
-            self::BMEF,
-            self::SMEA,
+            ...SubmissionFileDefinition::types(),
             self::SCHOOL_ACHIEVEMENTS,
             self::KEY_PERFORMANCE,
         ];
@@ -112,9 +111,11 @@ final class GroupBWorkspaceDefinition
 
     public static function historyActionFor(string $workspace): string
     {
+        if (SubmissionFileDefinition::isValidType($workspace)) {
+            return "{$workspace}_reset";
+        }
+
         return match ($workspace) {
-            self::BMEF => 'bmef_reset',
-            self::SMEA => 'smea_reset',
             self::SCHOOL_ACHIEVEMENTS => 'school_achievements_reset',
             self::KEY_PERFORMANCE => 'key_performance_reset',
             default => 'workspace_reset',

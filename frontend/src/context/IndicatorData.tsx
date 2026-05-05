@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError } from "@/lib/api";
+import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
 import type {
   AcademicYearOption,
   GroupBWorkspaceResetTarget,
@@ -98,6 +99,9 @@ interface LightweightIndicatorSubmission {
     hasBmefFile: boolean;
     hasSmeaFile: boolean;
     isComplete: boolean;
+    requiredFileTypes?: IndicatorSubmissionFileType[];
+    uploadedFileTypes?: IndicatorSubmissionFileType[];
+    missingFileTypes?: IndicatorSubmissionFileType[];
   };
   files?: IndicatorSubmissionFiles;
   academicYear?: {
@@ -357,25 +361,35 @@ function patchSubmissionWithLightweightPayload(
           typeof patch.completion.isComplete === "boolean"
             ? patch.completion.isComplete
             : patch.completion.hasImetaFormData && patch.completion.hasBmefFile && patch.completion.hasSmeaFile,
+        requiredFileTypes: patch.completion.requiredFileTypes ?? current.completion?.requiredFileTypes,
+        uploadedFileTypes: patch.completion.uploadedFileTypes ?? current.completion?.uploadedFileTypes,
+        missingFileTypes: patch.completion.missingFileTypes ?? current.completion?.missingFileTypes,
       }
     : existingCompletion;
   const nextFiles: IndicatorSubmission["files"] = patch.files
     ? patch.files
     : (nextCompletion && current.files)
-      ? {
-          bmef: {
-            ...current.files.bmef,
-            uploaded: nextCompletion.hasBmefFile,
-            downloadUrl: nextCompletion.hasBmefFile ? `/api/submissions/${patch.id}/download/bmef` : null,
-            viewUrl: nextCompletion.hasBmefFile ? `/api/submissions/${patch.id}/view/bmef` : null,
-          },
-          smea: {
-            ...current.files.smea,
-            uploaded: nextCompletion.hasSmeaFile,
-            downloadUrl: nextCompletion.hasSmeaFile ? `/api/submissions/${patch.id}/download/smea` : null,
-            viewUrl: nextCompletion.hasSmeaFile ? `/api/submissions/${patch.id}/view/smea` : null,
-          },
-        }
+      ? SUBMISSION_FILE_TYPES.reduce<NonNullable<IndicatorSubmission["files"]>>((accumulator, type) => {
+          const currentEntry = current.files?.[type];
+          if (!currentEntry) {
+            return accumulator;
+          }
+
+          const uploaded = type === "bmef"
+            ? nextCompletion.hasBmefFile
+            : type === "smea"
+              ? nextCompletion.hasSmeaFile
+              : Boolean(nextCompletion.uploadedFileTypes?.includes(type));
+
+          accumulator[type] = {
+            ...currentEntry,
+            uploaded,
+            downloadUrl: uploaded ? `/api/submissions/${patch.id}/download/${type}` : null,
+            viewUrl: uploaded ? `/api/submissions/${patch.id}/view/${type}` : null,
+          };
+
+          return accumulator;
+        }, { ...current.files })
       : current.files;
 
   return {
@@ -417,6 +431,27 @@ function materializeSubmissionFromLightweightPayload(
   const hasImetaFormData = Boolean(patch.completion?.hasImetaFormData);
   const hasBmefFile = Boolean(patch.completion?.hasBmefFile);
   const hasSmeaFile = Boolean(patch.completion?.hasSmeaFile);
+  const uploadedFileTypes = patch.completion?.uploadedFileTypes ?? [];
+  const files = SUBMISSION_FILE_TYPES.reduce<NonNullable<IndicatorSubmission["files"]>>((accumulator, type) => {
+    const uploaded = type === "bmef"
+      ? hasBmefFile
+      : type === "smea"
+        ? hasSmeaFile
+        : uploadedFileTypes.includes(type);
+
+    accumulator[type] = {
+      type,
+      uploaded,
+      path: null,
+      originalFilename: null,
+      sizeBytes: null,
+      uploadedAt: patch.files?.[type]?.uploadedAt ?? null,
+      downloadUrl: uploaded ? `/api/submissions/${patch.id}/download/${type}` : null,
+      viewUrl: uploaded ? `/api/submissions/${patch.id}/view/${type}` : null,
+    };
+
+    return accumulator;
+  }, {});
 
   return {
     id: patch.id,
@@ -433,33 +468,15 @@ function materializeSubmissionFromLightweightPayload(
       belowTargetIndicators: 0,
       complianceRatePercent: 0,
     },
-    files: {
-      bmef: {
-        type: "bmef",
-        uploaded: hasBmefFile,
-        path: null,
-        originalFilename: null,
-        sizeBytes: null,
-        uploadedAt: null,
-        downloadUrl: hasBmefFile ? `/api/submissions/${patch.id}/download/bmef` : null,
-        viewUrl: hasBmefFile ? `/api/submissions/${patch.id}/view/bmef` : null,
-      },
-      smea: {
-        type: "smea",
-        uploaded: hasSmeaFile,
-        path: null,
-        originalFilename: null,
-        sizeBytes: null,
-        uploadedAt: null,
-        downloadUrl: hasSmeaFile ? `/api/submissions/${patch.id}/download/smea` : null,
-        viewUrl: hasSmeaFile ? `/api/submissions/${patch.id}/view/smea` : null,
-      },
-    },
+    files,
     completion: {
       hasImetaFormData,
       hasBmefFile,
       hasSmeaFile,
       isComplete: patch.completion?.isComplete ?? (hasImetaFormData && hasBmefFile && hasSmeaFile),
+      requiredFileTypes: patch.completion?.requiredFileTypes ?? ["bmef", "smea"],
+      uploadedFileTypes,
+      missingFileTypes: patch.completion?.missingFileTypes ?? [],
     },
     indicators: [],
     academicYear: {

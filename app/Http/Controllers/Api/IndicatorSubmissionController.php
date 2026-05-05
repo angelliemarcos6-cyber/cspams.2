@@ -21,6 +21,7 @@ use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
+use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -142,6 +143,7 @@ class IndicatorSubmissionController extends Controller
                 'school:id,school_code,name',
                 'academicYear:id,name',
                 'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+                'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
                 'createdBy:id,name,email',
                 'submittedBy:id,name,email',
                 'reviewedBy:id,name,email',
@@ -173,6 +175,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -335,6 +338,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -477,7 +481,7 @@ class IndicatorSubmissionController extends Controller
         $maxKb = max(1, (int) config('cspams.submission_file_max_kb', 10240));
 
         $validated = $request->validate([
-            'type' => ['required', 'string', Rule::in(['bmef', 'smea'])],
+            'type' => ['required', 'string', Rule::in(SubmissionFileDefinition::types())],
             'file' => ['required', 'file', 'max:' . $maxKb, 'mimes:pdf,docx,xlsx'],
         ]);
 
@@ -515,13 +519,23 @@ class IndicatorSubmissionController extends Controller
                 'bmef_uploaded_at' => now(),
                 'bmef_file_size' => $sizeBytes,
             ])->save();
-        } else {
+        } elseif ($fileType === 'smea') {
             $submission->forceFill([
                 'smea_file_path' => $path,
                 'smea_original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
                 'smea_uploaded_at' => now(),
                 'smea_file_size' => $sizeBytes,
             ])->save();
+        } else {
+            $submission->submissionFiles()->updateOrCreate(
+                ['type' => $fileType],
+                [
+                    'path' => $path,
+                    'original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                    'size_bytes' => $sizeBytes,
+                    'uploaded_at' => now(),
+                ],
+            );
         }
 
         app(FormSubmissionHistoryLogger::class)->log(
@@ -560,9 +574,9 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanView($user, $submission->school_id);
 
         $fileType = strtolower(trim($type));
-        if (! in_array($fileType, ['bmef', 'smea'], true)) {
+        if (! SubmissionFileDefinition::isValidType($fileType)) {
             throw ValidationException::withMessages([
-                'type' => 'Download type must be either bmef or smea.',
+                'type' => 'Download type is invalid.',
             ]);
         }
 
@@ -586,9 +600,9 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanView($user, $submission->school_id);
 
         $fileType = strtolower(trim($type));
-        if (! in_array($fileType, ['bmef', 'smea'], true)) {
+        if (! SubmissionFileDefinition::isValidType($fileType)) {
             throw ValidationException::withMessages([
-                'type' => 'View type must be either bmef or smea.',
+                'type' => 'View type is invalid.',
             ]);
         }
 
@@ -778,7 +792,7 @@ class IndicatorSubmissionController extends Controller
                 return $this->resetWorkspaceIndicatorRows($submission, $workspace);
             }
 
-            if (in_array($workspace, [GroupBWorkspaceDefinition::BMEF, GroupBWorkspaceDefinition::SMEA], true)) {
+            if (SubmissionFileDefinition::isValidType($workspace)) {
                 return $this->resetWorkspaceFile($submission, $workspace);
             }
 
@@ -832,6 +846,12 @@ class IndicatorSubmissionController extends Controller
         $hasImetaFormData = $submission->hasImetaFormData();
         $hasBmefFile = $submission->hasBmefFile();
         $hasSmeaFile = $submission->hasSmeaFile();
+        $uploadedFileTypes = $submission->uploadedSubmissionFileTypes();
+        $requiredFileTypes = ['bmef', 'smea'];
+        $missingFileTypes = array_values(array_filter(
+            $requiredFileTypes,
+            fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
+        ));
 
         // Keep mutation payloads small by returning state-only fields (no items.metric eager loading).
         return response()->json([
@@ -855,29 +875,11 @@ class IndicatorSubmissionController extends Controller
                     'hasBmefFile' => $hasBmefFile,
                     'hasSmeaFile' => $hasSmeaFile,
                     'isComplete' => $hasImetaFormData && $hasBmefFile && $hasSmeaFile,
+                    'requiredFileTypes' => $requiredFileTypes,
+                    'uploadedFileTypes' => $uploadedFileTypes,
+                    'missingFileTypes' => $missingFileTypes,
                 ],
-                'files' => [
-                    'bmef' => [
-                        'type' => 'bmef',
-                        'uploaded' => $hasBmefFile,
-                        'path' => null,
-                        'originalFilename' => null,
-                        'sizeBytes' => null,
-                        'uploadedAt' => optional($submission->bmef_uploaded_at)->toISOString(),
-                        'downloadUrl' => $hasBmefFile ? "/api/submissions/{$submission->id}/download/bmef" : null,
-                        'viewUrl' => $hasBmefFile ? "/api/submissions/{$submission->id}/view/bmef" : null,
-                    ],
-                    'smea' => [
-                        'type' => 'smea',
-                        'uploaded' => $hasSmeaFile,
-                        'path' => null,
-                        'originalFilename' => null,
-                        'sizeBytes' => null,
-                        'uploadedAt' => optional($submission->smea_uploaded_at)->toISOString(),
-                        'downloadUrl' => $hasSmeaFile ? "/api/submissions/{$submission->id}/download/smea" : null,
-                        'viewUrl' => $hasSmeaFile ? "/api/submissions/{$submission->id}/view/smea" : null,
-                    ],
-                ],
+                'files' => $this->buildSubmissionFilesPayload($submission, false),
             ],
         ], $status);
     }
@@ -888,6 +890,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -1047,20 +1050,12 @@ class IndicatorSubmissionController extends Controller
 
     private function filePathForType(IndicatorSubmission $submission, string $type): ?string
     {
-        return match ($type) {
-            'bmef' => $submission->bmef_file_path,
-            'smea' => $submission->smea_file_path,
-            default => null,
-        };
+        return $submission->submissionFilePathForType($type);
     }
 
     private function fileOriginalNameForType(IndicatorSubmission $submission, string $type): ?string
     {
-        return match ($type) {
-            'bmef' => $submission->bmef_original_filename,
-            'smea' => $submission->smea_original_filename,
-            default => null,
-        };
+        return $submission->submissionFileOriginalNameForType($type);
     }
 
     /**
@@ -1081,13 +1076,17 @@ class IndicatorSubmissionController extends Controller
                 'bmef_uploaded_at' => null,
                 'bmef_file_size' => null,
             ])->save();
-        } else {
+        } elseif ($workspace === GroupBWorkspaceDefinition::SMEA) {
             $submission->forceFill([
                 'smea_file_path' => null,
                 'smea_original_filename' => null,
                 'smea_uploaded_at' => null,
                 'smea_file_size' => null,
             ])->save();
+        } else {
+            $submission->submissionFiles()
+                ->where('type', $workspace)
+                ->delete();
         }
 
         return [
@@ -1141,11 +1140,37 @@ class IndicatorSubmissionController extends Controller
             ->values();
     }
 
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function buildSubmissionFilesPayload(IndicatorSubmission $submission, bool $includeInternalPath): array
+    {
+        $files = [];
+
+        foreach (SubmissionFileDefinition::types() as $type) {
+            $uploaded = $submission->hasSubmissionFileType($type);
+            $files[$type] = [
+                'type' => $type,
+                'uploaded' => $uploaded,
+                'path' => $includeInternalPath ? $submission->submissionFilePathForType($type) : null,
+                'originalFilename' => $includeInternalPath ? $submission->submissionFileOriginalNameForType($type) : null,
+                'sizeBytes' => $includeInternalPath ? $submission->submissionFileSizeForType($type) : null,
+                'uploadedAt' => optional($submission->submissionFileUploadedAtForType($type))->toISOString(),
+                'downloadUrl' => $uploaded ? "/api/submissions/{$submission->id}/download/{$type}" : null,
+                'viewUrl' => $uploaded ? "/api/submissions/{$submission->id}/view/{$type}" : null,
+            ];
+        }
+
+        return $files;
+    }
+
     private function historyNoteForWorkspaceReset(string $workspace): string
     {
+        if (SubmissionFileDefinition::isValidType($workspace)) {
+            return SubmissionFileDefinition::shortLabelFor($workspace) . ' workspace was reset.';
+        }
+
         return match ($workspace) {
-            GroupBWorkspaceDefinition::BMEF => 'BMEF workspace was reset.',
-            GroupBWorkspaceDefinition::SMEA => 'SMEA workspace was reset.',
             GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS => 'School Achievements workspace was reset.',
             GroupBWorkspaceDefinition::KEY_PERFORMANCE => 'Key Performance workspace was reset.',
             default => 'Workspace was reset.',

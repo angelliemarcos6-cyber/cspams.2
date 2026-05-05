@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Support\Indicators\GroupBWorkspaceDefinition;
+use App\Support\Indicators\SubmissionFileDefinition;
 use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Domain\FormSubmissionStatus;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -103,6 +105,12 @@ class IndicatorSubmission extends Model
             ->orderBy('id');
     }
 
+    public function submissionFiles(): HasMany
+    {
+        return $this->hasMany(IndicatorSubmissionFile::class)
+            ->orderBy('type');
+    }
+
     public function hasImetaFormData(): bool
     {
         return $this->hasCompleteImetaFormData();
@@ -145,12 +153,12 @@ class IndicatorSubmission extends Model
 
     public function hasBmefFile(): bool
     {
-        return is_string($this->bmef_file_path) && trim($this->bmef_file_path) !== '';
+        return $this->hasSubmissionFileType('bmef');
     }
 
     public function hasSmeaFile(): bool
     {
-        return is_string($this->smea_file_path) && trim($this->smea_file_path) !== '';
+        return $this->hasSubmissionFileType('smea');
     }
 
     public function isCompleteSubmissionPackage(): bool
@@ -199,5 +207,94 @@ class IndicatorSubmission extends Model
         }
 
         return $value !== null;
+    }
+
+    public function hasSubmissionFileType(string $type): bool
+    {
+        return is_string($this->submissionFilePathForType($type))
+            && trim((string) $this->submissionFilePathForType($type)) !== '';
+    }
+
+    public function submissionFilePathForType(string $type): ?string
+    {
+        if ($type === 'bmef') {
+            return $this->bmef_file_path;
+        }
+
+        if ($type === 'smea') {
+            return $this->smea_file_path;
+        }
+
+        return $this->submissionFileRecordForType($type)?->path;
+    }
+
+    public function submissionFileOriginalNameForType(string $type): ?string
+    {
+        if ($type === 'bmef') {
+            return $this->bmef_original_filename;
+        }
+
+        if ($type === 'smea') {
+            return $this->smea_original_filename;
+        }
+
+        return $this->submissionFileRecordForType($type)?->original_filename;
+    }
+
+    public function submissionFileSizeForType(string $type): ?int
+    {
+        if ($type === 'bmef') {
+            return $this->bmef_file_size !== null ? (int) $this->bmef_file_size : null;
+        }
+
+        if ($type === 'smea') {
+            return $this->smea_file_size !== null ? (int) $this->smea_file_size : null;
+        }
+
+        $sizeBytes = $this->submissionFileRecordForType($type)?->size_bytes;
+
+        return $sizeBytes !== null ? (int) $sizeBytes : null;
+    }
+
+    public function submissionFileUploadedAtForType(string $type): ?CarbonInterface
+    {
+        if ($type === 'bmef') {
+            return $this->bmef_uploaded_at;
+        }
+
+        if ($type === 'smea') {
+            return $this->smea_uploaded_at;
+        }
+
+        return $this->submissionFileRecordForType($type)?->uploaded_at;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function uploadedSubmissionFileTypes(): array
+    {
+        return array_values(array_filter(
+            SubmissionFileDefinition::types(),
+            fn (string $type): bool => $this->hasSubmissionFileType($type),
+        ));
+    }
+
+    private function submissionFileRecordForType(string $type): ?IndicatorSubmissionFile
+    {
+        if (!SubmissionFileDefinition::isValidType($type) || SubmissionFileDefinition::isCoreType($type)) {
+            return null;
+        }
+
+        if ($this->relationLoaded('submissionFiles')) {
+            /** @var \Illuminate\Support\Collection<int, IndicatorSubmissionFile> $relation */
+            $relation = $this->submissionFiles;
+
+            return $relation->firstWhere('type', $type);
+        }
+
+        return $this->submissionFiles()
+            ->where('type', $type)
+            ->first();
     }
 }

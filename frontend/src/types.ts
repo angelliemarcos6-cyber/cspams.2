@@ -410,10 +410,32 @@ export interface IndicatorSubmissionItem {
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
 // Monitor & School Head views updated for DepEd standards
-export type IndicatorSubmissionFileType = "bmef" | "smea";
+export type IndicatorSubmissionFileType =
+  | "bmef"
+  | "smea"
+  | "fm_qad_001"
+  | "fm_qad_002"
+  | "fm_qad_003"
+  | "fm_qad_004"
+  | "fm_qad_008"
+  | "fm_qad_009"
+  | "fm_qad_010"
+  | "fm_qad_011"
+  | "fm_qad_034"
+  | "fm_qad_041";
 export type GroupBWorkspaceResetTarget =
   | "bmef"
   | "smea"
+  | "fm_qad_001"
+  | "fm_qad_002"
+  | "fm_qad_003"
+  | "fm_qad_004"
+  | "fm_qad_008"
+  | "fm_qad_009"
+  | "fm_qad_010"
+  | "fm_qad_011"
+  | "fm_qad_034"
+  | "fm_qad_041"
   | "school_achievements_learning_outcomes"
   | "key_performance_indicators";
 
@@ -428,10 +450,7 @@ export interface IndicatorSubmissionFileEntry {
   viewUrl?: string | null;
 }
 
-export interface IndicatorSubmissionFiles {
-  bmef: IndicatorSubmissionFileEntry;
-  smea: IndicatorSubmissionFileEntry;
-}
+export type IndicatorSubmissionFiles = Partial<Record<IndicatorSubmissionFileType, IndicatorSubmissionFileEntry>>;
 
 export interface IndicatorTypedValuePayload {
   value?: string | number | boolean | null;
@@ -472,6 +491,9 @@ export interface IndicatorSubmission {
     hasBmefFile: boolean;
     hasSmeaFile: boolean;
     isComplete: boolean;
+    requiredFileTypes?: IndicatorSubmissionFileType[];
+    uploadedFileTypes?: IndicatorSubmissionFileType[];
+    missingFileTypes?: IndicatorSubmissionFileType[];
   };
   indicators: IndicatorSubmissionItem[];
   items?: IndicatorSubmissionItem[];
