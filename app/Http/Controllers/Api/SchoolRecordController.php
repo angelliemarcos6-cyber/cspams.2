@@ -817,7 +817,10 @@ class SchoolRecordController extends Controller
         $account->email = $email;
         $temporaryPassword = $this->generateTemporaryPassword();
         $account->password = Hash::make($temporaryPassword);
-        $account->must_reset_password = false;
+        // Add School uses an immediate-login bootstrap password, not the pending-setup
+        // link flow. The account is active, but the first successful sign-in must
+        // transition through the existing required-password-reset path.
+        $account->must_reset_password = true;
         $account->password_changed_at = now();
         $account->account_status = AccountStatus::ACTIVE->value;
         $account->school_id = $school->id;
@@ -856,7 +859,7 @@ class SchoolRecordController extends Controller
             'id' => (string) $account->id,
             'name' => $account->name,
             'email' => $account->email,
-            'mustResetPassword' => false,
+            'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
             'temporaryPassword' => $temporaryPassword,
         ];

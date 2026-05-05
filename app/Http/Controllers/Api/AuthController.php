@@ -228,7 +228,7 @@ class AuthController extends Controller
         $role = UserRoleResolver::normalizeLoginRole($request->string('role')->toString());
         $rawLogin = trim($request->string('login')->toString());
         $login = $role === UserRoleResolver::SCHOOL_HEAD
-            ? (string) $this->normalizeSchoolCode($rawLogin)
+            ? $rawLogin
             : $rawLogin;
         $currentPassword = $request->string('current_password')->toString();
         $newPassword = $request->string('new_password')->toString();

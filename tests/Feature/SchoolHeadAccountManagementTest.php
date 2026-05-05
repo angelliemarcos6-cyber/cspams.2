@@ -21,7 +21,7 @@ class SchoolHeadAccountManagementTest extends TestCase
     use InteractsWithSeededCredentials;
     use RefreshDatabase;
 
-    public function test_monitor_can_create_school_head_with_temporary_password_and_immediate_login(): void
+    public function test_monitor_can_create_school_head_with_temporary_password_and_required_first_login_reset(): void
     {
         $this->seed();
         Notification::fake();
@@ -53,6 +53,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('meta.schoolHeadAccount.mustResetPassword', true)
             ->assertJsonPath('meta.schoolHeadAccount.email', 'setup.head@cspams.local');
 
         /** @var array<string, mixed> $provisioning */
@@ -64,7 +65,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'setup.head@cspams.local')->firstOrFail();
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
-        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
         $this->assertNotNull($schoolHead->password_changed_at);
         $this->assertNotNull($schoolHead->email_verified_at);
         $this->assertNotNull($schoolHead->verified_by_user_id);
@@ -80,9 +81,36 @@ class SchoolHeadAccountManagementTest extends TestCase
             'password' => (string) $provisioning['temporaryPassword'],
         ]);
 
-        $login->assertOk()
+        $login->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresPasswordReset', true)
+            ->assertJsonPath('message', 'Password reset is required before dashboard access.');
+
+        $resetRequired = $this->postJson('/api/auth/reset-required-password', [
+            'role' => 'school_head',
+            'login' => 'setup.head@cspams.local',
+            'current_password' => (string) $provisioning['temporaryPassword'],
+            'new_password' => 'NewSchool@2026!123',
+            'new_password_confirmation' => 'NewSchool@2026!123',
+        ]);
+
+        $resetRequired->assertOk()
             ->assertJsonPath('user.role', 'school_head')
-            ->assertJsonPath('user.email', 'setup.head@cspams.local');
+            ->assertJsonPath('user.email', 'setup.head@cspams.local')
+            ->assertJsonPath('user.mustResetPassword', false);
+
+        $schoolHead->refresh();
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+
+        $loginWithNewPassword = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => 'setup.head@cspams.local',
+            'password' => 'NewSchool@2026!123',
+        ]);
+
+        $loginWithNewPassword->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.email', 'setup.head@cspams.local')
+            ->assertJsonPath('user.mustResetPassword', false);
 
         $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
         $records->assertOk();
@@ -367,6 +395,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('meta.schoolHeadAccount.mustResetPassword', true)
             ->assertJsonPath('meta.schoolHeadAccount.email', 'no.token.head@cspams.local');
 
         /** @var array<string, mixed> $provisioning */
@@ -376,7 +405,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'no.token.head@cspams.local')->firstOrFail();
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
-        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
     }
 
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void

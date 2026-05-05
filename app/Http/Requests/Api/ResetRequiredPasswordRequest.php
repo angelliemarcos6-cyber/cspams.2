@@ -40,7 +40,15 @@ class ResetRequiredPasswordRequest extends FormRequest
                 'max:255',
                 Rule::when(
                     UserRoleResolver::normalizeLoginRole($this->input('role')) === UserRoleResolver::SCHOOL_HEAD,
-                    ['size:6', 'regex:/^\d{6}$/'],
+                    [function (string $attribute, mixed $value, \Closure $fail): void {
+                        $normalized = trim((string) $value);
+                        $isSchoolCode = preg_match('/^\d{6}$/', $normalized) === 1;
+                        $isEmail = filter_var($normalized, FILTER_VALIDATE_EMAIL) !== false;
+
+                        if (! $isSchoolCode && ! $isEmail) {
+                            $fail('School Head login must use a valid email address or 6-digit school code.');
+                        }
+                    }],
                 ),
                 Rule::when(
                     UserRoleResolver::normalizeLoginRole($this->input('role')) === UserRoleResolver::MONITOR,

@@ -245,7 +245,7 @@ export function MonitorSchoolRecordForm({
                   )}
                 </div>
                 <p className="md:col-span-2 rounded-sm border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-semibold text-primary-800">
-                  A temporary password will be generated after save. Copy it immediately because it is shown only once.
+                  A temporary password will be generated after save. The School Head must change it on first login, and it is shown only once.
                 </p>
               </div>
             )}
@@ -284,7 +284,7 @@ export function MonitorSchoolRecordForm({
                         Copy password
                       </button>
                     </div>
-                    <p>Copy this password now. It will not be shown again.</p>
+                    <p>Copy this password now. The School Head must change it on first login, and it will not be shown again.</p>
                   </div>
                 ) : null}
               </div>
