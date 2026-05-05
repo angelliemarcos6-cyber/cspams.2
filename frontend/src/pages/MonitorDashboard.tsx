@@ -150,7 +150,7 @@ export function MonitorDashboard() {
     setSchoolQuickPreset,
     resetFilters: resetMonitorFilters,
   } = useMonitorFilters();
-  const { studentLookupTick, teacherLookupTick, radarTotalsTick, latestRealtimeBatch } = useMonitorUiRefresh();
+  const { radarTotalsTick, latestRealtimeBatch } = useMonitorUiRefresh();
   const {
     isNavigatorCompact,
     setIsNavigatorCompact,
@@ -185,10 +185,6 @@ export function MonitorDashboard() {
   const {
     schoolScopeQuery,
     setSchoolScopeQuery,
-    studentLookupQuery,
-    setStudentLookupQuery,
-    teacherLookupQuery,
-    setTeacherLookupQuery,
     openScopeDropdownId,
     setOpenScopeDropdownId,
     toggleScopeDropdown,
@@ -201,17 +197,10 @@ export function MonitorDashboard() {
     handleSelectAllSchools,
     handleSelectSchoolScope,
   } = useMonitorLookups({
-    authSessionKey,
     records,
     recordCount,
-    students,
-    isStudentDataLoading,
-    queryStudents,
-    listTeachers,
     selectedSchoolScopeKey,
     setSelectedSchoolScopeKey,
-    studentLookupTick,
-    teacherLookupTick,
     showMoreFilters,
     showAdvancedFilters,
   });

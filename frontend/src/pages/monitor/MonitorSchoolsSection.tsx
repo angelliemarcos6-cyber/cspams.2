@@ -1,4 +1,4 @@
-import type { ChangeEvent, ComponentProps, RefObject } from "react";
+import type { ChangeEvent, RefObject } from "react";
 import {
   Building2,
   ChevronDown,
