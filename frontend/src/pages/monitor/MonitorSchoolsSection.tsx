@@ -135,7 +135,7 @@ export function MonitorSchoolsSection({
                 ? `Synced ${new Date(monitorRadarTotals.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
                 : "Waiting for sync"}
           </span>
-          <span>Totals are read live from synchronized student and teacher records.</span>
+          <span>Population totals are synchronized from current school-year student and teacher records.</span>
         </div>
       </div>
 
