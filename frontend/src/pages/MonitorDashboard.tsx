@@ -818,7 +818,7 @@ export function MonitorDashboard() {
   return (
     <Shell
       title="Division Monitor Dashboard"
-      subtitle="Three-screen workflow: Overview, Schools, Reviews."
+      subtitle=""
       actions={
         <MonitorDashboardShellActions
           isDashboardSyncing={isDashboardSyncing}
