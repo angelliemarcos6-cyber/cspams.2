@@ -76,7 +76,6 @@ export function useMonitorRadarTotals({
             page: 1,
             perPage: 1,
             schoolCodes: scopedSchoolCodes,
-            academicYear: "all",
             signal: controller.signal,
           }),
           listTeachers({

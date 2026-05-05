@@ -81,10 +81,6 @@ interface UseMonitorLookupsArgs {
   listTeachers: (args: ListTeachersArgs) => Promise<ListTeachersResult>;
   selectedSchoolScopeKey: string;
   setSelectedSchoolScopeKey: Dispatch<SetStateAction<string>>;
-  selectedStudentLookupId: string | null;
-  setSelectedStudentLookupId: Dispatch<SetStateAction<string | null>>;
-  selectedTeacherLookupId: string | null;
-  setSelectedTeacherLookupId: Dispatch<SetStateAction<string | null>>;
   studentLookupTick: number;
   teacherLookupTick: number;
   showMoreFilters: boolean;
@@ -219,10 +215,6 @@ export function useMonitorLookups({
   listTeachers,
   selectedSchoolScopeKey,
   setSelectedSchoolScopeKey,
-  selectedStudentLookupId,
-  setSelectedStudentLookupId,
-  selectedTeacherLookupId,
-  setSelectedTeacherLookupId,
   studentLookupTick,
   teacherLookupTick,
   showMoreFilters,
@@ -233,6 +225,8 @@ export function useMonitorLookups({
   const [openScopeDropdownId, setOpenScopeDropdownId] = useState<ScopeDropdownId | null>(null);
   const [studentLookupQuery, setStudentLookupQuery] = useState("");
   const [teacherLookupQuery, setTeacherLookupQuery] = useState("");
+  const [selectedStudentLookupId, setSelectedStudentLookupId] = useState<string | null>(null);
+  const [selectedTeacherLookupId, setSelectedTeacherLookupId] = useState<string | null>(null);
   const debouncedStudentLookupQuery = useDebouncedValue(studentLookupQuery, MONITOR_SEARCH_DEBOUNCE_MS);
   const debouncedTeacherLookupQuery = useDebouncedValue(teacherLookupQuery, MONITOR_SEARCH_DEBOUNCE_MS);
   const [dbStudentLookupOptions, setDbStudentLookupOptions] = useState<StudentLookupOption[]>([]);

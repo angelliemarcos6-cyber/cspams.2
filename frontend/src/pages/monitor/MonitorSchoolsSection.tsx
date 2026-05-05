@@ -82,7 +82,7 @@ export function MonitorSchoolsSection({
           <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Schools</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Schools in Scope</p>
                 <p className="mt-1 text-3xl font-bold leading-none text-slate-900">{totalSchoolsInScope.toLocaleString()}</p>
               </div>
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">

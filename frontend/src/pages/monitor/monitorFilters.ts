@@ -12,9 +12,6 @@ export interface PersistedMonitorFilters {
   queueLane?: QueueLane;
   schoolQuickPreset?: SchoolQuickPreset;
   schoolScopeKey?: string;
-  studentLookupId?: string | null;
-  teacherLookupId?: string | null;
-  teacherLookup?: string | null;
   filterDateFrom?: string;
   filterDateTo?: string;
   activeTopNavigator?: MonitorTopNavigatorId;
@@ -27,8 +24,6 @@ export interface MonitorFilters {
   queueLane: QueueLane;
   schoolQuickPreset: SchoolQuickPreset;
   selectedSchoolScopeKey: string;
-  selectedStudentLookupId: string | null;
-  selectedTeacherLookupId: string | null;
   filterDateFrom: string;
   filterDateTo: string;
   activeTopNavigator: MonitorTopNavigatorId;
@@ -45,8 +40,6 @@ export const DEFAULT_MONITOR_FILTERS: MonitorFilters = {
   queueLane: "all",
   schoolQuickPreset: "all",
   selectedSchoolScopeKey: ALL_SCHOOL_SCOPE,
-  selectedStudentLookupId: null,
-  selectedTeacherLookupId: null,
   filterDateFrom: "",
   filterDateTo: "",
   activeTopNavigator: "overview",

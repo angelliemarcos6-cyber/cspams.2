@@ -12,8 +12,6 @@ interface UseMonitorPageStateGuardArgs {
   schoolQuickPreset: SchoolQuickPreset;
   effectiveSearch: string;
   selectedSchoolScopeKey: string;
-  selectedStudentLookupId: string | null;
-  selectedTeacherLookupId: string | null;
   statusFilter: SchoolStatus | "all";
   requirementsPage: number;
   recordsPage: number;
@@ -32,8 +30,6 @@ export function useMonitorPageStateGuard({
   schoolQuickPreset,
   effectiveSearch,
   selectedSchoolScopeKey,
-  selectedStudentLookupId,
-  selectedTeacherLookupId,
   statusFilter,
   requirementsPage,
   recordsPage,
@@ -54,8 +50,6 @@ export function useMonitorPageStateGuard({
     requirementFilter,
     schoolQuickPreset,
     selectedSchoolScopeKey,
-    selectedStudentLookupId,
-    selectedTeacherLookupId,
     setRecordsPage,
     setRequirementsPage,
     statusFilter,

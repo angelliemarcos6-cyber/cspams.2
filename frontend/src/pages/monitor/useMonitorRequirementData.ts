@@ -24,10 +24,6 @@ interface UseMonitorRequirementDataArgs {
   scopedSchoolKeys: Set<string> | null;
   selectedSchoolScopeKey: string;
   hasSelectedSchoolScope: boolean;
-  selectedStudentLookupSchoolKey: string | null;
-  hasSelectedStudentLookup: boolean;
-  selectedTeacherSchoolKeys: Set<string> | null;
-  hasSelectedTeacherLookup: boolean;
   filterDateFrom: string;
   filterDateTo: string;
   requirementFilter: RequirementFilter;
@@ -112,10 +108,6 @@ export function useMonitorRequirementData({
   scopedSchoolKeys,
   selectedSchoolScopeKey,
   hasSelectedSchoolScope,
-  selectedStudentLookupSchoolKey,
-  hasSelectedStudentLookup,
-  selectedTeacherSchoolKeys,
-  hasSelectedTeacherLookup,
   filterDateFrom,
   filterDateTo,
   requirementFilter,
@@ -343,14 +335,6 @@ export function useMonitorRequirementData({
     const results: SchoolRequirementSummary[] = [];
 
     for (const row of scopedRequirementRows) {
-      if (selectedStudentLookupSchoolKey && row.schoolKey !== selectedStudentLookupSchoolKey) {
-        continue;
-      }
-
-      if (selectedTeacherSchoolKeys && !selectedTeacherSchoolKeys.has(row.schoolKey)) {
-        continue;
-      }
-
       if (statusFilter !== "all" && row.schoolStatus !== statusFilter) {
         continue;
       }
@@ -385,8 +369,6 @@ export function useMonitorRequirementData({
     requirementSearchTextByKey,
     scopedRequirementRows,
     searchTerms,
-    selectedStudentLookupSchoolKey,
-    selectedTeacherSchoolKeys,
     statusFilter,
   ]);
 
@@ -397,9 +379,7 @@ export function useMonitorRequirementData({
     schoolQuickPreset !== "all" ||
     hasSelectedSchoolScope ||
     filterDateFrom.length > 0 ||
-    filterDateTo.length > 0 ||
-    hasSelectedStudentLookup ||
-    hasSelectedTeacherLookup;
+    filterDateTo.length > 0;
 
   const filteredSchoolKeys = useMemo(() => {
     if (!hasDashboardFilters && !scopedSchoolKeys) {

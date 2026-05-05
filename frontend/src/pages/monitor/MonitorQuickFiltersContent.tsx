@@ -2,16 +2,12 @@ import type { ComponentProps } from "react";
 import {
   Building2,
   ChevronDown,
-  GraduationCap,
   ListChecks,
   SlidersHorizontal,
-  Users,
   X,
 } from "lucide-react";
 import { FilterBar, type FilterBarOption } from "@/components/shared/FilterBar";
 import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
-import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
-import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import type {
   MonitorTopNavigatorId,
   QueueLane,
@@ -55,8 +51,6 @@ interface MonitorQuickFiltersContentProps {
   onClearDateRange: () => void;
   onToggleShowMoreFilters: () => void;
   schoolScopeSelectorProps: ComponentProps<typeof SchoolScopeSelector>;
-  studentLookupSelectorProps: ComponentProps<typeof StudentLookupSelector>;
-  teacherLookupSelectorProps: ComponentProps<typeof TeacherLookupSelector>;
   showAdvancedAnalytics: boolean;
   onToggleAdvancedAnalytics: () => void;
   activeFilterChips: MonitorFilterChip[];
@@ -84,8 +78,6 @@ export function MonitorQuickFiltersContent({
   onClearDateRange,
   onToggleShowMoreFilters,
   schoolScopeSelectorProps,
-  studentLookupSelectorProps,
-  teacherLookupSelectorProps,
   showAdvancedAnalytics,
   onToggleAdvancedAnalytics,
   activeFilterChips,
@@ -170,18 +162,10 @@ export function MonitorQuickFiltersContent({
 
           {showMoreFilters && (
             <div className="mt-2 space-y-2">
-              <div className="grid gap-2 md:grid-cols-3">
+              <div className="grid gap-2 md:grid-cols-1">
                 <div className="flex items-center gap-2">
                   <Building2 className="h-3.5 w-3.5 text-slate-400" />
                   <SchoolScopeSelector {...schoolScopeSelectorProps} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
-                  <StudentLookupSelector {...studentLookupSelectorProps} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Users className="h-3.5 w-3.5 text-slate-400" />
-                  <TeacherLookupSelector {...teacherLookupSelectorProps} />
                 </div>
               </div>
 

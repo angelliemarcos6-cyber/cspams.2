@@ -22,20 +22,10 @@ type FilterChipId =
   | "lane"
   | "preset"
   | "school"
-  | "student"
-  | "teacher"
   | "date";
 
 interface SelectedSchoolScopeSummary {
   code: string;
-}
-
-interface SelectedStudentLookupSummary {
-  fullName: string;
-}
-
-interface SelectedTeacherLookupSummary {
-  name: string;
 }
 
 export interface MonitorFilterChip {
@@ -48,8 +38,6 @@ interface UseMonitorFilterUiArgs {
   activeTopNavigator: MonitorTopNavigatorId;
   queueLane: QueueLane;
   selectedSchoolScopeKey: string;
-  selectedStudentLookupId: string | null;
-  selectedTeacherLookupId: string | null;
   filterDateFrom: string;
   filterDateTo: string;
   requirementFilter: RequirementFilter;
@@ -57,16 +45,12 @@ interface UseMonitorFilterUiArgs {
   effectiveSearch: string;
   statusFilter: SchoolStatus | "all";
   selectedSchoolScope: SelectedSchoolScopeSummary | null;
-  selectedStudentLookup: SelectedStudentLookupSummary | null;
-  selectedTeacherLookup: SelectedTeacherLookupSummary | null;
   showAdvancedFilters: boolean;
   openScopeDropdownId: ScopeDropdownId | null;
   setShowMoreFilters: Dispatch<SetStateAction<boolean>>;
   setShowAdvancedFilters: Dispatch<SetStateAction<boolean>>;
   resetMonitorFilters: () => void;
   setSchoolScopeQuery: (value: string) => void;
-  setStudentLookupQuery: (value: string) => void;
-  setTeacherLookupQuery: (value: string) => void;
   setOpenScopeDropdownId: Dispatch<SetStateAction<ScopeDropdownId | null>>;
   setSearch: (value: string) => void;
   setStatusFilter: (value: SchoolStatus | "all") => void;
@@ -76,8 +60,6 @@ interface UseMonitorFilterUiArgs {
   setFilterDateFrom: (value: string) => void;
   setFilterDateTo: (value: string) => void;
   setSelectedSchoolScopeKey: (value: string) => void;
-  setSelectedStudentLookupId: (value: string | null) => void;
-  setSelectedTeacherLookupId: (value: string | null) => void;
 }
 
 export interface UseMonitorFilterUiResult {
@@ -93,8 +75,6 @@ export function useMonitorFilterUi({
   activeTopNavigator,
   queueLane,
   selectedSchoolScopeKey,
-  selectedStudentLookupId,
-  selectedTeacherLookupId,
   filterDateFrom,
   filterDateTo,
   requirementFilter,
@@ -102,16 +82,12 @@ export function useMonitorFilterUi({
   effectiveSearch,
   statusFilter,
   selectedSchoolScope,
-  selectedStudentLookup,
-  selectedTeacherLookup,
   showAdvancedFilters,
   openScopeDropdownId,
   setShowMoreFilters,
   setShowAdvancedFilters,
   resetMonitorFilters,
   setSchoolScopeQuery,
-  setStudentLookupQuery,
-  setTeacherLookupQuery,
   setOpenScopeDropdownId,
   setSearch,
   setStatusFilter,
@@ -121,8 +97,6 @@ export function useMonitorFilterUi({
   setFilterDateFrom,
   setFilterDateTo,
   setSelectedSchoolScopeKey,
-  setSelectedStudentLookupId,
-  setSelectedTeacherLookupId,
 }: UseMonitorFilterUiArgs): UseMonitorFilterUiResult {
   const didAutoExpandMoreFiltersRef = useRef(false);
 
@@ -135,9 +109,7 @@ export function useMonitorFilterUi({
 
     const shouldExpand =
       (activeTopNavigator !== "reviews" && queueLane !== "all") ||
-      selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ||
-      Boolean(selectedStudentLookupId) ||
-      Boolean(selectedTeacherLookupId);
+      selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE;
 
     if (shouldExpand) {
       setShowMoreFilters(true);
@@ -147,8 +119,6 @@ export function useMonitorFilterUi({
     filtersHydrated,
     queueLane,
     selectedSchoolScopeKey,
-    selectedStudentLookupId,
-    selectedTeacherLookupId,
     setShowMoreFilters,
   ]);
 
@@ -190,8 +160,6 @@ export function useMonitorFilterUi({
       });
     }
     if (selectedSchoolScope) chips.push({ id: "school", label: `School: ${selectedSchoolScope.code}` });
-    if (selectedStudentLookup) chips.push({ id: "student", label: `Student: ${selectedStudentLookup.fullName}` });
-    if (selectedTeacherLookup) chips.push({ id: "teacher", label: `Teacher: ${selectedTeacherLookup.name}` });
 
     return chips;
   }, [
@@ -202,39 +170,25 @@ export function useMonitorFilterUi({
     requirementFilter,
     schoolQuickPreset,
     selectedSchoolScope,
-    selectedStudentLookup,
-    selectedTeacherLookup,
     statusFilter,
   ]);
 
   const hiddenAdvancedFilterCount = useMemo(
     () =>
       (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? 1 : 0) +
-      (selectedStudentLookupId ? 1 : 0) +
-      (selectedTeacherLookupId ? 1 : 0) +
       (activeTopNavigator !== "reviews" && queueLane !== "all" ? 1 : 0),
     [
       activeTopNavigator,
       queueLane,
       selectedSchoolScopeKey,
-      selectedStudentLookupId,
-      selectedTeacherLookupId,
     ],
   );
 
   const clearAllFilters = useCallback(() => {
     resetMonitorFilters();
     setSchoolScopeQuery("");
-    setStudentLookupQuery("");
-    setTeacherLookupQuery("");
     setOpenScopeDropdownId(null);
-  }, [
-    resetMonitorFilters,
-    setOpenScopeDropdownId,
-    setSchoolScopeQuery,
-    setStudentLookupQuery,
-    setTeacherLookupQuery,
-  ]);
+  }, [resetMonitorFilters, setOpenScopeDropdownId, setSchoolScopeQuery]);
 
   const resetQueueFilters = useCallback(() => {
     setRequirementFilter("all");
@@ -265,19 +219,7 @@ export function useMonitorFilterUi({
           break;
         case "school":
           setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
-          setSelectedStudentLookupId(null);
-          setSelectedTeacherLookupId(null);
           setSchoolScopeQuery("");
-          setStudentLookupQuery("");
-          setTeacherLookupQuery("");
-          break;
-        case "student":
-          setSelectedStudentLookupId(null);
-          setStudentLookupQuery("");
-          break;
-        case "teacher":
-          setSelectedTeacherLookupId(null);
-          setTeacherLookupQuery("");
           break;
         default:
           break;
@@ -292,11 +234,7 @@ export function useMonitorFilterUi({
       setSchoolScopeQuery,
       setSearch,
       setSelectedSchoolScopeKey,
-      setSelectedStudentLookupId,
-      setSelectedTeacherLookupId,
       setStatusFilter,
-      setStudentLookupQuery,
-      setTeacherLookupQuery,
     ],
   );
 

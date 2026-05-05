@@ -36,7 +36,7 @@ function hydrateFilters(): MonitorFilters {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const hasQueryFilters = ["q", "status", "workflow", "lane", "preset", "school", "student", "teacher", "from", "to", "tab"].some((key) =>
+  const hasQueryFilters = ["q", "status", "workflow", "lane", "preset", "school", "from", "to", "tab"].some((key) =>
     params.has(key),
   );
   const requestedTab = params.get("tab");
@@ -51,8 +51,6 @@ function hydrateFilters(): MonitorFilters {
       queueLane: (params.get("lane") as QueueLane | null) ?? undefined,
       schoolQuickPreset: (params.get("preset") as SchoolQuickPreset | null) ?? undefined,
       schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
-      studentLookupId: params.get("student"),
-      teacherLookupId: params.get("teacher"),
       filterDateFrom: params.get("from") ?? "",
       filterDateTo: params.get("to") ?? "",
       activeTopNavigator: (params.get("tab") as MonitorTopNavigatorId | null) ?? undefined,
@@ -72,8 +70,6 @@ function hydrateFilters(): MonitorFilters {
     ...DEFAULT_MONITOR_FILTERS,
     search: persisted?.search?.trim() ?? "",
     selectedSchoolScopeKey: persisted?.schoolScopeKey || ALL_SCHOOL_SCOPE,
-    selectedStudentLookupId: persisted?.studentLookupId ?? null,
-    selectedTeacherLookupId: persisted?.teacherLookupId ?? null,
     filterDateFrom: normalizeDateInput(persisted?.filterDateFrom),
     filterDateTo: normalizeDateInput(persisted?.filterDateTo),
     activeTopNavigator:
@@ -115,8 +111,6 @@ export interface UseMonitorFiltersResult {
   filterDateTo: string;
   requirementFilter: RequirementFilter;
   selectedSchoolScopeKey: string;
-  selectedStudentLookupId: string | null;
-  selectedTeacherLookupId: string | null;
   filtersHydrated: boolean;
   activeTopNavigator: MonitorTopNavigatorId;
   queueLane: QueueLane;
@@ -128,8 +122,6 @@ export interface UseMonitorFiltersResult {
   setFilterDateTo: (value: SetStateAction<string>) => void;
   setRequirementFilter: (value: SetStateAction<RequirementFilter>) => void;
   setSelectedSchoolScopeKey: (value: SetStateAction<string>) => void;
-  setSelectedStudentLookupId: (value: SetStateAction<string | null>) => void;
-  setSelectedTeacherLookupId: (value: SetStateAction<string | null>) => void;
   setActiveTopNavigator: (value: SetStateAction<MonitorTopNavigatorId>) => void;
   setQueueLane: (value: SetStateAction<QueueLane>) => void;
   setSchoolQuickPreset: (value: SetStateAction<SchoolQuickPreset>) => void;
@@ -175,8 +167,6 @@ export function useMonitorFilters(): UseMonitorFiltersResult {
       queueLane: filters.queueLane,
       schoolQuickPreset: filters.schoolQuickPreset,
       schoolScopeKey: filters.selectedSchoolScopeKey,
-      studentLookupId: filters.selectedStudentLookupId,
-      teacherLookupId: filters.selectedTeacherLookupId,
       filterDateFrom: filters.filterDateFrom,
       filterDateTo: filters.filterDateTo,
       activeTopNavigator: filters.activeTopNavigator,
@@ -204,8 +194,8 @@ export function useMonitorFilters(): UseMonitorFiltersResult {
     setOrDelete("lane", filters.queueLane !== "all" ? filters.queueLane : null);
     setOrDelete("preset", filters.schoolQuickPreset !== "all" ? filters.schoolQuickPreset : null);
     setOrDelete("school", filters.selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? filters.selectedSchoolScopeKey : null);
-    setOrDelete("student", filters.selectedStudentLookupId);
-    setOrDelete("teacher", filters.selectedTeacherLookupId);
+    params.delete("student");
+    params.delete("teacher");
     setOrDelete("from", filters.filterDateFrom.trim() ? filters.filterDateFrom.trim() : null);
     setOrDelete("to", filters.filterDateTo.trim() ? filters.filterDateTo.trim() : null);
     setOrDelete(
@@ -225,8 +215,6 @@ export function useMonitorFilters(): UseMonitorFiltersResult {
     filters.requirementFilter,
     filters.schoolQuickPreset,
     filters.selectedSchoolScopeKey,
-    filters.selectedStudentLookupId,
-    filters.selectedTeacherLookupId,
     filters.statusFilter,
     filtersHydrated,
   ]);
@@ -260,8 +248,6 @@ export function useMonitorFilters(): UseMonitorFiltersResult {
     filterDateTo: filters.filterDateTo,
     requirementFilter: filters.requirementFilter,
     selectedSchoolScopeKey: filters.selectedSchoolScopeKey,
-    selectedStudentLookupId: filters.selectedStudentLookupId,
-    selectedTeacherLookupId: filters.selectedTeacherLookupId,
     filtersHydrated,
     activeTopNavigator: filters.activeTopNavigator,
     queueLane: filters.queueLane,
@@ -273,8 +259,6 @@ export function useMonitorFilters(): UseMonitorFiltersResult {
     setFilterDateTo: (value) => updateField("filterDateTo", value),
     setRequirementFilter: (value) => updateField("requirementFilter", value),
     setSelectedSchoolScopeKey: (value) => updateField("selectedSchoolScopeKey", value),
-    setSelectedStudentLookupId: (value) => updateField("selectedStudentLookupId", value),
-    setSelectedTeacherLookupId: (value) => updateField("selectedTeacherLookupId", value),
     setActiveTopNavigator: (value) => updateField("activeTopNavigator", value),
     setQueueLane: (value) => updateField("queueLane", value),
     setSchoolQuickPreset: (value) => updateField("schoolQuickPreset", value),

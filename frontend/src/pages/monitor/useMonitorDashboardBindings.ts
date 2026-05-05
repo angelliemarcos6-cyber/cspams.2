@@ -2,15 +2,11 @@ import type { ComponentProps, Dispatch, SetStateAction } from "react";
 import { MonitorQuickFiltersContent } from "@/pages/monitor/MonitorQuickFiltersContent";
 import type { MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
 import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
-import { StudentLookupSelector } from "@/pages/monitor/StudentLookupSelector";
-import { TeacherLookupSelector } from "@/pages/monitor/TeacherLookupSelector";
 import { buildMonitorSchoolDrawerProps } from "@/pages/monitor/buildMonitorSchoolDrawerProps";
 import type { ScopeDropdownId } from "@/pages/monitor/useMonitorLookups";
 
 type QuickFiltersProps = ComponentProps<typeof MonitorQuickFiltersContent>;
 type SchoolScopeSelectorProps = ComponentProps<typeof SchoolScopeSelector>;
-type StudentLookupSelectorProps = ComponentProps<typeof StudentLookupSelector>;
-type TeacherLookupSelectorProps = ComponentProps<typeof TeacherLookupSelector>;
 type SchoolDrawerProps = ReturnType<typeof buildMonitorSchoolDrawerProps>;
 type SchoolDrawerBuildArgs = Parameters<typeof buildMonitorSchoolDrawerProps>[0];
 
@@ -43,25 +39,6 @@ interface UseMonitorDashboardBindingsArgs {
   schoolScopeOptions: SchoolScopeSelectorProps["allOptions"];
   handleSelectAllSchools: SchoolScopeSelectorProps["onSelectAll"];
   handleSelectSchoolScope: SchoolScopeSelectorProps["onSelectOption"];
-  studentLookupQuery: StudentLookupSelectorProps["query"];
-  setStudentLookupQuery: StudentLookupSelectorProps["onQueryChange"];
-  selectedStudentLabel: StudentLookupSelectorProps["selectedLabel"];
-  isStudentLookupSyncing: StudentLookupSelectorProps["isSyncing"];
-  studentLookupPlaceholder: StudentLookupSelectorProps["placeholder"];
-  filteredStudentLookupOptions: StudentLookupSelectorProps["filteredOptions"];
-  teacherScopedStudentLookupOptions: StudentLookupSelectorProps["allOptions"];
-  selectedStudentId: StudentLookupSelectorProps["selectedStudentId"];
-  handleClearStudentLookup: StudentLookupSelectorProps["onClearSelection"];
-  handleSelectStudentLookup: StudentLookupSelectorProps["onSelectOption"];
-  teacherLookupQuery: TeacherLookupSelectorProps["query"];
-  setTeacherLookupQuery: TeacherLookupSelectorProps["onQueryChange"];
-  selectedTeacherLabel: TeacherLookupSelectorProps["selectedLabel"];
-  isTeacherLookupSyncing: TeacherLookupSelectorProps["isSyncing"];
-  filteredTeacherLookupOptions: TeacherLookupSelectorProps["filteredOptions"];
-  teacherLookupOptions: TeacherLookupSelectorProps["allOptions"];
-  selectedTeacherId: TeacherLookupSelectorProps["selectedTeacherId"];
-  handleClearTeacherLookup: TeacherLookupSelectorProps["onClearSelection"];
-  handleSelectTeacherLookup: TeacherLookupSelectorProps["onSelectOption"];
   openScopeDropdownId: ScopeDropdownId | null;
   toggleScopeDropdown: (id: ScopeDropdownId) => void;
   showAdvancedAnalytics: QuickFiltersProps["showAdvancedAnalytics"];
@@ -107,25 +84,6 @@ export function useMonitorDashboardBindings({
   schoolScopeOptions,
   handleSelectAllSchools,
   handleSelectSchoolScope,
-  studentLookupQuery,
-  setStudentLookupQuery,
-  selectedStudentLabel,
-  isStudentLookupSyncing,
-  studentLookupPlaceholder,
-  filteredStudentLookupOptions,
-  teacherScopedStudentLookupOptions,
-  selectedStudentId,
-  handleClearStudentLookup,
-  handleSelectStudentLookup,
-  teacherLookupQuery,
-  setTeacherLookupQuery,
-  selectedTeacherLabel,
-  isTeacherLookupSyncing,
-  filteredTeacherLookupOptions,
-  teacherLookupOptions,
-  selectedTeacherId,
-  handleClearTeacherLookup,
-  handleSelectTeacherLookup,
   openScopeDropdownId,
   toggleScopeDropdown,
   showAdvancedAnalytics,
@@ -151,33 +109,6 @@ export function useMonitorDashboardBindings({
     onClearQuery: () => setSchoolScopeQuery(""),
     onSelectAll: handleSelectAllSchools,
     onSelectOption: handleSelectSchoolScope,
-  };
-
-  const studentLookupSelectorSharedProps = {
-    selectedLabel: selectedStudentLabel,
-    isSyncing: isStudentLookupSyncing,
-    query: studentLookupQuery,
-    placeholder: studentLookupPlaceholder,
-    filteredOptions: filteredStudentLookupOptions,
-    allOptions: teacherScopedStudentLookupOptions,
-    selectedStudentId,
-    onQueryChange: setStudentLookupQuery,
-    onClearQuery: () => setStudentLookupQuery(""),
-    onClearSelection: handleClearStudentLookup,
-    onSelectOption: handleSelectStudentLookup,
-  };
-
-  const teacherLookupSelectorSharedProps = {
-    selectedLabel: selectedTeacherLabel,
-    isSyncing: isTeacherLookupSyncing,
-    query: teacherLookupQuery,
-    filteredOptions: filteredTeacherLookupOptions,
-    allOptions: teacherLookupOptions,
-    selectedTeacherId,
-    onQueryChange: setTeacherLookupQuery,
-    onClearQuery: () => setTeacherLookupQuery(""),
-    onClearSelection: handleClearTeacherLookup,
-    onSelectOption: handleSelectTeacherLookup,
   };
 
   const quickFiltersProps = {
@@ -208,20 +139,6 @@ export function useMonitorDashboardBindings({
       isOpen: openScopeDropdownId === "schools_filters",
       rootClassName: "relative flex-1",
       onToggle: () => toggleScopeDropdown("schools_filters"),
-    },
-    studentLookupSelectorProps: {
-      ...studentLookupSelectorSharedProps,
-      dropdownId: "students_filters",
-      isOpen: openScopeDropdownId === "students_filters",
-      rootClassName: "relative flex-1",
-      onToggle: () => toggleScopeDropdown("students_filters"),
-    },
-    teacherLookupSelectorProps: {
-      ...teacherLookupSelectorSharedProps,
-      dropdownId: "teachers_filters",
-      isOpen: openScopeDropdownId === "teachers_filters",
-      rootClassName: "relative flex-1",
-      onToggle: () => toggleScopeDropdown("teachers_filters"),
     },
     showAdvancedAnalytics,
     onToggleAdvancedAnalytics: () => setShowAdvancedAnalytics((current) => !current),
