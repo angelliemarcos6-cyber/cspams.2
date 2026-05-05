@@ -321,6 +321,40 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertContains('fm_qad_041', $requiredFileTypes);
     }
 
+    public function test_store_response_uses_private_school_requirements_immediately(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 80,
+                    'actual_value' => 82,
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.school.type', 'private')
+            ->assertJsonCount(count(SubmissionFileDefinition::types()), 'data.completion.requiredFileTypes')
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', false)
+            ->assertJsonPath('data.files.fm_qad_041.uploaded', false);
+
+        $requiredFileTypes = $created->json('data.completion.requiredFileTypes', []);
+        $this->assertSame(SubmissionFileDefinition::types(), $requiredFileTypes);
+    }
+
     public function test_updating_indicator_draft_returns_full_submission_resource(): void
     {
         $this->seedIndicatorFixtures();

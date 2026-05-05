@@ -254,9 +254,10 @@ class IndicatorSubmissionController extends Controller
         });
 
         $submission->load([
-            'school:id,school_code,name',
+            'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
+            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
