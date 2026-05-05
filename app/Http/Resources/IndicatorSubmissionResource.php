@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Models\IndicatorSubmission;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Indicators\SubmissionFileDefinition;
+use App\Support\Indicators\SubmissionFileRequirementResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -27,7 +28,7 @@ class IndicatorSubmissionResource extends JsonResource
         $hasBmef = $this->hasBmefFile();
         $hasSmea = $this->hasSmeaFile();
         $uploadedFileTypes = $this->uploadedSubmissionFileTypes();
-        $requiredFileTypes = ['bmef', 'smea'];
+        $requiredFileTypes = app(SubmissionFileRequirementResolver::class)->requiredTypesForSubmission($this->resource);
         $missingFileTypes = array_values(array_filter(
             $requiredFileTypes,
             fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
@@ -46,6 +47,7 @@ class IndicatorSubmissionResource extends JsonResource
                     'id' => (string) $this->school->id,
                     'schoolCode' => $this->school->school_code,
                     'name' => $this->school->name,
+                    'type' => $this->school->type,
                 ],
             ),
             'academicYear' => $this->when(

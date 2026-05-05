@@ -2041,6 +2041,7 @@ class AuthController extends Controller
             'schoolId' => $user->school_id,
             'schoolCode' => $user->school?->school_code,
             'schoolName' => $user->school?->name,
+            'schoolType' => $user->school?->type,
             'mustResetPassword' => (bool) $user->must_reset_password,
             'accountStatus' => $status->value,
             'lastLoginAt' => $user->last_login_at?->toISOString(),

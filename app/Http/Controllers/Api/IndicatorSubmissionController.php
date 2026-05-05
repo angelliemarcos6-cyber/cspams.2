@@ -22,6 +22,7 @@ use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
+use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -140,7 +141,7 @@ class IndicatorSubmissionController extends Controller
 
         $query = (clone $baseQuery)
             ->with([
-                'school:id,school_code,name',
+                'school:id,school_code,name,type',
                 'academicYear:id,name',
                 'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
                 'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
@@ -172,7 +173,7 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanView($user, $submission->school_id);
 
         $submission->load([
-            'school:id,school_code,name',
+            'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
@@ -335,7 +336,7 @@ class IndicatorSubmissionController extends Controller
         });
 
         $submission->load([
-            'school:id,school_code,name',
+            'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
@@ -547,7 +548,7 @@ class IndicatorSubmissionController extends Controller
             fromStatus: $currentStatus,
             toStatus: $currentStatus ?? FormSubmissionStatus::DRAFT->value,
             actorId: $user->id,
-            notes: strtoupper($fileType) . ' file uploaded or replaced.',
+            notes: SubmissionFileDefinition::shortLabelFor($fileType) . ' file uploaded or replaced.',
             metadata: [
                 'type' => $fileType,
                 'path' => $path,
@@ -842,12 +843,15 @@ class IndicatorSubmissionController extends Controller
 
     private function lightweightSubmissionResponse(IndicatorSubmission $submission, int $status = 200): JsonResponse
     {
-        $submission->refresh();
+        $submission->refresh()->loadMissing([
+            'school:id,school_code,name,type',
+            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+        ]);
         $hasImetaFormData = $submission->hasImetaFormData();
         $hasBmefFile = $submission->hasBmefFile();
         $hasSmeaFile = $submission->hasSmeaFile();
         $uploadedFileTypes = $submission->uploadedSubmissionFileTypes();
-        $requiredFileTypes = ['bmef', 'smea'];
+        $requiredFileTypes = app(SubmissionFileRequirementResolver::class)->requiredTypesForSubmission($submission);
         $missingFileTypes = array_values(array_filter(
             $requiredFileTypes,
             fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
@@ -887,7 +891,7 @@ class IndicatorSubmissionController extends Controller
     private function fullSubmissionResponse(IndicatorSubmission $submission, int $status = 200): JsonResponse
     {
         $submission->refresh()->load([
-            'school:id,school_code,name',
+            'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',

@@ -10,6 +10,7 @@ use App\Models\Teacher;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
+use App\Support\Indicators\SubmissionFileDefinition;
 use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -271,6 +272,53 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.summary.totalIndicators', 1)
             ->assertJsonPath('data.completion.hasImetaFormData', false);
+    }
+
+    public function test_public_school_required_submission_files_only_include_core_documents(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'public']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $bootstrapped = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $bootstrapped->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.completion.requiredFileTypes', ['bmef', 'smea'])
+            ->assertJsonPath('data.completion.missingFileTypes', ['bmef', 'smea'])
+            ->assertJsonPath('data.completion.uploadedFileTypes', []);
+    }
+
+    public function test_private_school_required_submission_files_include_all_fm_qad_tabs(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $bootstrapped = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $bootstrapped->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonCount(count(SubmissionFileDefinition::types()), 'data.completion.requiredFileTypes');
+
+        $requiredFileTypes = $bootstrapped->json('data.completion.requiredFileTypes', []);
+        $this->assertSame(SubmissionFileDefinition::types(), $requiredFileTypes);
+        $this->assertContains('fm_qad_001', $requiredFileTypes);
+        $this->assertContains('fm_qad_041', $requiredFileTypes);
     }
 
     public function test_updating_indicator_draft_returns_full_submission_resource(): void
@@ -922,6 +970,63 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertStringContainsString('attachment;', (string) $download->headers->get('content-disposition'));
     }
 
+    public function test_fm_qad_reset_removes_database_record_storage_file_and_uses_clean_history_labels(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $upload = $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf');
+        $upload->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', true);
+
+        $storedPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->value('path');
+        $this->assertNotSame('', $storedPath);
+        Storage::disk('local')->assertExists($storedPath);
+        $this->assertDatabaseHas('indicator_submission_files', [
+            'indicator_submission_id' => (int) $submissionId,
+            'type' => 'fm_qad_001',
+            'path' => $storedPath,
+        ]);
+
+        $reset = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/reset-workspace", [
+            'workspace' => 'fm_qad_001',
+        ]);
+
+        $reset->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', false)
+            ->assertJsonPath('data.files.fm_qad_001.path', null);
+
+        Storage::disk('local')->assertMissing($storedPath);
+        $this->assertDatabaseMissing('indicator_submission_files', [
+            'indicator_submission_id' => (int) $submissionId,
+            'type' => 'fm_qad_001',
+        ]);
+
+        $history = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}/history");
+        $history->assertOk();
+        $historyNotes = collect($history->json('data', []))->pluck('notes')->filter()->all();
+        $this->assertContains('FM-QAD-001 file uploaded or replaced.', $historyNotes);
+        $this->assertContains('FM-QAD-001 workspace was reset.', $historyNotes);
+    }
+
     public function test_invalid_submission_file_type_fails_validation(): void
     {
         Storage::fake('local');
@@ -947,6 +1052,49 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $invalid->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonValidationErrors(['type']);
+    }
+
+    public function test_bmef_and_smea_uploads_still_write_legacy_file_columns(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef-report.pdf', 'application/pdf')
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true);
+        $this->uploadSubmissionDocument(
+            $token,
+            $submissionId,
+            'smea',
+            'smea-report.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )->assertOk()
+            ->assertJsonPath('data.files.smea.uploaded', true);
+
+        $this->assertDatabaseHas('indicator_submissions', [
+            'id' => (int) $submissionId,
+        ]);
+
+        $submissionRow = \App\Models\IndicatorSubmission::query()->findOrFail((int) $submissionId);
+        $this->assertNotNull($submissionRow->bmef_file_path);
+        $this->assertNotNull($submissionRow->bmef_original_filename);
+        $this->assertNotNull($submissionRow->smea_file_path);
+        $this->assertNotNull($submissionRow->smea_original_filename);
+        Storage::disk('local')->assertExists((string) $submissionRow->bmef_file_path);
+        Storage::disk('local')->assertExists((string) $submissionRow->smea_file_path);
     }
 
     public function test_submitted_indicator_submission_cannot_be_updated(): void

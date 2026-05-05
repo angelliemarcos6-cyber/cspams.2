@@ -151,6 +151,14 @@ function hasUploadedSubmissionFile(
   return Boolean(submission.completion?.uploadedFileTypes?.includes(type));
 }
 
+function resolveDefaultRequiredFileTypes(schoolType: string | null | undefined): IndicatorSubmissionFileType[] {
+  if (String(schoolType ?? "").trim().toLowerCase() === "private") {
+    return [...SUBMISSION_FILE_TYPES];
+  }
+
+  return SUBMISSION_FILE_TYPES.filter((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core);
+}
+
 function buildWorkspaceSubmissionFingerprint(
   academicYearId: string | null,
   submission: IndicatorSubmission | null,
@@ -2727,6 +2735,39 @@ function SchoolIndicatorPanelComponent({
   );
   const bmefSubmitted = submittedByFileType.bmef;
   const smeaSubmitted = submittedByFileType.smea;
+  const fallbackSchoolType = latestActiveWorkspaceSubmission?.school?.type
+    ?? activeWorkspaceSubmission?.school?.type
+    ?? user?.schoolType
+    ?? null;
+  const fallbackRequiredFileTypes = useMemo(
+    () => resolveDefaultRequiredFileTypes(fallbackSchoolType),
+    [fallbackSchoolType],
+  );
+  const visibleFileDefinitions = useMemo(() => {
+    const requiredTypes = new Set<IndicatorSubmissionFileType>(
+      latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
+      ?? activeWorkspaceSubmission?.completion?.requiredFileTypes
+      ?? fallbackRequiredFileTypes,
+    );
+    const uploadedTypes = new Set<IndicatorSubmissionFileType>([
+      ...(latestActiveWorkspaceSubmission?.completion?.uploadedFileTypes ?? []),
+      ...(activeWorkspaceSubmission?.completion?.uploadedFileTypes ?? []),
+      ...SUBMISSION_FILE_TYPES.filter((type) => (
+        scopedSubmissionsForYear.some((submission) => hasUploadedSubmissionFile(submission, type))
+      )),
+    ]);
+
+    return SUBMISSION_FILE_DEFINITIONS.filter((definition) => (
+      requiredTypes.has(definition.type) || uploadedTypes.has(definition.type)
+    ));
+  }, [
+    activeWorkspaceSubmission?.completion?.requiredFileTypes,
+    activeWorkspaceSubmission?.completion?.uploadedFileTypes,
+    fallbackRequiredFileTypes,
+    latestActiveWorkspaceSubmission?.completion?.requiredFileTypes,
+    latestActiveWorkspaceSubmission?.completion?.uploadedFileTypes,
+    scopedSubmissionsForYear,
+  ]);
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
     ?? activeFormSubmission?.createdBy?.name
@@ -2744,14 +2785,14 @@ function SchoolIndicatorPanelComponent({
         kind: "category" as const,
         label: categoryTabLabel(category),
       })),
-      ...SUBMISSION_FILE_DEFINITIONS.map((fileDefinition) => ({
+      ...visibleFileDefinitions.map((fileDefinition) => ({
         id: fileDefinition.type,
         kind: "upload" as const,
         label: fileDefinition.shortLabel,
         uploadType: fileDefinition.type,
       })),
     ],
-    [visibleCategoryMetrics],
+    [visibleCategoryMetrics, visibleFileDefinitions],
   );
   const activeTab = useMemo(
     () => complianceTabs.find((tab) => tab.id === activeCategoryId) ?? complianceTabs[0] ?? null,
@@ -4950,7 +4991,7 @@ function SchoolIndicatorPanelComponent({
                 >
                   SMEA: {smeaSubmitted ? "Submitted" : "Not Submitted"}
                 </span>
-                {SUBMISSION_FILE_DEFINITIONS.filter((definition) => !definition.core).map((definition) => {
+                {visibleFileDefinitions.filter((definition) => !definition.core).map((definition) => {
                   const submitted = submittedByFileType[definition.type];
 
                   return (

@@ -96,6 +96,17 @@ final class SubmissionFileDefinition
         return (self::DEFINITIONS[$type]['core'] ?? false) === true;
     }
 
+    /**
+     * @return list<string>
+     */
+    public static function coreTypes(): array
+    {
+        return array_values(array_filter(
+            self::types(),
+            static fn (string $type): bool => self::isCoreType($type),
+        ));
+    }
+
     public static function labelFor(string $type): string
     {
         return self::DEFINITIONS[$type]['label'] ?? strtoupper($type);

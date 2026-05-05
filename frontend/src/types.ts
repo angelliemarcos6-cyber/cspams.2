@@ -152,6 +152,7 @@ export interface SessionUser {
   schoolId: number | null;
   schoolCode: string | null;
   schoolName: string | null;
+  schoolType?: "public" | "private" | string | null;
 }
 
 export type ActiveSessionType = "api_token" | "web_session";
@@ -477,6 +478,7 @@ export interface IndicatorSubmission {
     id: string;
     schoolCode: string;
     name: string;
+    type?: string | null;
   };
   academicYear?: {
     id: string;
