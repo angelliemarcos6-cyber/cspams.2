@@ -155,7 +155,6 @@ export function MonitorSchoolsSection({
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900">Schools</h2>
-              <p className="mt-1 text-xs text-slate-600">Inspect school profile, records, and latest activity.</p>
             </div>
             {!isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile={false} />}
           </div>
