@@ -49,6 +49,8 @@ interface UseMonitorSchoolsSectionOptions {
   isLoading: boolean;
   isSaving: boolean;
   recordsLength: number;
+  totalSchoolsInScope: number;
+  hasDashboardFilters: boolean;
   compactSchoolRows: MonitorSchoolRecordsListRow[];
   paginatedCompactSchoolRows: MonitorSchoolRecordsListRow[];
   recordBySchoolKey: Map<string, SchoolRecord>;
@@ -138,6 +140,8 @@ export function useMonitorSchoolsSection({
   isLoading,
   isSaving,
   recordsLength,
+  totalSchoolsInScope,
+  hasDashboardFilters,
   compactSchoolRows,
   paginatedCompactSchoolRows,
   recordBySchoolKey,
@@ -284,6 +288,8 @@ export function useMonitorSchoolsSection({
 
   const schoolRecordsListProps: MonitorSchoolRecordsListProps = {
     showLoadingSkeleton: isLoading && recordsLength === 0,
+    scopeSchoolsCount: totalSchoolsInScope,
+    hasDashboardFilters,
     compactSchoolRowsCount: compactSchoolRows.length,
     suppressEmptyState: recordFormApi.showRecordForm && recordFormApi.editingRecordId === null,
     paginatedRows: paginatedCompactSchoolRows,

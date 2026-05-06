@@ -25,6 +25,8 @@ export interface MonitorSchoolRecordsListRow {
 
 export interface MonitorSchoolRecordsListProps {
   showLoadingSkeleton: boolean;
+  scopeSchoolsCount: number;
+  hasDashboardFilters: boolean;
   compactSchoolRowsCount: number;
   suppressEmptyState?: boolean;
   paginatedRows: MonitorSchoolRecordsListRow[];
@@ -53,6 +55,8 @@ export interface MonitorSchoolRecordsListProps {
 
 export function MonitorSchoolRecordsList({
   showLoadingSkeleton,
+  scopeSchoolsCount,
+  hasDashboardFilters,
   compactSchoolRowsCount,
   suppressEmptyState = false,
   paginatedRows,
@@ -94,10 +98,20 @@ export function MonitorSchoolRecordsList({
   }
 
   if (compactSchoolRowsCount === 0 && !suppressEmptyState) {
+    const emptyTitle =
+      scopeSchoolsCount > 0 ? "No visible school records" : "No school records available";
+    const emptyMessage =
+      scopeSchoolsCount > 0
+        ? hasDashboardFilters
+          ? "No schools match the current filters or preset."
+          : "Schools are still in scope, but this view has no visible rows right now."
+        : null;
+
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
         <AlertCircle className="h-9 w-9 text-slate-400" />
-        <p className="text-sm font-semibold">No records found</p>
+        <p className="text-sm font-semibold">{emptyTitle}</p>
+        {emptyMessage ? <p className="text-center text-xs text-slate-500">{emptyMessage}</p> : null}
         <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"

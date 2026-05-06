@@ -153,7 +153,14 @@ export function MonitorSchoolsSection({
         <div className="border-b border-slate-100 px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-              Showing {paginatedCompactSchoolRowsCount} of {compactSchoolRowsCount}
+              <p>
+                Showing {paginatedCompactSchoolRowsCount} visible of {compactSchoolRowsCount}
+              </p>
+              {totalSchoolsInScope !== compactSchoolRowsCount ? (
+                <p className="mt-0.5 text-[10px] font-medium text-slate-500">
+                  In scope: {totalSchoolsInScope}
+                </p>
+              ) : null}
             </div>
             <div ref={schoolActionsMenuRef} className="relative flex flex-wrap items-center gap-2">
               <input

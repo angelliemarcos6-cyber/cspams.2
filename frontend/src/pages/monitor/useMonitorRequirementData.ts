@@ -52,6 +52,7 @@ export interface UseMonitorRequirementDataResult {
   visibleRequirementFilterOptions: Array<{ id: RequirementFilter; label: string }>;
   filteredRequirementRows: SchoolRequirementSummary[];
   filteredSchoolKeys: Set<string> | null;
+  hasDashboardFilters: boolean;
   requirementCounts: {
     total: number;
     submittedAny: number;
@@ -573,6 +574,7 @@ export function useMonitorRequirementData({
     visibleRequirementFilterOptions,
     filteredRequirementRows,
     filteredSchoolKeys,
+    hasDashboardFilters,
     requirementCounts,
     needsActionCount,
     actionQueueRows,
