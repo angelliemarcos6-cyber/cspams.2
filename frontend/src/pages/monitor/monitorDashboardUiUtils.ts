@@ -19,11 +19,11 @@ export function workflowTone(status: string | null) {
 }
 
 export function workflowLabel(status: string | null): string {
-  if (!status) return "Missing";
+  if (!status) return "Not Submitted";
   if (status === "submitted") return "For Review";
   if (status === "validated") return "Validated";
-  if (status === "returned") return "Returned";
-  if (status === "draft") return "Missing";
+  if (status === "returned") return "Returned for Correction";
+  if (status === "draft") return "Not Submitted";
   return status;
 }
 
@@ -73,9 +73,9 @@ export function sanitizeAnchorToken(value: string): string {
 }
 
 export function requirementFilterLabel(value: RequirementFilter): string {
-  if (value === "missing") return "Missing";
+  if (value === "missing") return "Not Submitted";
   if (value === "waiting") return "For Review";
-  if (value === "returned") return "Returned";
+  if (value === "returned") return "Returned for Correction";
   if (value === "submitted") return "Submitted";
   if (value === "validated") return "Validated";
   return "All statuses";

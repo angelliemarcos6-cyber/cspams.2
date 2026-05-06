@@ -1,4 +1,5 @@
 import { AlertCircle, Building2 } from "lucide-react";
+import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardConfig";
 import type { SchoolQuickPreset, RequirementFilter } from "@/pages/monitor/monitorFilters";
 import type { SchoolRecord, SchoolStatus } from "@/types";
 
@@ -98,12 +99,18 @@ export function MonitorSchoolRecordsList({
   }
 
   if (compactSchoolRowsCount === 0 && !suppressEmptyState) {
+    const activePresetLabel =
+      schoolQuickPreset !== "all"
+        ? (SCHOOL_QUICK_PRESET_OPTIONS.find((option) => option.id === schoolQuickPreset)?.label ?? schoolQuickPreset)
+        : null;
     const emptyTitle =
       scopeSchoolsCount > 0 ? "No visible school records" : "No school records available";
     const emptyMessage =
       scopeSchoolsCount > 0
         ? hasDashboardFilters
-          ? "No schools match the current filters or preset."
+          ? activePresetLabel
+            ? `No schools match the current ${activePresetLabel} preset.`
+            : "No schools match the current filters or preset."
           : "Schools are still in scope, but this view has no visible rows right now."
         : null;
 
@@ -144,8 +151,8 @@ export function MonitorSchoolRecordsList({
           const queuePill = (() => {
             if (!summary.hasComplianceRecord && !summary.hasAnySubmitted) {
               return {
-                label: "No submission",
-                title: "Click to filter preset: No submission",
+                label: "Not submitted",
+                title: "Click to filter preset: Not submitted",
                 pressed: schoolQuickPreset === "no_submission",
                 onClick: () => onToggleSchoolQuickPreset("no_submission"),
                 className: "border border-slate-300 bg-slate-100 text-slate-700",
@@ -155,7 +162,7 @@ export function MonitorSchoolRecordsList({
             if (summary.indicatorStatus === "returned") {
               return {
                 label: "Returned",
-                title: "Click to filter queue: Returned",
+                title: "Click to filter queue: Returned for correction",
                 pressed: requirementFilter === "returned",
                 onClick: () => onToggleRequirementFilter("returned"),
                 className: "border border-amber-200 bg-amber-50 text-amber-700",
@@ -164,7 +171,7 @@ export function MonitorSchoolRecordsList({
 
             if (summary.awaitingReviewCount > 0) {
               return {
-                label: `Review ${summary.awaitingReviewCount}`,
+                label: `For review ${summary.awaitingReviewCount}`,
                 title: "Click to filter queue: For review",
                 pressed: requirementFilter === "waiting",
                 onClick: () => onToggleRequirementFilter("waiting"),
@@ -174,8 +181,8 @@ export function MonitorSchoolRecordsList({
 
             if (summary.missingCount > 0) {
               return {
-                label: `Missing ${summary.missingCount}`,
-                title: "Click to filter queue: Missing",
+                label: `Incomplete ${summary.missingCount}`,
+                title: "Click to filter queue: Not submitted",
                 pressed: requirementFilter === "missing",
                 onClick: () => onToggleRequirementFilter("missing"),
                 className: "border border-rose-200 bg-rose-50 text-rose-700",

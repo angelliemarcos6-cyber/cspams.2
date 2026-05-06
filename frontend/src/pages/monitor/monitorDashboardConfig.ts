@@ -85,18 +85,18 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
 ];
 
 export const MONITOR_MANUAL_STATUS_GUIDE = [
-  "Missing: Requirement not yet submitted by school.",
+  "Not Submitted: Requirement not yet submitted by school.",
   "For Review: Submitted and waiting for monitor review.",
-  "Returned: Sent back to school head for correction.",
+  "Returned for Correction: Sent back to school head for correction.",
   "Submitted: Package was sent by school.",
   "Validated: Approved and closed.",
 ];
 
 export const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [
   { id: "all", label: "All statuses" },
-  { id: "missing", label: "Missing" },
+  { id: "missing", label: "Not Submitted" },
   { id: "waiting", label: "For Review" },
-  { id: "returned", label: "Returned" },
+  { id: "returned", label: "Returned for Correction" },
   { id: "submitted", label: "Submitted" },
   { id: "validated", label: "Validated" },
 ];
@@ -107,11 +107,10 @@ export const SCHOOL_QUICK_PRESET_OPTIONS: Array<{
   hint: string;
 }> = [
   { id: "all", label: "All", hint: "Show every school in the current scope." },
-  { id: "pending", label: "Pending", hint: "Schools with submissions waiting for monitor review." },
-  { id: "missing", label: "Missing", hint: "Schools missing a compliance record or indicator submission." },
-  { id: "returned", label: "Returned", hint: "Schools with returned submissions that need correction." },
-  { id: "no_submission", label: "No Submission", hint: "Schools with no compliance/indicator submission yet." },
-  { id: "high_risk", label: "High Risk", hint: "Schools with missing or returned requirements." },
+  { id: "pending", label: "Submitted for Review", hint: "Schools with submitted requirements waiting for monitor review." },
+  { id: "missing", label: "Submission Incomplete", hint: "Schools still missing one or more required submissions." },
+  { id: "returned", label: "Returned for Correction", hint: "Schools with submissions returned for correction." },
+  { id: "no_submission", label: "Not Submitted", hint: "Schools with no submitted requirement package yet." },
 ];
 
 export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {

@@ -13,7 +13,6 @@ interface StickySummaryStats {
   pending: number;
   missing: number;
   returned: number;
-  atRisk: number;
 }
 
 interface MonitorDashboardToolbarProps {
@@ -134,7 +133,7 @@ export function MonitorDashboardToolbar({
               </button>
               <button
                 type="button"
-                title="Submitted packages waiting for monitor review."
+                title="Schools with submitted requirements waiting for monitor review."
                 onClick={() => onSelectSchoolQuickPreset("pending")}
                 className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
                   schoolQuickPreset === "pending"
@@ -142,11 +141,11 @@ export function MonitorDashboardToolbar({
                     : "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
                 }`}
               >
-                Pending: {stickySummaryStats.pending}
+                Submitted for Review: {stickySummaryStats.pending}
               </button>
               <button
                 type="button"
-                title="Schools missing a compliance record or indicator submission."
+                title="Schools still missing one or more required submissions."
                 onClick={() => onSelectSchoolQuickPreset("missing")}
                 className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
                   schoolQuickPreset === "missing"
@@ -154,11 +153,11 @@ export function MonitorDashboardToolbar({
                     : "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 }`}
               >
-                Missing: {stickySummaryStats.missing}
+                Submission Incomplete: {stickySummaryStats.missing}
               </button>
               <button
                 type="button"
-                title="Packages returned to school heads for correction."
+                title="Schools with submissions returned for correction."
                 onClick={() => onSelectSchoolQuickPreset("returned")}
                 className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
                   schoolQuickPreset === "returned"
@@ -166,23 +165,11 @@ export function MonitorDashboardToolbar({
                     : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
                 }`}
               >
-                Returned: {stickySummaryStats.returned}
+                Returned for Correction: {stickySummaryStats.returned}
               </button>
               <button
                 type="button"
-                title="Schools with missing or returned requirements."
-                onClick={() => onSelectSchoolQuickPreset("high_risk")}
-                className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                  schoolQuickPreset === "high_risk"
-                    ? "border-rose-300 bg-rose-100 text-rose-800"
-                    : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                }`}
-              >
-                High Risk: {stickySummaryStats.atRisk}
-              </button>
-              <button
-                type="button"
-                title="Schools with no compliance or indicator submission yet."
+                title="Schools with no submitted requirement package yet."
                 onClick={() => onSelectSchoolQuickPreset("no_submission")}
                 className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
                   schoolQuickPreset === "no_submission"
@@ -190,7 +177,7 @@ export function MonitorDashboardToolbar({
                     : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
                 }`}
               >
-                No Submission: {schoolPresetCounts.no_submission}
+                Not Submitted: {schoolPresetCounts.no_submission}
               </button>
               <button
                 type="button"

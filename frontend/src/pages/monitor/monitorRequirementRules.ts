@@ -87,6 +87,5 @@ export function matchesSchoolQuickPreset(row: SchoolRequirementSummary, preset: 
   if (preset === "pending") return row.awaitingReviewCount > 0 || row.indicatorStatus === "submitted";
   if (preset === "missing") return row.missingCount > 0;
   if (preset === "returned") return row.indicatorStatus === "returned";
-  if (preset === "no_submission") return !row.hasComplianceRecord && !row.hasAnySubmitted;
-  return isUrgentRequirement(row);
+  return !row.hasComplianceRecord && !row.hasAnySubmitted;
 }

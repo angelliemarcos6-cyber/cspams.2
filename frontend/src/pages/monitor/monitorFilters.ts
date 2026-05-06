@@ -2,7 +2,7 @@ import type { SchoolStatus } from "@/types";
 
 export type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 export type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
-export type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission" | "high_risk";
+export type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission";
 export type MonitorTopNavigatorId = "overview" | "schools" | "reviews";
 
 export interface PersistedMonitorFilters {
@@ -54,7 +54,7 @@ export function isValidQueueLane(value: string | null | undefined): value is Que
 }
 
 export function isValidSchoolQuickPreset(value: string | null | undefined): value is SchoolQuickPreset {
-  return value === "all" || value === "pending" || value === "missing" || value === "returned" || value === "no_submission" || value === "high_risk";
+  return value === "all" || value === "pending" || value === "missing" || value === "returned" || value === "no_submission";
 }
 
 export function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {

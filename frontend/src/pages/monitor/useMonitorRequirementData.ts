@@ -72,7 +72,6 @@ export interface UseMonitorRequirementDataResult {
     pending: number;
     missing: number;
     returned: number;
-    atRisk: number;
   };
   queueWorkspaceSchoolFilterKeys: Set<string> | null;
   compactSchoolRows: MonitorSchoolRecordsListRow[];
@@ -477,7 +476,6 @@ export function useMonitorRequirementData({
       missing: 0,
       returned: 0,
       no_submission: 0,
-      high_risk: 0,
     };
 
     for (const row of filteredRequirementRows) {
@@ -485,7 +483,6 @@ export function useMonitorRequirementData({
       if (matchesSchoolQuickPreset(row, "missing")) counts.missing += 1;
       if (matchesSchoolQuickPreset(row, "returned")) counts.returned += 1;
       if (matchesSchoolQuickPreset(row, "no_submission")) counts.no_submission += 1;
-      if (matchesSchoolQuickPreset(row, "high_risk")) counts.high_risk += 1;
     }
 
     return counts;
@@ -502,11 +499,9 @@ export function useMonitorRequirementData({
       pending: schoolPresetCounts.pending,
       missing: schoolPresetCounts.missing,
       returned: schoolPresetCounts.returned,
-      atRisk: schoolPresetCounts.high_risk,
     }),
     [
       schoolPresetCounts.all,
-      schoolPresetCounts.high_risk,
       schoolPresetCounts.missing,
       schoolPresetCounts.pending,
       schoolPresetCounts.returned,
