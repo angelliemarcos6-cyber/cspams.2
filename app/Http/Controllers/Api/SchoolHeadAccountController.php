@@ -1467,10 +1467,15 @@ class SchoolHeadAccountController extends Controller
 
     private function onboardingFlow(User $account, AccountStatus $status): string
     {
+        // These statuses belong to the older setup-link onboarding lifecycle.
+        // They should stay distinct from the Add School temp-password bootstrap flow.
         if (in_array($status, [AccountStatus::PENDING_SETUP, AccountStatus::PENDING_VERIFICATION], true)) {
             return 'setup_link';
         }
 
+        // Active + must_reset_password + a temp-password issue timestamp means the
+        // account is on the immediate-login bootstrap path introduced by Add School
+        // creation and by monitor-side temporary password regeneration.
         if ($status === AccountStatus::ACTIVE && $account->must_reset_password && $account->temporary_password_issued_at !== null) {
             return 'temporary_password';
         }
@@ -1494,6 +1499,9 @@ class SchoolHeadAccountController extends Controller
                 : 'temporary_password_active';
         }
 
+        // An active account that still requires a password reset without a temp
+        // password timestamp is using the standard reset-link path, not the
+        // bootstrap temp-password lifecycle.
         if ($status === AccountStatus::ACTIVE && $account->must_reset_password) {
             return 'password_reset_required';
         }
