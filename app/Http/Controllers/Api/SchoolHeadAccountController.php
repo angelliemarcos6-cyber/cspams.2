@@ -1167,6 +1167,9 @@ class SchoolHeadAccountController extends Controller
             );
         }
 
+        // Regeneration is intentionally limited to active accounts. Pending,
+        // suspended, locked, or archived states must continue through their
+        // existing lifecycle paths instead of using temp-password bootstrap.
         if ($status !== AccountStatus::ACTIVE) {
             return response()->json(
                 ['message' => 'Temporary passwords can only be regenerated for active School Head accounts.'],

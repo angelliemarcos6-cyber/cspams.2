@@ -544,6 +544,52 @@ class SchoolHeadAccountManagementTest extends TestCase
             ->assertJsonPath('user.email', $schoolHead->email);
     }
 
+    public function test_monitor_cannot_regenerate_temporary_password_for_non_active_school_head_accounts(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $cases = [
+            AccountStatus::PENDING_SETUP->value => 'Accounts pending setup should continue using setup links until setup is completed.',
+            AccountStatus::PENDING_VERIFICATION->value => 'Activate the account before issuing a new temporary password.',
+            AccountStatus::LOCKED->value => 'Temporary passwords can only be regenerated for active School Head accounts.',
+            AccountStatus::SUSPENDED->value => 'Temporary passwords can only be regenerated for active School Head accounts.',
+            AccountStatus::ARCHIVED->value => 'Temporary passwords can only be regenerated for active School Head accounts.',
+        ];
+
+        foreach ($cases as $status => $message) {
+            $schoolHead->forceFill([
+                'account_status' => $status,
+                'must_reset_password' => false,
+                'temporary_password_issued_at' => null,
+            ])->save();
+
+            $response = $this->withToken($monitorToken)->postJson(
+                "/api/dashboard/records/{$school->id}/school-head-account/temporary-password",
+                [
+                    'reason' => 'Need a replacement bootstrap credential.',
+                    'verificationChallengeId' => '11111111-1111-1111-1111-111111111111',
+                    'verificationCode' => '123456',
+                ],
+            );
+
+            $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+                ->assertJsonPath('message', $message);
+        }
+    }
+
     public function test_expired_temporary_password_is_rejected_until_monitor_regenerates_a_new_one(): void
     {
         $this->seed();

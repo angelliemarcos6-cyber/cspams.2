@@ -2453,6 +2453,9 @@ class AuthController extends Controller
             return false;
         }
 
+        // A null issue timestamp means this required-reset state came from the
+        // standard reset-link/setup lifecycle, not from the temp-password
+        // bootstrap flow. Only bootstrap passwords expire by this policy.
         $issuedAt = $user->temporary_password_issued_at;
         if (! $issuedAt) {
             return false;
@@ -2468,6 +2471,9 @@ class AuthController extends Controller
 
     private function schoolHeadTemporaryPasswordValidityHours(): int
     {
+        // Operational policy is deployment-config driven for now. Keep auth
+        // reading the same env-controlled window used by bootstrap and
+        // regeneration flows instead of introducing a separate runtime policy.
         $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
 
         return max(1, $configured);
