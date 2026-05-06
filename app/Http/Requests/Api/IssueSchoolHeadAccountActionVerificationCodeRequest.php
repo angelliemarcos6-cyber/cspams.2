@@ -10,6 +10,7 @@ class IssueSchoolHeadAccountActionVerificationCodeRequest extends FormRequest
 {
     public const TARGET_EMAIL_CHANGE = 'email_change';
     public const TARGET_PASSWORD_RESET = 'password_reset';
+    public const TARGET_TEMPORARY_PASSWORD = 'temporary_password';
 
     public function authorize(): bool
     {
@@ -32,6 +33,7 @@ class IssueSchoolHeadAccountActionVerificationCodeRequest extends FormRequest
                     AccountStatus::DELETED->value,
                     self::TARGET_EMAIL_CHANGE,
                     self::TARGET_PASSWORD_RESET,
+                    self::TARGET_TEMPORARY_PASSWORD,
                 ]),
             ],
         ];

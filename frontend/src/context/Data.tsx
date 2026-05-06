@@ -22,6 +22,7 @@ import type {
   SchoolHeadAccountStatusUpdateResult,
   SchoolHeadPasswordResetLinkResult,
   SchoolHeadSetupLinkResult,
+  SchoolHeadTemporaryPasswordResult,
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
   SchoolReminderReceipt,
@@ -110,6 +111,10 @@ interface SchoolHeadPasswordResetLinkResponse {
   data: SchoolHeadPasswordResetLinkResult;
 }
 
+interface SchoolHeadTemporaryPasswordResponse {
+  data: SchoolHeadTemporaryPasswordResult;
+}
+
 interface SchoolHeadAccountProfileResponse {
   data: SchoolHeadAccountProfileUpsertResult;
 }
@@ -147,7 +152,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
+    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset" | "temporary_password",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (
     schoolId: string,
@@ -157,6 +162,10 @@ interface DataContextType {
     schoolId: string,
     payload: { reason: string; verificationChallengeId: string; verificationCode: string },
   ) => Promise<SchoolHeadPasswordResetLinkResult>;
+  issueSchoolHeadTemporaryPassword: (
+    schoolId: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+  ) => Promise<SchoolHeadTemporaryPasswordResult>;
   upsertSchoolHeadAccountProfile: (
     schoolId: string,
     payload: SchoolHeadAccountPayload,
@@ -753,7 +762,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
     async (
       schoolId: string,
-      targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset",
+      targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset" | "temporary_password",
     ): Promise<SchoolHeadAccountActionVerificationCodeResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
@@ -941,6 +950,80 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const result = response.data?.data;
         if (!result?.account) {
           throw new Error("Password reset link response is empty.");
+        }
+
+        setRecords((current) =>
+          current.map((record) =>
+            record.id === schoolId
+              ? {
+                  ...record,
+                  schoolHeadAccount: result.account,
+                }
+              : record,
+          ),
+        );
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError, syncRecords],
+  );
+
+  const issueSchoolHeadTemporaryPassword = useCallback(
+    async (
+      schoolId: string,
+      payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    ): Promise<SchoolHeadTemporaryPasswordResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const trimmedReason = payload.reason.trim();
+      const verificationChallengeId = payload.verificationChallengeId.trim();
+      const verificationCode = payload.verificationCode.trim();
+
+      if (trimmedReason.length < 5) {
+        throw new Error("Reason must be at least 5 characters.");
+      }
+
+      if (!verificationChallengeId) {
+        throw new Error("Verification challenge is required.");
+      }
+
+      if (!/^\d{6}$/.test(verificationCode)) {
+        throw new Error("Verification code must be a 6-digit number.");
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadTemporaryPasswordResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account/temporary-password`,
+          {
+            method: "POST",
+            token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
+            body: {
+              reason: trimmedReason,
+              verificationChallengeId,
+              verificationCode,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result?.account || !result?.temporaryPassword) {
+          throw new Error("Temporary password response is empty.");
         }
 
         setRecords((current) =>
@@ -1250,6 +1333,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,
+      issueSchoolHeadTemporaryPassword,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
       bulkImportRecords,
@@ -1278,6 +1362,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       issueSchoolHeadAccountActionVerificationCode,
       issueSchoolHeadSetupLink,
       issueSchoolHeadPasswordResetLink,
+      issueSchoolHeadTemporaryPassword,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
       bulkImportRecords,

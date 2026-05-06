@@ -123,6 +123,34 @@ export function MonitorSchoolHeadAccountsPanel({
           </div>
         )}
 
+        {actions.temporaryPasswordReceipt && (
+          <div className="border-b border-primary-100 bg-primary-50/70 px-4 py-3 text-xs font-semibold text-primary-800">
+            <p>{actions.temporaryPasswordReceipt.message}</p>
+            <div className="mt-2 space-y-1">
+              <p>School: {actions.temporaryPasswordReceipt.schoolName}</p>
+              <p>Email: {actions.temporaryPasswordReceipt.email}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span>Temporary password: {actions.temporaryPasswordReceipt.temporaryPassword}</span>
+                <button
+                  type="button"
+                  onClick={() => void actions.copyTemporaryPasswordReceipt()}
+                  className="inline-flex items-center rounded-sm border border-primary-200 bg-white px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-50"
+                >
+                  Copy password
+                </button>
+                <button
+                  type="button"
+                  onClick={actions.clearTemporaryPasswordReceipt}
+                  className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <p>Copy this password now. It will not be shown again, and the School Head must change it on next login.</p>
+            </div>
+          </div>
+        )}
+
         <div className="border-b border-slate-200 bg-white px-4 py-3">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
@@ -471,6 +499,24 @@ export function MonitorSchoolHeadAccountsPanel({
                                       >
                                         <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
                                         Reactivate
+                                      </button>
+                                    )}
+                                    {normalizedAccountStatus === "active" && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          actions.openPendingAccountAction({
+                                            kind: "temporary_password",
+                                            schoolId: resolvedRecord.id,
+                                            schoolName: resolvedRecord.schoolName,
+                                            actionLabel: "Regenerate Temporary Password",
+                                          })
+                                        }
+                                        disabled={isRowSaving || isSaving}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                      >
+                                        <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
+                                        Regenerate Temp Password
                                       </button>
                                     )}
                                     {normalizedAccountStatus === "active" && (

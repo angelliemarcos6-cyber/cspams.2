@@ -9,6 +9,7 @@ import type {
   SchoolHeadAccountStatusUpdateResult,
   SchoolHeadPasswordResetLinkResult,
   SchoolHeadSetupLinkResult,
+  SchoolHeadTemporaryPasswordResult,
   SchoolRecord,
 } from "@/types";
 
@@ -42,6 +43,12 @@ export type PendingAccountAction =
       payload: SchoolHeadAccountPayload;
     }
   | {
+      kind: "temporary_password";
+      schoolId: string;
+      schoolName: string;
+      actionLabel: string;
+    }
+  | {
       kind: "remove";
       schoolId: string;
       schoolName: string;
@@ -62,13 +69,17 @@ interface UseSchoolHeadAccountActionsOptions {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change",
+    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | "temporary_password",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
     payload: { reason: string; verificationChallengeId: string; verificationCode: string },
   ) => Promise<SchoolHeadPasswordResetLinkResult>;
+  issueSchoolHeadTemporaryPassword: (
+    schoolId: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+  ) => Promise<SchoolHeadTemporaryPasswordResult>;
   upsertSchoolHeadAccountProfile: (
     schoolId: string,
     payload: SchoolHeadAccountPayload,
@@ -83,6 +94,7 @@ export interface SchoolHeadAccountActionsApi {
   editingSchoolHeadAccountSchoolId: string | null;
   schoolHeadAccountDraft: SchoolHeadAccountPayload;
   schoolHeadAccountDraftError: string;
+  temporaryPasswordReceipt: { schoolName: string; email: string; temporaryPassword: string; message: string } | null;
   openAccountRowMenuSchoolId: string | null;
   pendingAccountAction: PendingAccountAction | null;
   pendingAccountReason: string;
@@ -115,6 +127,8 @@ export interface SchoolHeadAccountActionsApi {
     actionLabel: string,
   ) => void;
   handleIssueSchoolHeadSetupLink: (record: SchoolRecord) => Promise<void>;
+  copyTemporaryPasswordReceipt: () => void | Promise<void>;
+  clearTemporaryPasswordReceipt: () => void;
   resetPanelState: () => void;
 }
 
@@ -141,6 +155,7 @@ function requiresReason(action: PendingAccountAction | null): boolean {
     action.kind === "status"
     || action.kind === "remove"
     || action.kind === "reset_password"
+    || action.kind === "temporary_password"
     || action.kind === "email_change"
   );
 }
@@ -153,6 +168,7 @@ function requiresVerification(action: PendingAccountAction | null): boolean {
   return (
     action.kind === "remove"
     || action.kind === "reset_password"
+    || action.kind === "temporary_password"
     || action.kind === "email_change"
     || (action.kind === "status" && isDeactivationStatus(action.update.accountStatus))
   );
@@ -160,7 +176,7 @@ function requiresVerification(action: PendingAccountAction | null): boolean {
 
 function verificationTargetForAction(
   action: PendingAccountAction | null,
-): "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | null {
+): "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | "temporary_password" | null {
   if (!action) {
     return null;
   }
@@ -175,6 +191,10 @@ function verificationTargetForAction(
 
   if (action.kind === "reset_password") {
     return "password_reset";
+  }
+
+  if (action.kind === "temporary_password") {
+    return "temporary_password";
   }
 
   if (action.kind === "email_change") {
@@ -205,6 +225,10 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
 
   if (action.kind === "reset_password") {
     return `Reason and confirmation code required to send a password reset link for ${action.schoolName}.`;
+  }
+
+  if (action.kind === "temporary_password") {
+    return `Reason and confirmation code required to generate a new temporary password for ${action.schoolName}.`;
   }
 
   return `Reason and confirmation code required to change the School Head email for ${action.schoolName}.`;
@@ -241,12 +265,19 @@ export function useSchoolHeadAccountActions({
   issueSchoolHeadAccountActionVerificationCode,
   issueSchoolHeadSetupLink,
   issueSchoolHeadPasswordResetLink,
+  issueSchoolHeadTemporaryPassword,
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
 }: UseSchoolHeadAccountActionsOptions): SchoolHeadAccountActionsApi {
   const [editingSchoolHeadAccountSchoolId, setEditingSchoolHeadAccountSchoolId] = useState<string | null>(null);
   const [schoolHeadAccountDraft, setSchoolHeadAccountDraft] = useState<SchoolHeadAccountPayload>(EMPTY_DRAFT);
   const [schoolHeadAccountDraftError, setSchoolHeadAccountDraftError] = useState("");
+  const [temporaryPasswordReceipt, setTemporaryPasswordReceipt] = useState<{
+    schoolName: string;
+    email: string;
+    temporaryPassword: string;
+    message: string;
+  } | null>(null);
   const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
   const [pendingAccountAction, setPendingAccountAction] = useState<PendingAccountAction | null>(null);
   const [pendingAccountReason, setPendingAccountReason] = useState("");
@@ -275,6 +306,7 @@ export function useSchoolHeadAccountActions({
     setEditingSchoolHeadAccountSchoolId(null);
     setSchoolHeadAccountDraft(EMPTY_DRAFT);
     setSchoolHeadAccountDraftError("");
+    setTemporaryPasswordReceipt(null);
     setOpenAccountRowMenuSchoolId(null);
     closePendingAccountAction();
   }, [closePendingAccountAction]);
@@ -526,6 +558,36 @@ export function useSchoolHeadAccountActions({
         return;
       }
 
+      if (pendingAccountAction.kind === "temporary_password") {
+        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
+        const code = pendingAccountVerificationCode.trim();
+
+        if (!challengeId) {
+          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
+          return;
+        }
+
+        if (!/^\d{6}$/.test(code)) {
+          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
+          return;
+        }
+
+        const receipt = await issueSchoolHeadTemporaryPassword(pendingAccountAction.schoolId, {
+          reason,
+          verificationChallengeId: challengeId,
+          verificationCode: code,
+        });
+        setTemporaryPasswordReceipt({
+          schoolName: pendingAccountAction.schoolName,
+          email: receipt.account.email,
+          temporaryPassword: receipt.temporaryPassword,
+          message: receipt.message || "Temporary password generated.",
+        });
+        pushToast(`Temporary password generated for ${pendingAccountAction.schoolName}.`, "success");
+        closePendingAccountAction();
+        return;
+      }
+
       const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
       const code = pendingAccountVerificationCode.trim();
 
@@ -561,6 +623,7 @@ export function useSchoolHeadAccountActions({
   }, [
     closePendingAccountAction,
     issueSchoolHeadPasswordResetLink,
+    issueSchoolHeadTemporaryPassword,
     pendingAccountAction,
     pendingAccountReason,
     pendingAccountVerificationChallenge,
@@ -638,6 +701,24 @@ export function useSchoolHeadAccountActions({
     [issueSchoolHeadSetupLink, openPendingAccountAction, pushToast],
   );
 
+  const copyTemporaryPasswordReceipt = useCallback(async () => {
+    const password = temporaryPasswordReceipt?.temporaryPassword;
+    if (!password || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(password);
+      pushToast("Temporary password copied.", "info");
+    } catch {
+      pushToast("Copy the temporary password manually.", "warning");
+    }
+  }, [pushToast, temporaryPasswordReceipt?.temporaryPassword]);
+
+  const clearTemporaryPasswordReceipt = useCallback(() => {
+    setTemporaryPasswordReceipt(null);
+  }, []);
+
   const saveProfile = useCallback(
     async (record: SchoolRecord) => {
       const account = record.schoolHeadAccount;
@@ -701,6 +782,7 @@ export function useSchoolHeadAccountActions({
     editingSchoolHeadAccountSchoolId,
     schoolHeadAccountDraft,
     schoolHeadAccountDraftError,
+    temporaryPasswordReceipt,
     openAccountRowMenuSchoolId,
     pendingAccountAction,
     pendingAccountReason,
@@ -729,6 +811,8 @@ export function useSchoolHeadAccountActions({
     confirmPendingAccountAction,
     handleUpdateSchoolHeadAccount,
     handleIssueSchoolHeadSetupLink,
+    copyTemporaryPasswordReceipt,
+    clearTemporaryPasswordReceipt,
     resetPanelState,
   };
 }

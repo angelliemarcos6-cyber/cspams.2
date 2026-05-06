@@ -35,6 +35,7 @@ import type {
   SchoolHeadAccountStatusUpdateResult,
   SchoolHeadPasswordResetLinkResult,
   SchoolHeadSetupLinkResult,
+  SchoolHeadTemporaryPasswordResult,
   SchoolRecord,
   SchoolRecordPayload,
   SchoolStatus,
@@ -79,13 +80,17 @@ interface UseMonitorSchoolsSectionOptions {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change",
+    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | "temporary_password",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
     payload: { reason: string; verificationChallengeId: string; verificationCode: string },
   ) => Promise<SchoolHeadPasswordResetLinkResult>;
+  issueSchoolHeadTemporaryPassword: (
+    schoolId: string,
+    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+  ) => Promise<SchoolHeadTemporaryPasswordResult>;
   upsertSchoolHeadAccountProfile: (
     schoolId: string,
     payload: SchoolHeadAccountPayload,
@@ -156,6 +161,7 @@ export function useMonitorSchoolsSection({
   issueSchoolHeadAccountActionVerificationCode,
   issueSchoolHeadSetupLink,
   issueSchoolHeadPasswordResetLink,
+  issueSchoolHeadTemporaryPassword,
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
   onOpenSchoolRecord,
@@ -233,6 +239,7 @@ export function useMonitorSchoolsSection({
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,
     issueSchoolHeadPasswordResetLink,
+    issueSchoolHeadTemporaryPassword,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
     onOpenSchoolRecord,

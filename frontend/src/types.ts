@@ -111,6 +111,12 @@ export interface SchoolHeadPasswordResetLinkResult {
   message: string;
 }
 
+export interface SchoolHeadTemporaryPasswordResult {
+  account: SchoolHeadAccountSummary;
+  temporaryPassword: string;
+  message: string;
+}
+
 export interface SchoolHeadAccountActionVerificationCodeResult {
   challengeId: string;
   expiresAt: string;

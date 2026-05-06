@@ -178,6 +178,10 @@ class MonitorActionVerificationService
             return 'Issue password reset link';
         }
 
+        if ($normalized === 'temporary_password') {
+            return 'Regenerate temporary password';
+        }
+
         return $targetStatus;
     }
 }

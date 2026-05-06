@@ -408,6 +408,109 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertTrue((bool) $schoolHead->must_reset_password);
     }
 
+    public function test_monitor_can_regenerate_temporary_password_for_active_school_head_account(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+        $schoolCode = (string) $school->school_code;
+        $oldPassword = $this->demoPasswordForLogin('school_head', $schoolCode);
+        $oldPasswordHash = (string) $schoolHead->password;
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $issueCode = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'temporary_password',
+            ],
+        );
+
+        $issueCode->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $challengeId = (string) $issueCode->json('data.challengeId');
+
+        $regenerate = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/temporary-password",
+            [
+                'reason' => 'School Head did not receive the original bootstrap password.',
+                'verificationChallengeId' => $challengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $regenerate->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.mustResetPassword', true);
+
+        /** @var array<string, mixed> $receipt */
+        $receipt = (array) $regenerate->json('data');
+        $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', (string) $receipt['temporaryPassword']);
+
+        $schoolHead->refresh();
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertTrue(Hash::check((string) $receipt['temporaryPassword'], (string) $schoolHead->password));
+        $this->assertNotSame($oldPasswordHash, (string) $schoolHead->password);
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+        $record = collect((array) $records->json('data'))->firstWhere('id', (string) $school->id);
+        $this->assertIsArray($record);
+        $this->assertArrayNotHasKey('temporaryPassword', (array) ($record['schoolHeadAccount'] ?? []));
+
+        $oldLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolHead->email,
+            'password' => $oldPassword,
+        ]);
+
+        $oldLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid School Head email/school code or password.');
+
+        $tempLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolHead->email,
+            'password' => (string) $receipt['temporaryPassword'],
+        ]);
+
+        $tempLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresPasswordReset', true);
+
+        $resetRequired = $this->postJson('/api/auth/reset-required-password', [
+            'role' => 'school_head',
+            'login' => $schoolHead->email,
+            'current_password' => (string) $receipt['temporaryPassword'],
+            'new_password' => 'UpdatedSchool@2026!123',
+            'new_password_confirmation' => 'UpdatedSchool@2026!123',
+        ]);
+
+        $resetRequired->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.mustResetPassword', false);
+
+        $schoolHead->refresh();
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+
+        $newLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolHead->email,
+            'password' => 'UpdatedSchool@2026!123',
+        ]);
+
+        $newLogin->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.email', $schoolHead->email);
+    }
+
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void
     {
         $this->seed();
