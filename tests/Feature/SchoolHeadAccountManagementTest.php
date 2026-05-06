@@ -163,6 +163,23 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertNull($schoolHead->verified_by_user_id);
         $this->assertNull($schoolHead->verified_at);
 
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+        $record = collect((array) $records->json('data'))
+            ->firstWhere('schoolId', (string) $school->school_code);
+        $this->assertIsArray($record);
+        $this->assertSame('setup_link', data_get($record, 'schoolHeadAccount.onboardingFlow'));
+        $this->assertSame('pending_verification', data_get($record, 'schoolHeadAccount.lifecycleState'));
+        $this->assertSame('activate_account', data_get($record, 'schoolHeadAccount.recommendedAction'));
+
         $blockedLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => '103811',
@@ -172,14 +189,6 @@ class SchoolHeadAccountManagementTest extends TestCase
         $blockedLogin->assertStatus(Response::HTTP_FORBIDDEN)
             ->assertJsonPath('requiresMonitorApproval', true)
             ->assertJsonPath('accountStatus', AccountStatus::PENDING_VERIFICATION->value);
-
-        $monitorLogin = $this->postJson('/api/auth/login', [
-            'role' => 'monitor',
-            'login' => 'cspamsmonitor@gmail.com',
-            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
-        ]);
-        $monitorLogin->assertOk();
-        $monitorToken = (string) $monitorLogin->json('token');
 
         $activate = $this->withToken($monitorToken)->postJson(
             "/api/dashboard/records/{$school->id}/school-head-account/activate",
@@ -321,7 +330,13 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $resetLink->assertStatus(Response::HTTP_OK)
             ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
-            ->assertJsonPath('data.account.mustResetPassword', true);
+            ->assertJsonPath('data.account.mustResetPassword', true)
+            ->assertJsonPath('data.account.onboardingFlow', 'standard')
+            ->assertJsonPath('data.account.lifecycleState', 'password_reset_required')
+            ->assertJsonPath('data.account.recommendedAction', 'send_password_reset_link')
+            ->assertJsonPath('data.account.temporaryPasswordIssuedAt', null)
+            ->assertJsonPath('data.account.temporaryPasswordExpiresAt', null)
+            ->assertJsonPath('data.account.temporaryPasswordExpired', false);
 
         /** @var array<string, mixed> $resetPayload */
         $resetPayload = (array) $resetLink->json('data');
@@ -657,7 +672,10 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
 
         $emailChange->assertOk()
-            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value);
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value)
+            ->assertJsonPath('data.account.onboardingFlow', 'setup_link')
+            ->assertJsonPath('data.account.lifecycleState', 'pending_setup')
+            ->assertJsonPath('data.account.recommendedAction', 'send_setup_link');
 
         /** @var array<string, mixed> $emailChangePayload */
         $emailChangePayload = (array) $emailChange->json('data');
