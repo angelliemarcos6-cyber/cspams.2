@@ -877,6 +877,7 @@ export function MonitorDashboard() {
               monitorRadarTotals={monitorRadarTotals}
               paginatedCompactSchoolRowsCount={paginatedCompactSchoolRows.length}
               compactSchoolRowsCount={compactSchoolRows.length}
+              activeSchoolPresetLabel={schoolsSectionApi.activeSchoolPresetLabel}
               schoolActionsMenuRef={schoolsSectionApi.schoolActionsMenuRef}
               bulkImportInputRef={schoolsSectionApi.bulkImportInputRef}
               onBulkImportFileChange={schoolsSectionApi.handleBulkImportFileChange}

@@ -22,6 +22,7 @@ import { useMonitorArchivedSchools } from "@/pages/monitor/useMonitorArchivedSch
 import { useMonitorSchoolBulkImport } from "@/pages/monitor/useMonitorSchoolBulkImport";
 import { useMonitorSchoolHeadAccountsPanelState } from "@/pages/monitor/useMonitorSchoolHeadAccountsPanelState";
 import { useMonitorSchoolRecordForm } from "@/pages/monitor/useMonitorSchoolRecordForm";
+import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardConfig";
 import type {
   SchoolHeadAccountActivationResult,
   SchoolBulkImportResult,
@@ -133,6 +134,7 @@ export interface UseMonitorSchoolsSectionResult {
   closeActionsMenu: () => void;
   openBulkImportPicker: () => void;
   toggleArchivedRecords: () => Promise<void>;
+  activeSchoolPresetLabel: string | null;
 }
 
 export function useMonitorSchoolsSection({
@@ -318,6 +320,11 @@ export function useMonitorSchoolsSection({
     urgencyRowTone,
   };
 
+  const activeSchoolPresetLabel =
+    schoolQuickPreset === "all"
+      ? null
+      : (SCHOOL_QUICK_PRESET_OPTIONS.find((option) => option.id === schoolQuickPreset)?.label ?? schoolQuickPreset);
+
   return {
     bulkImportInputRef: bulkImportApi.bulkImportInputRef,
     schoolActionsMenuRef,
@@ -337,5 +344,6 @@ export function useMonitorSchoolsSection({
     closeActionsMenu,
     openBulkImportPicker,
     toggleArchivedRecords,
+    activeSchoolPresetLabel,
   };
 }

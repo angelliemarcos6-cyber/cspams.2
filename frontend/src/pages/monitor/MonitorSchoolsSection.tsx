@@ -28,6 +28,7 @@ interface MonitorSchoolsSectionProps {
   monitorRadarTotals: MonitorRadarTotals;
   paginatedCompactSchoolRowsCount: number;
   compactSchoolRowsCount: number;
+  activeSchoolPresetLabel: string | null;
   schoolActionsMenuRef: RefObject<HTMLDivElement>;
   bulkImportInputRef: RefObject<HTMLInputElement>;
   onBulkImportFileChange: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
@@ -56,6 +57,7 @@ export function MonitorSchoolsSection({
   monitorRadarTotals,
   paginatedCompactSchoolRowsCount,
   compactSchoolRowsCount,
+  activeSchoolPresetLabel,
   schoolActionsMenuRef,
   bulkImportInputRef,
   onBulkImportFileChange,
@@ -159,6 +161,11 @@ export function MonitorSchoolsSection({
               {totalSchoolsInScope !== compactSchoolRowsCount ? (
                 <p className="mt-0.5 text-[10px] font-medium text-slate-500">
                   In scope: {totalSchoolsInScope}
+                </p>
+              ) : null}
+              {activeSchoolPresetLabel ? (
+                <p className="mt-0.5 text-[10px] font-medium text-slate-500">
+                  Preset: {activeSchoolPresetLabel}
                 </p>
               ) : null}
             </div>
