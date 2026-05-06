@@ -229,6 +229,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
+  const recordsRef = useRef<SchoolRecord[]>([]);
+  const emptyRecordsRecoveryRef = useRef(false);
 
   const clearRealtimeSyncTimer = () => {
     if (typeof window === "undefined") {
@@ -241,6 +243,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       realtimeSyncTimerRef.current = null;
     }
   };
+
+  useEffect(() => {
+    recordsRef.current = records;
+  }, [records]);
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -264,6 +270,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(null);
     setSyncScope(null);
     setSyncStatus("idle");
+    emptyRecordsRecoveryRef.current = false;
   }, [sessionKey]);
 
   const handleApiError = useCallback(
@@ -347,15 +354,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         if (response.status === 304) {
-          setRecordCount((current) =>
-            normalizeRecordCount(response.headers.get("X-Sync-Record-Count"), current),
-          );
+          const nextRecordCount = normalizeRecordCount(response.headers.get("X-Sync-Record-Count"), recordCount);
+          setRecordCount(nextRecordCount);
           if (!silent) {
             setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
           }
           if (scopeFromHeaders) {
             setSyncScope(scopeFromHeaders);
           }
+
+          // Recover from an inconsistent cache state where the sync count is nonzero
+          // but the in-memory records array was cleared before the ETag refresh.
+          if (nextRecordCount > 0 && recordsRef.current.length === 0 && !emptyRecordsRecoveryRef.current) {
+            emptyRecordsRecoveryRef.current = true;
+            etagRef.current = "";
+            syncQueuedRef.current = true;
+            setSyncStatus("updated");
+            return;
+          }
+
+          if (nextRecordCount === 0 || recordsRef.current.length > 0) {
+            emptyRecordsRecoveryRef.current = false;
+          }
+
           setSyncStatus("up_to_date");
           return;
         }
@@ -371,12 +392,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
           syncScopeKeyRef.current = payloadScopeKey;
         }
 
-        setRecords(Array.isArray(payload?.data) ? payload.data : []);
-        setRecordCount(normalizeRecordCount(payload?.meta?.recordCount, payload?.data?.length ?? 0));
+        const nextRecords = Array.isArray(payload?.data) ? payload.data : [];
+        const nextRecordCount = normalizeRecordCount(payload?.meta?.recordCount, nextRecords.length);
+
+        setRecords(nextRecords);
+        setRecordCount(nextRecordCount);
         setTargetsMet(payload?.meta?.targetsMet ?? null);
         setSyncAlerts(Array.isArray(payload?.meta?.alerts) ? payload.meta.alerts : []);
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? payload?.meta?.syncedAt ?? new Date().toISOString());
         setSyncScope(normalizeScope(payload?.meta?.scope) ?? scopeFromHeaders);
+
+        if (nextRecordCount === 0 || nextRecords.length > 0) {
+          emptyRecordsRecoveryRef.current = false;
+        } else if (!emptyRecordsRecoveryRef.current) {
+          emptyRecordsRecoveryRef.current = true;
+          etagRef.current = "";
+          syncQueuedRef.current = true;
+        }
+
         setSyncStatus("updated");
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
