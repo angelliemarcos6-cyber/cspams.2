@@ -96,6 +96,23 @@ class AuthController extends Controller
             return $inactiveResponse;
         }
 
+        if ($this->schoolHeadTemporaryPasswordExpired($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.login.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'temporary_password_expired'],
+            );
+
+            return response()->json(
+                ['message' => $this->expiredTemporaryPasswordMessage()],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
         if ($user->must_reset_password && $this->enforceRequiredPasswordResetOnLogin()) {
             AuthAuditLogger::record(
                 $request,
@@ -266,6 +283,23 @@ class AuthController extends Controller
             return $inactiveResponse;
         }
 
+        if ($this->schoolHeadTemporaryPasswordExpired($user, $role)) {
+            AuthAuditLogger::record(
+                $request,
+                'auth.password_reset.failed',
+                'failure',
+                $user,
+                $role,
+                $login,
+                ['reason' => 'temporary_password_expired'],
+            );
+
+            return response()->json(
+                ['message' => $this->expiredTemporaryPasswordMessage()],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
         if (! $user->must_reset_password) {
             AuthAuditLogger::record(
                 $request,
@@ -304,6 +338,7 @@ class AuthController extends Controller
             'password' => Hash::make($newPassword),
             'must_reset_password' => false,
             'password_changed_at' => now(),
+            'temporary_password_issued_at' => null,
         ])->save();
 
         $revocationSummary = $this->revokeUserSessionsAndTokens($user);
@@ -546,6 +581,7 @@ class AuthController extends Controller
                     'password' => Hash::make($password),
                     'must_reset_password' => false,
                     'password_changed_at' => now(),
+                    'temporary_password_issued_at' => null,
                     'email_verified_at' => $user->email_verified_at ?? now(),
                 ]);
 
@@ -950,6 +986,7 @@ class AuthController extends Controller
                 'password' => Hash::make($newPassword),
                 'must_reset_password' => false,
                 'password_changed_at' => now(),
+                'temporary_password_issued_at' => null,
                 'email_verified_at' => now(),
                 'account_status' => AccountStatus::PENDING_VERIFICATION->value,
                 'verified_by_user_id' => null,
@@ -1963,6 +2000,7 @@ class AuthController extends Controller
                     'password',
                     'must_reset_password',
                     'password_changed_at',
+                    'temporary_password_issued_at',
                     'account_status',
                     'school_id',
                     'last_login_at',
@@ -2025,6 +2063,7 @@ class AuthController extends Controller
                 'password',
                 'must_reset_password',
                 'password_changed_at',
+                'temporary_password_issued_at',
                 'account_status',
                 'school_id',
                 'last_login_at',
@@ -2406,6 +2445,32 @@ class AuthController extends Controller
             AccountStatus::ARCHIVED => 'Your account is archived and can no longer sign in.',
             default => 'This account is not active.',
         };
+    }
+
+    private function schoolHeadTemporaryPasswordExpired(User $user, string $role): bool
+    {
+        if ($role !== UserRoleResolver::SCHOOL_HEAD || ! $user->must_reset_password) {
+            return false;
+        }
+
+        $issuedAt = $user->temporary_password_issued_at;
+        if (! $issuedAt) {
+            return false;
+        }
+
+        return $issuedAt->copy()->addHours($this->schoolHeadTemporaryPasswordValidityHours())->isPast();
+    }
+
+    private function expiredTemporaryPasswordMessage(): string
+    {
+        return 'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.';
+    }
+
+    private function schoolHeadTemporaryPasswordValidityHours(): int
+    {
+        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
+
+        return max(1, $configured);
     }
 
     private function normalizeSchoolCode(string $value): ?string

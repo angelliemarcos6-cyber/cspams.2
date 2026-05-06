@@ -822,6 +822,7 @@ class SchoolRecordController extends Controller
         // transition through the existing required-password-reset path.
         $account->must_reset_password = true;
         $account->password_changed_at = now();
+        $account->temporary_password_issued_at = now();
         $account->account_status = AccountStatus::ACTIVE->value;
         $account->school_id = $school->id;
         $account->email_verified_at = now();

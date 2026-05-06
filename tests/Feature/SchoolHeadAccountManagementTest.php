@@ -67,6 +67,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
         $this->assertTrue((bool) $schoolHead->must_reset_password);
         $this->assertNotNull($schoolHead->password_changed_at);
+        $this->assertNotNull($schoolHead->temporary_password_issued_at);
         $this->assertNotNull($schoolHead->email_verified_at);
         $this->assertNotNull($schoolHead->verified_by_user_id);
         $this->assertNotNull($schoolHead->verified_at);
@@ -100,6 +101,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $schoolHead->refresh();
         $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->temporary_password_issued_at);
 
         $loginWithNewPassword = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -406,6 +408,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead = User::query()->where('email', 'no.token.head@cspams.local')->firstOrFail();
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
         $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertNotNull($schoolHead->temporary_password_issued_at);
     }
 
     public function test_monitor_can_regenerate_temporary_password_for_active_school_head_account(): void
@@ -420,6 +423,10 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolCode = (string) $school->school_code;
         $oldPassword = $this->demoPasswordForLogin('school_head', $schoolCode);
         $oldPasswordHash = (string) $schoolHead->password;
+        $expiredIssuedAt = now()->subDays(10);
+        $schoolHead->forceFill([
+            'temporary_password_issued_at' => $expiredIssuedAt,
+        ])->save();
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
@@ -460,6 +467,8 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertTrue((bool) $schoolHead->must_reset_password);
         $this->assertTrue(Hash::check((string) $receipt['temporaryPassword'], (string) $schoolHead->password));
         $this->assertNotSame($oldPasswordHash, (string) $schoolHead->password);
+        $this->assertNotNull($schoolHead->temporary_password_issued_at);
+        $this->assertTrue($schoolHead->temporary_password_issued_at->greaterThan($expiredIssuedAt));
 
         $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
         $records->assertOk();
@@ -499,6 +508,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $schoolHead->refresh();
         $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->temporary_password_issued_at);
 
         $newLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -509,6 +519,72 @@ class SchoolHeadAccountManagementTest extends TestCase
         $newLogin->assertOk()
             ->assertJsonPath('user.role', 'school_head')
             ->assertJsonPath('user.email', $schoolHead->email);
+    }
+
+    public function test_expired_temporary_password_is_rejected_until_monitor_regenerates_a_new_one(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
+            'schoolId' => '933333',
+            'schoolName' => 'Expired Temp Password School',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'address' => 'District Test, Region Test',
+            'studentCount' => 0,
+            'teacherCount' => 0,
+            'status' => 'active',
+            'schoolHeadAccount' => [
+                'name' => 'Expired Temp Head',
+                'email' => 'expired.temp.head@cspams.local',
+            ],
+        ]);
+
+        /** @var array<string, mixed> $provisioning */
+        $provisioning = (array) $response->json('meta.schoolHeadAccount');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'expired.temp.head@cspams.local')->firstOrFail();
+        $schoolHead->forceFill([
+            'temporary_password_issued_at' => now()->subHours(73),
+        ])->save();
+
+        $expiredLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => 'expired.temp.head@cspams.local',
+            'password' => (string) $provisioning['temporaryPassword'],
+        ]);
+
+        $expiredLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath(
+                'message',
+                'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.',
+            )
+            ->assertJsonMissing(['requiresPasswordReset' => true]);
+
+        $expiredResetAttempt = $this->postJson('/api/auth/reset-required-password', [
+            'role' => 'school_head',
+            'login' => 'expired.temp.head@cspams.local',
+            'current_password' => (string) $provisioning['temporaryPassword'],
+            'new_password' => 'ExpiredBlocked@2026!123',
+            'new_password_confirmation' => 'ExpiredBlocked@2026!123',
+        ]);
+
+        $expiredResetAttempt->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath(
+                'message',
+                'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.',
+            );
     }
 
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void
