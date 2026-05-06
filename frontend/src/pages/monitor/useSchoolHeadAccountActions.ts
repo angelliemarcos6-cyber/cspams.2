@@ -210,7 +210,7 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
   }
 
   if (action.kind === "remove") {
-    return `Reason and confirmation code required to remove the account for ${action.schoolName}.`;
+    return `This archives and disconnects the current School Head account for ${action.schoolName}. The email can then be reused for a replacement account. Reason and confirmation code required.`;
   }
 
   if (action.kind === "activate") {
