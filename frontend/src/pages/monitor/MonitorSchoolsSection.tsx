@@ -129,13 +129,10 @@ export function MonitorSchoolsSection({
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
           <span>
-            {monitorRadarTotals.error
-              ? monitorRadarTotals.error
-              : monitorRadarTotals.syncedAt
-                ? `Synced ${new Date(monitorRadarTotals.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                : "Waiting for sync"}
+            {monitorRadarTotals.syncedAt
+              ? `Synced ${new Date(monitorRadarTotals.syncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+              : "Waiting for sync"}
           </span>
-          <span>Population totals are synchronized from current school-year student and teacher records.</span>
         </div>
       </div>
 
@@ -156,7 +153,7 @@ export function MonitorSchoolsSection({
         <div className="border-b border-slate-100 px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-              Showing {paginatedCompactSchoolRowsCount} of {compactSchoolRowsCount} (Needs Attention First)
+              Showing {paginatedCompactSchoolRowsCount} of {compactSchoolRowsCount}
             </div>
             <div ref={schoolActionsMenuRef} className="relative flex flex-wrap items-center gap-2">
               <input

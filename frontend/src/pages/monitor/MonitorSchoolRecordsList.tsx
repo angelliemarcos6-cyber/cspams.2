@@ -98,7 +98,6 @@ export function MonitorSchoolRecordsList({
       <div className="flex flex-col items-center justify-center gap-2 py-14 text-slate-500">
         <AlertCircle className="h-9 w-9 text-slate-400" />
         <p className="text-sm font-semibold">No records found</p>
-        <p className="text-xs text-slate-400">Current filters may be hiding school records.</p>
         <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
           <button
             type="button"
