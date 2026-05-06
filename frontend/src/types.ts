@@ -63,6 +63,20 @@ export interface SchoolHeadAccountSummary {
   lastLoginAt: string | null;
   accountStatus: AccountStatus | string;
   mustResetPassword: boolean;
+  onboardingFlow?: "temporary_password" | "setup_link" | "standard";
+  lifecycleState?:
+    | "temporary_password_active"
+    | "temporary_password_expired"
+    | "pending_setup"
+    | "pending_verification"
+    | "password_reset_required"
+    | "active_ready"
+    | string;
+  lifecycleStateLabel?: string | null;
+  recommendedAction?: "regenerate_temporary_password" | "send_setup_link" | "activate_account" | "send_password_reset_link" | "none" | string | null;
+  temporaryPasswordIssuedAt?: string | null;
+  temporaryPasswordExpiresAt?: string | null;
+  temporaryPasswordExpired?: boolean;
   verifiedAt?: string | null;
   verifiedByUserId?: string | null;
   verifiedByName?: string | null;

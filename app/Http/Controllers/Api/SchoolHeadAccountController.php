@@ -1303,6 +1303,11 @@ class SchoolHeadAccountController extends Controller
             $setupLinkExpiresAt = $setupToken->expires_at->toISOString();
         }
 
+        $temporaryPasswordIssuedAt = $account->temporary_password_issued_at?->toISOString();
+        $temporaryPasswordExpiresAt = $this->temporaryPasswordExpiresAt($account)?->toISOString();
+        $temporaryPasswordExpired = $this->temporaryPasswordExpired($account);
+        $lifecycleState = $this->lifecycleState($account, $status);
+
         return [
             'id' => (string) $account->id,
             'name' => $account->name,
@@ -1311,6 +1316,13 @@ class SchoolHeadAccountController extends Controller
             'lastLoginAt' => $account->last_login_at?->toISOString(),
             'accountStatus' => $status->value,
             'mustResetPassword' => (bool) $account->must_reset_password,
+            'onboardingFlow' => $this->onboardingFlow($account, $status),
+            'lifecycleState' => $lifecycleState,
+            'lifecycleStateLabel' => $this->lifecycleStateLabel($lifecycleState),
+            'recommendedAction' => $this->recommendedAction($lifecycleState),
+            'temporaryPasswordIssuedAt' => $temporaryPasswordIssuedAt,
+            'temporaryPasswordExpiresAt' => $temporaryPasswordExpiresAt,
+            'temporaryPasswordExpired' => $temporaryPasswordExpired,
             'verifiedAt' => $account->verified_at?->toISOString(),
             'verifiedByUserId' => $account->verified_by_user_id ? (string) $account->verified_by_user_id : null,
             'verifiedByName' => $account->verifiedBy?->name,
@@ -1451,5 +1463,93 @@ class SchoolHeadAccountController extends Controller
         }
 
         return $password;
+    }
+
+    private function onboardingFlow(User $account, AccountStatus $status): string
+    {
+        if (in_array($status, [AccountStatus::PENDING_SETUP, AccountStatus::PENDING_VERIFICATION], true)) {
+            return 'setup_link';
+        }
+
+        if ($status === AccountStatus::ACTIVE && $account->must_reset_password && $account->temporary_password_issued_at !== null) {
+            return 'temporary_password';
+        }
+
+        return 'standard';
+    }
+
+    private function lifecycleState(User $account, AccountStatus $status): string
+    {
+        if ($status === AccountStatus::PENDING_SETUP) {
+            return 'pending_setup';
+        }
+
+        if ($status === AccountStatus::PENDING_VERIFICATION) {
+            return 'pending_verification';
+        }
+
+        if ($status === AccountStatus::ACTIVE && $account->must_reset_password && $account->temporary_password_issued_at !== null) {
+            return $this->temporaryPasswordExpired($account)
+                ? 'temporary_password_expired'
+                : 'temporary_password_active';
+        }
+
+        if ($status === AccountStatus::ACTIVE && $account->must_reset_password) {
+            return 'password_reset_required';
+        }
+
+        if ($status === AccountStatus::ACTIVE && ! $account->must_reset_password) {
+            return 'active_ready';
+        }
+
+        return $status->value;
+    }
+
+    private function lifecycleStateLabel(string $state): string
+    {
+        return match ($state) {
+            'temporary_password_active' => 'Temporary password active',
+            'temporary_password_expired' => 'Temporary password expired',
+            'pending_setup' => 'Pending setup',
+            'pending_verification' => 'Pending verification',
+            'password_reset_required' => 'Password change required',
+            'active_ready' => 'Active',
+            default => str_replace('_', ' ', $state),
+        };
+    }
+
+    private function recommendedAction(string $state): string
+    {
+        return match ($state) {
+            'temporary_password_expired' => 'regenerate_temporary_password',
+            'pending_setup' => 'send_setup_link',
+            'pending_verification' => 'activate_account',
+            'password_reset_required' => 'send_password_reset_link',
+            default => 'none',
+        };
+    }
+
+    private function temporaryPasswordExpiresAt(User $account): ?CarbonImmutable
+    {
+        if (! $account->temporary_password_issued_at) {
+            return null;
+        }
+
+        return CarbonImmutable::instance($account->temporary_password_issued_at)
+            ->addHours($this->temporaryPasswordValidityHours());
+    }
+
+    private function temporaryPasswordExpired(User $account): bool
+    {
+        $expiresAt = $this->temporaryPasswordExpiresAt($account);
+
+        return $expiresAt ? $expiresAt->isPast() : false;
+    }
+
+    private function temporaryPasswordValidityHours(): int
+    {
+        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
+
+        return max(1, $configured);
     }
 }

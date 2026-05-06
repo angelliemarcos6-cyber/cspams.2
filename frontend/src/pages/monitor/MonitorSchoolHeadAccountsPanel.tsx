@@ -71,6 +71,83 @@ function accountStatusTone(status: string | null | undefined): string {
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
+function lifecycleTone(state: string | null | undefined): string {
+  const normalized = (state ?? "").toLowerCase();
+  if (normalized === "temporary_password_active") return "bg-primary-50 text-primary-700 ring-1 ring-primary-200";
+  if (normalized === "temporary_password_expired") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+  if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (normalized === "pending_verification") return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
+  if (normalized === "password_reset_required") return "bg-violet-50 text-violet-700 ring-1 ring-violet-200";
+  if (normalized === "active_ready") return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
+  return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
+}
+
+function recommendedActionLabel(action: string | null | undefined): string | null {
+  const normalized = (action ?? "").toLowerCase();
+  if (normalized === "regenerate_temporary_password") return "Next step: Regenerate Temporary Password";
+  if (normalized === "send_setup_link") return "Next step: Send Setup Link";
+  if (normalized === "activate_account") return "Next step: Activate Account";
+  if (normalized === "send_password_reset_link") return "Next step: Send Password Reset Link";
+  return null;
+}
+
+function temporaryPasswordExpiryLabel(expiresAt: string | null | undefined): string | null {
+  if (!expiresAt) {
+    return null;
+  }
+
+  const expiresAtMs = Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs)) {
+    return null;
+  }
+
+  const diffMs = expiresAtMs - Date.now();
+  if (diffMs <= 0) {
+    return "Expired";
+  }
+
+  const hours = Math.ceil(diffMs / (1000 * 60 * 60));
+  if (hours < 24) {
+    return `Expires in ${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+
+  const days = Math.ceil(hours / 24);
+  return `Expires in ${days} day${days === 1 ? "" : "s"}`;
+}
+
+function lifecycleHelperText(account: SchoolRecord["schoolHeadAccount"]): string | null {
+  if (!account) {
+    return null;
+  }
+
+  const state = String(account.lifecycleState ?? "").toLowerCase();
+  if (state === "temporary_password_active") {
+    return temporaryPasswordExpiryLabel(account.temporaryPasswordExpiresAt) ?? "Password change required on first login";
+  }
+
+  if (state === "temporary_password_expired") {
+    return "Expired - issue a new temporary password";
+  }
+
+  if (state === "pending_setup") {
+    return "Use setup link onboarding";
+  }
+
+  if (state === "pending_verification") {
+    return "Awaiting monitor activation";
+  }
+
+  if (state === "password_reset_required") {
+    return "Password reset link flow is active";
+  }
+
+  if (state === "active_ready") {
+    return "No onboarding action pending";
+  }
+
+  return null;
+}
+
 export function MonitorSchoolHeadAccountsPanel({
   isOpen,
   isSaving,
@@ -102,9 +179,7 @@ export function MonitorSchoolHeadAccountsPanel({
           <div>
             <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
             <p className="mt-0.5 text-xs text-slate-600">
-              Passwords are never shown/stored. After setup, the account moves to{" "}
-              <span className="font-semibold">Pending Verification</span> until a Division Monitor activates it. Use{" "}
-              <span className="font-semibold">Reset Password</span> to send a one-time password reset link.
+              Passwords are never shown in account lists. This panel distinguishes setup-link onboarding, temporary-password bootstrap, monitor activation, and reset-required states so the next safe action stays clear.
             </p>
           </div>
           <button
@@ -281,6 +356,9 @@ export function MonitorSchoolHeadAccountsPanel({
                     : Number.NaN;
                   const setupLinkExpired =
                     Number.isFinite(setupLinkExpiresAtMs) && setupLinkExpiresAtMs < Date.now();
+                  const lifecycleLabel = account?.lifecycleStateLabel ?? accountStatusLabel(account?.accountStatus);
+                  const lifecycleHint = lifecycleHelperText(account);
+                  const nextActionLabel = recommendedActionLabel(account?.recommendedAction);
 
                   return (
                     <tr
@@ -357,6 +435,16 @@ export function MonitorSchoolHeadAccountsPanel({
                             <span className={`text-[11px] font-semibold ${verificationTone}`}>
                               {verificationLabel}
                             </span>
+                            <span
+                              className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-semibold ${lifecycleTone(
+                                account.lifecycleState,
+                              )}`}
+                            >
+                              {lifecycleLabel}
+                            </span>
+                            {lifecycleHint ? (
+                              <span className="text-[11px] font-medium text-slate-600">{lifecycleHint}</span>
+                            ) : null}
                           </div>
                         ) : (
                           <span className="text-slate-400">No account</span>
@@ -379,6 +467,14 @@ export function MonitorSchoolHeadAccountsPanel({
                               Approved {formatDateTime(account.verifiedAt)}
                             </span>
                           ) : null}
+                          {account?.temporaryPasswordExpiresAt && account.lifecycleState === "temporary_password_active" ? (
+                            <span
+                              className="inline-flex max-w-[12rem] truncate whitespace-nowrap rounded-sm border border-primary-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 tabular-nums"
+                              title={`Temporary password expires ${formatDateTime(account.temporaryPasswordExpiresAt)}`}
+                            >
+                              {temporaryPasswordExpiryLabel(account.temporaryPasswordExpiresAt)}
+                            </span>
+                          ) : null}
                           {account?.setupLinkExpiresAt ? (
                             <span
                               className={`inline-flex max-w-[12rem] truncate whitespace-nowrap rounded-sm border px-2 py-1 text-[11px] font-medium tabular-nums ${
@@ -390,9 +486,14 @@ export function MonitorSchoolHeadAccountsPanel({
                             >
                               {setupLinkExpired ? "Expired" : "Expires"} {formatDateTime(account.setupLinkExpiresAt)}
                             </span>
-                          ) : (
+                          ) : null}
+                          {nextActionLabel ? (
+                            <span className="max-w-[12rem] truncate text-[11px] font-semibold text-slate-700" title={nextActionLabel}>
+                              {nextActionLabel}
+                            </span>
+                          ) : !account?.verifiedAt && !account?.temporaryPasswordExpiresAt ? (
                             <span className="text-slate-400">-</span>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-3 py-1.5 align-top text-right">

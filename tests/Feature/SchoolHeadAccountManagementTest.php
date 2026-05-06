@@ -54,7 +54,11 @@ class SchoolHeadAccountManagementTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
             ->assertJsonPath('meta.schoolHeadAccount.mustResetPassword', true)
-            ->assertJsonPath('meta.schoolHeadAccount.email', 'setup.head@cspams.local');
+            ->assertJsonPath('meta.schoolHeadAccount.email', 'setup.head@cspams.local')
+            ->assertJsonPath('meta.schoolHeadAccount.onboardingFlow', 'temporary_password')
+            ->assertJsonPath('meta.schoolHeadAccount.lifecycleState', 'temporary_password_active')
+            ->assertJsonPath('meta.schoolHeadAccount.recommendedAction', 'none')
+            ->assertJsonPath('meta.schoolHeadAccount.temporaryPasswordExpired', false);
 
         /** @var array<string, mixed> $provisioning */
         $provisioning = (array) $response->json('meta.schoolHeadAccount');
@@ -122,6 +126,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $this->assertIsArray($createdRecord);
         $this->assertArrayNotHasKey('temporaryPassword', (array) ($createdRecord['schoolHeadAccount'] ?? []));
+        $this->assertSame('active_ready', data_get($createdRecord, 'schoolHeadAccount.lifecycleState'));
     }
 
     public function test_school_head_setup_completion_requires_monitor_activation_before_login(): void
@@ -457,7 +462,10 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $regenerate->assertOk()
             ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
-            ->assertJsonPath('data.account.mustResetPassword', true);
+            ->assertJsonPath('data.account.mustResetPassword', true)
+            ->assertJsonPath('data.account.onboardingFlow', 'temporary_password')
+            ->assertJsonPath('data.account.lifecycleState', 'temporary_password_active')
+            ->assertJsonPath('data.account.temporaryPasswordExpired', false);
 
         /** @var array<string, mixed> $receipt */
         $receipt = (array) $regenerate->json('data');
@@ -571,6 +579,14 @@ class SchoolHeadAccountManagementTest extends TestCase
                 'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.',
             )
             ->assertJsonMissing(['requiresPasswordReset' => true]);
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+        $record = collect((array) $records->json('data'))->firstWhere('schoolId', '933333');
+        $this->assertIsArray($record);
+        $this->assertSame('temporary_password_expired', data_get($record, 'schoolHeadAccount.lifecycleState'));
+        $this->assertSame('regenerate_temporary_password', data_get($record, 'schoolHeadAccount.recommendedAction'));
+        $this->assertTrue((bool) data_get($record, 'schoolHeadAccount.temporaryPasswordExpired'));
 
         $expiredResetAttempt = $this->postJson('/api/auth/reset-required-password', [
             'role' => 'school_head',

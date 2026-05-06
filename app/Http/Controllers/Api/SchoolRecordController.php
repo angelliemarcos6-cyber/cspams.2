@@ -22,6 +22,7 @@ use App\Support\Domain\AccountStatus;
 use App\Support\Domain\SchoolStatus;
 use App\Support\Domain\StudentStatus;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -110,6 +111,7 @@ class SchoolRecordController extends Controller
                     'email',
                     'email_verified_at',
                     'must_reset_password',
+                    'temporary_password_issued_at',
                     'last_login_at',
                     'account_status',
                     'school_id',
@@ -305,6 +307,7 @@ class SchoolRecordController extends Controller
                     'email',
                     'email_verified_at',
                     'must_reset_password',
+                    'temporary_password_issued_at',
                     'last_login_at',
                     'account_status',
                     'school_id',
@@ -862,6 +865,13 @@ class SchoolRecordController extends Controller
             'email' => $account->email,
             'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
+            'onboardingFlow' => 'temporary_password',
+            'lifecycleState' => 'temporary_password_active',
+            'lifecycleStateLabel' => 'Temporary password active',
+            'recommendedAction' => 'none',
+            'temporaryPasswordIssuedAt' => $account->temporary_password_issued_at?->toISOString(),
+            'temporaryPasswordExpiresAt' => $this->temporaryPasswordExpiresAt($account)?->toISOString(),
+            'temporaryPasswordExpired' => false,
             'temporaryPassword' => $temporaryPassword,
         ];
     }
@@ -877,6 +887,23 @@ class SchoolRecordController extends Controller
         }
 
         return $password;
+    }
+
+    private function temporaryPasswordExpiresAt(User $account): ?CarbonImmutable
+    {
+        if (! $account->temporary_password_issued_at) {
+            return null;
+        }
+
+        return CarbonImmutable::instance($account->temporary_password_issued_at)
+            ->addHours($this->temporaryPasswordValidityHours());
+    }
+
+    private function temporaryPasswordValidityHours(): int
+    {
+        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
+
+        return max(1, $configured);
     }
 
     private function schoolHeadCandidatesQuery(): Builder
