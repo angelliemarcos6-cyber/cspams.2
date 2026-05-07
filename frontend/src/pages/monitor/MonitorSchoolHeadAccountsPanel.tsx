@@ -78,17 +78,6 @@ function accountStatusTone(status: string | null | undefined): string {
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
-function lifecycleTone(state: string | null | undefined): string {
-  const normalized = (state ?? "").toLowerCase();
-  if (normalized === "temporary_password_active") return "bg-primary-50 text-primary-700 ring-1 ring-primary-200";
-  if (normalized === "temporary_password_expired") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (normalized === "pending_verification") return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
-  if (normalized === "password_reset_required") return "bg-violet-50 text-violet-700 ring-1 ring-violet-200";
-  if (normalized === "active_ready") return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
-  return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
-}
-
 function recommendedActionLabel(action: string | null | undefined): string | null {
   const normalized = (action ?? "").toLowerCase();
   if (normalized === "regenerate_temporary_password") return "Next step: Regenerate Temporary Password";
@@ -122,37 +111,17 @@ function temporaryPasswordExpiryLabel(expiresAt: string | null | undefined): str
   return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
-function lifecycleHelperText(account: SchoolRecord["schoolHeadAccount"]): string | null {
-  if (!account) {
-    return null;
-  }
+function shouldShowQuickSetupLink(status: string | null | undefined): boolean {
+  return String(status ?? "").toLowerCase() === "pending_setup";
+}
 
-  const state = String(account.lifecycleState ?? "").toLowerCase();
-  if (state === "temporary_password_active") {
-    return temporaryPasswordExpiryLabel(account.temporaryPasswordExpiresAt) ?? "Password change required on first login";
-  }
+function shouldShowArchiveAction(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").toLowerCase();
+  return normalized === "active" || normalized === "suspended" || normalized === "locked";
+}
 
-  if (state === "temporary_password_expired") {
-    return "Expired - issue a new temporary password";
-  }
-
-  if (state === "pending_setup") {
-    return "Use setup link onboarding";
-  }
-
-  if (state === "pending_verification") {
-    return "Awaiting monitor activation";
-  }
-
-  if (state === "password_reset_required") {
-    return "Password reset link flow is active";
-  }
-
-  if (state === "active_ready") {
-    return "No onboarding action pending";
-  }
-
-  return null;
+function shouldShowResetLinkAction(status: string | null | undefined): boolean {
+  return String(status ?? "").toLowerCase() === "active";
 }
 
 export function MonitorSchoolHeadAccountsPanel({
@@ -367,8 +336,6 @@ export function MonitorSchoolHeadAccountsPanel({
                     : Number.NaN;
                   const setupLinkExpired =
                     Number.isFinite(setupLinkExpiresAtMs) && setupLinkExpiresAtMs < Date.now();
-                  const lifecycleLabel = account?.lifecycleStateLabel ?? accountStatusLabel(account?.accountStatus);
-                  const lifecycleHint = lifecycleHelperText(account);
                   const nextActionLabel = recommendedActionLabel(account?.recommendedAction);
 
                   return (
@@ -446,16 +413,6 @@ export function MonitorSchoolHeadAccountsPanel({
                             <span className={`text-[11px] font-semibold ${verificationTone}`}>
                               {verificationLabel}
                             </span>
-                            <span
-                              className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-semibold ${lifecycleTone(
-                                account.lifecycleState,
-                              )}`}
-                            >
-                              {lifecycleLabel}
-                            </span>
-                            {lifecycleHint ? (
-                              <span className="text-[11px] font-medium text-slate-600">{lifecycleHint}</span>
-                            ) : null}
                           </div>
                         ) : (
                           <span className="text-slate-400">No account</span>
@@ -541,18 +498,16 @@ export function MonitorSchoolHeadAccountsPanel({
                               {account ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                               <span className="sr-only">{account ? "Edit" : "Create"}</span>
                             </button>
-                            {account && (
+                            {account && shouldShowQuickSetupLink(account.accountStatus) && (
                               <button
                                 type="button"
                                 onClick={() => void actions.handleIssueSchoolHeadSetupLink(resolvedRecord)}
                                 disabled={isRowSaving || isSaving}
                                 className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-primary-200 bg-primary-50 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                title={normalizedAccountStatus === "pending_setup" ? "Send Setup Link" : "Send Password Reset Link"}
+                                title="Send Setup Link"
                               >
                                 <RefreshCw className="h-4 w-4" />
-                                <span className="sr-only">
-                                  {normalizedAccountStatus === "pending_setup" ? "Send Setup Link" : "Send Password Reset Link"}
-                                </span>
+                                <span className="sr-only">Send Setup Link</span>
                               </button>
                             )}
                             <div
@@ -577,6 +532,17 @@ export function MonitorSchoolHeadAccountsPanel({
                                 <div className="absolute right-0 top-full z-30 mt-1 w-48 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
                                   {account ? (
                                     <>
+                                    {shouldShowResetLinkAction(account.accountStatus) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void actions.handleIssueSchoolHeadSetupLink(resolvedRecord)}
+                                        disabled={isRowSaving || isSaving}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                      >
+                                        <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
+                                        Send Password Reset Link
+                                      </button>
+                                    )}
                                     {normalizedAccountStatus === "pending_verification" && (
                                       <button
                                         type="button"
@@ -666,21 +632,23 @@ export function MonitorSchoolHeadAccountsPanel({
                                         Lock
                                       </button>
                                     )}
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        actions.handleUpdateSchoolHeadAccount(
-                                          resolvedRecord,
-                                          { accountStatus: "archived" },
-                                          "Archive account",
-                                        )
-                                      }
-                                      disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5 text-slate-600" />
-                                      Archive
-                                    </button>
+                                    {shouldShowArchiveAction(account.accountStatus) && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          actions.handleUpdateSchoolHeadAccount(
+                                            resolvedRecord,
+                                            { accountStatus: "archived" },
+                                            "Archive account",
+                                          )
+                                        }
+                                        disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5 text-slate-600" />
+                                        Archive
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() =>

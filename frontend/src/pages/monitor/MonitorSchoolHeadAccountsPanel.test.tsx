@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -135,5 +135,149 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
 
     expect(onPreviewDeleteSchoolRecord).toHaveBeenCalledTimes(1);
     expect(onPreviewDeleteSchoolRecord).toHaveBeenCalledWith(record);
+  });
+
+  it("keeps pending setup actions narrow while leaving reset-link actions for active accounts in the menu", () => {
+    const pendingRecord: SchoolRecord = {
+      id: "school-2",
+      schoolId: "900002",
+      schoolCode: "900002",
+      schoolName: "Pending Setup School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-08T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-1",
+        name: "Pending User",
+        email: "pending@cspams.local",
+        accountStatus: "pending_setup",
+        mustResetPassword: false,
+        lifecycleState: "pending_setup",
+        lifecycleStateLabel: "Pending setup",
+        recommendedAction: "send_setup_link",
+        emailVerifiedAt: null,
+        verifiedAt: null,
+        verifiedByUserId: null,
+        verifiedByName: null,
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    };
+
+    const activeRecord: SchoolRecord = {
+      ...pendingRecord,
+      id: "school-3",
+      schoolId: "900003",
+      schoolCode: "900003",
+      schoolName: "Active School",
+      schoolHeadAccount: {
+        ...pendingRecord.schoolHeadAccount!,
+        id: "account-2",
+        accountStatus: "active",
+        lifecycleState: "active_ready",
+        lifecycleStateLabel: "Active",
+        recommendedAction: "send_password_reset_link",
+        emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedAt: "2026-05-02T08:00:00.000Z",
+        verifiedByName: "Monitor User",
+      },
+    };
+
+    function Wrapper(): ReactElement {
+      const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
+      const [query, setQuery] = useState("");
+      const [statusFilter, setStatusFilter] = useState<SchoolHeadAccountsStatusFilter>("all");
+      const [onlyFlagged, setOnlyFlagged] = useState(false);
+      const [onlyDeleteFlagged, setOnlyDeleteFlagged] = useState(false);
+      const actions = buildActions();
+      actions.openAccountRowMenuSchoolId = openAccountRowMenuSchoolId;
+      actions.toggleAccountRowMenu = (schoolId: string) => {
+        setOpenAccountRowMenuSchoolId((current) => (current === schoolId ? null : schoolId));
+      };
+
+      return (
+        <MonitorSchoolHeadAccountsPanel
+          isOpen
+          isSaving={false}
+          isMobileViewport={false}
+          rows={[
+            {
+              schoolKey: "school-2",
+              schoolCode: "900002",
+              schoolName: "Pending Setup School",
+              record: pendingRecord,
+            },
+            {
+              schoolKey: "school-3",
+              schoolCode: "900003",
+              schoolName: "Active School",
+              record: activeRecord,
+            },
+          ]}
+          totalCount={2}
+          query={query}
+          statusFilter={statusFilter}
+          onlyFlagged={onlyFlagged}
+          onlyDeleteFlagged={onlyDeleteFlagged}
+          onQueryChange={setQuery}
+          onStatusFilterChange={setStatusFilter}
+          onOnlyFlaggedChange={setOnlyFlagged}
+          onOnlyDeleteFlaggedChange={setOnlyDeleteFlagged}
+          onClearFilters={() => {
+            setQuery("");
+            setStatusFilter("all");
+            setOnlyFlagged(false);
+            setOnlyDeleteFlagged(false);
+          }}
+          onClose={vi.fn()}
+          onOpenSchoolRecord={vi.fn()}
+          pendingDeleteSchoolRecord={null}
+          pendingDeleteSchoolRecordPreview={null}
+          pendingDeleteSchoolRecordError=""
+          isDeleteSchoolRecordLoading={false}
+          onPreviewDeleteSchoolRecord={vi.fn()}
+          onClosePendingDeleteSchoolRecord={vi.fn()}
+          onConfirmDeleteSchoolRecord={vi.fn()}
+          formatDateTime={(value) => value ?? "-"}
+          actions={actions}
+        />
+      );
+    }
+
+    render(<Wrapper />);
+
+    const rows = screen.getAllByRole("row");
+    const pendingRow = rows.find((row) => row.textContent?.includes("Pending Setup School"));
+    const activeRow = rows.find((row) => row.textContent?.includes("Active School"));
+
+    expect(pendingRow).not.toBeUndefined();
+    expect(activeRow).not.toBeUndefined();
+
+    fireEvent.click(within(pendingRow!).getByRole("button", { name: "More actions" }));
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send Password Reset Link" })).toBeNull();
+    fireEvent.click(within(pendingRow!).getByRole("button", { name: "More actions" }));
+
+    fireEvent.click(within(activeRow!).getByRole("button", { name: "More actions" }));
+    expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
   });
 });
