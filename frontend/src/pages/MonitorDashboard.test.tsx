@@ -361,5 +361,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     const schoolStatusPills = await screen.findAllByRole("button", { name: "School Active" });
     expect(schoolStatusPills.length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        "Rows reflect school status and submission progress. Manage School Head accounts in Accounts.",
+      ).length,
+    ).toBeGreaterThan(0);
   });
 });

@@ -168,6 +168,14 @@ export function MonitorSchoolsSection({
                   Preset: {activeSchoolPresetLabel}
                 </p>
               ) : null}
+              {schoolRecordsListProps.hasDashboardFilters && compactSchoolRowsCount < totalSchoolsInScope ? (
+                <p className="mt-0.5 text-[10px] font-medium text-slate-500">
+                  Visible rows are limited by current filters.
+                </p>
+              ) : null}
+              <p className="mt-0.5 text-[10px] font-medium text-slate-500">
+                Rows reflect school status and submission progress. Manage School Head accounts in Accounts.
+              </p>
             </div>
             <div ref={schoolActionsMenuRef} className="relative flex flex-wrap items-center gap-2">
               <input

@@ -101,6 +101,8 @@ export const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: s
   { id: "validated", label: "Validated" },
 ];
 
+// Keep these ids stable because URL params and localStorage already persist them.
+// The user-facing labels intentionally use newer submission-centric wording.
 export const SCHOOL_QUICK_PRESET_OPTIONS: Array<{
   id: SchoolQuickPreset;
   label: string;
