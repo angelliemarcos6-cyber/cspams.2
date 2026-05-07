@@ -32,6 +32,7 @@ import type {
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountProvisioningReceipt,
   SchoolHeadAccountRemovalResult,
+  SchoolRecordDeletePreview,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
   SchoolHeadPasswordResetLinkResult,
@@ -67,6 +68,8 @@ interface UseMonitorSchoolsSectionOptions {
   setActiveTopNavigator: Dispatch<SetStateAction<"overview" | "schools" | "reviews">>;
   addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
+  deleteRecord: (id: string) => Promise<void>;
+  previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
   listArchivedRecords: () => Promise<SchoolRecord[]>;
   restoreRecord: (id: string) => Promise<void>;
   bulkImportRecords: (
@@ -159,6 +162,8 @@ export function useMonitorSchoolsSection({
   setActiveTopNavigator,
   addRecord,
   updateRecord,
+  deleteRecord,
+  previewDeleteRecord,
   listArchivedRecords,
   restoreRecord,
   bulkImportRecords,
@@ -248,6 +253,8 @@ export function useMonitorSchoolsSection({
     issueSchoolHeadTemporaryPassword,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
+    deleteRecord,
+    previewDeleteRecord,
     onOpenSchoolRecord,
     formatDateTime,
   });

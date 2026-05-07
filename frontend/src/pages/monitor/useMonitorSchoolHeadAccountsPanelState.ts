@@ -12,6 +12,7 @@ import type {
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountRemovalResult,
+  SchoolRecordDeletePreview,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
   SchoolHeadPasswordResetLinkResult,
@@ -57,6 +58,8 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
     schoolId: string,
     payload?: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
+  deleteRecord: (id: string) => Promise<void>;
+  previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
   onOpenSchoolRecord: (record: SchoolRecord) => void;
   formatDateTime: (value: string) => string;
 }
@@ -81,6 +84,8 @@ export function useMonitorSchoolHeadAccountsPanelState({
   issueSchoolHeadTemporaryPassword,
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
+  deleteRecord,
+  previewDeleteRecord,
   onOpenSchoolRecord,
   formatDateTime,
 }: UseMonitorSchoolHeadAccountsPanelStateOptions): UseMonitorSchoolHeadAccountsPanelStateResult {
@@ -90,6 +95,10 @@ export function useMonitorSchoolHeadAccountsPanelState({
     useState<SchoolHeadAccountsStatusFilter>("all");
   const [schoolHeadAccountsOnlyFlagged, setSchoolHeadAccountsOnlyFlagged] = useState(false);
   const [schoolHeadAccountsOnlyDeleteFlagged, setSchoolHeadAccountsOnlyDeleteFlagged] = useState(false);
+  const [pendingDeleteSchoolRecord, setPendingDeleteSchoolRecord] = useState<SchoolRecord | null>(null);
+  const [pendingDeleteSchoolRecordPreview, setPendingDeleteSchoolRecordPreview] = useState<SchoolRecordDeletePreview | null>(null);
+  const [pendingDeleteSchoolRecordError, setPendingDeleteSchoolRecordError] = useState("");
+  const [isDeleteSchoolRecordLoading, setIsDeleteSchoolRecordLoading] = useState(false);
 
   const schoolHeadAccountActions = useSchoolHeadAccountActions({
     isPanelOpen: showSchoolHeadAccountsPanel,
@@ -108,6 +117,10 @@ export function useMonitorSchoolHeadAccountsPanelState({
   const closeSchoolHeadAccountsPanel = useCallback(() => {
     setShowSchoolHeadAccountsPanel(false);
     schoolHeadAccountActions.resetPanelState();
+    setPendingDeleteSchoolRecord(null);
+    setPendingDeleteSchoolRecordPreview(null);
+    setPendingDeleteSchoolRecordError("");
+    setIsDeleteSchoolRecordLoading(false);
   }, [schoolHeadAccountActions]);
 
   const toggleSchoolHeadAccountsPanel = useCallback(() => {
@@ -115,10 +128,64 @@ export function useMonitorSchoolHeadAccountsPanelState({
       const next = !current;
       if (!next) {
         schoolHeadAccountActions.resetPanelState();
+        setPendingDeleteSchoolRecord(null);
+        setPendingDeleteSchoolRecordPreview(null);
+        setPendingDeleteSchoolRecordError("");
+        setIsDeleteSchoolRecordLoading(false);
       }
       return next;
     });
   }, [schoolHeadAccountActions]);
+
+  const closePendingDeleteSchoolRecord = useCallback(() => {
+    setPendingDeleteSchoolRecord(null);
+    setPendingDeleteSchoolRecordPreview(null);
+    setPendingDeleteSchoolRecordError("");
+    setIsDeleteSchoolRecordLoading(false);
+  }, []);
+
+  const openPendingDeleteSchoolRecord = useCallback(
+    async (record: SchoolRecord) => {
+      schoolHeadAccountActions.toggleAccountRowMenu(record.id);
+      setPendingDeleteSchoolRecord(record);
+      setPendingDeleteSchoolRecordPreview(null);
+      setPendingDeleteSchoolRecordError("");
+      setIsDeleteSchoolRecordLoading(true);
+
+      try {
+        const preview = await previewDeleteRecord(record.id);
+        setPendingDeleteSchoolRecordPreview(preview);
+      } catch (err) {
+        setPendingDeleteSchoolRecordError(
+          err instanceof Error ? err.message : "Unable to load school delete preview.",
+        );
+      } finally {
+        setIsDeleteSchoolRecordLoading(false);
+      }
+    },
+    [previewDeleteRecord, schoolHeadAccountActions],
+  );
+
+  const confirmDeleteSchoolRecord = useCallback(async () => {
+    if (!pendingDeleteSchoolRecord) {
+      return;
+    }
+
+    setPendingDeleteSchoolRecordError("");
+    setIsDeleteSchoolRecordLoading(true);
+
+    try {
+      await deleteRecord(pendingDeleteSchoolRecord.id);
+      pushToast(`${pendingDeleteSchoolRecord.schoolName} moved to Archived Schools.`, "success");
+      closePendingDeleteSchoolRecord();
+    } catch (err) {
+      setPendingDeleteSchoolRecordError(
+        err instanceof Error ? err.message : "Unable to delete school record.",
+      );
+    } finally {
+      setIsDeleteSchoolRecordLoading(false);
+    }
+  }, [closePendingDeleteSchoolRecord, deleteRecord, pendingDeleteSchoolRecord, pushToast]);
 
   const filteredSchoolHeadAccountRows = useMemo(() => {
     const query = schoolHeadAccountsQuery.trim().toLowerCase();
@@ -227,6 +294,13 @@ export function useMonitorSchoolHeadAccountsPanelState({
           },
           onClose: closeSchoolHeadAccountsPanel,
           onOpenSchoolRecord,
+          pendingDeleteSchoolRecord,
+          pendingDeleteSchoolRecordPreview,
+          pendingDeleteSchoolRecordError,
+          isDeleteSchoolRecordLoading,
+          onPreviewDeleteSchoolRecord: openPendingDeleteSchoolRecord,
+          onClosePendingDeleteSchoolRecord: closePendingDeleteSchoolRecord,
+          onConfirmDeleteSchoolRecord: confirmDeleteSchoolRecord,
           formatDateTime: (value: string | null) => (value ? formatDateTime(value) : "-"),
           actions: schoolHeadAccountActions,
         }
