@@ -764,7 +764,11 @@ export function MonitorSchoolHeadAccountsPanel({
 
             <div className="mt-3">
               <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                {actions.pendingAccountAction.kind === "activate" ? "Activation Note" : "Reason"}
+                {actions.pendingAccountAction.kind === "activate"
+                  ? "Activation Note"
+                  : actions.pendingAccountAction.kind === "remove"
+                    ? "Optional Note"
+                    : "Reason"}
               </label>
               <textarea
                 ref={actions.pendingAccountReasonRef}
@@ -774,7 +778,9 @@ export function MonitorSchoolHeadAccountsPanel({
                 placeholder={
                   actions.pendingAccountAction.kind === "activate"
                     ? "Optional note for approval"
-                    : "Type a short reason (min 5 characters)"
+                    : actions.pendingAccountAction.kind === "remove"
+                      ? "Optional note for deletion"
+                      : "Type a short reason (min 5 characters)"
                 }
                 className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               />

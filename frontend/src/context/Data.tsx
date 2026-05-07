@@ -172,7 +172,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason: string },
+    payload?: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
@@ -1154,17 +1154,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const removeSchoolHeadAccount = useCallback(
     async (
       schoolId: string,
-      payload: { reason: string },
+      payload?: { reason?: string | null },
     ): Promise<SchoolHeadAccountRemovalResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      const reason = payload.reason?.trim() ?? "";
-
-      if (reason.length < 5) {
-        throw new Error("Reason must be at least 5 characters.");
-      }
+      const reason = payload?.reason?.trim() || undefined;
 
       setIsSaving(true);
       setError("");

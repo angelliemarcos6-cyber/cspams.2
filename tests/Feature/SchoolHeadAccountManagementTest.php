@@ -982,9 +982,6 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [
-                'reason' => 'Replacing archived School Head account.',
-            ],
         );
 
         $remove->assertOk()
@@ -1031,9 +1028,6 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [
-                'reason' => 'Removing an unverified setup-link account before replacement.',
-            ],
         );
 
         $remove->assertOk()
@@ -1083,9 +1077,6 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [
-                'reason' => 'Removing an unverified monitor-approval-pending account.',
-            ],
         );
 
         $remove->assertOk()

@@ -17,7 +17,7 @@ class RemoveSchoolHeadAccountRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'reason' => ['required', 'string', 'min:5', 'max:500'],
+            'reason' => ['nullable', 'string', 'max:500'],
         ];
     }
 }

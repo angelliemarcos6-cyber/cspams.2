@@ -100,7 +100,7 @@ interface UseMonitorSchoolsSectionOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason: string },
+    payload?: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
   onOpenSchoolRecord: (record: SchoolRecord) => void;
   onOpenSchool: (summary: MonitorSchoolRequirementSummary) => void;

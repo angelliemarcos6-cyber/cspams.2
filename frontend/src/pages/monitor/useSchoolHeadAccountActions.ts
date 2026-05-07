@@ -86,7 +86,7 @@ interface UseSchoolHeadAccountActionsOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason: string },
+    payload?: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
 }
 
@@ -155,7 +155,6 @@ function requiresReason(action: PendingAccountAction | null): boolean {
 
   return (
     action.kind === "status"
-    || action.kind === "remove"
     || action.kind === "reset_password"
     || action.kind === "temporary_password"
     || action.kind === "email_change"
@@ -207,7 +206,7 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
   }
 
   if (action.kind === "remove") {
-    return `This permanently deletes the current School Head account for ${action.schoolName}. The email can then be reused for a replacement account. The confirm button unlocks after a 3-second countdown.`;
+    return `This permanently deletes the current School Head account for ${action.schoolName}. The email can then be reused for a replacement account. The confirm button unlocks after a 3-second countdown. An optional note can still be entered below.`;
   }
 
   if (action.kind === "activate") {
@@ -539,7 +538,7 @@ export function useSchoolHeadAccountActions({
         }
 
         const result = await removeSchoolHeadAccount(pendingAccountAction.schoolId, {
-          reason,
+          reason: reason || undefined,
         });
         pushToast(result.message || `School Head account removed for ${pendingAccountAction.schoolName}.`, "success");
         closePendingAccountAction();
