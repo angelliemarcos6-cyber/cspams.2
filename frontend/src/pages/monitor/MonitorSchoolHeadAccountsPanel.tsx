@@ -192,9 +192,6 @@ export function MonitorSchoolHeadAccountsPanel({
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
-            <p className="mt-0.5 text-xs text-slate-600">
-              Passwords are never shown in account lists. This panel distinguishes setup-link onboarding, temporary-password bootstrap, monitor activation, and reset-required states so the next safe action stays clear.
-            </p>
           </div>
           <button
             type="button"
@@ -309,12 +306,12 @@ export function MonitorSchoolHeadAccountsPanel({
           <table className="min-w-full table-fixed">
             <thead>
               <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                <th className="w-20 px-3 py-1.5 text-left">Code</th>
+                <th className="w-24 px-3 py-1.5 text-left">Code</th>
                 <th className="px-3 py-1.5 text-left">School</th>
-                <th className="w-[22rem] px-3 py-1.5 text-left">Contact</th>
-                <th className="w-36 px-3 py-1.5 text-left">Status</th>
-                <th className="w-44 px-3 py-1.5 text-left">Activity</th>
-                <th className="w-28 px-3 py-1.5 text-right">Actions</th>
+                <th className="w-[18rem] px-3 py-1.5 text-left">Contact</th>
+                <th className="w-44 px-3 py-1.5 text-left">Status</th>
+                <th className="w-48 px-3 py-1.5 text-left">Activity</th>
+                <th className="w-32 px-3 py-1.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
