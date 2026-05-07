@@ -766,7 +766,17 @@ export function useSchoolHeadAccountActions({
           name,
           email: nextEmail,
         });
-        pushToast(result.message || "School Head account saved.", "success");
+        if (!account && result.temporaryPassword) {
+          setTemporaryPasswordReceipt({
+            schoolName: record.schoolName,
+            email: result.account.email,
+            temporaryPassword: result.temporaryPassword,
+            message: result.message || "Temporary password generated.",
+          });
+          pushToast(`Temporary password generated for ${record.schoolName}.`, "success");
+        } else {
+          pushToast(result.message || "School Head account saved.", "success");
+        }
         setEditingSchoolHeadAccountSchoolId(null);
       } catch (err) {
         setSchoolHeadAccountDraftError(

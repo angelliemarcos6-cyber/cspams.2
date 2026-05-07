@@ -140,6 +140,7 @@ export interface SchoolHeadAccountActionVerificationCodeResult {
 
 export interface SchoolHeadAccountProfileUpsertResult {
   account: SchoolHeadAccountSummary;
+  temporaryPassword?: string | null;
   message?: string | null;
   expiresAt?: string | null;
   delivery?: "sent" | "failed" | string | null;

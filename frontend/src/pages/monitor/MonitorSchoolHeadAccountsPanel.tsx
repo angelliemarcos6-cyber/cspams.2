@@ -111,6 +111,42 @@ function temporaryPasswordExpiryLabel(expiresAt: string | null | undefined): str
   return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
+function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
+  label: string;
+  tone: string;
+  title?: string;
+} {
+  if (!account) {
+    return {
+      label: "-",
+      tone: "text-slate-400",
+    };
+  }
+
+  if (account.lifecycleState === "temporary_password_active") {
+    return {
+      label: "Available",
+      tone: "border-primary-200 bg-primary-50 text-primary-700",
+      title: account.temporaryPasswordExpiresAt
+        ? `Temporary password expires ${account.temporaryPasswordExpiresAt}`
+        : "Temporary password is available until first password change.",
+    };
+  }
+
+  if (account.lifecycleState === "temporary_password_expired") {
+    return {
+      label: "Expired",
+      tone: "border-rose-200 bg-rose-50 text-rose-700",
+      title: "Temporary password has expired.",
+    };
+  }
+
+  return {
+    label: "-",
+    tone: "text-slate-400",
+  };
+}
+
 function shouldShowQuickSetupLink(status: string | null | undefined): boolean {
   return String(status ?? "").toLowerCase() === "pending_setup";
 }
@@ -279,14 +315,15 @@ export function MonitorSchoolHeadAccountsPanel({
                 <th className="w-[14rem] border-r border-slate-100 px-3 py-1.5 text-left">School</th>
                 <th className="w-[15rem] border-r border-slate-100 px-3 py-1.5 text-left">Contact</th>
                 <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Status</th>
-                <th className="w-44 border-r border-slate-100 px-3 py-1.5 text-left">Activity</th>
+                <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Activity</th>
+                <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Temp Pass</th>
                 <th className="w-32 px-3 py-1.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-sm text-slate-500" colSpan={6}>
+                  <td className="px-3 py-6 text-center text-sm text-slate-500" colSpan={7}>
                     No School Head accounts match the current filters.
                   </td>
                 </tr>
@@ -306,7 +343,7 @@ export function MonitorSchoolHeadAccountsPanel({
                             {row.schoolName}
                           </span>
                         </td>
-                        <td className="px-3 py-1.5 align-top text-xs text-slate-500" colSpan={4}>
+                        <td className="px-3 py-1.5 align-top text-xs text-slate-500" colSpan={5}>
                           Record missing from sync.
                         </td>
                       </tr>
@@ -337,6 +374,7 @@ export function MonitorSchoolHeadAccountsPanel({
                   const setupLinkExpired =
                     Number.isFinite(setupLinkExpiresAtMs) && setupLinkExpiresAtMs < Date.now();
                   const nextActionLabel = recommendedActionLabel(account?.recommendedAction);
+                  const tempPassword = temporaryPasswordState(account);
 
                   return (
                     <tr
@@ -463,6 +501,22 @@ export function MonitorSchoolHeadAccountsPanel({
                             <span className="text-slate-400">-</span>
                           ) : null}
                         </div>
+                      </td>
+                      <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-700">
+                        {account ? (
+                          tempPassword.label === "-" ? (
+                            <span className={tempPassword.tone}>-</span>
+                          ) : (
+                            <span
+                              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tempPassword.tone}`}
+                              title={tempPassword.title}
+                            >
+                              {tempPassword.label}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="px-3 py-1.5 align-top text-right">
                         {isEditing ? (

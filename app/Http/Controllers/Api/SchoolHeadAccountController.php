@@ -303,13 +303,6 @@ class SchoolHeadAccountController extends Controller
         ]);
         }
 
-        if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
-            return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
-                Response::HTTP_SERVICE_UNAVAILABLE,
-            );
-        }
-
         $duplicateQuery = User::query()->where('school_id', $school->id);
         if ($this->usersHaveAccountTypeColumn()) {
             $duplicateQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
@@ -328,16 +321,18 @@ class SchoolHeadAccountController extends Controller
         }
 
         $account = new User();
+        $temporaryPassword = $this->generateTemporaryPassword();
         $account->name = $name;
         $account->email = $email;
-        $account->password = Hash::make(Str::password(40));
+        $account->password = Hash::make($temporaryPassword);
         $account->must_reset_password = true;
-        $account->password_changed_at = null;
-        $account->temporary_password_issued_at = null;
-        $account->account_status = AccountStatus::PENDING_SETUP->value;
-        $account->verified_by_user_id = null;
-        $account->verified_at = null;
-        $account->verification_notes = null;
+        $account->password_changed_at = now();
+        $account->temporary_password_issued_at = now();
+        $account->account_status = AccountStatus::ACTIVE->value;
+        $account->email_verified_at = now();
+        $account->verified_by_user_id = $monitor->id;
+        $account->verified_at = now();
+        $account->verification_notes = 'Provisioned by Division Monitor with a one-time temporary password.';
         $account->school_id = $school->id;
         if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
@@ -356,35 +351,6 @@ class SchoolHeadAccountController extends Controller
         }
         $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
 
-        $issuedSetup = $this->schoolHeadAccountSetupService->issue(
-            $account,
-            $monitor,
-            $request->ip(),
-            $request->userAgent(),
-        );
-
-        $deliveryStatus = 'sent';
-        $deliveryMessage = 'Setup link sent to the School Head email.';
-        if (MailDelivery::isSimulated()) {
-            $deliveryStatus = MailDelivery::simulatedStatus();
-            $deliveryMessage = MailDelivery::simulatedMessage('Setup link was generated, but will not reach real inboxes.');
-        }
-        try {
-            $account->notify(
-                new SchoolHeadAccountSetupNotification(
-                    $school,
-                    $issuedSetup['setupUrl'],
-                    CarbonImmutable::parse($issuedSetup['expiresAt']),
-                ),
-            );
-        } catch (\Throwable $exception) {
-            report($exception);
-            $deliveryStatus = 'failed';
-            $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
-        }
-
-        $this->loadLatestAccountSetupToken($account);
-
         AuditLog::query()->create([
             'user_id' => $monitor->id,
             'action' => 'account.created',
@@ -400,9 +366,8 @@ class SchoolHeadAccountController extends Controller
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
                 'account_status' => $account->accountStatus()->value,
-                'setup_link_expires_at' => $issuedSetup['expiresAt'],
-                'delivery_status' => $deliveryStatus,
-                'delivery_message' => $deliveryMessage,
+                'onboarding_flow' => 'temporary_password',
+                'temporary_password_issued_at' => $account->temporary_password_issued_at?->toISOString(),
             ],
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
@@ -415,16 +380,13 @@ class SchoolHeadAccountController extends Controller
             'schoolId' => (string) $school->id,
             'schoolCode' => (string) $school->school_code,
             'accountStatus' => $account->accountStatus()->value,
-            'setupLinkExpiresAt' => $issuedSetup['expiresAt'],
         ]));
 
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'expiresAt' => $issuedSetup['expiresAt'],
-                'delivery' => $deliveryStatus,
-                'deliveryMessage' => $deliveryMessage,
-                'message' => 'School Head account created.',
+                'temporaryPassword' => $temporaryPassword,
+                'message' => 'School Head account created. Share the temporary password now because it will not be shown again.',
             ],
         ], Response::HTTP_CREATED);
     }

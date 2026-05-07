@@ -999,9 +999,29 @@ class SchoolHeadAccountManagementTest extends TestCase
             ],
         );
 
+        /** @var array<string, mixed> $recreatedPayload */
+        $recreatedPayload = (array) $recreate->json('data');
         $recreate->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.account.email', 'schoolhead1@cspams.local')
-            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value);
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.onboardingFlow', 'temporary_password')
+            ->assertJsonPath('data.account.lifecycleState', 'temporary_password_active');
+
+        $this->assertIsString($recreatedPayload['temporaryPassword'] ?? null);
+        $this->assertNotSame('', (string) ($recreatedPayload['temporaryPassword'] ?? ''));
+
+        /** @var User $recreatedSchoolHead */
+        $recreatedSchoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $this->assertSame(AccountStatus::ACTIVE->value, $recreatedSchoolHead->accountStatus()->value);
+        $this->assertTrue((bool) $recreatedSchoolHead->must_reset_password);
+        $this->assertNotNull($recreatedSchoolHead->temporary_password_issued_at);
+        $this->assertTrue(Hash::check((string) $recreatedPayload['temporaryPassword'], (string) $recreatedSchoolHead->password));
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+        $record = collect((array) $records->json('data'))->firstWhere('schoolId', (string) $school->school_code);
+        $this->assertIsArray($record);
+        $this->assertArrayNotHasKey('temporaryPassword', (array) data_get($record, 'schoolHeadAccount', []));
     }
 
     public function test_monitor_can_remove_pending_setup_school_head_account(): void
