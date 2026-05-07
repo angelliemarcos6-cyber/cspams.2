@@ -355,4 +355,11 @@ describe("MonitorDashboard School Head delivery flows", () => {
     const openSchoolsButtons = screen.getAllByRole("button", { name: "Open Schools" });
     expect(openSchoolsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
   });
+
+  it("labels the Schools card status pill as school status to avoid account-state ambiguity", async () => {
+    render(<MonitorDashboard />);
+
+    const schoolStatusPills = await screen.findAllByRole("button", { name: "School Active" });
+    expect(schoolStatusPills.length).toBeGreaterThan(0);
+  });
 });

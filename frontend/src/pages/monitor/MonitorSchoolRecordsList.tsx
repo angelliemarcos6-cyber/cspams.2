@@ -148,6 +148,7 @@ export function MonitorSchoolRecordsList({
           const rowTone = isUrgentRequirement(summary) ? urgencyRowTone(summary) : "bg-white";
           const updatedLabel = summary.lastActivityAt ?? record?.lastUpdated ?? null;
           const statusPillPressed = statusFilter === rowStatus;
+          const schoolStatusLabel = `School ${statusLabel(rowStatus)}`;
           const queuePill = (() => {
             if (!summary.hasComplianceRecord && !summary.hasAnySubmitted) {
               return {
@@ -217,14 +218,18 @@ export function MonitorSchoolRecordsList({
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
-                      title={statusPillPressed ? "Click to clear status filter" : "Click to filter by this school status"}
+                      title={
+                        statusPillPressed
+                          ? "Click to clear school status filter"
+                          : "Click to filter by this school status"
+                      }
                       aria-pressed={statusPillPressed}
                       onClick={() => onToggleStatusFilter(rowStatus)}
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-95 ${
                         statusPillPressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
                       } ${statusTone(rowStatus)}`}
                     >
-                      {statusLabel(rowStatus)}
+                      {schoolStatusLabel}
                     </button>
                     {queuePill.label !== "OK" &&
                       (queuePill.onClick ? (
