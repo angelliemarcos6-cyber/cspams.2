@@ -306,11 +306,11 @@ export function MonitorSchoolHeadAccountsPanel({
           <table className="min-w-full table-fixed">
             <thead>
               <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                <th className="w-24 px-3 py-1.5 text-left">Code</th>
-                <th className="px-3 py-1.5 text-left">School</th>
-                <th className="w-[18rem] px-3 py-1.5 text-left">Contact</th>
-                <th className="w-44 px-3 py-1.5 text-left">Status</th>
-                <th className="w-48 px-3 py-1.5 text-left">Activity</th>
+                <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Code</th>
+                <th className="w-[14rem] border-r border-slate-100 px-3 py-1.5 text-left">School</th>
+                <th className="w-[15rem] border-r border-slate-100 px-3 py-1.5 text-left">Contact</th>
+                <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Status</th>
+                <th className="w-44 border-r border-slate-100 px-3 py-1.5 text-left">Activity</th>
                 <th className="w-32 px-3 py-1.5 text-right">Actions</th>
               </tr>
             </thead>
@@ -327,13 +327,13 @@ export function MonitorSchoolHeadAccountsPanel({
                   if (!resolvedRecord) {
                     return (
                       <tr key={`account-missing-${row.schoolKey}`}>
-                        <td className="px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
+                        <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
                           <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200">
                             {row.schoolCode}
                           </span>
                         </td>
-                        <td className="px-3 py-1.5 align-top text-xs text-slate-900">
-                          <span className="block w-full truncate font-semibold text-slate-900" title={row.schoolName}>
+                        <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-900">
+                          <span className="block w-full whitespace-normal break-words text-left font-semibold leading-5 text-slate-900" title={row.schoolName}>
                             {row.schoolName}
                           </span>
                         </td>
@@ -376,7 +376,7 @@ export function MonitorSchoolHeadAccountsPanel({
                       key={`account-${resolvedRecord.id}`}
                       className={`transition ${isEditing ? "bg-primary-50/30" : "hover:bg-slate-50"}`}
                     >
-                      <td className="px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
+                      <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs font-semibold text-slate-700">
                         <button
                           type="button"
                           onClick={() => onOpenSchoolRecord(resolvedRecord)}
@@ -386,17 +386,17 @@ export function MonitorSchoolHeadAccountsPanel({
                           {row.schoolCode}
                         </button>
                       </td>
-                      <td className="px-3 py-1.5 align-top text-xs text-slate-900">
+                      <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-900">
                         <button
                           type="button"
                           onClick={() => onOpenSchoolRecord(resolvedRecord)}
-                          className="block w-full truncate text-left font-semibold text-slate-900 transition hover:text-primary-700 hover:underline"
+                          className="block w-full whitespace-normal break-words text-left font-semibold leading-5 text-slate-900 transition hover:text-primary-700 hover:underline"
                           title={`Open ${row.schoolName}`}
                         >
                           {row.schoolName}
                         </button>
                       </td>
-                      <td className="px-3 py-1.5 align-top text-xs text-slate-700">
+                      <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-700">
                         {isEditing ? (
                           <div className="grid gap-1">
                             <input
@@ -416,12 +416,12 @@ export function MonitorSchoolHeadAccountsPanel({
                           </div>
                         ) : account ? (
                           <div className="flex flex-col gap-0.5">
-                            <span className="block max-w-[20rem] truncate font-semibold text-slate-900" title={account.name}>
+                            <span className="block whitespace-normal break-words font-semibold leading-5 text-slate-900" title={account.name}>
                               {account.name}
                             </span>
                             <a
                               href={`mailto:${account.email}`}
-                              className="block max-w-[20rem] truncate text-[11px] font-medium text-slate-600 hover:text-primary-700 hover:underline"
+                              className="block whitespace-normal break-all text-[11px] font-medium leading-5 text-slate-600 hover:text-primary-700 hover:underline"
                               title={account.email}
                             >
                               {account.email}
@@ -431,7 +431,7 @@ export function MonitorSchoolHeadAccountsPanel({
                           <span className="text-slate-400">No account</span>
                         )}
                       </td>
-                      <td className="px-3 py-1.5 align-top text-xs text-slate-700">
+                      <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-700">
                         {account ? (
                           <div className="flex flex-col gap-0.5">
                             <span
@@ -461,7 +461,7 @@ export function MonitorSchoolHeadAccountsPanel({
                           <span className="text-slate-400">No account</span>
                         )}
                       </td>
-                      <td className="px-3 py-1.5 align-top text-xs text-slate-700">
+                      <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-700">
                         <div className="flex flex-col gap-0.5">
                           <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
                             {account?.lastLoginAt ? formatDateTime(account.lastLoginAt) : account ? "Never" : "-"}
