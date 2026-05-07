@@ -172,7 +172,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    payload: { reason: string },
   ) => Promise<SchoolHeadAccountRemovalResult>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
@@ -1154,22 +1154,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const removeSchoolHeadAccount = useCallback(
     async (
       schoolId: string,
-      payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+      payload: { reason: string },
     ): Promise<SchoolHeadAccountRemovalResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
       const reason = payload.reason?.trim() ?? "";
-      const verificationChallengeId = payload.verificationChallengeId?.trim() ?? "";
-      const verificationCode = payload.verificationCode?.trim() ?? "";
 
       if (reason.length < 5) {
         throw new Error("Reason must be at least 5 characters.");
-      }
-
-      if (!verificationChallengeId || !verificationCode) {
-        throw new Error("Verification challenge and code are required.");
       }
 
       setIsSaving(true);
@@ -1184,8 +1178,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
             timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason,
-              verificationChallengeId,
-              verificationCode,
             },
           },
         );

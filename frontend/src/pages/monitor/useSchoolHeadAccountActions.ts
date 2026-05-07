@@ -86,7 +86,7 @@ interface UseSchoolHeadAccountActionsOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    payload: { reason: string },
   ) => Promise<SchoolHeadAccountRemovalResult>;
 }
 
@@ -106,6 +106,8 @@ export interface SchoolHeadAccountActionsApi {
   pendingActionRequiresVerification: boolean;
   isPendingAccountVerificationSending: boolean;
   isConfirmPendingAccountActionDisabled: boolean;
+  confirmPendingAccountActionLabel: string;
+  pendingRemoveCountdownSeconds: number;
   accountActionKey: string | null;
   accountRowMenuRef: MutableRefObject<HTMLDivElement | null>;
   pendingAccountReasonRef: MutableRefObject<HTMLTextAreaElement | null>;
@@ -166,8 +168,7 @@ function requiresVerification(action: PendingAccountAction | null): boolean {
   }
 
   return (
-    action.kind === "remove"
-    || action.kind === "reset_password"
+    action.kind === "reset_password"
     || action.kind === "temporary_password"
     || action.kind === "email_change"
     || (action.kind === "status" && isDeactivationStatus(action.update.accountStatus))
@@ -179,10 +180,6 @@ function verificationTargetForAction(
 ): "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | "temporary_password" | null {
   if (!action) {
     return null;
-  }
-
-  if (action.kind === "remove") {
-    return "deleted";
   }
 
   if (action.kind === "status" && isDeactivationStatus(action.update.accountStatus)) {
@@ -210,7 +207,7 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
   }
 
   if (action.kind === "remove") {
-    return `This archives and disconnects the current School Head account for ${action.schoolName}. The email can then be reused for a replacement account. Reason and confirmation code required.`;
+    return `This permanently deletes the current School Head account for ${action.schoolName}. The email can then be reused for a replacement account. The confirm button unlocks after a 3-second countdown.`;
   }
 
   if (action.kind === "activate") {
@@ -288,6 +285,7 @@ export function useSchoolHeadAccountActions({
   const [pendingAccountVerificationError, setPendingAccountVerificationError] = useState("");
   const [isPendingAccountVerificationSending, setIsPendingAccountVerificationSending] = useState(false);
   const [accountActionKey, setAccountActionKey] = useState<string | null>(null);
+  const [pendingRemoveCountdownSeconds, setPendingRemoveCountdownSeconds] = useState(0);
 
   const accountRowMenuRef = useRef<HTMLDivElement | null>(null);
   const pendingAccountReasonRef = useRef<HTMLTextAreaElement | null>(null);
@@ -300,6 +298,7 @@ export function useSchoolHeadAccountActions({
     setPendingAccountVerificationChallenge(null);
     setPendingAccountVerificationCode("");
     setPendingAccountVerificationError("");
+    setPendingRemoveCountdownSeconds(0);
   }, []);
 
   const resetPanelState = useCallback(() => {
@@ -371,6 +370,29 @@ export function useSchoolHeadAccountActions({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [closePendingAccountAction, pendingAccountAction]);
+
+  useEffect(() => {
+    if (pendingAccountAction?.kind !== "remove" || typeof window === "undefined") {
+      setPendingRemoveCountdownSeconds(0);
+      return;
+    }
+
+    setPendingRemoveCountdownSeconds(3);
+    const intervalId = window.setInterval(() => {
+      setPendingRemoveCountdownSeconds((current) => {
+        if (current <= 1) {
+          window.clearInterval(intervalId);
+          return 0;
+        }
+
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [pendingAccountAction]);
 
   const openPendingAccountAction = useCallback(
     (action: PendingAccountAction) => {
@@ -511,23 +533,13 @@ export function useSchoolHeadAccountActions({
       }
 
       if (pendingAccountAction.kind === "remove") {
-        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
-        const code = pendingAccountVerificationCode.trim();
-
-        if (!challengeId) {
-          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
-          return;
-        }
-
-        if (!/^\d{6}$/.test(code)) {
-          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
+        if (pendingRemoveCountdownSeconds > 0) {
+          setPendingAccountReasonError(`Wait ${pendingRemoveCountdownSeconds} second${pendingRemoveCountdownSeconds === 1 ? "" : "s"} before confirming deletion.`);
           return;
         }
 
         const result = await removeSchoolHeadAccount(pendingAccountAction.schoolId, {
           reason,
-          verificationChallengeId: challengeId,
-          verificationCode: code,
         });
         pushToast(result.message || `School Head account removed for ${pendingAccountAction.schoolName}.`, "success");
         closePendingAccountAction();
@@ -628,6 +640,7 @@ export function useSchoolHeadAccountActions({
     pendingAccountReason,
     pendingAccountVerificationChallenge,
     pendingAccountVerificationCode,
+    pendingRemoveCountdownSeconds,
     pushToast,
     removeSchoolHeadAccount,
     activateSchoolHeadAccount,
@@ -772,11 +785,16 @@ export function useSchoolHeadAccountActions({
     isSaving
     || isPendingAccountVerificationSending
     || (requiresReason(pendingAccountAction) && pendingAccountReason.trim().length < 5)
+    || (pendingAccountAction?.kind === "remove" && pendingRemoveCountdownSeconds > 0)
     || (
       pendingActionRequiresVerification
       && (!pendingAccountVerificationChallenge || !/^\d{6}$/.test(pendingAccountVerificationCode.trim()))
     )
   );
+  const confirmPendingAccountActionLabel =
+    pendingAccountAction?.kind === "remove" && pendingRemoveCountdownSeconds > 0
+      ? `Confirm in ${pendingRemoveCountdownSeconds}s`
+      : "Confirm";
 
   return {
     editingSchoolHeadAccountSchoolId,
@@ -794,6 +812,8 @@ export function useSchoolHeadAccountActions({
     pendingActionRequiresVerification,
     isPendingAccountVerificationSending,
     isConfirmPendingAccountActionDisabled,
+    confirmPendingAccountActionLabel,
+    pendingRemoveCountdownSeconds,
     accountActionKey,
     accountRowMenuRef,
     pendingAccountReasonRef,

@@ -980,35 +980,19 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
-        $issueCode = $this->withToken($monitorToken)->postJson(
-            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
-            [
-                'targetStatus' => 'deleted',
-            ],
-        );
-
-        $issueCode->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
-        $challengeId = (string) $issueCode->json('data.challengeId');
-        $this->assertNotSame('', $challengeId);
-
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
             [
                 'reason' => 'Replacing archived School Head account.',
-                'verificationChallengeId' => $challengeId,
-                'verificationCode' => '123456',
             ],
         );
 
         $remove->assertOk()
             ->assertJsonPath('data.deletedCount', 1);
 
-        $schoolHead->refresh();
-        $this->assertSame(AccountStatus::ARCHIVED->value, $schoolHead->accountStatus()->value);
-        $this->assertNull($schoolHead->school_id);
-        $this->assertNotSame('schoolhead1@cspams.local', $schoolHead->email);
-        $this->assertTrue(str_starts_with($schoolHead->email, 'archived+'));
-        $this->assertTrue(str_ends_with($schoolHead->email, '@example.invalid'));
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
 
         $recreate = $this->withToken($monitorToken)->putJson(
             "/api/dashboard/records/{$school->id}/school-head-account/profile",
@@ -1045,34 +1029,19 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
         $this->assertNull($schoolHead->verified_at);
 
-        $issueCode = $this->withToken($monitorToken)->postJson(
-            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
-            [
-                'targetStatus' => 'deleted',
-            ],
-        );
-
-        $issueCode->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
-        $challengeId = (string) $issueCode->json('data.challengeId');
-        $this->assertNotSame('', $challengeId);
-
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
             [
                 'reason' => 'Removing an unverified setup-link account before replacement.',
-                'verificationChallengeId' => $challengeId,
-                'verificationCode' => '123456',
             ],
         );
 
         $remove->assertOk()
             ->assertJsonPath('data.deletedCount', 1);
 
-        $schoolHead->refresh();
-        $this->assertSame(AccountStatus::ARCHIVED->value, $schoolHead->accountStatus()->value);
-        $this->assertNull($schoolHead->school_id);
-        $this->assertNull($schoolHead->verified_at);
-        $this->assertNull($schoolHead->verified_by_user_id);
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
     }
 
     public function test_monitor_can_remove_pending_verification_school_head_account(): void
@@ -1112,34 +1081,19 @@ class SchoolHeadAccountManagementTest extends TestCase
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
 
-        $issueCode = $this->withToken($monitorToken)->postJson(
-            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
-            [
-                'targetStatus' => 'deleted',
-            ],
-        );
-
-        $issueCode->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
-        $challengeId = (string) $issueCode->json('data.challengeId');
-        $this->assertNotSame('', $challengeId);
-
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
             [
                 'reason' => 'Removing an unverified monitor-approval-pending account.',
-                'verificationChallengeId' => $challengeId,
-                'verificationCode' => '123456',
             ],
         );
 
         $remove->assertOk()
             ->assertJsonPath('data.deletedCount', 1);
 
-        $schoolHead->refresh();
-        $this->assertSame(AccountStatus::ARCHIVED->value, $schoolHead->accountStatus()->value);
-        $this->assertNull($schoolHead->school_id);
-        $this->assertNull($schoolHead->verified_at);
-        $this->assertNull($schoolHead->verified_by_user_id);
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
     }
 
     public function test_account_type_column_rejects_null_values(): void

@@ -55,7 +55,7 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    payload: { reason: string },
   ) => Promise<SchoolHeadAccountRemovalResult>;
   onOpenSchoolRecord: (record: SchoolRecord) => void;
   formatDateTime: (value: string) => string;

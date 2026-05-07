@@ -735,23 +735,6 @@ class SchoolHeadAccountController extends Controller
         }
 
         $reason = trim($request->string('reason')->toString());
-        $challengeId = trim($request->string('verificationChallengeId')->toString());
-        $code = trim($request->string('verificationCode')->toString());
-
-        $verified = $this->monitorActionVerificationService->verify(
-            $monitor,
-            $school,
-            'deleted',
-            $challengeId,
-            $code,
-        );
-
-        if (! $verified) {
-            return response()->json(
-                ['message' => 'The confirmation code is invalid or expired. Send a new code and try again.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
 
         $accountEmails = $accounts
             ->map(static fn (User $account): string => (string) $account->email)
@@ -808,22 +791,7 @@ class SchoolHeadAccountController extends Controller
             foreach ($accounts as $account) {
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
-
-                $archivedEmail = 'archived+' . $account->id . '+' . now()->timestamp . '@example.invalid';
-
-                $account->forceFill([
-                    'email' => $archivedEmail,
-                    'email_normalized' => $archivedEmail,
-                    'account_status' => AccountStatus::ARCHIVED->value,
-                    'must_reset_password' => true,
-                    'password_changed_at' => null,
-                    'temporary_password_issued_at' => null,
-                    'email_verified_at' => null,
-                    'verified_by_user_id' => null,
-                    'verified_at' => null,
-                    'verification_notes' => null,
-                    'school_id' => null,
-                ])->save();
+                $account->delete();
 
                 $revocationSummaries[] = [
                     'user_id' => (int) $account->id,
@@ -866,7 +834,7 @@ class SchoolHeadAccountController extends Controller
 
         return response()->json([
             'data' => [
-                'message' => $removedCount === 1 ? 'School Head account removed.' : 'School Head accounts removed.',
+                'message' => $removedCount === 1 ? 'School Head account permanently deleted.' : 'School Head accounts permanently deleted.',
                 'deletedCount' => $removedCount,
             ],
         ]);
