@@ -109,8 +109,8 @@ export function MonitorSchoolRecordsList({
       scopeSchoolsCount > 0
         ? hasDashboardFilters
           ? activePresetLabel
-            ? `No schools match the current ${activePresetLabel} preset.`
-            : "No schools match the current filters or preset."
+            ? `No schools match the current ${activePresetLabel} preset. Use Reset queue filters or Clear all to show schools in scope again.`
+            : "No schools match the current filters or preset. Use Reset queue filters or Clear all to show schools in scope again."
           : "Schools are still in scope, but this view has no visible rows right now."
         : null;
 
