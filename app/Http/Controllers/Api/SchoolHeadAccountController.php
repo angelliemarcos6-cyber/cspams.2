@@ -13,7 +13,11 @@ use App\Http\Requests\Api\RemoveSchoolHeadAccountRequest;
 use App\Http\Requests\Api\UpsertSchoolHeadAccountProfileRequest;
 use App\Http\Requests\Api\UpdateSchoolHeadAccountStatusRequest;
 use App\Models\AuditLog;
+use App\Models\FormSubmissionHistory;
+use App\Models\IndicatorSubmission;
+use App\Models\Section;
 use App\Models\School;
+use App\Models\Student;
 use App\Models\User;
 use App\Notifications\SchoolHeadAccountSetupNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
@@ -697,6 +701,13 @@ class SchoolHeadAccountController extends Controller
         }
 
         $reason = trim($request->string('reason')->toString());
+        $schoolDependencies = [
+            'students' => Student::query()->where('school_id', $school->id)->count(),
+            'sections' => Section::query()->where('school_id', $school->id)->count(),
+            'indicatorSubmissions' => IndicatorSubmission::query()->where('school_id', $school->id)->count(),
+            'histories' => FormSubmissionHistory::query()->where('school_id', $school->id)->count(),
+            'linkedUsers' => User::query()->where('school_id', $school->id)->count(),
+        ];
 
         $accountEmails = $accounts
             ->map(static fn (User $account): string => (string) $account->email)
@@ -749,7 +760,7 @@ class SchoolHeadAccountController extends Controller
                 ->delete();
         }
 
-        DB::transaction(function () use ($accounts, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
+        DB::transaction(function () use ($accounts, $school, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
             foreach ($accounts as $account) {
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
@@ -763,11 +774,13 @@ class SchoolHeadAccountController extends Controller
 
                 $removedCount += 1;
             }
+
+            $school->forceDelete();
         });
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
-            'action' => 'account.removed',
+            'action' => 'account_and_school.removed',
             'auditable_type' => School::class,
             'auditable_id' => $school->id,
             'metadata' => [
@@ -776,9 +789,11 @@ class SchoolHeadAccountController extends Controller
                 'actor_role' => UserRoleResolver::MONITOR,
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
+                'school_name' => (string) $school->name,
                 'removed_user_ids' => $accountIds,
                 'removed_emails' => $accountEmails,
                 'reason' => $reason,
+                'dependencies' => $schoolDependencies,
                 'revocations' => $revocationSummaries,
             ],
             'ip_address' => $request->ip(),
@@ -788,7 +803,7 @@ class SchoolHeadAccountController extends Controller
 
         event(new CspamsUpdateBroadcast([
             'entity' => 'dashboard',
-            'eventType' => 'school_head_account.removed',
+            'eventType' => 'school_head_account_and_school.removed',
             'schoolId' => (string) $school->id,
             'schoolCode' => (string) $school->school_code,
             'removedCount' => $removedCount,
@@ -796,7 +811,7 @@ class SchoolHeadAccountController extends Controller
 
         return response()->json([
             'data' => [
-                'message' => $removedCount === 1 ? 'School Head account permanently deleted.' : 'School Head accounts permanently deleted.',
+                'message' => 'School record, linked School Head account, and school data permanently deleted.',
                 'deletedCount' => $removedCount,
             ],
         ]);

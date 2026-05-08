@@ -1194,37 +1194,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const removeSchoolHeadAccount = useCallback(
     async (
       schoolId: string,
-      _payload?: { reason?: string | null },
+      payload?: { reason?: string | null },
     ): Promise<SchoolHeadAccountRemovalResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
+      const reason = payload?.reason?.trim() || undefined;
+
       setIsSaving(true);
       setError("");
 
       try {
-        await apiRequestRaw<SchoolRecordDeleteResponse>(
-          `/api/dashboard/records/${encodeURIComponent(schoolId)}`,
+        const response = await apiRequestRaw<SchoolHeadAccountRemovalResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account`,
           {
             method: "DELETE",
             token,
             timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
-          },
-        );
-
-        const response = await apiRequestRaw<SchoolRecordPermanentDeleteResponse>(
-          `/api/dashboard/records/${encodeURIComponent(schoolId)}/permanent`,
-          {
-            method: "DELETE",
-            token,
-            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
+            body: {
+              reason,
+            },
           },
         );
 
         const result = response.data?.data;
         if (!result?.message) {
-          throw new Error("Permanent school deletion response is empty.");
+          throw new Error("Remove account and school response is empty.");
         }
 
         setRecords((current) => current.filter((record) => record.id !== schoolId));
@@ -1233,10 +1229,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         etagRef.current = "";
         await syncRecords(true);
 
-        return {
-          message: result.message,
-          deletedCount: Number(result.deletedUsers ?? 0),
-        };
+        return result;
       } catch (err) {
         await handleApiError(err);
         throw err;

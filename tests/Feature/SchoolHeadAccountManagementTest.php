@@ -7,6 +7,7 @@ use App\Models\Section;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\AccountSetupToken;
+use App\Models\AuditLog;
 use App\Models\FormSubmissionHistory;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\SchoolHeadAccountSetupService;
@@ -965,7 +966,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertNotSame('', (string) $loginNew->json('token'));
     }
 
-    public function test_removed_school_head_account_releases_email_for_recreation(): void
+    public function test_remove_account_and_school_permanently_deletes_school_and_preserves_reason(): void
     {
         $this->seed();
         Notification::fake();
@@ -986,6 +987,9 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'School was entered in error and must be removed completely.',
+            ],
         );
 
         $remove->assertOk()
@@ -994,38 +998,21 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertDatabaseMissing('users', [
             'id' => $schoolHead->id,
         ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
 
-        $recreate = $this->withToken($monitorToken)->putJson(
-            "/api/dashboard/records/{$school->id}/school-head-account/profile",
-            [
-                'name' => 'Recreated School Head',
-                'email' => 'schoolhead1@cspams.local',
-            ],
+        $audit = AuditLog::query()
+            ->where('action', 'account_and_school.removed')
+            ->where('auditable_id', $school->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($audit);
+        $this->assertSame(
+            'School was entered in error and must be removed completely.',
+            data_get($audit?->metadata, 'reason'),
         );
-
-        /** @var array<string, mixed> $recreatedPayload */
-        $recreatedPayload = (array) $recreate->json('data');
-        $recreate->assertStatus(Response::HTTP_CREATED)
-            ->assertJsonPath('data.account.email', 'schoolhead1@cspams.local')
-            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
-            ->assertJsonPath('data.account.onboardingFlow', 'temporary_password')
-            ->assertJsonPath('data.account.lifecycleState', 'temporary_password_active');
-
-        $this->assertIsString($recreatedPayload['temporaryPassword'] ?? null);
-        $this->assertNotSame('', (string) ($recreatedPayload['temporaryPassword'] ?? ''));
-
-        /** @var User $recreatedSchoolHead */
-        $recreatedSchoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
-        $this->assertSame(AccountStatus::ACTIVE->value, $recreatedSchoolHead->accountStatus()->value);
-        $this->assertTrue((bool) $recreatedSchoolHead->must_reset_password);
-        $this->assertNotNull($recreatedSchoolHead->temporary_password_issued_at);
-        $this->assertTrue(Hash::check((string) $recreatedPayload['temporaryPassword'], (string) $recreatedSchoolHead->password));
-
-        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
-        $records->assertOk();
-        $record = collect((array) $records->json('data'))->firstWhere('schoolId', (string) $school->school_code);
-        $this->assertIsArray($record);
-        $this->assertArrayNotHasKey('temporaryPassword', (array) data_get($record, 'schoolHeadAccount', []));
     }
 
     public function test_monitor_can_remove_pending_setup_school_head_account(): void
@@ -1059,6 +1046,9 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $this->assertDatabaseMissing('users', [
             'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
         ]);
     }
 
@@ -1108,6 +1098,9 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $this->assertDatabaseMissing('users', [
             'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
         ]);
     }
 
