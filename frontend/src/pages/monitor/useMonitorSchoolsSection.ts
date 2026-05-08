@@ -72,6 +72,7 @@ interface UseMonitorSchoolsSectionOptions {
   previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
   listArchivedRecords: () => Promise<SchoolRecord[]>;
   restoreRecord: (id: string) => Promise<void>;
+  permanentlyDeleteArchivedRecord: (id: string) => Promise<void>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
     options?: { updateExisting?: boolean; restoreArchived?: boolean },
@@ -166,6 +167,7 @@ export function useMonitorSchoolsSection({
   previewDeleteRecord,
   listArchivedRecords,
   restoreRecord,
+  permanentlyDeleteArchivedRecord,
   bulkImportRecords,
   updateSchoolHeadAccountStatus,
   activateSchoolHeadAccount,
@@ -218,6 +220,7 @@ export function useMonitorSchoolsSection({
     isSaving,
     listArchivedRecords,
     restoreRecord,
+    permanentlyDeleteArchivedRecord,
     pushToast,
     formatDateTime,
   });

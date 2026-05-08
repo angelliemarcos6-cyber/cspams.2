@@ -211,6 +211,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       previewDeleteRecord: vi.fn(),
       listArchivedRecords: vi.fn(),
       restoreRecord: vi.fn(),
+      permanentlyDeleteArchivedRecord: vi.fn(),
       sendReminder: vi.fn(),
       updateSchoolHeadAccountStatus: vi.fn(),
       activateSchoolHeadAccount: vi.fn(),

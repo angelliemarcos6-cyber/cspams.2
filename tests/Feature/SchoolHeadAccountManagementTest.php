@@ -3,12 +3,16 @@
 namespace Tests\Feature;
 
 use App\Models\School;
+use App\Models\Section;
+use App\Models\Student;
 use App\Models\User;
 use App\Models\AccountSetupToken;
+use App\Models\FormSubmissionHistory;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
@@ -1169,6 +1173,108 @@ class SchoolHeadAccountManagementTest extends TestCase
         $me = $this->withToken($schoolHeadToken)->getJson('/api/auth/me');
         $me->assertStatus(Response::HTTP_UNAUTHORIZED)
             ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_monitor_can_permanently_delete_archived_school_and_linked_school_head_data(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->with('school')
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+        $academicYearId = (int) DB::table('academic_years')->value('id');
+
+        $section = Section::query()->create([
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYearId,
+            'name' => 'Section Hard Delete',
+            'grade_level' => 'Grade 6',
+            'capacity' => 30,
+            'status' => 'active',
+        ]);
+
+        $student = Student::query()->create([
+            'school_id' => $school->id,
+            'section_id' => $section->id,
+            'academic_year_id' => $academicYearId,
+            'lrn' => 'HD-' . (string) $school->id . '-001',
+            'first_name' => 'Hard',
+            'last_name' => 'Delete',
+            'status' => 'enrolled',
+            'risk_level' => 'none',
+        ]);
+
+        $history = FormSubmissionHistory::query()->create([
+            'form_type' => 'indicator_submission',
+            'submission_id' => 1,
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYearId,
+            'action' => 'submitted',
+            'to_status' => 'submitted',
+            'actor_id' => $schoolHead->id,
+            'notes' => 'Hard delete coverage.',
+            'metadata' => ['source' => 'test'],
+        ]);
+
+        $expectedStudentCount = Student::query()->where('school_id', $school->id)->count();
+        $expectedSectionCount = Section::query()->where('school_id', $school->id)->count();
+        $expectedHistoryCount = FormSubmissionHistory::query()->where('school_id', $school->id)->count();
+        $expectedLinkedUserCount = User::query()->where('school_id', $school->id)->count();
+
+        $archive = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}");
+        $archive->assertOk();
+
+        $permanentDelete = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}/permanent");
+        $permanentDelete->assertOk()
+            ->assertJsonPath('data.schoolName', $school->name)
+            ->assertJsonPath('data.deletedUsers', 1)
+            ->assertJsonPath('data.dependencies.students', $expectedStudentCount)
+            ->assertJsonPath('data.dependencies.sections', $expectedSectionCount)
+            ->assertJsonPath('data.dependencies.histories', $expectedHistoryCount)
+            ->assertJsonPath('data.dependencies.linkedUsers', $expectedLinkedUserCount);
+
+        $this->assertNull(School::withTrashed()->find($school->id));
+        $this->assertDatabaseMissing('users', ['id' => $schoolHead->id]);
+        $this->assertDatabaseMissing('sections', ['id' => $section->id]);
+        $this->assertDatabaseMissing('students', ['id' => $student->id]);
+        $this->assertDatabaseMissing('form_submission_histories', ['id' => $history->id]);
+    }
+
+    public function test_monitor_must_archive_school_before_permanent_delete(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $response = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}/permanent");
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Archive the school record before permanently deleting it.');
     }
 
     public function test_account_type_column_rejects_null_values(): void

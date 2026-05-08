@@ -82,6 +82,16 @@ interface SchoolRecordRestoreResponse {
   meta?: SyncMeta;
 }
 
+interface SchoolRecordPermanentDeleteResponse {
+  data: {
+    id: string;
+    schoolId?: string;
+    schoolName?: string;
+    deletedUsers?: number;
+    message?: string;
+  };
+}
+
 interface SchoolReminderResponse {
   data: SchoolReminderReceipt;
 }
@@ -141,6 +151,7 @@ interface DataContextType {
   previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
   listArchivedRecords: () => Promise<SchoolRecord[]>;
   restoreRecord: (id: string) => Promise<void>;
+  permanentlyDeleteArchivedRecord: (id: string) => Promise<void>;
   sendReminder: (id: string, notes?: string | null) => Promise<SchoolReminderReceipt>;
   updateSchoolHeadAccountStatus: (
     schoolId: string,
@@ -1011,6 +1022,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError, syncRecords],
   );
 
+  const permanentlyDeleteArchivedRecord = useCallback(
+    async (id: string) => {
+      if (!token) {
+        const authError = new Error("You are signed out. Please sign in again.");
+        setError(authError.message);
+        setSyncStatus("error");
+        throw authError;
+      }
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        await apiRequestRaw<SchoolRecordPermanentDeleteResponse>(`/api/dashboard/records/${id}/permanent`, {
+          method: "DELETE",
+          token,
+        });
+
+        setRecords((current) => current.filter((item) => item.id !== id));
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError],
+  );
+
   const issueSchoolHeadTemporaryPassword = useCallback(
     async (
       schoolId: string,
@@ -1348,6 +1388,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       previewDeleteRecord,
       listArchivedRecords,
       restoreRecord,
+      permanentlyDeleteArchivedRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
       activateSchoolHeadAccount,
@@ -1377,6 +1418,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       previewDeleteRecord,
       listArchivedRecords,
       restoreRecord,
+      permanentlyDeleteArchivedRecord,
       sendReminder,
       updateSchoolHeadAccountStatus,
       activateSchoolHeadAccount,

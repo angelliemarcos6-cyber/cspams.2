@@ -57,6 +57,7 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboa
     Route::post('/records/bulk-import', [SchoolRecordController::class, 'bulkImport']);
     Route::get('/records/archived', [SchoolRecordController::class, 'archived']);
     Route::get('/records/{school}/delete-preview', [SchoolRecordController::class, 'deletePreview']);
+    Route::delete('/records/{school}/permanent', [SchoolRecordController::class, 'permanentlyDestroy']);
     Route::post('/records/{school}/send-reminder', [SchoolRecordController::class, 'sendReminder']);
     Route::put('/records/{school}/school-head-account/profile', [SchoolHeadAccountController::class, 'upsertProfile'])
         ->middleware('throttle:auth-account-management');

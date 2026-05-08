@@ -8,6 +8,7 @@ interface UseMonitorArchivedSchoolsOptions {
   isSaving: boolean;
   listArchivedRecords: () => Promise<SchoolRecord[]>;
   restoreRecord: (id: string) => Promise<void>;
+  permanentlyDeleteArchivedRecord: (id: string) => Promise<void>;
   pushToast: (message: string, tone: ToastTone) => void;
   formatDateTime: (value: string) => string;
 }
@@ -25,6 +26,7 @@ export function useMonitorArchivedSchools({
   isSaving,
   listArchivedRecords,
   restoreRecord,
+  permanentlyDeleteArchivedRecord,
   pushToast,
   formatDateTime,
 }: UseMonitorArchivedSchoolsOptions): UseMonitorArchivedSchoolsResult {
@@ -72,6 +74,20 @@ export function useMonitorArchivedSchools({
     [loadArchivedRecords, pushToast, restoreRecord],
   );
 
+  const handlePermanentlyDeleteArchivedRecord = useCallback(
+    async (record: SchoolRecord) => {
+      setDeleteError("");
+      try {
+        await permanentlyDeleteArchivedRecord(record.id);
+        await loadArchivedRecords();
+        pushToast(`Permanently deleted ${record.schoolName}.`, "success");
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : "Unable to permanently delete school record.");
+      }
+    },
+    [loadArchivedRecords, permanentlyDeleteArchivedRecord, pushToast],
+  );
+
   return {
     deleteError,
     showArchivedRecords,
@@ -85,6 +101,7 @@ export function useMonitorArchivedSchools({
       isSaving,
       onRefresh: loadArchivedRecords,
       onRestore: handleRestoreArchivedRecord,
+      onPermanentDelete: handlePermanentlyDeleteArchivedRecord,
       formatDateTime,
     },
   };

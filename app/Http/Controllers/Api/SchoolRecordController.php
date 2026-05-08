@@ -43,6 +43,8 @@ class SchoolRecordController extends Controller
 
     private static ?bool $sessionsTableExistsCache = null;
 
+    private static ?bool $accountSetupTokensTableExistsCache = null;
+
     public function __construct(
         private readonly FilterService $filterService,
     ) {
@@ -381,6 +383,132 @@ class SchoolRecordController extends Controller
         $record->restore();
 
         return $this->buildMutationResponse($record, $user);
+    }
+
+    public function permanentlyDestroy(Request $request, string $school): JsonResponse
+    {
+        $monitor = $this->requireMonitor($request);
+
+        /** @var School|null $record */
+        $record = School::withTrashed()->find($school);
+        if (! $record) {
+            return response()->json(
+                ['message' => 'Archived school record not found.'],
+                Response::HTTP_NOT_FOUND,
+            );
+        }
+
+        if (! $record->trashed()) {
+            return response()->json(
+                ['message' => 'Archive the school record before permanently deleting it.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $dependencies = $this->buildDeletePreview($record);
+        $linkedUsers = User::query()
+            ->where('school_id', $record->id)
+            ->with('roles')
+            ->get();
+
+        $linkedUserIds = $linkedUsers
+            ->map(static fn (User $user): int => (int) $user->id)
+            ->values()
+            ->all();
+        $linkedUserEmails = $linkedUsers
+            ->map(static fn (User $user): string => (string) $user->email)
+            ->values()
+            ->all();
+
+        $tokenRevocationsByUserId = collect();
+        if ($linkedUserIds !== []) {
+            $tokenRevocationsByUserId = PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $linkedUserIds)
+                ->selectRaw('tokenable_id, COUNT(*) as aggregate_count')
+                ->groupBy('tokenable_id')
+                ->pluck('aggregate_count', 'tokenable_id');
+        }
+
+        $sessionRevocationsByUserId = collect();
+        if ($this->sessionsTableExists() && $linkedUserIds !== []) {
+            $sessionRevocationsByUserId = DB::table('sessions')
+                ->whereIn('user_id', $linkedUserIds)
+                ->selectRaw('user_id, COUNT(*) as aggregate_count')
+                ->groupBy('user_id')
+                ->pluck('aggregate_count', 'user_id');
+        }
+
+        DB::transaction(function () use ($record, $linkedUsers, $linkedUserIds): void {
+            if ($linkedUserIds !== []) {
+                PersonalAccessToken::query()
+                    ->where('tokenable_type', User::class)
+                    ->whereIn('tokenable_id', $linkedUserIds)
+                    ->delete();
+
+                if ($this->sessionsTableExists()) {
+                    DB::table('sessions')
+                        ->whereIn('user_id', $linkedUserIds)
+                        ->delete();
+                }
+
+                if ($this->accountSetupTokensTableExists()) {
+                    DB::table('account_setup_tokens')
+                        ->whereIn('user_id', $linkedUserIds)
+                        ->delete();
+                }
+            }
+
+            foreach ($linkedUsers as $linkedUser) {
+                $linkedUser->syncPermissions([]);
+                $linkedUser->syncRoles([]);
+                $linkedUser->delete();
+            }
+
+            $record->forceDelete();
+        });
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'school.permanently_deleted',
+            'auditable_type' => School::class,
+            'auditable_id' => $record->id,
+            'metadata' => [
+                'category' => 'school_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'school_id' => (string) $record->id,
+                'school_code' => (string) $record->school_code,
+                'school_name' => (string) $record->name,
+                'dependencies' => $dependencies,
+                'removed_user_ids' => $linkedUserIds,
+                'removed_emails' => $linkedUserEmails,
+                'revocations' => collect($linkedUserIds)
+                    ->map(static function (int $userId) use ($tokenRevocationsByUserId, $sessionRevocationsByUserId): array {
+                        return [
+                            'user_id' => $userId,
+                            'revoked_tokens' => (int) ($tokenRevocationsByUserId->get($userId, 0)),
+                            'revoked_web_sessions' => (int) ($sessionRevocationsByUserId->get($userId, 0)),
+                        ];
+                    })
+                    ->values()
+                    ->all(),
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        return response()->json([
+            'data' => [
+                'id' => (string) $record->id,
+                'schoolId' => (string) $record->school_code,
+                'schoolName' => (string) $record->name,
+                'deletedUsers' => count($linkedUserIds),
+                'dependencies' => $dependencies,
+                'message' => 'School record and linked account data permanently deleted.',
+            ],
+        ]);
     }
 
     public function sendReminder(Request $request, School $school): JsonResponse
@@ -1087,6 +1215,19 @@ class SchoolRecordController extends Controller
             'histories' => FormSubmissionHistory::query()->where('school_id', $school->id)->count(),
             'linkedUsers' => User::query()->where('school_id', $school->id)->count(),
         ];
+    }
+
+    private function accountSetupTokensTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('account_setup_tokens');
+        }
+
+        if (self::$accountSetupTokensTableExistsCache === null) {
+            self::$accountSetupTokensTableExistsCache = Schema::hasTable('account_setup_tokens');
+        }
+
+        return self::$accountSetupTokensTableExistsCache;
     }
 
     /**
