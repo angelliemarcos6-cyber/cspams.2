@@ -805,7 +805,9 @@ export function MonitorSchoolHeadAccountsPanel({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">{actions.pendingAccountAction.actionLabel}</h3>
-                <p className="mt-1 text-xs text-slate-600">{actions.pendingActionDescription}</p>
+                {actions.pendingActionDescription ? (
+                  <p className="mt-1 text-xs text-slate-600">{actions.pendingActionDescription}</p>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -817,34 +819,30 @@ export function MonitorSchoolHeadAccountsPanel({
               </button>
             </div>
 
-            <div className="mt-3">
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                {actions.pendingAccountAction.kind === "activate"
-                  ? "Activation Note"
-                  : actions.pendingAccountAction.kind === "remove"
-                    ? "Optional Note"
-                    : "Reason"}
-              </label>
-              <textarea
-                ref={actions.pendingAccountReasonRef}
-                value={actions.pendingAccountReason}
-                onChange={(event) => actions.updatePendingAccountReason(event.target.value)}
-                rows={3}
-                placeholder={
-                  actions.pendingAccountAction.kind === "activate"
-                    ? "Optional note for approval"
-                    : actions.pendingAccountAction.kind === "remove"
-                      ? "Optional note for permanent removal"
+            {actions.pendingAccountAction.kind !== "remove" ? (
+              <div className="mt-3">
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  {actions.pendingAccountAction.kind === "activate" ? "Activation Note" : "Reason"}
+                </label>
+                <textarea
+                  ref={actions.pendingAccountReasonRef}
+                  value={actions.pendingAccountReason}
+                  onChange={(event) => actions.updatePendingAccountReason(event.target.value)}
+                  rows={3}
+                  placeholder={
+                    actions.pendingAccountAction.kind === "activate"
+                      ? "Optional note for approval"
                       : "Type a short reason (min 5 characters)"
-                }
-                className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-              {actions.pendingAccountReasonError && (
-                <p className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                  {actions.pendingAccountReasonError}
-                </p>
-              )}
-            </div>
+                  }
+                  className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+                {actions.pendingAccountReasonError && (
+                  <p className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+                    {actions.pendingAccountReasonError}
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             {actions.pendingActionRequiresVerification && (
               <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-3">
@@ -936,9 +934,6 @@ export function MonitorSchoolHeadAccountsPanel({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Archive school record</h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  This removes {pendingDeleteSchoolRecord.schoolName} from active Schools and moves it to Archived Schools. You can restore it later from Archived Schools.
-                </p>
               </div>
               <button
                 type="button"

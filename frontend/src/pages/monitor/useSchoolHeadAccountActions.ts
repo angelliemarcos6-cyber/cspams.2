@@ -206,7 +206,7 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
   }
 
   if (action.kind === "remove") {
-    return `This permanently deletes ${action.schoolName}, the linked School Head account, and all school data. This cannot be undone. The confirm button unlocks after a 3-second countdown.`;
+    return "";
   }
 
   if (action.kind === "activate") {

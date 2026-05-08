@@ -423,7 +423,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Pending Setup School"]);
   });
 
-  it("describes remove-account-and-school as a direct permanent delete action", () => {
+  it("keeps the remove-account-and-school dialog free of helper copy and note input", () => {
     const { result } = renderHook(() =>
       useSchoolHeadAccountActions({
         isPanelOpen: true,
@@ -449,7 +449,82 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       });
     });
 
-    expect(result.current.pendingActionDescription).toContain("permanently deletes Delete Me School");
-    expect(result.current.pendingActionDescription).not.toContain("archives Delete Me School");
+    expect(result.current.pendingActionDescription).toBe("");
+  });
+
+  it("omits helper copy for remove-account-and-school and archive dialogs", () => {
+    const actions = buildActions();
+    actions.pendingAccountAction = {
+      kind: "remove",
+      schoolId: "school-12",
+      schoolName: "Batal Elementary School",
+      actionLabel: "Remove account and school",
+    };
+    actions.confirmPendingAccountActionLabel = "Confirm";
+    actions.isConfirmPendingAccountActionDisabled = false;
+
+    render(
+      <MonitorSchoolHeadAccountsPanel
+        isOpen
+        isSaving={false}
+        isMobileViewport={false}
+        rows={[]}
+        totalCount={0}
+        query=""
+        statusFilter="all"
+        onlyFlagged={false}
+        onlyDeleteFlagged={false}
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onOnlyFlaggedChange={vi.fn()}
+        onOnlyDeleteFlaggedChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        onClose={vi.fn()}
+        onOpenSchoolRecord={vi.fn()}
+        pendingDeleteSchoolRecord={{
+          id: "school-13",
+          schoolId: "901013",
+          schoolCode: "901013",
+          schoolName: "Batal Elementary School",
+          level: "Elementary",
+          district: "District 1",
+          address: "District 1",
+          type: "public",
+          studentCount: 0,
+          teacherCount: 0,
+          region: "Region II",
+          status: "active",
+          submittedBy: "Monitor User",
+          lastUpdated: "2026-05-09T08:00:00.000Z",
+          deletedAt: null,
+          schoolHeadAccount: null,
+          indicatorLatest: null,
+        }}
+        pendingDeleteSchoolRecordPreview={{
+          id: "school-13",
+          schoolId: "901013",
+          schoolName: "Batal Elementary School",
+          dependencies: {
+            students: 0,
+            sections: 0,
+            indicatorSubmissions: 0,
+            histories: 0,
+            linkedUsers: 0,
+          },
+        }}
+        pendingDeleteSchoolRecordError=""
+        isDeleteSchoolRecordLoading={false}
+        onPreviewDeleteSchoolRecord={vi.fn()}
+        onClosePendingDeleteSchoolRecord={vi.fn()}
+        onConfirmDeleteSchoolRecord={vi.fn()}
+        formatDateTime={(value) => value ?? "-"}
+        actions={actions}
+      />,
+    );
+
+    expect(screen.queryByText(/This permanently deletes Batal Elementary School/i)).toBeNull();
+    expect(screen.queryByLabelText(/Optional Note/i)).toBeNull();
+    expect(screen.queryByPlaceholderText(/Optional note for permanent removal/i)).toBeNull();
+    expect(screen.queryByText(/This removes Batal Elementary School from active Schools/i)).toBeNull();
   });
 });
