@@ -19,7 +19,7 @@ import type { SchoolRecord, SchoolRecordDeletePreview } from "@/types";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 export type SchoolHeadAccountsStatusFilter =
-  "all" | "needs_setup" | "pending_verification" | "active" | "suspended" | "locked" | "archived";
+  "all" | "no_account" | "pending_setup" | "pending_verification" | "active" | "suspended" | "locked" | "archived";
 
 export interface MonitorSchoolHeadAccountRow {
   schoolKey: string;
@@ -264,7 +264,8 @@ export function MonitorSchoolHeadAccountsPanel({
                     className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                   >
                     <option value="all">All</option>
-                    <option value="needs_setup">Needs setup</option>
+                    <option value="no_account">No account</option>
+                    <option value="pending_setup">Pending setup</option>
                     <option value="pending_verification">Pending verification</option>
                     <option value="active">Active</option>
                     <option value="suspended">Suspended</option>

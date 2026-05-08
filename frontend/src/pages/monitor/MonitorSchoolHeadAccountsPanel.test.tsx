@@ -1,10 +1,12 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import { useState, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
   MonitorSchoolHeadAccountsPanel,
   type SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import type { MonitorSchoolRecordsListRow } from "@/pages/monitor/MonitorSchoolRecordsList";
+import { useMonitorSchoolHeadAccountsPanelState } from "@/pages/monitor/useMonitorSchoolHeadAccountsPanelState";
 import type { SchoolHeadAccountActionsApi } from "@/pages/monitor/useSchoolHeadAccountActions";
 import type { SchoolRecord } from "@/types";
 
@@ -279,5 +281,144 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
 
     fireEvent.click(within(activeRow!).getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
+  });
+
+  it("separates no-account rows from pending-setup rows in the status filter", () => {
+    const noAccountRecord: SchoolRecord = {
+      id: "school-10",
+      schoolId: "901010",
+      schoolCode: "901010",
+      schoolName: "No Account School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-09T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: null,
+      indicatorLatest: null,
+    };
+
+    const pendingSetupRecord: SchoolRecord = {
+      ...noAccountRecord,
+      id: "school-11",
+      schoolId: "901011",
+      schoolCode: "901011",
+      schoolName: "Pending Setup School",
+      schoolHeadAccount: {
+        id: "account-11",
+        name: "Pending User",
+        email: "pending@cspams.local",
+        accountStatus: "pending_setup",
+        mustResetPassword: false,
+        lifecycleState: "pending_setup",
+        lifecycleStateLabel: "Pending setup",
+        recommendedAction: "send_setup_link",
+        emailVerifiedAt: null,
+        verifiedAt: null,
+        verifiedByUserId: null,
+        verifiedByName: null,
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+    };
+
+    const compactSchoolRows: MonitorSchoolRecordsListRow[] = [
+      {
+        summary: {
+          schoolKey: "school-10",
+          schoolCode: "901010",
+          schoolName: "No Account School",
+          region: "Region II",
+          schoolStatus: "active",
+          hasComplianceRecord: true,
+          indicatorStatus: null,
+          hasAnySubmitted: false,
+          isComplete: false,
+          awaitingReviewCount: 0,
+          missingCount: 1,
+          lastActivityAt: null,
+          lastActivityTime: 0,
+        },
+        record: noAccountRecord,
+      },
+      {
+        summary: {
+          schoolKey: "school-11",
+          schoolCode: "901011",
+          schoolName: "Pending Setup School",
+          region: "Region II",
+          schoolStatus: "active",
+          hasComplianceRecord: true,
+          indicatorStatus: null,
+          hasAnySubmitted: false,
+          isComplete: false,
+          awaitingReviewCount: 0,
+          missingCount: 1,
+          lastActivityAt: null,
+          lastActivityTime: 0,
+        },
+        record: pendingSetupRecord,
+      },
+    ];
+
+    const recordBySchoolKey = new Map<string, SchoolRecord>([
+      ["school-10", noAccountRecord],
+      ["school-11", pendingSetupRecord],
+    ]);
+
+    const { result } = renderHook(() =>
+      useMonitorSchoolHeadAccountsPanelState({
+        isMobileViewport: false,
+        isSaving: false,
+        compactSchoolRows,
+        recordBySchoolKey,
+        pushToast: vi.fn(),
+        updateSchoolHeadAccountStatus: vi.fn() as any,
+        activateSchoolHeadAccount: vi.fn() as any,
+        issueSchoolHeadAccountActionVerificationCode: vi.fn() as any,
+        issueSchoolHeadSetupLink: vi.fn() as any,
+        issueSchoolHeadPasswordResetLink: vi.fn() as any,
+        issueSchoolHeadTemporaryPassword: vi.fn() as any,
+        upsertSchoolHeadAccountProfile: vi.fn() as any,
+        removeSchoolHeadAccount: vi.fn() as any,
+        deleteRecord: vi.fn(async () => {}),
+        previewDeleteRecord: vi.fn() as any,
+        onOpenSchoolRecord: vi.fn(),
+        formatDateTime: (value) => value,
+      }),
+    );
+
+    act(() => {
+      result.current.toggleSchoolHeadAccountsPanel();
+    });
+
+    const panelProps = result.current.schoolHeadAccountsPanelProps;
+    expect(panelProps).not.toBeNull();
+
+    act(() => {
+      panelProps!.onStatusFilterChange("no_account");
+    });
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["No Account School"]);
+
+    act(() => {
+      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("pending_setup");
+    });
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Pending Setup School"]);
   });
 });

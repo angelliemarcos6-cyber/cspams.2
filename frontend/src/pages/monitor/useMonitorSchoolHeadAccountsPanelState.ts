@@ -195,11 +195,14 @@ export function useMonitorSchoolHeadAccountsPanelState({
       const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
       const account = resolvedRecord?.schoolHeadAccount ?? null;
       const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-      const needsSetup = account ? normalizedAccountStatus === "pending_setup" : true;
+      const hasNoAccount = !account;
+      const isPendingSetup = normalizedAccountStatus === "pending_setup";
 
       if (statusFilter !== "all") {
-        if (statusFilter === "needs_setup") {
-          if (!needsSetup) return false;
+        if (statusFilter === "no_account") {
+          if (!hasNoAccount) return false;
+        } else if (statusFilter === "pending_setup") {
+          if (!isPendingSetup) return false;
         } else if (normalizedAccountStatus !== statusFilter) {
           return false;
         }
