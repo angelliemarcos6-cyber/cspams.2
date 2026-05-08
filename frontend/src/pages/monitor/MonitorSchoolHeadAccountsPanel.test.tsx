@@ -5,6 +5,7 @@ import {
   MonitorSchoolHeadAccountsPanel,
   type SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
 import type { MonitorSchoolRecordsListRow } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { useMonitorSchoolHeadAccountsPanelState } from "@/pages/monitor/useMonitorSchoolHeadAccountsPanelState";
 import type { SchoolHeadAccountActionsApi } from "@/pages/monitor/useSchoolHeadAccountActions";
@@ -420,5 +421,35 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("pending_setup");
     });
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Pending Setup School"]);
+  });
+
+  it("describes remove-account-and-school as a direct permanent delete action", () => {
+    const { result } = renderHook(() =>
+      useSchoolHeadAccountActions({
+        isPanelOpen: true,
+        isSaving: false,
+        pushToast: vi.fn(),
+        updateSchoolHeadAccountStatus: vi.fn() as any,
+        activateSchoolHeadAccount: vi.fn() as any,
+        issueSchoolHeadAccountActionVerificationCode: vi.fn() as any,
+        issueSchoolHeadSetupLink: vi.fn() as any,
+        issueSchoolHeadPasswordResetLink: vi.fn() as any,
+        issueSchoolHeadTemporaryPassword: vi.fn() as any,
+        upsertSchoolHeadAccountProfile: vi.fn() as any,
+        removeSchoolHeadAccount: vi.fn() as any,
+      }),
+    );
+
+    act(() => {
+      result.current.openPendingAccountAction({
+        kind: "remove",
+        schoolId: "school-12",
+        schoolName: "Delete Me School",
+        actionLabel: "Remove account and school",
+      });
+    });
+
+    expect(result.current.pendingActionDescription).toContain("permanently deletes Delete Me School");
+    expect(result.current.pendingActionDescription).not.toContain("archives Delete Me School");
   });
 });

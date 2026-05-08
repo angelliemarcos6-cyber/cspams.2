@@ -834,7 +834,7 @@ export function MonitorSchoolHeadAccountsPanel({
                   actions.pendingAccountAction.kind === "activate"
                     ? "Optional note for approval"
                     : actions.pendingAccountAction.kind === "remove"
-                      ? "Optional note for deletion"
+                      ? "Optional note for permanent removal"
                       : "Type a short reason (min 5 characters)"
                 }
                 className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
