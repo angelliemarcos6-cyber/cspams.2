@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class SchoolRecordController extends Controller
@@ -39,6 +40,8 @@ class SchoolRecordController extends Controller
     private static ?bool $usersHaveDeleteRecordFlagsCache = null;
 
     private static ?bool $usersHaveAccountTypeColumnCache = null;
+
+    private static ?bool $sessionsTableExistsCache = null;
 
     public function __construct(
         private readonly FilterService $filterService,
@@ -235,6 +238,10 @@ class SchoolRecordController extends Controller
     {
         $user = $this->requireMonitor($request);
         $deletePreview = $this->buildDeletePreview($school);
+        $linkedSchoolHeadAccounts = $school
+            ->schoolHeadAccounts()
+            ->with('roles')
+            ->get();
 
         $deletedRecord = [
             'id' => (string) $school->id,
@@ -243,7 +250,39 @@ class SchoolRecordController extends Controller
             'dependencies' => $deletePreview,
         ];
 
-        $school->delete();
+        $linkedAccountIds = $linkedSchoolHeadAccounts
+            ->map(static fn (User $account): int => (int) $account->id)
+            ->values()
+            ->all();
+
+        DB::transaction(function () use ($school, $linkedSchoolHeadAccounts, $linkedAccountIds): void {
+            foreach ($linkedSchoolHeadAccounts as $account) {
+                $account->forceFill([
+                    'account_status' => AccountStatus::ARCHIVED->value,
+                ])->save();
+            }
+
+            if ($linkedAccountIds !== []) {
+                PersonalAccessToken::query()
+                    ->where('tokenable_type', User::class)
+                    ->whereIn('tokenable_id', $linkedAccountIds)
+                    ->delete();
+
+                if ($this->sessionsTableExists()) {
+                    DB::table('sessions')
+                        ->whereIn('user_id', $linkedAccountIds)
+                        ->delete();
+                }
+
+                if (Schema::hasTable('account_setup_tokens')) {
+                    DB::table('account_setup_tokens')
+                        ->whereIn('user_id', $linkedAccountIds)
+                        ->delete();
+                }
+            }
+
+            $school->delete();
+        });
 
         $syncMeta = $this->buildSyncMetadataForUser($user);
         $targetsMetBundle = $this->buildTargetsMetAndAlertsForUser($user);
@@ -1538,6 +1577,19 @@ class SchoolRecordController extends Controller
         }
 
         return self::$usersHaveAccountTypeColumnCache;
+    }
+
+    private function sessionsTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('sessions');
+        }
+
+        if (self::$sessionsTableExistsCache === null) {
+            self::$sessionsTableExistsCache = Schema::hasTable('sessions');
+        }
+
+        return self::$sessionsTableExistsCache;
     }
 
     private function resolveLatestTimestamp(?string ...$rawTimestamps): ?Carbon

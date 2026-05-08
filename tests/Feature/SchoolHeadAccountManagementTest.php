@@ -1107,6 +1107,70 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
     }
 
+    public function test_archiving_school_archives_linked_school_head_and_blocks_future_school_head_login(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->with('school')
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $schoolHeadPassword = $this->demoPasswordForLogin('school_head', $schoolCode);
+
+        $schoolHeadLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $schoolHeadPassword,
+        ]);
+        $schoolHeadLogin->assertOk();
+        $schoolHeadToken = (string) $schoolHeadLogin->json('token');
+
+        $archive = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}");
+        $archive->assertOk();
+
+        $school->refresh();
+        $this->assertNotNull($school->deleted_at);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ARCHIVED->value, $schoolHead->accountStatus()->value);
+
+        $emailLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => 'schoolhead1@cspams.local',
+            'password' => $schoolHeadPassword,
+        ]);
+
+        $emailLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('accountStatus', AccountStatus::ARCHIVED->value)
+            ->assertJsonPath('message', 'Your account is archived and can no longer sign in.');
+
+        $schoolCodeLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $schoolHeadPassword,
+        ]);
+
+        $schoolCodeLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('accountStatus', AccountStatus::ARCHIVED->value)
+            ->assertJsonPath('message', 'Your account is archived and can no longer sign in.');
+
+        $me = $this->withToken($schoolHeadToken)->getJson('/api/auth/me');
+        $me->assertStatus(Response::HTTP_UNAUTHORIZED)
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
     public function test_account_type_column_rejects_null_values(): void
     {
         $this->seed();

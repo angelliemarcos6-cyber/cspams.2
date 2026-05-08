@@ -15,6 +15,7 @@ use App\Http\Requests\Api\ResetRequiredPasswordRequest;
 use App\Http\Requests\Api\VerifyMonitorMfaRequest;
 use App\Models\AccountSetupToken;
 use App\Models\MonitorMfaResetTicket;
+use App\Models\School;
 use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
 use App\Notifications\MonitorMfaResetApprovedNotification;
@@ -2020,9 +2021,12 @@ class AuthController extends Controller
 
             $baseQuery->where(function ($builder) use ($isEmailLogin, $normalizedEmail, $normalizedSchoolCode): void {
                 if ($normalizedSchoolCode !== null) {
-                    $builder->whereHas('school', function ($schoolQuery) use ($normalizedSchoolCode): void {
-                        $schoolQuery->where('school_code_normalized', strtolower($normalizedSchoolCode));
-                    });
+                    $builder->whereIn(
+                        'school_id',
+                        School::withTrashed()
+                            ->where('school_code_normalized', strtolower($normalizedSchoolCode))
+                            ->select('id'),
+                    );
                 }
 
                 if ($isEmailLogin) {
