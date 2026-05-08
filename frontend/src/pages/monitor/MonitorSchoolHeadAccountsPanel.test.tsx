@@ -51,7 +51,7 @@ function buildActions(): SchoolHeadAccountActionsApi {
 }
 
 describe("MonitorSchoolHeadAccountsPanel", () => {
-  it("allows deleting a school record even when no School Head account is linked", () => {
+  it("allows archiving a school record even when no School Head account is linked", () => {
     const onPreviewDeleteSchoolRecord = vi.fn();
     const record: SchoolRecord = {
       id: "school-1",
@@ -131,7 +131,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     render(<Wrapper />);
 
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete school record" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive school record" }));
 
     expect(onPreviewDeleteSchoolRecord).toHaveBeenCalledTimes(1);
     expect(onPreviewDeleteSchoolRecord).toHaveBeenCalledWith(record);
