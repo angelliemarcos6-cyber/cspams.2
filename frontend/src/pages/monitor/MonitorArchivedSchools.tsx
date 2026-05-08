@@ -50,15 +50,29 @@ export function MonitorArchivedSchools({
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                 <th className="px-3 py-2 text-left">School Code</th>
                 <th className="px-3 py-2 text-left">School Name</th>
+                <th className="px-3 py-2 text-left">School Head</th>
                 <th className="px-3 py-2 text-left">Last Updated</th>
                 <th className="px-3 py-2 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {archivedRecords.map((record) => (
-                <tr key={`archived-${record.id}`}>
+                <tr key={`archived-${record.id}`} className="align-top">
                   <td className="px-3 py-2 text-xs text-slate-700">{record.schoolId ?? record.schoolCode ?? "N/A"}</td>
                   <td className="px-3 py-2 text-xs text-slate-900">{record.schoolName}</td>
+                  <td className="px-3 py-2 text-xs text-slate-700">
+                    {record.schoolHeadAccount ? (
+                      <div className="space-y-1">
+                        <div className="font-semibold text-slate-900">{record.schoolHeadAccount.name}</div>
+                        <div className="break-all text-slate-600">{record.schoolHeadAccount.email}</div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          {record.schoolHeadAccount.accountStatus}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">No account</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-xs text-slate-600">{formatDateTime(record.lastUpdated)}</td>
                   <td className="px-3 py-2 text-center">
                     <button
