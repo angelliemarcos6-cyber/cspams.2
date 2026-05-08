@@ -206,7 +206,7 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
   }
 
   if (action.kind === "remove") {
-    return `This permanently deletes the current School Head account for ${action.schoolName}. The email can then be reused for a replacement account. The confirm button unlocks after a 3-second countdown. An optional note can still be entered below.`;
+    return `This archives ${action.schoolName} and then permanently deletes the school record, linked School Head account, and school data. This cannot be undone. The confirm button unlocks after a 3-second countdown.`;
   }
 
   if (action.kind === "activate") {
@@ -540,7 +540,7 @@ export function useSchoolHeadAccountActions({
         const result = await removeSchoolHeadAccount(pendingAccountAction.schoolId, {
           reason: reason || undefined,
         });
-        pushToast(result.message || `School Head account removed for ${pendingAccountAction.schoolName}.`, "success");
+        pushToast(result.message || `${pendingAccountAction.schoolName} permanently deleted.`, "success");
         closePendingAccountAction();
         return;
       }

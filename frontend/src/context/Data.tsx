@@ -1194,51 +1194,49 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const removeSchoolHeadAccount = useCallback(
     async (
       schoolId: string,
-      payload?: { reason?: string | null },
+      _payload?: { reason?: string | null },
     ): Promise<SchoolHeadAccountRemovalResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      const reason = payload?.reason?.trim() || undefined;
-
       setIsSaving(true);
       setError("");
 
       try {
-        const response = await apiRequestRaw<SchoolHeadAccountRemovalResponse>(
-          `/api/dashboard/records/${encodeURIComponent(schoolId)}/school-head-account`,
+        await apiRequestRaw<SchoolRecordDeleteResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}`,
           {
             method: "DELETE",
             token,
             timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
-            body: {
-              reason,
-            },
+          },
+        );
+
+        const response = await apiRequestRaw<SchoolRecordPermanentDeleteResponse>(
+          `/api/dashboard/records/${encodeURIComponent(schoolId)}/permanent`,
+          {
+            method: "DELETE",
+            token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
           },
         );
 
         const result = response.data?.data;
         if (!result?.message) {
-          throw new Error("Account removal response is empty.");
+          throw new Error("Permanent school deletion response is empty.");
         }
 
-        setRecords((current) =>
-          current.map((record) =>
-            record.id === schoolId
-              ? {
-                  ...record,
-                  schoolHeadAccount: null,
-                }
-              : record,
-          ),
-        );
+        setRecords((current) => current.filter((record) => record.id !== schoolId));
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
         await syncRecords(true);
 
-        return result;
+        return {
+          message: result.message,
+          deletedCount: Number(result.deletedUsers ?? 0),
+        };
       } catch (err) {
         await handleApiError(err);
         throw err;

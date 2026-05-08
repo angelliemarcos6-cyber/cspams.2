@@ -711,14 +711,14 @@ export function MonitorSchoolHeadAccountsPanel({
                                           kind: "remove",
                                           schoolId: resolvedRecord.id,
                                           schoolName: resolvedRecord.schoolName,
-                                          actionLabel: "Remove account",
+                                          actionLabel: "Remove account and school",
                                         })
                                       }
                                       disabled={isRowSaving || isSaving}
                                       className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
                                     >
                                       <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                                      Remove account
+                                      Remove account and school
                                     </button>
                                     <button
                                       type="button"
