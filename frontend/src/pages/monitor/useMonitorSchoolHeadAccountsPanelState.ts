@@ -157,7 +157,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
         setPendingDeleteSchoolRecordPreview(preview);
       } catch (err) {
         setPendingDeleteSchoolRecordError(
-          err instanceof Error ? err.message : "Unable to load school delete preview.",
+          err instanceof Error ? err.message : "Unable to load school archive preview.",
         );
       } finally {
         setIsDeleteSchoolRecordLoading(false);
@@ -180,7 +180,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
       closePendingDeleteSchoolRecord();
     } catch (err) {
       setPendingDeleteSchoolRecordError(
-        err instanceof Error ? err.message : "Unable to delete school record.",
+        err instanceof Error ? err.message : "Unable to archive school record.",
       );
     } finally {
       setIsDeleteSchoolRecordLoading(false);
