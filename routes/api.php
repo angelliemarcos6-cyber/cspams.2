@@ -73,6 +73,7 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboa
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/school-head-account/temporary-password', [SchoolHeadAccountController::class, 'issueTemporaryPassword'])
         ->middleware('throttle:auth-account-management');
+    // This route is the dedicated "Remove account and school" contract used by the Accounts panel.
     Route::delete('/records/{school}/school-head-account', [SchoolHeadAccountController::class, 'destroy'])
         ->middleware('throttle:auth-account-management');
     Route::post('/records/{school}/restore', [SchoolRecordController::class, 'restore']);

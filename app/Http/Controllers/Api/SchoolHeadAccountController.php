@@ -683,6 +683,8 @@ class SchoolHeadAccountController extends Controller
         RemoveSchoolHeadAccountRequest $request,
         School $school,
     ): JsonResponse {
+        // Despite the legacy route name, this action is the combined Accounts-panel
+        // contract that permanently deletes the school and its linked School Head account(s).
         $monitor = $this->requireMonitor($request);
 
         $accounts = $school->schoolHeadAccounts()->with('roles')->get();
