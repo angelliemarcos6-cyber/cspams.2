@@ -1104,6 +1104,25 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
     }
 
+    public function test_missing_school_target_returns_clean_not_found_message_for_remove_account_and_school(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/999999/school-head-account');
+
+        $response->assertStatus(Response::HTTP_NOT_FOUND)
+            ->assertJsonPath('message', 'School record not found. It may have been archived or permanently deleted.');
+    }
+
     public function test_archiving_school_archives_linked_school_head_and_blocks_future_school_head_login(): void
     {
         $this->seed();
