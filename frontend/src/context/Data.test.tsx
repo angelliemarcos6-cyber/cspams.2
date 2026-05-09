@@ -60,6 +60,66 @@ describe("DataProvider school record sync recovery", () => {
     vi.clearAllMocks();
   });
 
+  it("fetches school records immediately when an authenticated session becomes available", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+
+    apiRequestRawMock.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        data: [
+          {
+            id: "1",
+            schoolId: "900001",
+            schoolCode: "900001",
+            schoolName: "Santiago Elementary",
+            level: "Elementary",
+            district: "District 1",
+            address: "District 1, Santiago City",
+            type: "public",
+            studentCount: 120,
+            teacherCount: 12,
+            region: "Region II",
+            status: "active",
+            submittedBy: "Monitor User",
+            lastUpdated: "2026-05-07T06:36:01.000Z",
+            deletedAt: null,
+            schoolHeadAccount: null,
+            indicatorLatest: null,
+          },
+        ],
+        meta: {
+          syncedAt: "2026-05-07T06:36:01.000Z",
+          scope: "division",
+          scopeKey: "division:all|filters:none",
+          recordCount: 1,
+          targetsMet: null,
+          alerts: [],
+        },
+      },
+      headers: new Headers({
+        "X-Sync-Etag": "\"etag-1\"",
+        "X-Sync-Scope": "division",
+        "X-Sync-Scope-Key": "division:all|filters:none",
+        "X-Synced-At": "2026-05-07T06:36:01.000Z",
+      }),
+    });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.records).toHaveLength(1);
+      expect(result.current.recordCount).toBe(1);
+    });
+
+    expect(apiRequestRawMock).toHaveBeenCalledWith(
+      "/api/dashboard/records",
+      expect.objectContaining({
+        token: "test-token",
+      }),
+    );
+  });
+
   it("retries without ETag when sync count is nonzero but records are empty", async () => {
     const apiRequestRawMock = vi.mocked(apiRequestRaw);
 

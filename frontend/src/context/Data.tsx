@@ -448,6 +448,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await syncRecords(false);
   }, [syncRecords]);
 
+  useEffect(() => {
+    if (!token || !sessionKey) {
+      return;
+    }
+
+    void syncRecords(false);
+  }, [token, sessionKey, syncRecords]);
+
   const addRecord = useCallback(
     async (record: SchoolRecordPayload): Promise<SchoolHeadAccountProvisioningReceipt | null> => {
       if (!token) {
