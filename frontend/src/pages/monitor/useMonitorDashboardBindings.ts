@@ -41,8 +41,6 @@ interface UseMonitorDashboardBindingsArgs {
   handleSelectSchoolScope: SchoolScopeSelectorProps["onSelectOption"];
   openScopeDropdownId: ScopeDropdownId | null;
   toggleScopeDropdown: (id: ScopeDropdownId) => void;
-  showAdvancedAnalytics: QuickFiltersProps["showAdvancedAnalytics"];
-  setShowAdvancedAnalytics: Dispatch<SetStateAction<boolean>>;
   activeFilterChips: QuickFiltersProps["activeFilterChips"];
   clearAllFilters: QuickFiltersProps["onClearAllFilters"];
   clearFilterChip: QuickFiltersProps["onClearFilterChip"];
@@ -86,8 +84,6 @@ export function useMonitorDashboardBindings({
   handleSelectSchoolScope,
   openScopeDropdownId,
   toggleScopeDropdown,
-  showAdvancedAnalytics,
-  setShowAdvancedAnalytics,
   activeFilterChips,
   clearAllFilters,
   clearFilterChip,
@@ -140,8 +136,6 @@ export function useMonitorDashboardBindings({
       rootClassName: "relative flex-1",
       onToggle: () => toggleScopeDropdown("schools_filters"),
     },
-    showAdvancedAnalytics,
-    onToggleAdvancedAnalytics: () => setShowAdvancedAnalytics((current) => !current),
     activeFilterChips,
     onClearAllFilters: clearAllFilters,
     onClearFilterChip: clearFilterChip,

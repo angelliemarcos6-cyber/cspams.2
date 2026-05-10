@@ -3,7 +3,7 @@ import type { SchoolStatus } from "@/types";
 export type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 export type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
 export type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission";
-export type MonitorTopNavigatorId = "overview" | "schools" | "reviews";
+export type MonitorTopNavigatorId = "schools" | "reviews";
 
 export interface PersistedMonitorFilters {
   search?: string;
@@ -42,7 +42,7 @@ export const DEFAULT_MONITOR_FILTERS: MonitorFilters = {
   selectedSchoolScopeKey: ALL_SCHOOL_SCOPE,
   filterDateFrom: "",
   filterDateTo: "",
-  activeTopNavigator: "overview",
+  activeTopNavigator: "reviews",
 };
 
 export function isValidRequirementFilter(value: string | null | undefined): value is RequirementFilter {
@@ -62,15 +62,11 @@ export function isValidSchoolStatusFilter(value: string | null | undefined): val
 }
 
 export function resolveMonitorTopNavigator(value: string | null | undefined): MonitorTopNavigatorId | null {
-  if (value === "overview" || value === "schools" || value === "reviews") {
+  if (value === "schools" || value === "reviews") {
     return value;
   }
 
-  if (value === "reports") {
-    return "overview";
-  }
-
-  if (value === "action_queue" || value === "compliance_review") {
+  if (value === "overview" || value === "reports" || value === "action_queue" || value === "compliance_review") {
     return "reviews";
   }
 

@@ -15,7 +15,6 @@ import { MonitorFiltersPanel } from "@/pages/monitor/MonitorFiltersPanel";
 import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
 import { MonitorMobileNavigator } from "@/pages/monitor/MonitorMobileNavigator";
 import { MonitorDashboardShellActions } from "@/pages/monitor/MonitorDashboardShellActions";
-import { MonitorOverviewSection } from "@/pages/monitor/MonitorOverviewSection";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import { MonitorSideNavigator } from "@/pages/monitor/MonitorSideNavigator";
@@ -70,9 +69,6 @@ import { useMonitorDashboardCommands } from "@/pages/monitor/useMonitorDashboard
 import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
 import { useSchoolDrawer } from "@/pages/monitor/useSchoolDrawer";
 import {
-  buildRegionAggregates,
-  buildStatusDistribution,
-  buildSubmissionTrend,
   formatDateTime,
   statusLabel,
 } from "@/utils/analytics";
@@ -259,19 +255,6 @@ export function MonitorDashboard() {
     );
   }, [records, scopedSchoolKeys]);
 
-  const shouldComputeOverviewCharts = !showNavigatorManual && activeTopNavigator === "overview";
-  const regionAggregates = useMemo(
-    () => (shouldComputeOverviewCharts ? buildRegionAggregates(scopedRecords) : []),
-    [scopedRecords, shouldComputeOverviewCharts],
-  );
-  const statusDistribution = useMemo(
-    () => (shouldComputeOverviewCharts ? buildStatusDistribution(scopedRecords) : []),
-    [scopedRecords, shouldComputeOverviewCharts],
-  );
-  const submissionTrend = useMemo(
-    () => (shouldComputeOverviewCharts ? buildSubmissionTrend(scopedRecords) : []),
-    [scopedRecords, shouldComputeOverviewCharts],
-  );
   const {
     schoolRequirementByKey,
     recordBySchoolKey,
@@ -341,10 +324,6 @@ export function MonitorDashboard() {
     Record<MonitorTopNavigatorId, { primary?: number; secondary?: number; urgency: "none" | "high" | "medium" }>
   >(
     () => ({
-      overview: {
-        primary: returnedCount,
-        urgency: returnedCount > 0 ? "high" : needsActionCount > 0 ? "medium" : "none",
-      },
       reviews: {
         primary: needsActionCount,
         urgency: requirementCounts.missing > 0 ? "high" : needsActionCount > 0 ? "medium" : "none",
@@ -566,7 +545,6 @@ export function MonitorDashboard() {
     handlePrimaryAction,
   } = useMonitorDashboardCommands({
     activeTopNavigator,
-    filteredRequirementRows,
     compactSchoolRows,
     laneFilteredQueueRows,
     actionQueueRows,
@@ -630,8 +608,6 @@ export function MonitorDashboard() {
     handleSelectSchoolScope,
     openScopeDropdownId,
     toggleScopeDropdown,
-    showAdvancedAnalytics,
-    setShowAdvancedAnalytics,
     activeFilterChips,
     clearAllFilters,
     clearFilterChip,
@@ -815,24 +791,6 @@ export function MonitorDashboard() {
             onClose={() => setShowAdvancedFilters(false)}
             quickFiltersProps={quickFiltersProps}
           />
-
-          {!showNavigatorManual && activeTopNavigator === "overview" && (
-            <MonitorOverviewSection
-              isMobileViewport={isMobileViewport}
-              quickJumpBindings={quickJumpBindings}
-              sectionFocusClass={sectionFocusClass}
-              needsActionCount={needsActionCount}
-              returnedCount={returnedCount}
-              submittedCount={submittedCount}
-              renderAdvancedAnalytics={renderAdvancedAnalytics}
-              isHidingAdvancedAnalytics={isHidingAdvancedAnalytics}
-              targetsMet={targetsMet}
-              syncAlerts={syncAlerts}
-              statusDistribution={statusDistribution}
-              regionAggregates={regionAggregates}
-              submissionTrend={submissionTrend}
-            />
-          )}
 
           {!showNavigatorManual && activeTopNavigator === "reviews" && (
             <MonitorReviewsSection

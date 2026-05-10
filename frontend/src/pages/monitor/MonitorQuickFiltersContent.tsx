@@ -51,8 +51,6 @@ interface MonitorQuickFiltersContentProps {
   onClearDateRange: () => void;
   onToggleShowMoreFilters: () => void;
   schoolScopeSelectorProps: ComponentProps<typeof SchoolScopeSelector>;
-  showAdvancedAnalytics: boolean;
-  onToggleAdvancedAnalytics: () => void;
   activeFilterChips: MonitorFilterChip[];
   onClearAllFilters: () => void;
   onClearFilterChip: (chip: MonitorFilterChip["id"]) => void;
@@ -78,8 +76,6 @@ export function MonitorQuickFiltersContent({
   onClearDateRange,
   onToggleShowMoreFilters,
   schoolScopeSelectorProps,
-  showAdvancedAnalytics,
-  onToggleAdvancedAnalytics,
   activeFilterChips,
   onClearAllFilters,
   onClearFilterChip,
@@ -169,19 +165,6 @@ export function MonitorQuickFiltersContent({
                 </div>
               </div>
 
-              {activeTopNavigator === "overview" && (
-                <div className="flex items-center justify-between gap-3 rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-                  <p className="text-[11px] font-semibold text-slate-700">Analytics</p>
-                  <button
-                    id="monitor-analytics-toggle"
-                    type="button"
-                    onClick={onToggleAdvancedAnalytics}
-                    className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
-                  >
-                    {showAdvancedAnalytics ? "Hide" : "Show"}
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </FilterBar>

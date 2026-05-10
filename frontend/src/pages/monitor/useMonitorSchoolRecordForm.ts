@@ -5,6 +5,7 @@ import type {
   MonitorSchoolRecordFormProps,
   MonitorSchoolRecordFormState,
 } from "@/pages/monitor/MonitorSchoolRecordForm";
+import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type { SchoolHeadAccountProvisioningReceipt, SchoolRecordPayload } from "@/types";
 
 const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
@@ -63,7 +64,7 @@ function normalizeSchoolLevel(value: string): string {
 
 interface UseMonitorSchoolRecordFormOptions {
   isSaving: boolean;
-  setActiveTopNavigator: Dispatch<SetStateAction<"overview" | "schools" | "reviews">>;
+  setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
   addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   clearDeleteError: () => void;

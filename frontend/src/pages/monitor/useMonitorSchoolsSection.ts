@@ -23,6 +23,7 @@ import { useMonitorSchoolBulkImport } from "@/pages/monitor/useMonitorSchoolBulk
 import { useMonitorSchoolHeadAccountsPanelState } from "@/pages/monitor/useMonitorSchoolHeadAccountsPanelState";
 import { useMonitorSchoolRecordForm } from "@/pages/monitor/useMonitorSchoolRecordForm";
 import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardConfig";
+import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
   SchoolHeadAccountActivationResult,
   SchoolBulkImportResult,
@@ -65,7 +66,7 @@ interface UseMonitorSchoolsSectionOptions {
   setRequirementFilter: Dispatch<SetStateAction<RequirementFilter>>;
   setSchoolQuickPreset: Dispatch<SetStateAction<SchoolQuickPreset>>;
   setRecordsPage: Dispatch<SetStateAction<number>>;
-  setActiveTopNavigator: Dispatch<SetStateAction<"overview" | "schools" | "reviews">>;
+  setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
   addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;

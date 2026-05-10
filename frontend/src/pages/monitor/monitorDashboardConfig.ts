@@ -3,9 +3,7 @@ import {
   Building2,
   ClipboardList,
   Filter,
-  LayoutDashboard,
   ListChecks,
-  TrendingUp,
 } from "lucide-react";
 import type {
   MonitorTopNavigatorId,
@@ -36,7 +34,6 @@ export interface QuickJumpItem {
 }
 
 export const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
-  { id: "overview", label: "Overview" },
   { id: "schools", label: "Schools" },
   { id: "reviews", label: "Reviews" },
 ];
@@ -46,22 +43,11 @@ export const MONITOR_TOP_NAVIGATOR_IDS: MonitorTopNavigatorId[] = MONITOR_TOP_NA
 );
 
 export const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorId, NavigatorIcon> = {
-  overview: LayoutDashboard,
   schools: Building2,
   reviews: ClipboardList,
 };
 
 export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
-  {
-    id: "overview",
-    title: "Overview",
-    objective: "Start with overall status and analytics before opening school-level work.",
-    actions: [
-      "Check summary totals for needs action, returned, and submitted.",
-      "Use analytics to spot trends or spikes that need follow-up.",
-    ],
-    doneWhen: "Priority issues are identified for this review cycle.",
-  },
   {
     id: "schools",
     title: "Schools",
@@ -116,11 +102,6 @@ export const SCHOOL_QUICK_PRESET_OPTIONS: Array<{
 ];
 
 export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
-  overview: [
-    { id: "filters_overview", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "overview_metrics", label: "Overview Metrics", targetId: "monitor-overview-metrics", icon: LayoutDashboard },
-    { id: "overview_analytics", label: "Analytics", targetId: "monitor-analytics-toggle", icon: TrendingUp },
-  ],
   reviews: [
     { id: "filters_queue", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
     { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },

@@ -1,8 +1,6 @@
 import { useCallback, useMemo, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
-import { downloadCsvFile, workflowLabel } from "@/pages/monitor/monitorDashboardUiUtils";
 import { ALL_SCHOOL_SCOPE, type MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
-import { formatDateTime } from "@/utils/analytics";
 
 type DashboardToastTone = "success" | "info" | "warning";
 
@@ -14,7 +12,6 @@ interface ActiveScreenMeta {
 
 interface UseMonitorDashboardCommandsArgs {
   activeTopNavigator: MonitorTopNavigatorId;
-  filteredRequirementRows: MonitorSchoolRequirementSummary[];
   compactSchoolRows: Array<{ summary: MonitorSchoolRequirementSummary }>;
   laneFilteredQueueRows: MonitorSchoolRequirementSummary[];
   actionQueueRows: MonitorSchoolRequirementSummary[];
@@ -42,7 +39,6 @@ interface UseMonitorDashboardCommandsResult {
 
 export function useMonitorDashboardCommands({
   activeTopNavigator,
-  filteredRequirementRows,
   compactSchoolRows,
   laneFilteredQueueRows,
   actionQueueRows,
@@ -125,12 +121,6 @@ export function useMonitorDashboardCommands({
 
   const activeScreenMeta = useMemo<ActiveScreenMeta>(() => {
     switch (activeTopNavigator) {
-      case "overview":
-        return {
-          title: "Overview",
-          description: "Division-wide status and trend snapshot.",
-          primaryLabel: "Export",
-        };
       case "schools":
         return {
           title: "Schools",
@@ -148,48 +138,11 @@ export function useMonitorDashboardCommands({
   }, [activeTopNavigator]);
 
   const isPrimaryActionDisabled =
-    activeTopNavigator === "overview"
-      ? filteredRequirementRows.length === 0
-      : activeTopNavigator === "schools"
-        ? compactSchoolRows.length === 0
-        : laneFilteredQueueRows.length === 0 && actionQueueRows.length === 0;
+    activeTopNavigator === "schools"
+      ? compactSchoolRows.length === 0
+      : laneFilteredQueueRows.length === 0 && actionQueueRows.length === 0;
 
   const handlePrimaryAction = useCallback(() => {
-    if (activeTopNavigator === "overview") {
-      if (filteredRequirementRows.length === 0) {
-        onToast("No rows available to export with current filters.", "warning");
-        return;
-      }
-
-      const rows = filteredRequirementRows.map((row) => [
-        row.schoolCode,
-        row.schoolName,
-        row.region,
-        row.schoolStatus ?? "N/A",
-        workflowLabel(row.indicatorStatus),
-        row.missingCount,
-        row.awaitingReviewCount,
-        row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A",
-      ]);
-      const fileDate = new Date().toISOString().slice(0, 10);
-      downloadCsvFile(
-        `monitor-overview-${fileDate}.csv`,
-        [
-          "school_code",
-          "school_name",
-          "region",
-          "school_status",
-          "indicator_status",
-          "missing_count",
-          "for_review_count",
-          "last_activity",
-        ],
-        rows,
-      );
-      onToast(`Exported ${rows.length} school rows.`, "success");
-      return;
-    }
-
     if (activeTopNavigator === "schools") {
       const preferredSchoolKey =
         schoolDrawerKey ?? (selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? selectedSchoolScopeKey : null);
@@ -222,7 +175,6 @@ export function useMonitorDashboardCommands({
     actionQueueRows,
     activeTopNavigator,
     compactSchoolRows,
-    filteredRequirementRows,
     laneFilteredQueueRows,
     onOpenSchool,
     onReviewSchool,

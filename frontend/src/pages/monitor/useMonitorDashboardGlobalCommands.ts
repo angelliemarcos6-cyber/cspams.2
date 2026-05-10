@@ -23,7 +23,6 @@ interface UseMonitorDashboardGlobalCommandsResult {
 }
 
 const TOP_NAV_TARGET_BY_ID: Record<MonitorTopNavigatorId, string> = {
-  overview: "monitor-overview-metrics",
   schools: "monitor-school-records",
   reviews: "monitor-action-queue",
 };

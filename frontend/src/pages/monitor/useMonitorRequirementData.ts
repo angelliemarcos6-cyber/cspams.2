@@ -278,10 +278,6 @@ export function useMonitorRequirementData({
       return ["all", "missing", "waiting", "returned"];
     }
 
-    if (activeTopNavigator === "overview") {
-      return ["all", "waiting", "returned", "submitted", "validated"];
-    }
-
     return ["all", "missing", "waiting", "returned", "submitted", "validated"];
   }, [activeTopNavigator]);
 
