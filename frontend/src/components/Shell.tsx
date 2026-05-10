@@ -153,6 +153,9 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
 
       <main className="mx-auto w-full max-w-7xl px-3 pb-8 pt-0 sm:px-6 lg:px-8">
         {children}
+        <div className="mt-7 flex justify-center">
+          <img src="/ama-cc-logo.png" alt="AMA Computer College logo" className="h-auto w-16 sm:w-20" />
+        </div>
       </main>
     </div>
   );
