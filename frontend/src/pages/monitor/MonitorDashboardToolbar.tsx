@@ -118,12 +118,12 @@ export function MonitorDashboardToolbar({
               </p>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
               <button
                 type="button"
                 title="Schools in the current scope."
                 onClick={() => onSelectSchoolQuickPreset("all")}
-                className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
                   schoolQuickPreset === "all"
                     ? "border-slate-300 bg-slate-100 text-slate-900"
                     : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
@@ -135,7 +135,7 @@ export function MonitorDashboardToolbar({
                 type="button"
                 title="Schools with submitted requirements waiting for monitor review."
                 onClick={() => onSelectSchoolQuickPreset("pending")}
-                className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
                   schoolQuickPreset === "pending"
                     ? "border-primary-300 bg-primary-100 text-primary-800"
                     : "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
@@ -147,7 +147,7 @@ export function MonitorDashboardToolbar({
                 type="button"
                 title="Schools still missing one or more required submissions."
                 onClick={() => onSelectSchoolQuickPreset("missing")}
-                className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
                   schoolQuickPreset === "missing"
                     ? "border-indigo-300 bg-indigo-100 text-indigo-800"
                     : "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
@@ -159,7 +159,7 @@ export function MonitorDashboardToolbar({
                 type="button"
                 title="Schools with submissions returned for correction."
                 onClick={() => onSelectSchoolQuickPreset("returned")}
-                className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
                   schoolQuickPreset === "returned"
                     ? "border-amber-300 bg-amber-100 text-amber-800"
                     : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
@@ -171,7 +171,7 @@ export function MonitorDashboardToolbar({
                 type="button"
                 title="Schools with no submitted requirement package yet."
                 onClick={() => onSelectSchoolQuickPreset("no_submission")}
-                className={`inline-flex items-center rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
                   schoolQuickPreset === "no_submission"
                     ? "border-slate-400 bg-slate-200 text-slate-900"
                     : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -184,7 +184,7 @@ export function MonitorDashboardToolbar({
                 title="Refresh dashboard data."
                 onClick={onRefresh}
                 disabled={isDashboardSyncing}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold leading-tight text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70 xl:text-[11px]"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isDashboardSyncing ? "animate-spin" : ""}`} />
                 {isDashboardSyncing
