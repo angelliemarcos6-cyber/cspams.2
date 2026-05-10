@@ -80,6 +80,22 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+export function toRealtimeAuthorizationError(error: unknown): Error {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return new Error("Realtime authorization timed out.");
+  }
+
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (
+    /networkerror when attempting to fetch resource/i.test(message) ||
+    /failed to fetch/i.test(message)
+  ) {
+    return new Error("Realtime updates are temporarily unavailable. Dashboard sync will continue automatically.");
+  }
+
+  return new Error(message || "Realtime authorization failed.");
+}
+
 function normalizeSchoolId(value: number | null | undefined): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
@@ -189,11 +205,7 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
                 }),
               });
             } catch (error) {
-              if (error instanceof DOMException && error.name === "AbortError") {
-                throw new Error("Realtime authorization timed out.");
-              }
-
-              throw error;
+              throw toRealtimeAuthorizationError(error);
             } finally {
               window.clearTimeout(timeoutId);
             }
@@ -215,7 +227,7 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
           })
           .catch((error: unknown) => {
             callback(
-              error instanceof Error ? error : new Error("Realtime authorization failed."),
+              toRealtimeAuthorizationError(error),
               null,
             );
           });
