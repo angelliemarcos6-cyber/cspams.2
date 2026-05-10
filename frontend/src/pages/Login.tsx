@@ -71,7 +71,7 @@ export function Login() {
     accountStatus,
     clearAuthError,
   } = useAuth();
-  const appTagline = "Centralized School Performance and Monitoring System ";
+  const appTagline = "Centralized School Performance and Monitoring System";
 
   const [activeRole, setActiveRole] = useState<LoginRole>("school_head");
   const [loginId, setLoginId] = useState("");
@@ -294,10 +294,7 @@ export function Login() {
                 <img src="/depedlogo.png" alt="Department of Education logo" className="h-16 w-auto rounded-md bg-white px-2 py-1.5" />
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary-100">CSPAMS</p>
-                  <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">Sign In Portal</h1>
-                  <p className="mt-1 max-w-md text-sm font-medium text-primary-100/90" title={appTagline}>
-                    {appTagline}
-                  </p>
+                  <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">{appTagline}</h1>
                 </div>
               </div>
             </div>
@@ -327,7 +324,6 @@ export function Login() {
                     <UserCog className="h-4 w-4" />
                     School Head
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">Use school code</p>
                 </button>
                 <button
                   type="button"
@@ -349,7 +345,6 @@ export function Login() {
                     <Radar className="h-4 w-4" />
                     Division Monitor
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">Use monitor email</p>
                 </button>
               </div>
             </div>
