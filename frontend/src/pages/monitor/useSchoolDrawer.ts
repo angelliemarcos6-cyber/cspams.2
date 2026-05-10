@@ -63,6 +63,11 @@ function matchesDrawerSchool(
   );
 }
 
+function isMissingSchoolRecordError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.trim() : "";
+  return message === "School record not found. It may have been archived or permanently deleted.";
+}
+
 export function useSchoolDrawer({
   authSessionKey,
   isAuthenticated,
@@ -144,6 +149,22 @@ export function useSchoolDrawer({
   }, [authSessionKey]);
 
   useEffect(() => {
+    if (!schoolDrawerKey) {
+      return;
+    }
+
+    if (schoolDrawerRecordId || schoolDrawerSchoolCode) {
+      return;
+    }
+
+    closeSchoolDrawer();
+    setSchoolDrawerSubmissions([]);
+    setSchoolDrawerSubmissionsError("");
+    setSyncedCountsLoadingSchoolKey(null);
+    setSyncedCountsError("");
+  }, [closeSchoolDrawer, schoolDrawerKey, schoolDrawerRecordId, schoolDrawerSchoolCode]);
+
+  useEffect(() => {
     if (!schoolDrawerKey || !latestRealtimeBatch) {
       return;
     }
@@ -198,6 +219,12 @@ export function useSchoolDrawer({
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
+        if (isMissingSchoolRecordError(err)) {
+          setSchoolDrawerSubmissions([]);
+          setSchoolDrawerSubmissionsError("");
+          closeSchoolDrawer();
+          return;
+        }
         setSchoolDrawerSubmissions([]);
         setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
       } finally {
@@ -213,7 +240,7 @@ export function useSchoolDrawer({
       active = false;
       abortController.abort();
     };
-  }, [isAuthenticated, listSubmissionsForSchool, schoolDrawerRecordId, submissionRefreshTick]);
+  }, [closeSchoolDrawer, isAuthenticated, listSubmissionsForSchool, schoolDrawerRecordId, submissionRefreshTick]);
 
   useEffect(() => {
     if (!schoolDrawerKey) {
