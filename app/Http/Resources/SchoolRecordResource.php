@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
 /** @mixin School */
 class SchoolRecordResource extends JsonResource
 {
+    private static ?bool $accountSetupTokensTableExistsCache = null;
+
     /**
      * @return array<string, mixed>
      */
@@ -96,11 +98,8 @@ class SchoolRecordResource extends JsonResource
         $status = $account->accountStatus();
         $setupToken = null;
 
-        if (Schema::hasTable('account_setup_tokens')) {
-            $account->loadMissing(['latestAccountSetupToken', 'verifiedBy']);
+        if ($this->accountSetupTokensTableExists() && $account->relationLoaded('latestAccountSetupToken')) {
             $setupToken = $account->latestAccountSetupToken;
-        } else {
-            $account->loadMissing('verifiedBy');
         }
         $setupLinkExpiresAt = null;
 
@@ -131,7 +130,7 @@ class SchoolRecordResource extends JsonResource
             'temporaryPasswordDisplay' => $this->monitorVisibleTemporaryPassword($account),
             'verifiedAt' => $account->verified_at?->toISOString(),
             'verifiedByUserId' => $account->verified_by_user_id ? (string) $account->verified_by_user_id : null,
-            'verifiedByName' => $account->verifiedBy?->name,
+            'verifiedByName' => $account->relationLoaded('verifiedBy') ? $account->verifiedBy?->name : null,
             'verificationNotes' => $account->verification_notes,
             'flagged' => $account->flagged_at !== null,
             'flaggedAt' => $account->flagged_at?->toISOString(),
@@ -225,5 +224,18 @@ class SchoolRecordResource extends JsonResource
             'password_reset_required' => 'send_password_reset_link',
             default => 'none',
         };
+    }
+
+    private function accountSetupTokensTableExists(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return Schema::hasTable('account_setup_tokens');
+        }
+
+        if (self::$accountSetupTokensTableExistsCache === null) {
+            self::$accountSetupTokensTableExistsCache = Schema::hasTable('account_setup_tokens');
+        }
+
+        return self::$accountSetupTokensTableExistsCache;
     }
 }

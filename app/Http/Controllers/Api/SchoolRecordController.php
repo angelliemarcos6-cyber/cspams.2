@@ -109,29 +109,7 @@ class SchoolRecordController extends Controller
                     'updated_at',
                 ]);
             }])
-            ->with(['schoolHeadAccounts' => function ($query): void {
-                $columns = [
-                    'id',
-                    'name',
-                    'email',
-                    'email_verified_at',
-                    'must_reset_password',
-                    'temporary_password_issued_at',
-                    'temporary_password_display',
-                    'last_login_at',
-                    'account_status',
-                    'school_id',
-                    'flagged_at',
-                    'flagged_reason',
-                ];
-
-                if ($this->usersHaveDeleteRecordFlags()) {
-                    $columns[] = 'delete_record_flagged_at';
-                    $columns[] = 'delete_record_flag_reason';
-                }
-
-                $query->select($columns);
-            }])
+            ->with(['schoolHeadAccounts' => fn ($query) => $this->applyDashboardSchoolHeadAccountQuery($query)])
             ->withCount('students')
             ->orderByDesc('submitted_at')
             ->orderByDesc('updated_at');
@@ -342,22 +320,7 @@ class SchoolRecordController extends Controller
 
         $records = School::onlyTrashed()
             ->with('submittedBy:id,name')
-            ->with(['schoolHeadAccounts' => function ($query): void {
-                $query->select([
-                    'id',
-                    'name',
-                    'email',
-                    'email_verified_at',
-                    'must_reset_password',
-                    'temporary_password_issued_at',
-                    'temporary_password_display',
-                    'last_login_at',
-                    'account_status',
-                    'school_id',
-                    'flagged_at',
-                    'flagged_reason',
-                ]);
-            }])
+            ->with(['schoolHeadAccounts' => fn ($query) => $this->applyDashboardSchoolHeadAccountQuery($query)])
             ->withCount('students')
             ->orderByDesc('deleted_at')
             ->get();
@@ -1144,22 +1107,7 @@ class SchoolRecordController extends Controller
                         'updated_at',
                     ]);
                 },
-                'schoolHeadAccounts' => function ($query): void {
-                    $query->select([
-                        'id',
-                        'name',
-                        'email',
-                        'email_verified_at',
-                        'must_reset_password',
-                        'temporary_password_issued_at',
-                        'temporary_password_display',
-                        'last_login_at',
-                        'account_status',
-                        'school_id',
-                        'flagged_at',
-                        'flagged_reason',
-                    ]);
-                },
+                'schoolHeadAccounts' => fn ($query) => $this->applyDashboardSchoolHeadAccountQuery($query),
             ])))->resolve(),
             'meta' => array_merge([
                 'syncedAt' => $syncedAt,
@@ -1699,6 +1647,46 @@ class SchoolRecordController extends Controller
         }
 
         return self::$usersHaveDeleteRecordFlagsCache;
+    }
+
+    private function applyDashboardSchoolHeadAccountQuery($query): void
+    {
+        $columns = [
+            'id',
+            'name',
+            'email',
+            'email_verified_at',
+            'must_reset_password',
+            'temporary_password_issued_at',
+            'temporary_password_display',
+            'last_login_at',
+            'account_status',
+            'school_id',
+            'verified_at',
+            'verified_by_user_id',
+            'verification_notes',
+            'flagged_at',
+            'flagged_reason',
+        ];
+
+        if ($this->usersHaveDeleteRecordFlags()) {
+            $columns[] = 'delete_record_flagged_at';
+            $columns[] = 'delete_record_flag_reason';
+        }
+
+        $query->select($columns)
+            ->with('verifiedBy:id,name');
+
+        if ($this->accountSetupTokensTableExists()) {
+            $query->with(['latestAccountSetupToken' => function ($setupTokenQuery): void {
+                $setupTokenQuery->select([
+                    'account_setup_tokens.id',
+                    'account_setup_tokens.user_id',
+                    'account_setup_tokens.expires_at',
+                    'account_setup_tokens.used_at',
+                ]);
+            }]);
+        }
     }
 
     private function usersHaveAccountTypeColumn(): bool

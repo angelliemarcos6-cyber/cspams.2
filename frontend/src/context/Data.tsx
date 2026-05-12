@@ -192,6 +192,7 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+const SCHOOL_RECORDS_SYNC_TIMEOUT_MS = 60_000;
 const SCHOOL_BULK_IMPORT_TIMEOUT_MS = 120_000;
 const SCHOOL_SEND_REMINDER_TIMEOUT_MS = 45_000;
 const SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS = 45_000;
@@ -341,6 +342,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         const response = await apiRequestRaw<SchoolRecordsResponse>("/api/dashboard/records", {
           token,
+          timeoutMs: SCHOOL_RECORDS_SYNC_TIMEOUT_MS,
           extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         });
 
