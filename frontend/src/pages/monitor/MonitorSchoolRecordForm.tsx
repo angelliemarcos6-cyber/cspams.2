@@ -284,7 +284,7 @@ export function MonitorSchoolRecordForm({
                         Copy password
                       </button>
                     </div>
-                    <p>Copy this password now. The School Head must change it on first login, and it will not be shown again.</p>
+                    <p>Copy this password now. The School Head must change it on first login, and it will remain visible in the monitor panel until then.</p>
                   </div>
                 ) : null}
               </div>

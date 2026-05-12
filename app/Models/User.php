@@ -29,6 +29,7 @@ class User extends Authenticatable
         'must_reset_password',
         'password_changed_at',
         'temporary_password_issued_at',
+        'temporary_password_display',
         'last_login_at',
         'last_login_ip',
         'last_login_user_agent',
@@ -52,6 +53,7 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'password',
+        'temporary_password_display',
         'remember_token',
     ];
 
@@ -66,6 +68,7 @@ class User extends Authenticatable
             'must_reset_password' => 'boolean',
             'password_changed_at' => 'datetime',
             'temporary_password_issued_at' => 'datetime',
+            'temporary_password_display' => 'encrypted',
             'last_login_at' => 'datetime',
             'account_status' => AccountStatus::class,
             'verified_at' => 'datetime',

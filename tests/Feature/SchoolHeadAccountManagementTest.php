@@ -77,11 +77,23 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertTrue((bool) $schoolHead->must_reset_password);
         $this->assertNotNull($schoolHead->password_changed_at);
         $this->assertNotNull($schoolHead->temporary_password_issued_at);
+        $this->assertSame((string) $provisioning['temporaryPassword'], $schoolHead->temporary_password_display);
+        $this->assertNotSame((string) $provisioning['temporaryPassword'], (string) $schoolHead->getRawOriginal('temporary_password_display'));
         $this->assertNotNull($schoolHead->email_verified_at);
         $this->assertNotNull($schoolHead->verified_by_user_id);
         $this->assertNotNull($schoolHead->verified_at);
         $this->assertTrue(Hash::check((string) $provisioning['temporaryPassword'], (string) $schoolHead->password));
         $this->assertNotSame((string) $provisioning['temporaryPassword'], (string) $schoolHead->password);
+
+        $recordsWhileTempActive = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $recordsWhileTempActive->assertOk();
+        $tempActiveRecord = collect($recordsWhileTempActive->json('data'))
+            ->firstWhere('schoolId', '911111');
+        $this->assertIsArray($tempActiveRecord);
+        $this->assertSame(
+            (string) $provisioning['temporaryPassword'],
+            data_get($tempActiveRecord, 'schoolHeadAccount.temporaryPasswordDisplay'),
+        );
 
         Notification::assertNothingSent();
 
@@ -111,6 +123,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->refresh();
         $this->assertFalse((bool) $schoolHead->must_reset_password);
         $this->assertNull($schoolHead->temporary_password_issued_at);
+        $this->assertNull($schoolHead->temporary_password_display);
 
         $loginWithNewPassword = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -131,6 +144,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $this->assertIsArray($createdRecord);
         $this->assertArrayNotHasKey('temporaryPassword', (array) ($createdRecord['schoolHeadAccount'] ?? []));
+        $this->assertNull(data_get($createdRecord, 'schoolHeadAccount.temporaryPasswordDisplay'));
         $this->assertSame('active_ready', data_get($createdRecord, 'schoolHeadAccount.lifecycleState'));
     }
 
@@ -184,6 +198,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame('setup_link', data_get($record, 'schoolHeadAccount.onboardingFlow'));
         $this->assertSame('pending_verification', data_get($record, 'schoolHeadAccount.lifecycleState'));
         $this->assertSame('activate_account', data_get($record, 'schoolHeadAccount.recommendedAction'));
+        $this->assertNull(data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
 
         $blockedLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -434,6 +449,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
         $this->assertTrue((bool) $schoolHead->must_reset_password);
         $this->assertNotNull($schoolHead->temporary_password_issued_at);
+        $this->assertSame((string) $provisioning['temporaryPassword'], $schoolHead->temporary_password_display);
     }
 
     public function test_monitor_can_regenerate_temporary_password_for_active_school_head_account(): void
@@ -490,6 +506,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var array<string, mixed> $receipt */
         $receipt = (array) $regenerate->json('data');
         $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', (string) $receipt['temporaryPassword']);
+        $this->assertSame((string) $receipt['temporaryPassword'], data_get($receipt, 'account.temporaryPasswordDisplay'));
 
         $schoolHead->refresh();
         $this->assertTrue((bool) $schoolHead->must_reset_password);
@@ -497,12 +514,14 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertNotSame($oldPasswordHash, (string) $schoolHead->password);
         $this->assertNotNull($schoolHead->temporary_password_issued_at);
         $this->assertTrue($schoolHead->temporary_password_issued_at->greaterThan($expiredIssuedAt));
+        $this->assertSame((string) $receipt['temporaryPassword'], $schoolHead->temporary_password_display);
 
         $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
         $records->assertOk();
         $record = collect((array) $records->json('data'))->firstWhere('id', (string) $school->id);
         $this->assertIsArray($record);
         $this->assertArrayNotHasKey('temporaryPassword', (array) ($record['schoolHeadAccount'] ?? []));
+        $this->assertSame((string) $receipt['temporaryPassword'], data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
 
         $oldLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -537,6 +556,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->refresh();
         $this->assertFalse((bool) $schoolHead->must_reset_password);
         $this->assertNull($schoolHead->temporary_password_issued_at);
+        $this->assertNull($schoolHead->temporary_password_display);
 
         $newLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -651,6 +671,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame('none', data_get($record, 'schoolHeadAccount.recommendedAction'));
         $this->assertFalse((bool) data_get($record, 'schoolHeadAccount.temporaryPasswordExpired'));
         $this->assertNull(data_get($record, 'schoolHeadAccount.temporaryPasswordExpiresAt'));
+        $this->assertSame((string) $provisioning['temporaryPassword'], data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
 
         $resetRequired = $this->postJson('/api/auth/reset-required-password', [
             'role' => 'school_head',
@@ -667,6 +688,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->refresh();
         $this->assertFalse((bool) $schoolHead->must_reset_password);
         $this->assertNull($schoolHead->temporary_password_issued_at);
+        $this->assertNull($schoolHead->temporary_password_display);
     }
 
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void
