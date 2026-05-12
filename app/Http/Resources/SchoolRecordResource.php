@@ -128,6 +128,7 @@ class SchoolRecordResource extends JsonResource
             'temporaryPasswordIssuedAt' => $temporaryPasswordIssuedAt,
             'temporaryPasswordExpiresAt' => $temporaryPasswordExpiresAt,
             'temporaryPasswordExpired' => $temporaryPasswordExpired,
+            'temporaryPasswordDisplay' => $this->monitorVisibleTemporaryPassword($account),
             'verifiedAt' => $account->verified_at?->toISOString(),
             'verifiedByUserId' => $account->verified_by_user_id ? (string) $account->verified_by_user_id : null,
             'verifiedByName' => $account->verifiedBy?->name,
@@ -140,6 +141,22 @@ class SchoolRecordResource extends JsonResource
             'deleteRecordReason' => $account->delete_record_flag_reason,
             'setupLinkExpiresAt' => $setupLinkExpiresAt,
         ];
+    }
+
+    private function monitorVisibleTemporaryPassword(User $account): ?string
+    {
+        if (
+            ! $account->must_reset_password
+            || $account->temporary_password_issued_at === null
+        ) {
+            return null;
+        }
+
+        $displayPassword = $account->temporary_password_display;
+
+        return is_string($displayPassword) && $displayPassword !== ''
+            ? $displayPassword
+            : null;
     }
 
     private function onboardingFlow(User $account, AccountStatus $status): string

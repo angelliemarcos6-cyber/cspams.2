@@ -383,6 +383,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         temporaryPasswordIssuedAt: "2026-05-01T08:00:00.000Z",
         temporaryPasswordExpiresAt: "2026-05-03T08:00:00.000Z",
         temporaryPasswordExpired: false,
+        temporaryPasswordDisplay: "Ab3Cd4Ef",
       },
     };
 
@@ -400,6 +401,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         lifecycleStateLabel: "Temporary password expired",
         recommendedAction: "regenerate_temporary_password",
         temporaryPasswordExpired: true,
+        temporaryPasswordDisplay: null,
       },
     };
 
@@ -447,7 +449,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(expiredRow).not.toBeUndefined();
 
     expect(within(setupRow!).getByText("Setup link")).not.toBeNull();
-    expect(within(activeRow!).getByText("Available")).not.toBeNull();
+    expect(within(activeRow!).getByText("Ab3Cd4Ef")).not.toBeNull();
     expect(within(expiredRow!).getByText("Expired")).not.toBeNull();
   });
 

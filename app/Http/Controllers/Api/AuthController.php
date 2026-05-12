@@ -340,6 +340,7 @@ class AuthController extends Controller
             'must_reset_password' => false,
             'password_changed_at' => now(),
             'temporary_password_issued_at' => null,
+            'temporary_password_display' => null,
         ])->save();
 
         $revocationSummary = $this->revokeUserSessionsAndTokens($user);
@@ -583,6 +584,7 @@ class AuthController extends Controller
                     'must_reset_password' => false,
                     'password_changed_at' => now(),
                     'temporary_password_issued_at' => null,
+                    'temporary_password_display' => null,
                     'email_verified_at' => $user->email_verified_at ?? now(),
                 ]);
 
@@ -988,6 +990,7 @@ class AuthController extends Controller
                 'must_reset_password' => false,
                 'password_changed_at' => now(),
                 'temporary_password_issued_at' => null,
+                'temporary_password_display' => null,
                 'email_verified_at' => now(),
                 'account_status' => AccountStatus::PENDING_VERIFICATION->value,
                 'verified_by_user_id' => null,

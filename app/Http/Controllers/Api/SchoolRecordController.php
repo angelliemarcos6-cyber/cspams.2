@@ -117,6 +117,7 @@ class SchoolRecordController extends Controller
                     'email_verified_at',
                     'must_reset_password',
                     'temporary_password_issued_at',
+                    'temporary_password_display',
                     'last_login_at',
                     'account_status',
                     'school_id',
@@ -349,6 +350,7 @@ class SchoolRecordController extends Controller
                     'email_verified_at',
                     'must_reset_password',
                     'temporary_password_issued_at',
+                    'temporary_password_display',
                     'last_login_at',
                     'account_status',
                     'school_id',
@@ -993,6 +995,7 @@ class SchoolRecordController extends Controller
         $account->must_reset_password = true;
         $account->password_changed_at = now();
         $account->temporary_password_issued_at = now();
+        $account->temporary_password_display = $temporaryPassword;
         $account->account_status = AccountStatus::ACTIVE->value;
         $account->school_id = $school->id;
         $account->email_verified_at = now();
@@ -1039,6 +1042,7 @@ class SchoolRecordController extends Controller
             'temporaryPasswordIssuedAt' => $account->temporary_password_issued_at?->toISOString(),
             'temporaryPasswordExpiresAt' => null,
             'temporaryPasswordExpired' => false,
+            'temporaryPasswordDisplay' => $temporaryPassword,
             'temporaryPassword' => $temporaryPassword,
         ];
     }
@@ -1147,6 +1151,8 @@ class SchoolRecordController extends Controller
                         'email',
                         'email_verified_at',
                         'must_reset_password',
+                        'temporary_password_issued_at',
+                        'temporary_password_display',
                         'last_login_at',
                         'account_status',
                         'school_id',

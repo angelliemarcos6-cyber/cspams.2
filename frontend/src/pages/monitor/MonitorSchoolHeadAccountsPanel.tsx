@@ -121,11 +121,21 @@ function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
   label: string;
   tone: string;
   title?: string;
+  revealAsPassword?: boolean;
 } {
   if (!account) {
     return {
       label: "-",
       tone: "text-slate-400",
+    };
+  }
+
+  if (account.temporaryPasswordDisplay) {
+    return {
+      label: account.temporaryPasswordDisplay,
+      tone: "border-primary-200 bg-primary-50 text-primary-800",
+      title: "Current temporary password visible to Division Monitors until the School Head changes it.",
+      revealAsPassword: true,
     };
   }
 
@@ -252,7 +262,7 @@ export function MonitorSchoolHeadAccountsPanel({
                   Dismiss
                 </button>
               </div>
-              <p>Copy this password now. It will not be shown again, and the School Head must change it on next login.</p>
+              <p>Copy this password now. It will remain visible in the monitor panel until the School Head changes it on next login.</p>
             </div>
           </div>
         )}
@@ -527,7 +537,11 @@ export function MonitorSchoolHeadAccountsPanel({
                             <span className={tempPassword.tone}>-</span>
                           ) : (
                             <span
-                              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tempPassword.tone}`}
+                              className={`inline-flex border px-2 py-0.5 text-[10px] font-semibold ${
+                                tempPassword.revealAsPassword
+                                  ? "max-w-full rounded-sm font-mono normal-case tracking-normal"
+                                  : "rounded-full uppercase tracking-wide"
+                              } ${tempPassword.tone}`}
                               title={tempPassword.title}
                             >
                               {tempPassword.label}

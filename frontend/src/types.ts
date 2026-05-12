@@ -77,6 +77,7 @@ export interface SchoolHeadAccountSummary {
   temporaryPasswordIssuedAt?: string | null;
   temporaryPasswordExpiresAt?: string | null;
   temporaryPasswordExpired?: boolean;
+  temporaryPasswordDisplay?: string | null;
   verifiedAt?: string | null;
   verifiedByUserId?: string | null;
   verifiedByName?: string | null;
