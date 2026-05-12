@@ -275,25 +275,25 @@ export function Login() {
 
   const isBusy = isSubmitting || isAuthenticating;
   const formInputClass =
-    "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.42)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
+    "w-full rounded-none border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.42)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
 
   return (
     <div className="min-h-screen bg-[#eef2f7] px-4 py-8 font-sans sm:px-6 sm:py-12">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-4xl items-center justify-center">
         <div className="w-full max-w-[620px]">
-          <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_26px_60px_-42px_rgba(15,23,42,0.38)]">
+          <div className="overflow-hidden rounded-none border border-slate-200 bg-white shadow-[0_26px_60px_-42px_rgba(15,23,42,0.38)]">
             <section className="bg-[#0f4f7d] px-7 py-7 text-white sm:px-8 sm:py-7">
               <div className="flex items-center gap-4 sm:gap-5">
                 <img
                   src="/depedlogo.png"
                   alt="Department of Education logo"
-                  className="h-20 w-auto rounded-2xl bg-white px-2.5 py-2 shadow-[0_10px_18px_-16px_rgba(15,23,42,0.7)]"
+                  className="h-20 w-auto rounded-none bg-white px-2.5 py-2 shadow-[0_10px_18px_-16px_rgba(15,23,42,0.7)]"
                 />
                 <div className="min-w-0">
-                  <span className="inline-flex rounded-full bg-white/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100">
+                  <span className="inline-flex rounded-none bg-white/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100">
                     CSPAMS
                   </span>
-                  <h1 className="font-display mt-3 max-w-md text-[2rem] leading-[1.15] font-bold text-white">
+                  <h1 className="font-display mt-3 max-w-md text-[1.65rem] leading-[1.2] font-bold text-white sm:text-[1.75rem]">
                     {appTagline}
                   </h1>
                 </div>
@@ -301,7 +301,7 @@ export function Login() {
             </section>
 
             <section className="bg-white px-7 py-7 font-sans sm:px-8 sm:py-7">
-              <div className="mb-5 rounded-[20px] border border-slate-200 bg-slate-50/70 p-3">
+              <div className="mb-5 rounded-none border border-slate-200 bg-slate-50/70 p-3">
                 <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Sign In Role</p>
                 <div className="grid gap-2 sm:grid-cols-2">
                 <button
@@ -314,7 +314,7 @@ export function Login() {
                     clearMfaState();
                   }}
                   disabled={isMfaChallengeActive}
-                  className={`rounded-2xl border px-4 py-4 text-left transition ${
+                  className={`rounded-none border px-4 py-4 text-left transition ${
                     activeRole === "school_head"
                       ? "border-primary-300 bg-white text-primary-900 shadow-[0_14px_32px_-24px_rgba(2,46,80,0.58)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
@@ -336,7 +336,7 @@ export function Login() {
                     clearMfaState();
                   }}
                   disabled={isMfaChallengeActive}
-                  className={`rounded-2xl border px-4 py-4 text-left transition ${
+                  className={`rounded-none border px-4 py-4 text-left transition ${
                     activeRole === "monitor"
                       ? "border-primary-300 bg-white text-primary-900 shadow-[0_14px_32px_-24px_rgba(2,46,80,0.58)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
@@ -406,7 +406,7 @@ export function Login() {
                     type="button"
                     onClick={() => setShowPasscode((current) => !current)}
                     disabled={isMfaChallengeActive}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-none p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                     aria-label={showPasscode ? "Hide passcode" : "Show passcode"}
                   >
                     {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -422,7 +422,7 @@ export function Login() {
               </div>
 
               {pendingMfa && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/75 p-3.5">
+                <div className="rounded-none border border-amber-200 bg-amber-50/75 p-3.5">
                   <label htmlFor="mfa-code" className="mb-1.5 block text-sm font-semibold text-slate-700">
                     Verification Code
                   </label>
@@ -505,12 +505,12 @@ export function Login() {
                 </>
               )}
 
-              {error && <p className="rounded-xl border border-primary-200 bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">{error}</p>}
+              {error && <p className="rounded-none border border-primary-200 bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">{error}</p>}
 
               <button
                 type="submit"
                 disabled={isBusy}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_34px_-24px_rgba(2,46,80,0.85)] transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-none bg-primary px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_34px_-24px_rgba(2,46,80,0.85)] transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <ShieldCheck className="h-4 w-4" />
                 {isBusy
