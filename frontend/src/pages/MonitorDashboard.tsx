@@ -29,7 +29,6 @@ import {
 import {
   downloadCsvFile,
   isUrgentRequirement,
-  queueLaneLabel,
   queuePriorityLabel,
   queuePriorityTone,
   requirementFilterLabel,
@@ -796,7 +795,6 @@ export function MonitorDashboard() {
               needsActionCount={needsActionCount}
               returnedCount={returnedCount}
               submittedCount={submittedCount}
-              queueLaneLabel={queueLaneLabel(queueLane)}
               autoAdvanceQueue={autoAdvanceQueue}
               setAutoAdvanceQueue={setAutoAdvanceQueue}
               paginatedRequirementRows={paginatedRequirementRows}

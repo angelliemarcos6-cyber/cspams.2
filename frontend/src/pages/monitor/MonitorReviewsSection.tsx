@@ -36,7 +36,6 @@ interface MonitorReviewsSectionProps {
   needsActionCount: number;
   returnedCount: number;
   submittedCount: number;
-  queueLaneLabel: string;
   autoAdvanceQueue: boolean;
   setAutoAdvanceQueue: Dispatch<SetStateAction<boolean>>;
   paginatedRequirementRows: ReviewQueueRow[];
@@ -74,7 +73,6 @@ export function MonitorReviewsSection({
   needsActionCount,
   returnedCount,
   submittedCount,
-  queueLaneLabel,
   autoAdvanceQueue,
   setAutoAdvanceQueue,
   paginatedRequirementRows,
@@ -110,7 +108,6 @@ export function MonitorReviewsSection({
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-900">Reviews</h2>
-            <p className="mt-1 text-xs text-slate-600">Single workspace for triage, school context, and review actions.</p>
           </div>
           {!isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile={false} />}
         </div>
@@ -127,7 +124,6 @@ export function MonitorReviewsSection({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900">Queue List</h2>
-              <p className="mt-1 text-xs text-slate-600">Sorted by priority: Returned, Missing, then For Review. Active lane: {queueLaneLabel}.</p>
             </div>
             <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
               <input
@@ -358,9 +354,6 @@ export function MonitorReviewsSection({
       >
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <h2 className="text-base font-bold text-slate-900">Queue Review Workspace</h2>
-          <p className="mt-1 text-xs text-slate-600">
-            Review submitted packages, indicator matrix, notes, and decisions in one place.
-          </p>
         </div>
         {queueWorkspaceSchoolFilterKeys && queueWorkspaceSchoolFilterKeys.size > 0 ? (
           <MonitorIndicatorPanel
