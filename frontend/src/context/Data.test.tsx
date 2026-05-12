@@ -116,6 +116,7 @@ describe("DataProvider school record sync recovery", () => {
       "/api/dashboard/records",
       expect.objectContaining({
         token: "test-token",
+        timeoutMs: 60_000,
       }),
     );
   });
@@ -192,10 +193,12 @@ describe("DataProvider school record sync recovery", () => {
     expect(apiRequestRawMock.mock.calls[0]?.[0]).toBe("/api/dashboard/records");
     expect(apiRequestRawMock.mock.calls[0]?.[1]).toMatchObject({
       token: "test-token",
+      timeoutMs: 60_000,
       extraHeaders: undefined,
     });
     expect(apiRequestRawMock.mock.calls[1]?.[1]).toMatchObject({
       token: "test-token",
+      timeoutMs: 60_000,
       extraHeaders: undefined,
     });
     expect(subscribeSharedSyncPolling).toHaveBeenCalled();
