@@ -2453,19 +2453,7 @@ class AuthController extends Controller
 
     private function schoolHeadTemporaryPasswordExpired(User $user, string $role): bool
     {
-        if ($role !== UserRoleResolver::SCHOOL_HEAD || ! $user->must_reset_password) {
-            return false;
-        }
-
-        // A null issue timestamp means this required-reset state came from the
-        // standard reset-link/setup lifecycle, not from the temp-password
-        // bootstrap flow. Only bootstrap passwords expire by this policy.
-        $issuedAt = $user->temporary_password_issued_at;
-        if (! $issuedAt) {
-            return false;
-        }
-
-        return $issuedAt->copy()->addHours($this->schoolHeadTemporaryPasswordValidityHours())->isPast();
+        return false;
     }
 
     private function expiredTemporaryPasswordMessage(): string

@@ -147,6 +147,14 @@ function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
     };
   }
 
+  if (account.lifecycleState === "pending_setup" || account.lifecycleState === "pending_verification") {
+    return {
+      label: "Setup link",
+      tone: "border-amber-200 bg-amber-50 text-amber-700",
+      title: "This account is still on setup-link onboarding. Temporary passwords are not used for this lifecycle.",
+    };
+  }
+
   return {
     label: "-",
     tone: "text-slate-400",
