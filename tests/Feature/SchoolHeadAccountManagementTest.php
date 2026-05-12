@@ -985,10 +985,23 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
+        $deleteCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::DELETED->value,
+            ],
+        );
+
+        $deleteCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $deleteChallengeId = (string) $deleteCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $deleteChallengeId);
+
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
             [
                 'reason' => 'School was entered in error and must be removed completely.',
+                'verificationChallengeId' => $deleteChallengeId,
+                'verificationCode' => '123456',
             ],
         );
 
@@ -1015,6 +1028,65 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
     }
 
+    public function test_remove_account_and_school_requires_valid_verification(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $missingVerification = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'School was entered in error and must be removed completely.',
+            ],
+        );
+
+        $missingVerification->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['verificationChallengeId', 'verificationCode']);
+
+        $deleteCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::DELETED->value,
+            ],
+        );
+
+        $deleteCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $deleteChallengeId = (string) $deleteCodeIssue->json('data.challengeId');
+
+        $invalidVerification = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'School was entered in error and must be removed completely.',
+                'verificationChallengeId' => $deleteChallengeId,
+                'verificationCode' => '000000',
+            ],
+        );
+
+        $invalidVerification->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'The confirmation code is invalid or expired. Send a new code and try again.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseHas('schools', [
+            'id' => $school->id,
+        ]);
+    }
+
     public function test_monitor_can_remove_pending_setup_school_head_account(): void
     {
         $this->seed();
@@ -1037,8 +1109,22 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
         $this->assertNull($schoolHead->verified_at);
 
+        $deleteCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::DELETED->value,
+            ],
+        );
+
+        $deleteCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $deleteChallengeId = (string) $deleteCodeIssue->json('data.challengeId');
+
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'verificationChallengeId' => $deleteChallengeId,
+                'verificationCode' => '123456',
+            ],
         );
 
         $remove->assertOk()
@@ -1089,8 +1175,22 @@ class SchoolHeadAccountManagementTest extends TestCase
         $monitorLogin->assertOk();
         $monitorToken = (string) $monitorLogin->json('token');
 
+        $deleteCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::DELETED->value,
+            ],
+        );
+
+        $deleteCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $deleteChallengeId = (string) $deleteCodeIssue->json('data.challengeId');
+
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'verificationChallengeId' => $deleteChallengeId,
+                'verificationCode' => '123456',
+            ],
         );
 
         $remove->assertOk()

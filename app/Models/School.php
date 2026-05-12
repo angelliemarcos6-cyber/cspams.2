@@ -84,6 +84,10 @@ class School extends Model
     {
         $relation = $this->hasMany(User::class);
 
+        // This remains a has-many relation to tolerate legacy duplicate School
+        // Head rows while the repo's uniqueness-enforcement path is completed.
+        // Callers that need one effective dashboard account must resolve that
+        // explicitly and consistently instead of assuming collection order.
         if (Schema::hasColumn('users', 'account_type')) {
             return $relation->where('account_type', UserRoleResolver::SCHOOL_HEAD);
         }

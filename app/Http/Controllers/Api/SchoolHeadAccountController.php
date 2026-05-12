@@ -703,6 +703,24 @@ class SchoolHeadAccountController extends Controller
         }
 
         $reason = trim($request->string('reason')->toString());
+        $challengeId = trim($request->string('verificationChallengeId')->toString());
+        $code = trim($request->string('verificationCode')->toString());
+
+        $verified = $this->monitorActionVerificationService->verify(
+            $monitor,
+            $school,
+            AccountStatus::DELETED->value,
+            $challengeId,
+            $code,
+        );
+
+        if (! $verified) {
+            return response()->json(
+                ['message' => 'The confirmation code is invalid or expired. Send a new code and try again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
         $schoolDependencies = [
             'students' => Student::query()->where('school_id', $school->id)->count(),
             'sections' => Section::query()->where('school_id', $school->id)->count(),
@@ -1210,6 +1228,11 @@ class SchoolHeadAccountController extends Controller
 
     private function resolveSchoolHeadAccount(School $school): ?User
     {
+        // School Head uniqueness is being tightened elsewhere in the repo, but
+        // the live dashboard still needs a deterministic answer when legacy
+        // duplicate rows exist. Use the newest linked School Head consistently
+        // for both serialization and mutation paths instead of relying on an
+        // implicit collection order.
         $query = User::query()
             ->where('school_id', $school->id)
             ->orderByDesc('id');
