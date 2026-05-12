@@ -87,7 +87,7 @@ function accountStatusTone(status: string | null | undefined, lifecycleState: st
 function recommendedActionLabel(action: string | null | undefined): string | null {
   const normalized = (action ?? "").toLowerCase();
   if (normalized === "regenerate_temporary_password") return "Next step: Regenerate Temporary Password";
-  if (normalized === "send_setup_link") return "Next step: Send Setup Link";
+  if (normalized === "send_setup_link") return "Send setup link";
   if (normalized === "activate_account") return "Next step: Activate Account";
   if (normalized === "send_password_reset_link") return "Next step: Send Password Reset Link";
   return null;
@@ -384,7 +384,7 @@ export function MonitorSchoolHeadAccountsPanel({
                   const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
                   const emailVerified = Boolean(account?.emailVerifiedAt);
                   const verificationLabel = normalizedAccountStatus === "pending_setup"
-                    ? "Setup needed"
+                    ? ""
                     : normalizedAccountStatus === "pending_verification"
                       ? "Awaiting monitor approval"
                       : account?.verifiedAt
@@ -477,9 +477,11 @@ export function MonitorSchoolHeadAccountsPanel({
                               {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
                               {accountStatusLabel(account.accountStatus, account.lifecycleStateLabel)}
                             </span>
-                            <span className={`text-[11px] font-semibold ${verificationTone}`}>
-                              {verificationLabel}
-                            </span>
+                            {verificationLabel ? (
+                              <span className={`text-[11px] font-semibold ${verificationTone}`}>
+                                {verificationLabel}
+                              </span>
+                            ) : null}
                           </div>
                         ) : (
                           <span className="text-slate-400">No account</span>
