@@ -32,23 +32,23 @@ describe("Login", () => {
 
   it("shows school head by default and updates labels when switching roles", () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Login />
       </MemoryRouter>,
     );
 
-    expect(screen.getByLabelText("School Code")).toBeTruthy();
-    expect(screen.getByPlaceholderText("6-digit school code")).toBeTruthy();
+    expect(screen.getByLabelText("Login ID")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Enter school code or monitor email")).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
 
-    expect(screen.getByLabelText("Email")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Monitor email")).toBeTruthy();
+    expect(screen.getByLabelText("Login ID")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Enter school code or monitor email")).toBeTruthy();
   });
 
   it("toggles passcode visibility and preserves forgot-password routing by role", () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Login />
       </MemoryRouter>,
     );

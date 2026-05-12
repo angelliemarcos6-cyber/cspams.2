@@ -7,6 +7,9 @@ const devBackendUrl = process.env.VITE_DEV_BACKEND_URL || "https://cspams-2.onre
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    chunkSizeWarningLimit: 900,
+  },
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
