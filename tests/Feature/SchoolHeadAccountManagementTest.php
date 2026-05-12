@@ -595,7 +595,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         }
     }
 
-    public function test_expired_temporary_password_is_rejected_until_monitor_regenerates_a_new_one(): void
+    public function test_temporary_password_remains_valid_until_required_password_reset_is_completed(): void
     {
         $this->seed();
 
@@ -633,40 +633,40 @@ class SchoolHeadAccountManagementTest extends TestCase
             'temporary_password_issued_at' => now()->subHours(73),
         ])->save();
 
-        $expiredLogin = $this->postJson('/api/auth/login', [
+        $continuedLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => 'expired.temp.head@cspams.local',
             'password' => (string) $provisioning['temporaryPassword'],
         ]);
 
-        $expiredLogin->assertStatus(Response::HTTP_FORBIDDEN)
-            ->assertJsonPath(
-                'message',
-                'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.',
-            )
-            ->assertJsonMissing(['requiresPasswordReset' => true]);
+        $continuedLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresPasswordReset', true)
+            ->assertJsonPath('message', 'Password reset is required before dashboard access.');
 
         $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
         $records->assertOk();
         $record = collect((array) $records->json('data'))->firstWhere('schoolId', '933333');
         $this->assertIsArray($record);
-        $this->assertSame('temporary_password_expired', data_get($record, 'schoolHeadAccount.lifecycleState'));
-        $this->assertSame('regenerate_temporary_password', data_get($record, 'schoolHeadAccount.recommendedAction'));
-        $this->assertTrue((bool) data_get($record, 'schoolHeadAccount.temporaryPasswordExpired'));
+        $this->assertSame('temporary_password_active', data_get($record, 'schoolHeadAccount.lifecycleState'));
+        $this->assertSame('none', data_get($record, 'schoolHeadAccount.recommendedAction'));
+        $this->assertFalse((bool) data_get($record, 'schoolHeadAccount.temporaryPasswordExpired'));
+        $this->assertNull(data_get($record, 'schoolHeadAccount.temporaryPasswordExpiresAt'));
 
-        $expiredResetAttempt = $this->postJson('/api/auth/reset-required-password', [
+        $resetRequired = $this->postJson('/api/auth/reset-required-password', [
             'role' => 'school_head',
             'login' => 'expired.temp.head@cspams.local',
             'current_password' => (string) $provisioning['temporaryPassword'],
-            'new_password' => 'ExpiredBlocked@2026!123',
-            'new_password_confirmation' => 'ExpiredBlocked@2026!123',
+            'new_password' => 'TempPasswordReset@2026!123',
+            'new_password_confirmation' => 'TempPasswordReset@2026!123',
         ]);
 
-        $expiredResetAttempt->assertStatus(Response::HTTP_FORBIDDEN)
-            ->assertJsonPath(
-                'message',
-                'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.',
-            );
+        $resetRequired->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.mustResetPassword', false);
+
+        $schoolHead->refresh();
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->temporary_password_issued_at);
     }
 
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void

@@ -298,6 +298,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(pendingRow).not.toBeUndefined();
     expect(activeRow).not.toBeUndefined();
     expect(lockedRow).not.toBeUndefined();
+    expect(within(pendingRow!).getByText("Setup link")).not.toBeNull();
 
     fireEvent.click(within(pendingRow!).getByRole("button", { name: "More actions" }));
     expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
@@ -310,6 +311,144 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
 
     fireEvent.click(within(lockedRow!).getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
+  });
+
+  it("shows setup-link and temporary-password states distinctly in the Temp Pass column", () => {
+    const setupLinkRecord: SchoolRecord = {
+      id: "school-5",
+      schoolId: "900005",
+      schoolCode: "900005",
+      schoolName: "Setup Link School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-08T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-5",
+        name: "Setup User",
+        email: "setup@cspams.local",
+        accountStatus: "pending_setup",
+        mustResetPassword: false,
+        onboardingFlow: "setup_link",
+        lifecycleState: "pending_setup",
+        lifecycleStateLabel: "Pending setup",
+        recommendedAction: "send_setup_link",
+        emailVerifiedAt: null,
+        verifiedAt: null,
+        verifiedByUserId: null,
+        verifiedByName: null,
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    };
+
+    const tempActiveRecord: SchoolRecord = {
+      ...setupLinkRecord,
+      id: "school-6",
+      schoolId: "900006",
+      schoolCode: "900006",
+      schoolName: "Temp Active School",
+      schoolHeadAccount: {
+        ...setupLinkRecord.schoolHeadAccount!,
+        id: "account-6",
+        email: "temp-active@cspams.local",
+        accountStatus: "active",
+        mustResetPassword: true,
+        onboardingFlow: "temporary_password",
+        lifecycleState: "temporary_password_active",
+        lifecycleStateLabel: "Temporary password active",
+        recommendedAction: "none",
+        emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedByUserId: "1",
+        verifiedByName: "Monitor User",
+        temporaryPasswordIssuedAt: "2026-05-01T08:00:00.000Z",
+        temporaryPasswordExpiresAt: "2026-05-03T08:00:00.000Z",
+        temporaryPasswordExpired: false,
+      },
+    };
+
+    const tempExpiredRecord: SchoolRecord = {
+      ...setupLinkRecord,
+      id: "school-7",
+      schoolId: "900007",
+      schoolCode: "900007",
+      schoolName: "Temp Expired School",
+      schoolHeadAccount: {
+        ...tempActiveRecord.schoolHeadAccount!,
+        id: "account-7",
+        email: "temp-expired@cspams.local",
+        lifecycleState: "temporary_password_expired",
+        lifecycleStateLabel: "Temporary password expired",
+        recommendedAction: "regenerate_temporary_password",
+        temporaryPasswordExpired: true,
+      },
+    };
+
+    render(
+      <MonitorSchoolHeadAccountsPanel
+        isOpen
+        isSaving={false}
+        isMobileViewport={false}
+        rows={[
+          { schoolKey: "school-5", schoolCode: "900005", schoolName: "Setup Link School", record: setupLinkRecord },
+          { schoolKey: "school-6", schoolCode: "900006", schoolName: "Temp Active School", record: tempActiveRecord },
+          { schoolKey: "school-7", schoolCode: "900007", schoolName: "Temp Expired School", record: tempExpiredRecord },
+        ]}
+        totalCount={3}
+        query=""
+        statusFilter="all"
+        onlyFlagged={false}
+        onlyDeleteFlagged={false}
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onOnlyFlaggedChange={vi.fn()}
+        onOnlyDeleteFlaggedChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        onClose={vi.fn()}
+        onOpenSchoolRecord={vi.fn()}
+        pendingDeleteSchoolRecord={null}
+        pendingDeleteSchoolRecordPreview={null}
+        pendingDeleteSchoolRecordError=""
+        isDeleteSchoolRecordLoading={false}
+        onPreviewDeleteSchoolRecord={vi.fn()}
+        onClosePendingDeleteSchoolRecord={vi.fn()}
+        onConfirmDeleteSchoolRecord={vi.fn()}
+        formatDateTime={(value) => value ?? "-"}
+        actions={buildActions()}
+      />,
+    );
+
+    const rows = screen.getAllByRole("row");
+    const setupRow = rows.find((row) => row.textContent?.includes("Setup Link School"));
+    const activeRow = rows.find((row) => row.textContent?.includes("Temp Active School"));
+    const expiredRow = rows.find((row) => row.textContent?.includes("Temp Expired School"));
+
+    expect(setupRow).not.toBeUndefined();
+    expect(activeRow).not.toBeUndefined();
+    expect(expiredRow).not.toBeUndefined();
+
+    expect(within(setupRow!).getByText("Setup link")).not.toBeNull();
+    expect(within(activeRow!).getByText("Available")).not.toBeNull();
+    expect(within(expiredRow!).getByText("Expired")).not.toBeNull();
   });
 
   it("separates no-account rows from pending-setup rows in the status filter", () => {

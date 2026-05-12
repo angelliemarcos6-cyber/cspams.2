@@ -1277,8 +1277,8 @@ class SchoolHeadAccountController extends Controller
         }
 
         $temporaryPasswordIssuedAt = $account->temporary_password_issued_at?->toISOString();
-        $temporaryPasswordExpiresAt = $this->temporaryPasswordExpiresAt($account)?->toISOString();
-        $temporaryPasswordExpired = $this->temporaryPasswordExpired($account);
+        $temporaryPasswordExpiresAt = null;
+        $temporaryPasswordExpired = false;
         $lifecycleState = $this->lifecycleState($account, $status);
 
         return [
@@ -1467,9 +1467,7 @@ class SchoolHeadAccountController extends Controller
         }
 
         if ($status === AccountStatus::ACTIVE && $account->must_reset_password && $account->temporary_password_issued_at !== null) {
-            return $this->temporaryPasswordExpired($account)
-                ? 'temporary_password_expired'
-                : 'temporary_password_active';
+            return 'temporary_password_active';
         }
 
         // An active account that still requires a password reset without a temp
@@ -1490,7 +1488,6 @@ class SchoolHeadAccountController extends Controller
     {
         return match ($state) {
             'temporary_password_active' => 'Temporary password active',
-            'temporary_password_expired' => 'Temporary password expired',
             'pending_setup' => 'Pending setup',
             'pending_verification' => 'Pending verification',
             'password_reset_required' => 'Password change required',
@@ -1502,7 +1499,6 @@ class SchoolHeadAccountController extends Controller
     private function recommendedAction(string $state): string
     {
         return match ($state) {
-            'temporary_password_expired' => 'regenerate_temporary_password',
             'pending_setup' => 'send_setup_link',
             'pending_verification' => 'activate_account',
             'password_reset_required' => 'send_password_reset_link',
@@ -1512,25 +1508,6 @@ class SchoolHeadAccountController extends Controller
 
     private function temporaryPasswordExpiresAt(User $account): ?CarbonImmutable
     {
-        if (! $account->temporary_password_issued_at) {
-            return null;
-        }
-
-        return CarbonImmutable::instance($account->temporary_password_issued_at)
-            ->addHours($this->temporaryPasswordValidityHours());
-    }
-
-    private function temporaryPasswordExpired(User $account): bool
-    {
-        $expiresAt = $this->temporaryPasswordExpiresAt($account);
-
-        return $expiresAt ? $expiresAt->isPast() : false;
-    }
-
-    private function temporaryPasswordValidityHours(): int
-    {
-        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
-
-        return max(1, $configured);
+        return null;
     }
 }

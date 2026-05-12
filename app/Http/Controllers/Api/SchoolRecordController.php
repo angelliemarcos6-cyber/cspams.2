@@ -1037,7 +1037,7 @@ class SchoolRecordController extends Controller
             'lifecycleStateLabel' => 'Temporary password active',
             'recommendedAction' => 'none',
             'temporaryPasswordIssuedAt' => $account->temporary_password_issued_at?->toISOString(),
-            'temporaryPasswordExpiresAt' => $this->temporaryPasswordExpiresAt($account)?->toISOString(),
+            'temporaryPasswordExpiresAt' => null,
             'temporaryPasswordExpired' => false,
             'temporaryPassword' => $temporaryPassword,
         ];
@@ -1058,19 +1058,7 @@ class SchoolRecordController extends Controller
 
     private function temporaryPasswordExpiresAt(User $account): ?CarbonImmutable
     {
-        if (! $account->temporary_password_issued_at) {
-            return null;
-        }
-
-        return CarbonImmutable::instance($account->temporary_password_issued_at)
-            ->addHours($this->temporaryPasswordValidityHours());
-    }
-
-    private function temporaryPasswordValidityHours(): int
-    {
-        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
-
-        return max(1, $configured);
+        return null;
     }
 
     private function schoolHeadCandidatesQuery(): Builder
