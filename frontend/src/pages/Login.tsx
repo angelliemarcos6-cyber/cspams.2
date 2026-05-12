@@ -39,25 +39,24 @@ function isValidMfaInput(code: string): boolean {
 
 const ROLE_META: Record<
   LoginRole,
-  { label: string; note: string; submit: string; loginHint: string; loginLabel: string; emptyError: string }
+  { label: string; note: string; submit: string; emptyError: string }
 > = {
   school_head: {
     label: "School Head",
-    note: "",
+    note: "Use your assigned 6-digit school code.",
     submit: "Sign In",
-    loginHint: "6-digit school code",
-    loginLabel: "School Code",
     emptyError: "Enter your 6-digit school code.",
   },
   monitor: {
     label: "Division Monitor",
-    note: "",
+    note: "Use your Division Monitor email address.",
     submit: "Sign In",
-    loginHint: "Monitor email",
-    loginLabel: "Email",
     emptyError: "Enter your monitor email.",
   },
 };
+
+const LOGIN_FIELD_LABEL = "Login ID";
+const LOGIN_FIELD_HINT = "Enter school code or monitor email";
 
 export function Login() {
   const navigate = useNavigate();
@@ -279,7 +278,7 @@ export function Login() {
     "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.42)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
 
   return (
-    <div className="min-h-screen bg-[#eef2f7] px-4 py-8 sm:px-6 sm:py-12">
+    <div className="min-h-screen bg-[#eef2f7] px-4 py-8 font-sans sm:px-6 sm:py-12">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-4xl items-center justify-center">
         <div className="w-full max-w-[620px]">
           <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_26px_60px_-42px_rgba(15,23,42,0.38)]">
@@ -294,14 +293,14 @@ export function Login() {
                   <span className="inline-flex rounded-full bg-white/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100">
                     CSPAMS
                   </span>
-                  <h1 className="mt-3 max-w-md text-[2rem] leading-[1.15] font-bold text-white">
+                  <h1 className="font-display mt-3 max-w-md text-[2rem] leading-[1.15] font-bold text-white">
                     {appTagline}
                   </h1>
                 </div>
               </div>
             </section>
 
-            <section className="bg-white px-7 py-7 sm:px-8 sm:py-7">
+            <section className="bg-white px-7 py-7 font-sans sm:px-8 sm:py-7">
               <div className="mb-5 rounded-[20px] border border-slate-200 bg-slate-50/70 p-3">
                 <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Sign In Role</p>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -355,7 +354,7 @@ export function Login() {
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div>
                 <label htmlFor="login-id" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  {roleMeta.loginLabel}
+                  {LOGIN_FIELD_LABEL}
                 </label>
                 <input
                   id="login-id"
@@ -373,7 +372,7 @@ export function Login() {
                     clearResetState();
                     clearMfaState();
                   }}
-                  placeholder={roleMeta.loginHint}
+                  placeholder={LOGIN_FIELD_HINT}
                   inputMode={activeRole === "school_head" ? "numeric" : "text"}
                   maxLength={activeRole === "school_head" ? 6 : 255}
                   pattern={activeRole === "school_head" ? "\\d{6}" : undefined}

@@ -153,7 +153,7 @@ function DashboardDataProviders({ children }: { children: ReactNode }) {
 export function App() {
   return (
     <AuthProvider>
-      <HashRouter>
+      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppRoutes />
       </HashRouter>
     </AuthProvider>
