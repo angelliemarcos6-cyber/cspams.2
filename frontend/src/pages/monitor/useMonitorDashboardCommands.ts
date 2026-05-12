@@ -131,7 +131,7 @@ export function useMonitorDashboardCommands({
       default:
         return {
           title: "Reviews",
-          description: "Review pending submissions and complete monitor actions.",
+          description: "",
           primaryLabel: "Review",
         };
     }
