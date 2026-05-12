@@ -140,7 +140,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(onPreviewDeleteSchoolRecord).toHaveBeenCalledWith(record);
   });
 
-  it("keeps pending setup actions narrow while leaving reset-link actions for active accounts in the menu", () => {
+  it("keeps pending setup actions narrow while leaving reset-link actions for active and locked accounts in the menu", () => {
     const pendingRecord: SchoolRecord = {
       id: "school-2",
       schoolId: "900002",
@@ -205,6 +205,22 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       },
     };
 
+    const lockedRecord: SchoolRecord = {
+      ...pendingRecord,
+      id: "school-4",
+      schoolId: "900004",
+      schoolCode: "900004",
+      schoolName: "Locked School",
+      schoolHeadAccount: {
+        ...pendingRecord.schoolHeadAccount!,
+        id: "account-3",
+        accountStatus: "locked",
+        lifecycleState: "locked",
+        lifecycleStateLabel: "Locked",
+        recommendedAction: "send_password_reset_link",
+      },
+    };
+
     function Wrapper(): ReactElement {
       const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
       const [query, setQuery] = useState("");
@@ -235,8 +251,14 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
               schoolName: "Active School",
               record: activeRecord,
             },
+            {
+              schoolKey: "school-4",
+              schoolCode: "900004",
+              schoolName: "Locked School",
+              record: lockedRecord,
+            },
           ]}
-          totalCount={2}
+          totalCount={3}
           query={query}
           statusFilter={statusFilter}
           onlyFlagged={onlyFlagged}
@@ -271,9 +293,11 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     const rows = screen.getAllByRole("row");
     const pendingRow = rows.find((row) => row.textContent?.includes("Pending Setup School"));
     const activeRow = rows.find((row) => row.textContent?.includes("Active School"));
+    const lockedRow = rows.find((row) => row.textContent?.includes("Locked School"));
 
     expect(pendingRow).not.toBeUndefined();
     expect(activeRow).not.toBeUndefined();
+    expect(lockedRow).not.toBeUndefined();
 
     fireEvent.click(within(pendingRow!).getByRole("button", { name: "More actions" }));
     expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
@@ -281,6 +305,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     fireEvent.click(within(pendingRow!).getByRole("button", { name: "More actions" }));
 
     fireEvent.click(within(activeRow!).getByRole("button", { name: "More actions" }));
+    expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
+    fireEvent.click(within(activeRow!).getByRole("button", { name: "More actions" }));
+
+    fireEvent.click(within(lockedRow!).getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
   });
 
@@ -423,7 +451,162 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Pending Setup School"]);
   });
 
-  it("keeps the remove-account-and-school dialog free of helper copy and note input", () => {
+  it("prioritizes blocked active lifecycle states ahead of active-ready accounts and filters them directly", () => {
+    const expiredTempRecord: SchoolRecord = {
+      id: "school-20",
+      schoolId: "902020",
+      schoolCode: "902020",
+      schoolName: "Expired Temp Password School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-09T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-20",
+        name: "Expired Temp User",
+        email: "expired-temp@cspams.local",
+        accountStatus: "active",
+        mustResetPassword: true,
+        lifecycleState: "temporary_password_expired",
+        lifecycleStateLabel: "Temporary password expired",
+        recommendedAction: "regenerate_temporary_password",
+        emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedAt: "2026-05-02T08:00:00.000Z",
+        verifiedByUserId: "1",
+        verifiedByName: "Monitor User",
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: "2026-05-01T08:00:00.000Z",
+        temporaryPasswordExpiresAt: "2026-05-03T08:00:00.000Z",
+        temporaryPasswordExpired: true,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    };
+
+    const resetRequiredRecord: SchoolRecord = {
+      ...expiredTempRecord,
+      id: "school-21",
+      schoolId: "902021",
+      schoolCode: "902021",
+      schoolName: "Password Reset School",
+      schoolHeadAccount: {
+        ...expiredTempRecord.schoolHeadAccount!,
+        id: "account-21",
+        email: "reset-needed@cspams.local",
+        lifecycleState: "password_reset_required",
+        lifecycleStateLabel: "Password change required",
+        recommendedAction: "send_password_reset_link",
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+      },
+    };
+
+    const activeReadyRecord: SchoolRecord = {
+      ...expiredTempRecord,
+      id: "school-22",
+      schoolId: "902022",
+      schoolCode: "902022",
+      schoolName: "Active Ready School",
+      schoolHeadAccount: {
+        ...expiredTempRecord.schoolHeadAccount!,
+        id: "account-22",
+        email: "ready@cspams.local",
+        mustResetPassword: false,
+        lifecycleState: "active_ready",
+        lifecycleStateLabel: "Active",
+        recommendedAction: "none",
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+      },
+    };
+
+    const compactSchoolRows: MonitorSchoolRecordsListRow[] = [expiredTempRecord, resetRequiredRecord, activeReadyRecord].map((record) => ({
+      summary: {
+        schoolKey: record.id,
+        schoolCode: record.schoolCode ?? "",
+        schoolName: record.schoolName,
+        region: record.region,
+        schoolStatus: record.status,
+        hasComplianceRecord: true,
+        indicatorStatus: null,
+        hasAnySubmitted: false,
+        isComplete: false,
+        awaitingReviewCount: 0,
+        missingCount: 0,
+        lastActivityAt: null,
+        lastActivityTime: 0,
+      },
+      record,
+    }));
+
+    const recordBySchoolKey = new Map<string, SchoolRecord>(
+      compactSchoolRows.flatMap(({ summary, record }) => (record ? [[summary.schoolKey, record] as const] : [])),
+    );
+
+    const { result } = renderHook(() =>
+      useMonitorSchoolHeadAccountsPanelState({
+        isMobileViewport: false,
+        isSaving: false,
+        compactSchoolRows,
+        recordBySchoolKey,
+        pushToast: vi.fn(),
+        updateSchoolHeadAccountStatus: vi.fn() as any,
+        activateSchoolHeadAccount: vi.fn() as any,
+        issueSchoolHeadAccountActionVerificationCode: vi.fn() as any,
+        issueSchoolHeadSetupLink: vi.fn() as any,
+        issueSchoolHeadPasswordResetLink: vi.fn() as any,
+        issueSchoolHeadTemporaryPassword: vi.fn() as any,
+        upsertSchoolHeadAccountProfile: vi.fn() as any,
+        removeSchoolHeadAccount: vi.fn() as any,
+        deleteRecord: vi.fn(async () => {}),
+        previewDeleteRecord: vi.fn() as any,
+        onOpenSchoolRecord: vi.fn(),
+        formatDateTime: (value) => value,
+      }),
+    );
+
+    act(() => {
+      result.current.toggleSchoolHeadAccountsPanel();
+    });
+
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
+      "Expired Temp Password School",
+      "Password Reset School",
+      "Active Ready School",
+    ]);
+
+    act(() => {
+      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("temporary_password_expired");
+    });
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
+      "Expired Temp Password School",
+    ]);
+
+    act(() => {
+      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("password_reset_required");
+    });
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
+      "Password Reset School",
+    ]);
+  });
+
+  it("requires verification for remove-account-and-school actions without reintroducing note input", () => {
     const { result } = renderHook(() =>
       useSchoolHeadAccountActions({
         isPanelOpen: true,
@@ -450,9 +633,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     });
 
     expect(result.current.pendingActionDescription).toBe("");
+    expect(result.current.pendingActionRequiresVerification).toBe(true);
   });
 
-  it("omits helper copy for remove-account-and-school and archive dialogs", () => {
+  it("renders confirmation-code controls for remove-account-and-school while keeping note input hidden", () => {
     const actions = buildActions();
     actions.pendingAccountAction = {
       kind: "remove",
@@ -460,8 +644,9 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       schoolName: "Batal Elementary School",
       actionLabel: "Remove account and school",
     };
+    actions.pendingActionRequiresVerification = true;
     actions.confirmPendingAccountActionLabel = "Confirm";
-    actions.isConfirmPendingAccountActionDisabled = false;
+    actions.isConfirmPendingAccountActionDisabled = true;
 
     render(
       <MonitorSchoolHeadAccountsPanel
@@ -526,5 +711,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByLabelText(/Optional Note/i)).toBeNull();
     expect(screen.queryByPlaceholderText(/Optional note for permanent removal/i)).toBeNull();
     expect(screen.queryByText(/This removes Batal Elementary School from active Schools/i)).toBeNull();
+    expect(screen.getByText(/Confirmation Code/i)).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Send code" })).not.toBeNull();
   });
 });

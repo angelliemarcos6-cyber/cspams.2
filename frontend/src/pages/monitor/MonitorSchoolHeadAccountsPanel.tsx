@@ -19,7 +19,7 @@ import type { SchoolRecord, SchoolRecordDeletePreview } from "@/types";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 export type SchoolHeadAccountsStatusFilter =
-  "all" | "no_account" | "pending_setup" | "pending_verification" | "active" | "suspended" | "locked" | "archived";
+  "all" | "no_account" | "pending_setup" | "pending_verification" | "password_reset_required" | "temporary_password_expired" | "active" | "suspended" | "locked" | "archived";
 
 export interface MonitorSchoolHeadAccountRow {
   schoolKey: string;
@@ -56,7 +56,9 @@ export interface MonitorSchoolHeadAccountsPanelProps {
   actions: SchoolHeadAccountActionsApi;
 }
 
-function accountStatusLabel(status: string | null | undefined): string {
+function accountStatusLabel(status: string | null | undefined, lifecycleStateLabel: string | null | undefined): string {
+  const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
+  if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
   if (!status) return "No Account";
   const normalized = status.toLowerCase();
   if (normalized === "active") return "Active";
@@ -68,7 +70,11 @@ function accountStatusLabel(status: string | null | undefined): string {
   return status;
 }
 
-function accountStatusTone(status: string | null | undefined): string {
+function accountStatusTone(status: string | null | undefined, lifecycleState: string | null | undefined): string {
+  const normalizedLifecycleState = (lifecycleState ?? "").toLowerCase();
+  if (normalizedLifecycleState === "password_reset_required") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (normalizedLifecycleState === "temporary_password_expired") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+  if (normalizedLifecycleState === "temporary_password_active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   const normalized = (status ?? "").toLowerCase();
   if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
@@ -157,7 +163,8 @@ function shouldShowArchiveAction(status: string | null | undefined): boolean {
 }
 
 function shouldShowResetLinkAction(status: string | null | undefined): boolean {
-  return String(status ?? "").toLowerCase() === "active";
+  const normalized = String(status ?? "").toLowerCase();
+  return normalized === "active" || normalized === "locked";
 }
 
 export function MonitorSchoolHeadAccountsPanel({
@@ -267,6 +274,8 @@ export function MonitorSchoolHeadAccountsPanel({
                     <option value="no_account">No account</option>
                     <option value="pending_setup">Pending setup</option>
                     <option value="pending_verification">Pending verification</option>
+                    <option value="password_reset_required">Password reset required</option>
+                    <option value="temporary_password_expired">Temporary password expired</option>
                     <option value="active">Active</option>
                     <option value="suspended">Suspended</option>
                     <option value="locked">Locked</option>
@@ -443,11 +452,12 @@ export function MonitorSchoolHeadAccountsPanel({
                             <span
                               className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${accountStatusTone(
                                 account.accountStatus,
+                                account.lifecycleState,
                               )}`}
                             >
                               {account.deleteRecordFlagged ? <Database className="h-3.5 w-3.5 text-rose-700" /> : null}
                               {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
-                              {accountStatusLabel(account.accountStatus)}
+                              {accountStatusLabel(account.accountStatus, account.lifecycleStateLabel)}
                             </span>
                             <span className={`text-[11px] font-semibold ${verificationTone}`}>
                               {verificationLabel}

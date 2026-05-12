@@ -82,6 +82,9 @@ class SchoolRecordResource extends JsonResource
             return null;
         }
 
+        // Keep resource resolution aligned with SchoolHeadAccountController:
+        // when legacy duplicate School Head rows exist for one school, the
+        // dashboard surfaces the newest linked account deterministically.
         /** @var User|null $account */
         $account = $this->schoolHeadAccounts
             ->sortByDesc(static fn (User $candidate): int => (int) $candidate->id)

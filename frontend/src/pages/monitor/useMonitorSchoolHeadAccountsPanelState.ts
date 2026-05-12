@@ -56,7 +56,7 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload?: { reason?: string | null },
+    payload: { reason?: string | null; verificationChallengeId: string; verificationCode: string },
   ) => Promise<SchoolHeadAccountRemovalResult>;
   deleteRecord: (id: string) => Promise<void>;
   previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
@@ -195,6 +195,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
       const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
       const account = resolvedRecord?.schoolHeadAccount ?? null;
       const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+      const lifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
       const hasNoAccount = !account;
       const isPendingSetup = normalizedAccountStatus === "pending_setup";
 
@@ -203,6 +204,8 @@ export function useMonitorSchoolHeadAccountsPanelState({
           if (!hasNoAccount) return false;
         } else if (statusFilter === "pending_setup") {
           if (!isPendingSetup) return false;
+        } else if (statusFilter === "password_reset_required" || statusFilter === "temporary_password_expired") {
+          if (lifecycleState !== statusFilter) return false;
         } else if (normalizedAccountStatus !== statusFilter) {
           return false;
         }
@@ -231,16 +234,20 @@ export function useMonitorSchoolHeadAccountsPanelState({
       const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
       const account = resolvedRecord?.schoolHeadAccount ?? null;
       const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+      const lifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
 
       if (account?.deleteRecordFlagged) return 0;
       if (!account) return 1;
-      if (normalizedAccountStatus === "pending_setup") return 2;
-      if (normalizedAccountStatus === "pending_verification") return 3;
+      if (lifecycleState === "pending_setup") return 2;
+      if (lifecycleState === "pending_verification") return 3;
       if (account.flagged) return 4;
-      if (normalizedAccountStatus === "active") return 5;
-      if (normalizedAccountStatus === "suspended") return 6;
-      if (normalizedAccountStatus === "locked") return 7;
-      if (normalizedAccountStatus === "archived") return 8;
+      if (lifecycleState === "temporary_password_expired") return 5;
+      if (lifecycleState === "password_reset_required") return 6;
+      if (lifecycleState === "temporary_password_active") return 7;
+      if (normalizedAccountStatus === "active") return 8;
+      if (normalizedAccountStatus === "locked") return 9;
+      if (normalizedAccountStatus === "suspended") return 10;
+      if (normalizedAccountStatus === "archived") return 11;
       return 99;
     };
 
