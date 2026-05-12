@@ -56,7 +56,7 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason?: string | null; verificationChallengeId: string; verificationCode: string },
+    payload: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
   deleteRecord: (id: string) => Promise<void>;
   previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
