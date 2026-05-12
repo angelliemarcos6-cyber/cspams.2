@@ -11,6 +11,7 @@ use App\Models\AuditLog;
 use App\Models\FormSubmissionHistory;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\SchoolHeadAccountSetupService;
+use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -1161,6 +1162,135 @@ class SchoolHeadAccountManagementTest extends TestCase
             'id' => $schoolHead->id,
         ]);
         $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
+    }
+
+    public function test_remove_account_and_school_also_deletes_linked_user_rows_hidden_by_school_head_relation_filtering(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $hiddenLinkedUser = new User();
+        $hiddenLinkedUser->forceFill([
+            'name' => 'Legacy Linked Account',
+            'email' => 'legacy.linked@cspams.local',
+            'password' => Hash::make('LegacyLinked@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_linked',
+        ])->save();
+
+        $hiddenLinkedUser->createToken('legacy-linked-token');
+
+        if (Schema::hasTable('account_setup_tokens')) {
+            AccountSetupToken::query()->create([
+                'user_id' => $hiddenLinkedUser->id,
+                'issued_by_user_id' => $hiddenLinkedUser->id,
+                'token_hash' => hash('sha256', 'legacy-linked-token'),
+                'expires_at' => now()->addDay(),
+            ]);
+        }
+
+        $this->assertFalse(
+            $school->schoolHeadAccounts()->whereKey($hiddenLinkedUser->id)->exists(),
+            'The regression fixture must be excluded by the filtered schoolHeadAccounts() relation.',
+        );
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'Remove school and every linked account row.',
+            ],
+        );
+
+        $remove->assertOk()
+            ->assertJsonPath('data.deletedCount', 2);
+
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('users', [
+            'id' => $hiddenLinkedUser->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_type' => User::class,
+            'tokenable_id' => $hiddenLinkedUser->id,
+        ]);
+
+        if (Schema::hasTable('account_setup_tokens')) {
+            $this->assertDatabaseMissing('account_setup_tokens', [
+                'user_id' => $hiddenLinkedUser->id,
+            ]);
+        }
+    }
+
+    public function test_remove_account_and_school_blocks_when_any_linked_user_has_monitor_access(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $linkedMonitor = new User();
+        $linkedMonitor->forceFill([
+            'name' => 'Linked Monitor',
+            'email' => 'linked.monitor@cspams.local',
+            'password' => Hash::make('LinkedMonitor@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_monitor',
+        ])->save();
+        $linkedMonitor->assignRole(UserRoleResolver::MONITOR);
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [],
+        );
+
+        $remove->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'One of the linked accounts has monitor access and cannot be deleted here.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseHas('users', [
+            'id' => $linkedMonitor->id,
+        ]);
+        $this->assertDatabaseHas('schools', [
             'id' => $school->id,
         ]);
     }

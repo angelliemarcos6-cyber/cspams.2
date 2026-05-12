@@ -690,15 +690,19 @@ class SchoolHeadAccountController extends Controller
         // contract that permanently deletes the school and its linked School Head account(s).
         $monitor = $this->requireMonitor($request);
 
-        $accounts = $school->schoolHeadAccounts()->with('roles')->get();
-        if ($accounts->isEmpty()) {
+        $linkedUsers = User::query()
+            ->where('school_id', $school->id)
+            ->with('roles')
+            ->get();
+
+        if ($linkedUsers->isEmpty()) {
             return response()->json(
                 ['message' => 'No School Head account is linked to this school.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
 
-        if ($accounts->contains(static fn (User $account): bool => UserRoleResolver::has($account, UserRoleResolver::MONITOR))) {
+        if ($linkedUsers->contains(static fn (User $account): bool => UserRoleResolver::has($account, UserRoleResolver::MONITOR))) {
             return response()->json(
                 ['message' => 'One of the linked accounts has monitor access and cannot be deleted here.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
@@ -715,11 +719,11 @@ class SchoolHeadAccountController extends Controller
             'linkedUsers' => User::query()->where('school_id', $school->id)->count(),
         ];
 
-        $accountEmails = $accounts
+        $accountEmails = $linkedUsers
             ->map(static fn (User $account): string => (string) $account->email)
             ->values()
             ->all();
-        $accountIds = $accounts
+        $accountIds = $linkedUsers
             ->map(static fn (User $account): string => (string) $account->id)
             ->values()
             ->all();
@@ -727,7 +731,7 @@ class SchoolHeadAccountController extends Controller
         $removedCount = 0;
         $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
         $revocationSummaries = [];
-        $accountIdInts = $accounts
+        $accountIdInts = $linkedUsers
             ->map(static fn (User $account): int => (int) $account->id)
             ->values()
             ->all();
@@ -766,8 +770,8 @@ class SchoolHeadAccountController extends Controller
                 ->delete();
         }
 
-        DB::transaction(function () use ($accounts, $school, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
-            foreach ($accounts as $account) {
+        DB::transaction(function () use ($linkedUsers, $school, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
+            foreach ($linkedUsers as $account) {
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
                 $account->delete();
