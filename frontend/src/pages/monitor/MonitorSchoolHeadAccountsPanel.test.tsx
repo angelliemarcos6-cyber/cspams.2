@@ -747,7 +747,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     ]);
   });
 
-  it("requires verification for remove-account-and-school actions without reintroducing note input", () => {
+  it("does not require verification for remove-account-and-school actions without reintroducing note input", () => {
     const { result } = renderHook(() =>
       useSchoolHeadAccountActions({
         isPanelOpen: true,
@@ -774,10 +774,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     });
 
     expect(result.current.pendingActionDescription).toBe("");
-    expect(result.current.pendingActionRequiresVerification).toBe(true);
+    expect(result.current.pendingActionRequiresVerification).toBe(false);
   });
 
-  it("renders confirmation-code controls for remove-account-and-school while keeping note input hidden", () => {
+  it("does not render confirmation-code controls for remove-account-and-school while keeping note input hidden", () => {
     const actions = buildActions();
     actions.pendingAccountAction = {
       kind: "remove",
@@ -785,9 +785,9 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       schoolName: "Batal Elementary School",
       actionLabel: "Remove account and school",
     };
-    actions.pendingActionRequiresVerification = true;
+    actions.pendingActionRequiresVerification = false;
     actions.confirmPendingAccountActionLabel = "Confirm";
-    actions.isConfirmPendingAccountActionDisabled = true;
+    actions.isConfirmPendingAccountActionDisabled = false;
 
     render(
       <MonitorSchoolHeadAccountsPanel
@@ -852,7 +852,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByLabelText(/Optional Note/i)).toBeNull();
     expect(screen.queryByPlaceholderText(/Optional note for permanent removal/i)).toBeNull();
     expect(screen.queryByText(/This removes Batal Elementary School from active Schools/i)).toBeNull();
-    expect(screen.getByText(/Confirmation Code/i)).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Send code" })).not.toBeNull();
+    expect(screen.queryByText(/Confirmation Code/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send code" })).toBeNull();
   });
 });

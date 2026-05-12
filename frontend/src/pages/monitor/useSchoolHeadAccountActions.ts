@@ -86,7 +86,7 @@ interface UseSchoolHeadAccountActionsOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason?: string | null; verificationChallengeId: string; verificationCode: string },
+    payload: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
 }
 
@@ -170,7 +170,6 @@ function requiresVerification(action: PendingAccountAction | null): boolean {
     action.kind === "reset_password"
     || action.kind === "temporary_password"
     || action.kind === "email_change"
-    || action.kind === "remove"
     || (action.kind === "status" && isDeactivationStatus(action.update.accountStatus))
   );
 }
@@ -542,23 +541,8 @@ export function useSchoolHeadAccountActions({
           return;
         }
 
-        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
-        const code = pendingAccountVerificationCode.trim();
-
-        if (!challengeId) {
-          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
-          return;
-        }
-
-        if (!/^\d{6}$/.test(code)) {
-          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
-          return;
-        }
-
         const result = await removeSchoolHeadAccount(pendingAccountAction.schoolId, {
           reason: reason || undefined,
-          verificationChallengeId: challengeId,
-          verificationCode: code,
         });
         pushToast(result.message || `${pendingAccountAction.schoolName} permanently deleted.`, "success");
         closePendingAccountAction();
