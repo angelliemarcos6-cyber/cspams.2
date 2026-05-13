@@ -275,33 +275,33 @@ export function Login() {
 
   const isBusy = isSubmitting || isAuthenticating;
   const formInputClass =
-    "w-full rounded-none border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-900 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.42)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100";
+    "w-full rounded-none border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.42)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100 sm:px-4 sm:py-3.5";
 
   return (
-    <div className="min-h-screen bg-[#eef2f7] px-4 py-8 font-sans sm:px-6 sm:py-12">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-4xl items-center justify-center">
+    <div className="min-h-screen bg-[#eef2f7] px-3 py-4 font-sans sm:px-5 sm:py-8 md:px-6 md:py-12">
+      <div className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-4xl items-center justify-center sm:min-h-[calc(100vh-4rem)]">
         <div className="w-full max-w-[620px]">
           <div className="overflow-hidden rounded-none border border-slate-200 bg-white shadow-[0_26px_60px_-42px_rgba(15,23,42,0.38)]">
-            <section className="bg-[#0f4f7d] px-7 py-7 text-white sm:px-8 sm:py-7">
-              <div className="flex items-center gap-4 sm:gap-5">
+            <section className="bg-[#0f4f7d] px-5 py-5 text-white sm:px-6 sm:py-6 md:px-8 md:py-7">
+              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
                 <img
                   src="/depedlogo.png"
                   alt="Department of Education logo"
-                  className="h-20 w-auto rounded-none bg-white px-2.5 py-2 shadow-[0_10px_18px_-16px_rgba(15,23,42,0.7)]"
+                  className="h-16 w-auto rounded-none bg-white px-2 py-1.5 shadow-[0_10px_18px_-16px_rgba(15,23,42,0.7)] sm:h-18 sm:px-2.5 sm:py-2 md:h-20"
                 />
-                <div className="min-w-0">
-                  <span className="inline-flex rounded-none bg-white/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100">
+                <div className="min-w-0 w-full">
+                  <span className="inline-flex rounded-none bg-white/16 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-100 sm:px-3 sm:text-[11px]">
                     CSPAMS
                   </span>
-                  <h1 className="font-display mt-3 max-w-md text-[1.35rem] leading-[1.22] font-bold text-white sm:text-[1.5rem]">
+                  <h1 className="font-display mt-2.5 max-w-none text-[1.12rem] leading-[1.25] font-bold text-white sm:mt-3 sm:text-[1.28rem] md:max-w-md md:text-[1.5rem]">
                     {appTagline}
                   </h1>
                 </div>
               </div>
             </section>
 
-            <section className="bg-white px-7 py-7 font-sans sm:px-8 sm:py-7">
-              <div className="mb-5 rounded-none border border-slate-200 bg-slate-50/70 p-3">
+            <section className="bg-white px-5 py-5 font-sans sm:px-6 sm:py-6 md:px-8 md:py-7">
+              <div className="mb-5 rounded-none border border-slate-200 bg-slate-50/70 p-2.5 sm:p-3">
                 <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Sign In Role</p>
                 <div className="grid gap-2 sm:grid-cols-2">
                 <button
@@ -314,14 +314,14 @@ export function Login() {
                     clearMfaState();
                   }}
                   disabled={isMfaChallengeActive}
-                  className={`rounded-none border px-4 py-4 text-left transition ${
+                  className={`rounded-none border px-4 py-3.5 text-left transition sm:py-4 ${
                     activeRole === "school_head"
                       ? "border-primary-300 bg-white text-primary-900 shadow-[0_14px_32px_-24px_rgba(2,46,80,0.58)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
                   } disabled:cursor-not-allowed disabled:opacity-70`}
                   aria-pressed={activeRole === "school_head"}
                 >
-                  <p className="inline-flex items-center gap-2.5 text-base font-semibold">
+                  <p className="inline-flex items-center gap-2.5 text-[15px] font-semibold sm:text-base">
                     <GraduationCap className="h-4 w-4" />
                     School Head
                   </p>
@@ -336,14 +336,14 @@ export function Login() {
                     clearMfaState();
                   }}
                   disabled={isMfaChallengeActive}
-                  className={`rounded-none border px-4 py-4 text-left transition ${
+                  className={`rounded-none border px-4 py-3.5 text-left transition sm:py-4 ${
                     activeRole === "monitor"
                       ? "border-primary-300 bg-white text-primary-900 shadow-[0_14px_32px_-24px_rgba(2,46,80,0.58)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
                   } disabled:cursor-not-allowed disabled:opacity-70`}
                   aria-pressed={activeRole === "monitor"}
                 >
-                  <p className="inline-flex items-center gap-2.5 text-base font-semibold">
+                  <p className="inline-flex items-center gap-2.5 text-[15px] font-semibold sm:text-base">
                     <ClipboardList className="h-4 w-4" />
                     Division Monitor
                   </p>
@@ -529,9 +529,9 @@ export function Login() {
             </form>
             </section>
           </div>
-          <div className="mt-7 flex items-center justify-center gap-3 text-center">
+          <div className="mt-6 flex flex-col items-center justify-center gap-1.5 text-center sm:mt-7 sm:flex-row sm:gap-3">
             <span className="text-sm text-slate-600">Powered by:</span>
-            <img src="/ama-cc-logo.png" alt="AMA Computer College logo" className="h-auto w-28 sm:w-32" />
+            <img src="/ama-cc-logo.png" alt="AMA Computer College logo" className="h-auto w-24 sm:w-28 md:w-32" />
           </div>
         </div>
       </div>
