@@ -1161,6 +1161,9 @@ export function SchoolAdminDashboard() {
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-primary-200 pb-2">
             <div>
               <h2 className="text-[18px] font-semibold text-slate-900">Submitted Report View</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Finalized packages are shown for the selected academic year only. Older school submissions remain available when you switch years.
+              </p>
             </div>
           </div>
 
@@ -1169,7 +1172,9 @@ export function SchoolAdminDashboard() {
           )}
           {!isYearScopedLoading && !groupASubmittedSubmission && (
             <div className="mb-3 space-y-1">
-              <p className="text-xs font-medium text-slate-500">No submitted report package yet.</p>
+              <p className="text-xs font-medium text-slate-500">
+                No finalized submitted report package exists yet for the selected academic year.
+              </p>
               <p className="text-xs text-slate-500">
                 Save Draft keeps your editable package in the workspace below. This report package updates only after you click Submit.
               </p>
