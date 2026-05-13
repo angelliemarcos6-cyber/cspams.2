@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { defaultRequiredSubmissionFileTypesForSchoolType, resolveVisibleSubmissionFileDefinitions } from "@/utils/submissionRequirements";
+import {
+  defaultRequiredSubmissionFileTypesForSchoolType,
+  resolveSubmissionRequirementProfile,
+  resolveVisibleSubmissionFileDefinitions,
+} from "@/utils/submissionRequirements";
 
 describe("defaultRequiredSubmissionFileTypesForSchoolType", () => {
   it("returns only core file types for public schools", () => {
@@ -13,6 +17,20 @@ describe("defaultRequiredSubmissionFileTypesForSchoolType", () => {
     expect(result).toContain("fm_qad_041");
     expect(result).not.toContain("bmef");
     expect(result).not.toContain("smea");
+  });
+});
+
+describe("resolveSubmissionRequirementProfile", () => {
+  it("returns the public create-school hint for public schools", () => {
+    expect(resolveSubmissionRequirementProfile("public").createSchoolHint).toBe(
+      "School Head will submit fillable forms, BMEF, and SMEA.",
+    );
+  });
+
+  it("returns the private create-school hint for private schools", () => {
+    expect(resolveSubmissionRequirementProfile("private").createSchoolHint).toBe(
+      "School Head will submit fillable forms and the required FM-QAD files.",
+    );
   });
 });
 

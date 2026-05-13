@@ -855,6 +855,7 @@ class IndicatorSubmissionController extends Controller
             'data' => [
                 'id' => (string) $submission->id,
                 'schoolId' => (string) $submission->school_id,
+                'schoolType' => $submission->school?->type,
                 'academicYearId' => (string) $submission->academic_year_id,
                 'academicYear' => [
                     'id' => (string) $submission->academic_year_id,

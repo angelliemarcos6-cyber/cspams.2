@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 import { Save, X } from "lucide-react";
 import type { SchoolHeadAccountProvisioningReceipt } from "@/types";
+import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
 
 const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
 
@@ -62,6 +63,8 @@ export function MonitorSchoolRecordForm({
   if (!show) {
     return null;
   }
+
+  const submissionRequirementHint = resolveSubmissionRequirementProfile(recordForm.type).createSchoolHint;
 
   return (
     <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
@@ -149,6 +152,7 @@ export function MonitorSchoolRecordForm({
             <option value="public">Public</option>
             <option value="private">Private</option>
           </select>
+          <p className="mt-1 text-[11px] font-medium text-slate-500">{submissionRequirementHint}</p>
           {recordFormErrors.type && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.type}</p>}
         </div>
         <div>

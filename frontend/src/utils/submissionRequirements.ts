@@ -6,16 +6,36 @@ import {
 } from "@/constants/submissionFiles";
 import type { IndicatorSubmissionFileType } from "@/types";
 
-export function defaultRequiredSubmissionFileTypesForSchoolType(
+export interface SubmissionRequirementProfile {
+  schoolType: "public" | "private";
+  requiredFileTypes: IndicatorSubmissionFileType[];
+  createSchoolHint: string;
+}
+
+export function resolveSubmissionRequirementProfile(
   schoolType: string | null | undefined,
-): IndicatorSubmissionFileType[] {
+): SubmissionRequirementProfile {
   const normalizedSchoolType = String(schoolType ?? "").trim().toLowerCase();
 
   if (normalizedSchoolType === "private") {
-    return SUBMISSION_FILE_TYPES.filter((type) => !SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core);
+    return {
+      schoolType: "private",
+      requiredFileTypes: SUBMISSION_FILE_TYPES.filter((type) => !SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core),
+      createSchoolHint: "School Head will submit fillable forms and the required FM-QAD files.",
+    };
   }
 
-  return SUBMISSION_FILE_TYPES.filter((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core);
+  return {
+    schoolType: "public",
+    requiredFileTypes: SUBMISSION_FILE_TYPES.filter((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core),
+    createSchoolHint: "School Head will submit fillable forms, BMEF, and SMEA.",
+  };
+}
+
+export function defaultRequiredSubmissionFileTypesForSchoolType(
+  schoolType: string | null | undefined,
+): IndicatorSubmissionFileType[] {
+  return resolveSubmissionRequirementProfile(schoolType).requiredFileTypes;
 }
 
 export function resolveVisibleSubmissionFileDefinitions(options: {
