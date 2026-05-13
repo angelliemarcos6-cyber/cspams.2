@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDashboardViewYearStorageKey,
+  resolveInitialSubmittedReportAcademicYearId,
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
 } from "@/pages/SchoolAdminDashboard";
@@ -89,5 +91,39 @@ describe("resolvePreferredSubmittedReportAcademicYearId", () => {
     ], "school-1");
 
     expect(result).toBe("year-2");
+  });
+});
+
+describe("resolveInitialSubmittedReportAcademicYearId", () => {
+  it("prefers a stored academic year when it is valid for the current School Head session", () => {
+    const result = resolveInitialSubmittedReportAcademicYearId([
+      { id: "year-1", isCurrent: false },
+      { id: "year-2", isCurrent: true },
+    ], "year-1");
+
+    expect(result).toBe("year-1");
+  });
+
+  it("defaults to the current academic year instead of the latest historical finalized year", () => {
+    const result = resolveInitialSubmittedReportAcademicYearId([
+      { id: "year-1", isCurrent: false },
+      { id: "year-2", isCurrent: true },
+      { id: "year-3", isCurrent: false },
+    ], "");
+
+    expect(result).toBe("year-2");
+  });
+});
+
+describe("buildDashboardViewYearStorageKey", () => {
+  it("scopes the stored year selection per School Head user and school", () => {
+    expect(buildDashboardViewYearStorageKey(25, "103811")).toBe(
+      "cspams:school-admin-dashboard:view-year:25:103811",
+    );
+  });
+
+  it("returns an empty key when either the user or school context is missing", () => {
+    expect(buildDashboardViewYearStorageKey(null, "103811")).toBe("");
+    expect(buildDashboardViewYearStorageKey(25, "")).toBe("");
   });
 });

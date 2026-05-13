@@ -31,7 +31,7 @@ import type {
   IndicatorSubmissionItem,
 } from "@/types";
 
-const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashboard:view-year";
+export const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashboard:view-year";
 
 /* ── Quick-jump targets ── */
 /* ── Helpers ── */
@@ -65,6 +65,31 @@ export function resolvePreferredSubmittedReportAcademicYearId(
     .sort((left, right) => submissionRecencyScore(right) - submissionRecencyScore(left));
 
   return finalizedEntries[0]?.academicYear?.id ?? null;
+}
+
+export function buildDashboardViewYearStorageKey(
+  userId: number | string | null | undefined,
+  schoolId: string,
+): string {
+  const normalizedUserId = String(userId ?? "").trim();
+  const normalizedSchoolId = String(schoolId ?? "").trim();
+  if (!normalizedUserId || !normalizedSchoolId) {
+    return "";
+  }
+
+  return `${DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX}:${normalizedUserId}:${normalizedSchoolId}`;
+}
+
+export function resolveInitialSubmittedReportAcademicYearId(
+  years: Array<{ id: string; isCurrent?: boolean }>,
+  storedAcademicYearId: string | null | undefined,
+): string {
+  const normalizedStoredAcademicYearId = String(storedAcademicYearId ?? "").trim();
+  if (normalizedStoredAcademicYearId && years.some((year) => year.id === normalizedStoredAcademicYearId)) {
+    return normalizedStoredAcademicYearId;
+  }
+
+  return years.find((year) => year.isCurrent)?.id ?? years[0]?.id ?? "";
 }
 
 export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
@@ -502,6 +527,7 @@ export function SchoolAdminDashboard() {
   const initialAcademicYearAppliedRef = useRef(false);
   const finalizedSubmissionRefreshRef = useRef("");
   const lastLoadedYearKeyRef = useRef("");
+  const previousDashboardContextKeyRef = useRef("");
 
   /* ── Derived data ── */
   const orderedAcademicYears = useMemo(
@@ -509,14 +535,18 @@ export function SchoolAdminDashboard() {
     [academicYears],
   );
 
-  const assignedRecord = records[0] ?? null;
+  const selectedSchoolId = String(user?.schoolId ?? "").trim();
+  const dashboardContextKey = `${String(user?.id ?? "").trim()}:${selectedSchoolId}`;
+  const assignedRecord = useMemo(
+    () => records.find((record) => String(record.schoolId ?? record.id ?? "").trim() === selectedSchoolId) ?? records[0] ?? null,
+    [records, selectedSchoolId],
+  );
   const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
   const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
   const schoolRegion = assignedRecord?.region || "N/A";
-  const selectedSchoolId = String(user?.schoolId ?? "").trim();
   const dashboardYearSelectionStorageKey = useMemo(
-    () => (selectedSchoolId ? `${DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX}:${selectedSchoolId}` : ""),
-    [selectedSchoolId],
+    () => buildDashboardViewYearStorageKey(user?.id, selectedSchoolId),
+    [selectedSchoolId, user?.id],
   );
 
   const currentAcademicYearOption = useMemo(
@@ -528,11 +558,11 @@ export function SchoolAdminDashboard() {
     () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
     [allSubmissions, submissionSnapshot],
   );
-  const preferredSubmittedReportAcademicYearId = useMemo(
-    () => resolvePreferredSubmittedReportAcademicYearId(indicatorSubmissions, selectedSchoolId),
-    [indicatorSubmissions, selectedSchoolId],
-  );
   const submissionsForSelectedContext = useMemo(() => {
+    if (!effectiveAcademicYearId) {
+      return [];
+    }
+
     if (effectiveAcademicYearId && effectiveAcademicYearId !== "all") {
       return dashboardViewSubmissions;
     }
@@ -544,6 +574,22 @@ export function SchoolAdminDashboard() {
     [submissionsForSelectedContext],
   );
   const isYearScopedLoading = isDashboardYearSwitching;
+
+  useEffect(() => {
+    if (previousDashboardContextKeyRef.current === dashboardContextKey) {
+      return;
+    }
+
+    previousDashboardContextKeyRef.current = dashboardContextKey;
+    initialAcademicYearAppliedRef.current = false;
+    finalizedSubmissionRefreshRef.current = "";
+    lastLoadedYearKeyRef.current = "";
+    setDashboardViewAcademicYearId("");
+    setDashboardViewSubmissions([]);
+    setHydratedSubmittedReportSubmission(null);
+    setIsDashboardYearSwitching(false);
+    setActiveReportModalType(null);
+  }, [dashboardContextKey]);
 
   useEffect(() => {
     if (!groupASubmittedSubmission?.id) {
@@ -826,15 +872,11 @@ export function SchoolAdminDashboard() {
         ? window.sessionStorage.getItem(dashboardYearSelectionStorageKey) ?? ""
         : ""
     );
-    const initialAcademicYearId = (
-      storedAcademicYearId && orderedAcademicYears.some((year) => year.id === storedAcademicYearId)
-        ? storedAcademicYearId
-        : preferredSubmittedReportAcademicYearId ?? currentAcademicYearOption?.id ?? ""
-    );
+    const initialAcademicYearId = resolveInitialSubmittedReportAcademicYearId(orderedAcademicYears, storedAcademicYearId);
     if (!initialAcademicYearId) return;
     setDashboardViewAcademicYearId(initialAcademicYearId);
     initialAcademicYearAppliedRef.current = true;
-  }, [currentAcademicYearOption, dashboardYearSelectionStorageKey, orderedAcademicYears, preferredSubmittedReportAcademicYearId]);
+  }, [dashboardYearSelectionStorageKey, orderedAcademicYears]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !dashboardYearSelectionStorageKey || !dashboardViewAcademicYearId) {
@@ -1134,126 +1176,130 @@ export function SchoolAdminDashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {visibleSubmittedReportFiles.map((definition) => {
-              const reportFile = groupAReportView.reportFiles?.[definition.type] ?? null;
-              const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
-              const buttonLabel = `View ${definition.shortLabel} Report`;
+          {groupASubmittedSubmission && (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {visibleSubmittedReportFiles.map((definition) => {
+                  const reportFile = groupAReportView.reportFiles?.[definition.type] ?? null;
+                  const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
+                  const buttonLabel = `View ${definition.shortLabel} Report`;
 
-              return (
-                <article key={definition.type} className="rounded-sm border border-slate-200 bg-white px-6 py-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{definition.shortLabel} Report</h3>
+                  return (
+                    <article key={definition.type} className="rounded-sm border border-slate-200 bg-white px-6 py-5">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{definition.shortLabel} Report</h3>
+                      </div>
+
+                      <dl className="mt-4 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
+                          <dd className="truncate text-sm font-normal text-slate-900">{reportFile?.originalFilename ?? "- (none)"}</dd>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">Date</dt>
+                          <dd className="text-sm font-normal text-slate-900">
+                            {reportFile?.uploadedAt ? new Date(reportFile.uploadedAt).toLocaleDateString() : "-"}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={hasFile ? () => openReportModal(definition.type) : undefined}
+                          disabled={!hasFile}
+                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary-50"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          {buttonLabel}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
+                <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
+                  <div className="flex flex-col gap-1">
+                    <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
+                    {groupAReportView.totalIndicators > 0 && (
+                      <span className="pl-3 text-xs font-medium text-slate-500">
+                        Submitted package completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
+                      </span>
+                    )}
                   </div>
-
-                  <dl className="mt-4 space-y-2">
-                    <div className="flex items-start gap-2">
-                      <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
-                      <dd className="truncate text-sm font-normal text-slate-900">{reportFile?.originalFilename ?? "- (none)"}</dd>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">Date</dt>
-                      <dd className="text-sm font-normal text-slate-900">
-                        {reportFile?.uploadedAt ? new Date(reportFile.uploadedAt).toLocaleDateString() : "-"}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={hasFile ? () => openReportModal(definition.type) : undefined}
-                      disabled={!hasFile}
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary-50"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      {buttonLabel}
-                    </button>
+                </h2>
+                <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+                {/* School's Achievement Table */}
+                <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                    <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
                   </div>
-                </article>
-              );
-            })}
-          </div>
+                  <table className="w-full text-[13px] text-slate-900">
+                    <thead>
+                      <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E5E7EB]">
+                      {groupAReportView.schoolAchievementRows.map((row) => (
+                        <tr key={row.key}>
+                          <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
+                            {row.label}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-slate-900">
+                            <span className="font-semibold text-slate-900">
+                              {row.value}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-          <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
-            <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
-              <div className="flex flex-col gap-1">
-                <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
-                {groupAReportView.totalIndicators > 0 && (
-                  <span className="pl-3 text-xs font-medium text-slate-500">
-                    Submitted package completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
-                  </span>
-                )}
+                {/* Key Performance Indicators Table */}
+                <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                    <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
+                  </div>
+                  <table className="w-full text-[13px] text-slate-900">
+                    <thead>
+                      <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
+                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
+                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
+                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E5E7EB]">
+                      {groupAReportView.kpiRows.map((row) => (
+                        <tr key={row.key}>
+                          <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
+                          <td className="px-4 py-2.5 text-center text-slate-900">
+                            <span className="font-semibold text-slate-900">
+                              {row.target}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-center text-slate-900">
+                            <span className="font-semibold text-slate-900">
+                              {row.actual}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-center text-slate-900">
+                            {row.status}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </h2>
-            <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-            {/* School's Achievement Table */}
-            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
-              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
-              </div>
-              <table className="w-full text-[13px] text-slate-900">
-                <thead>
-                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E7EB]">
-                  {groupAReportView.schoolAchievementRows.map((row) => (
-                    <tr key={row.key}>
-                      <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
-                        {row.label}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-slate-900">
-                        <span className="font-semibold text-slate-900">
-                          {row.value}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
-
-            {/* Key Performance Indicators Table */}
-            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
-              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
-              </div>
-              <table className="w-full text-[13px] text-slate-900">
-                <thead>
-                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E7EB]">
-                  {groupAReportView.kpiRows.map((row) => (
-                    <tr key={row.key}>
-                      <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
-                      <td className="px-4 py-2.5 text-center text-slate-900">
-                        <span className="font-semibold text-slate-900">
-                          {row.target}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-slate-900">
-                        <span className="font-semibold text-slate-900">
-                          {row.actual}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-slate-900">
-                        {row.status}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+            </>
+          )}
         </div>
       </section>
 
