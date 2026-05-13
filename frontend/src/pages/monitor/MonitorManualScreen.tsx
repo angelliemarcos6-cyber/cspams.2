@@ -38,7 +38,9 @@ export function MonitorManualScreen({ onClose }: MonitorManualScreenProps) {
                       </span>
                       {step.title}
                     </p>
-                    <p className="mt-2 text-sm font-medium text-slate-700">{step.objective}</p>
+                    {step.objective ? (
+                      <p className="mt-2 text-sm font-medium text-slate-700">{step.objective}</p>
+                    ) : null}
                     <ul className="mt-2 space-y-1">
                       {step.actions.map((action) => (
                         <li key={`${step.id}-${action}`} className="ml-5 list-disc text-sm text-slate-700">

@@ -51,7 +51,7 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "schools",
     title: "Schools",
-    objective: "Open school-level records and verify synchronized student and teacher data.",
+    objective: "",
     actions: [
       "Use search and school filters to find the school you need quickly.",
       "Inspect school details without leaving the dashboard.",
@@ -61,7 +61,7 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   {
     id: "reviews",
     title: "Reviews",
-    objective: "Work through pending compliance reviews in one focused workspace.",
+    objective: "",
     actions: [
       "Review queue items, validate submissions, or return with clear notes.",
       "Use lane and workflow filters to process urgent schools first.",
