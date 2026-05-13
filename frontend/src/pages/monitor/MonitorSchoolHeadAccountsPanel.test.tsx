@@ -855,4 +855,104 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByText(/Confirmation Code/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Send code" })).toBeNull();
   });
+
+  it("enables the batch delete trigger only when delete-flagged schools exist", () => {
+    const baseProps = {
+      isOpen: true,
+      isSaving: false,
+      isMobileViewport: false,
+      rows: [],
+      totalCount: 0,
+      query: "",
+      statusFilter: "all" as const,
+      onlyFlagged: false,
+      onlyDeleteFlagged: false,
+      onQueryChange: vi.fn(),
+      onStatusFilterChange: vi.fn(),
+      onOnlyFlaggedChange: vi.fn(),
+      onOnlyDeleteFlaggedChange: vi.fn(),
+      onClearFilters: vi.fn(),
+      onClose: vi.fn(),
+      onOpenSchoolRecord: vi.fn(),
+      pendingDeleteSchoolRecord: null,
+      pendingDeleteSchoolRecordPreview: null,
+      pendingDeleteSchoolRecordError: "",
+      isDeleteSchoolRecordLoading: false,
+      onPreviewDeleteSchoolRecord: vi.fn(),
+      onClosePendingDeleteSchoolRecord: vi.fn(),
+      onConfirmDeleteSchoolRecord: vi.fn(),
+      formatDateTime: (value: string | null) => value ?? "-",
+      actions: buildActions(),
+    };
+
+    const { rerender } = render(
+      <MonitorSchoolHeadAccountsPanel
+        {...baseProps}
+        deleteFlaggedSchoolCount={0}
+      />,
+    );
+
+    const disabledBatchButtons = screen.getAllByRole("button", { name: "Open batch delete flagged schools" }) as HTMLButtonElement[];
+    expect(disabledBatchButtons.every((button) => button.disabled)).toBe(true);
+
+    rerender(
+      <MonitorSchoolHeadAccountsPanel
+        {...baseProps}
+        deleteFlaggedSchoolCount={2}
+      />,
+    );
+
+    const enabledBatchButtons = screen.getAllByRole("button", { name: "Open batch delete flagged schools" }) as HTMLButtonElement[];
+    expect(enabledBatchButtons.some((button) => !button.disabled)).toBe(true);
+  });
+
+  it("opens and confirms the batch delete dialog for flagged schools", () => {
+    const onOpenPendingBatchDeleteSchoolRecords = vi.fn();
+    const onConfirmBatchDeleteSchoolRecords = vi.fn();
+
+    render(
+      <MonitorSchoolHeadAccountsPanel
+        isOpen
+        isSaving={false}
+        isMobileViewport={false}
+        rows={[]}
+        totalCount={0}
+        query=""
+        statusFilter="all"
+        onlyFlagged={false}
+        onlyDeleteFlagged={false}
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onOnlyFlaggedChange={vi.fn()}
+        onOnlyDeleteFlaggedChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        onClose={vi.fn()}
+        onOpenSchoolRecord={vi.fn()}
+        pendingDeleteSchoolRecord={null}
+        pendingDeleteSchoolRecordPreview={null}
+        pendingDeleteSchoolRecordError=""
+        isDeleteSchoolRecordLoading={false}
+        onPreviewDeleteSchoolRecord={vi.fn()}
+        onClosePendingDeleteSchoolRecord={vi.fn()}
+        onConfirmDeleteSchoolRecord={vi.fn()}
+        deleteFlaggedSchoolCount={3}
+        isBatchDeleteSchoolRecordsPending
+        isBatchDeleteSchoolRecordsLoading={false}
+        batchDeleteSchoolRecordsError=""
+        onOpenPendingBatchDeleteSchoolRecords={onOpenPendingBatchDeleteSchoolRecords}
+        onClosePendingBatchDeleteSchoolRecords={vi.fn()}
+        onConfirmBatchDeleteSchoolRecords={onConfirmBatchDeleteSchoolRecords}
+        formatDateTime={(value) => value ?? "-"}
+        actions={buildActions()}
+      />,
+    );
+
+    const openButtons = screen.getAllByRole("button", { name: "Open batch delete flagged schools" });
+    fireEvent.click(openButtons[openButtons.length - 1]!);
+    expect(onOpenPendingBatchDeleteSchoolRecords).toHaveBeenCalledTimes(1);
+
+    expect(screen.getByText(/Permanently delete 3 flagged schools/i)).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm batch delete flagged schools" }));
+    expect(onConfirmBatchDeleteSchoolRecords).toHaveBeenCalledTimes(1);
+  });
 });

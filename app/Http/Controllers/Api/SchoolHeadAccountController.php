@@ -686,143 +686,115 @@ class SchoolHeadAccountController extends Controller
         RemoveSchoolHeadAccountRequest $request,
         School $school,
     ): JsonResponse {
-        // Despite the legacy route name, this action is the combined Accounts-panel
-        // contract that permanently deletes the school and its linked School Head account(s).
         $monitor = $this->requireMonitor($request);
-
-        $linkedUsers = User::query()
-            ->where('school_id', $school->id)
-            ->with('roles')
-            ->get();
-
-        if ($linkedUsers->isEmpty()) {
-            return response()->json(
-                ['message' => 'No School Head account is linked to this school.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
-        if ($linkedUsers->contains(static fn (User $account): bool => UserRoleResolver::has($account, UserRoleResolver::MONITOR))) {
-            return response()->json(
-                ['message' => 'One of the linked accounts has monitor access and cannot be deleted here.'],
-                Response::HTTP_UNPROCESSABLE_ENTITY,
-            );
-        }
-
         $reason = trim($request->string('reason')->toString());
+        $result = $this->removeSchoolAndLinkedAccounts(
+            $school,
+            $monitor,
+            $reason,
+            $request->ip(),
+            $request->userAgent(),
+        );
 
-        $schoolDependencies = [
-            'students' => Student::query()->where('school_id', $school->id)->count(),
-            'sections' => Section::query()->where('school_id', $school->id)->count(),
-            'indicatorSubmissions' => IndicatorSubmission::query()->where('school_id', $school->id)->count(),
-            'histories' => FormSubmissionHistory::query()->where('school_id', $school->id)->count(),
-            'linkedUsers' => User::query()->where('school_id', $school->id)->count(),
-        ];
-
-        $accountEmails = $linkedUsers
-            ->map(static fn (User $account): string => (string) $account->email)
-            ->values()
-            ->all();
-        $accountIds = $linkedUsers
-            ->map(static fn (User $account): string => (string) $account->id)
-            ->values()
-            ->all();
-
-        $removedCount = 0;
-        $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
-        $revocationSummaries = [];
-        $accountIdInts = $linkedUsers
-            ->map(static fn (User $account): int => (int) $account->id)
-            ->values()
-            ->all();
-
-        $tokenRevocationsByUserId = collect();
-        if ($accountIdInts !== []) {
-            $tokenRevocationsByUserId = PersonalAccessToken::query()
-                ->where('tokenable_type', User::class)
-                ->whereIn('tokenable_id', $accountIdInts)
-                ->selectRaw('tokenable_id, COUNT(*) as aggregate_count')
-                ->groupBy('tokenable_id')
-                ->pluck('aggregate_count', 'tokenable_id');
-
-            PersonalAccessToken::query()
-                ->where('tokenable_type', User::class)
-                ->whereIn('tokenable_id', $accountIdInts)
-                ->delete();
+        if (($result['status'] ?? '') !== 'deleted') {
+            return response()->json(
+                ['message' => (string) ($result['message'] ?? 'Unable to remove school and account.')],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
         }
-
-        $sessionRevocationsByUserId = collect();
-        if ($this->sessionsTableExists() && $accountIdInts !== []) {
-            $sessionRevocationsByUserId = DB::table('sessions')
-                ->whereIn('user_id', $accountIdInts)
-                ->selectRaw('user_id, COUNT(*) as aggregate_count')
-                ->groupBy('user_id')
-                ->pluck('aggregate_count', 'user_id');
-
-            DB::table('sessions')
-                ->whereIn('user_id', $accountIdInts)
-                ->delete();
-        }
-
-        if ($setupTokenStorageAvailable && $accountIdInts !== []) {
-            DB::table('account_setup_tokens')
-                ->whereIn('user_id', $accountIdInts)
-                ->delete();
-        }
-
-        DB::transaction(function () use ($linkedUsers, $school, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
-            foreach ($linkedUsers as $account) {
-                $account->syncPermissions([]);
-                $account->syncRoles([]);
-                $account->delete();
-
-                $revocationSummaries[] = [
-                    'user_id' => (int) $account->id,
-                    'revoked_tokens' => (int) ($tokenRevocationsByUserId->get((int) $account->id, 0)),
-                    'revoked_web_sessions' => (int) ($sessionRevocationsByUserId->get((int) $account->id, 0)),
-                ];
-
-                $removedCount += 1;
-            }
-
-            $school->forceDelete();
-        });
-
-        AuditLog::query()->create([
-            'user_id' => $monitor->id,
-            'action' => 'account_and_school.removed',
-            'auditable_type' => School::class,
-            'auditable_id' => $school->id,
-            'metadata' => [
-                'category' => 'account_management',
-                'outcome' => 'success',
-                'actor_role' => UserRoleResolver::MONITOR,
-                'school_id' => (string) $school->id,
-                'school_code' => (string) $school->school_code,
-                'school_name' => (string) $school->name,
-                'removed_user_ids' => $accountIds,
-                'removed_emails' => $accountEmails,
-                'reason' => $reason,
-                'dependencies' => $schoolDependencies,
-                'revocations' => $revocationSummaries,
-            ],
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'created_at' => now(),
-        ]);
-
-        event(new CspamsUpdateBroadcast([
-            'entity' => 'dashboard',
-            'eventType' => 'school_head_account_and_school.removed',
-            'schoolId' => (string) $school->id,
-            'schoolCode' => (string) $school->school_code,
-            'removedCount' => $removedCount,
-        ]));
 
         return response()->json([
             'data' => [
-                'message' => 'School record, linked School Head account, and school data permanently deleted.',
-                'deletedCount' => $removedCount,
+                'message' => (string) $result['message'],
+                'deletedCount' => (int) $result['deletedCount'],
+            ],
+        ]);
+    }
+
+    public function batchDestroy(Request $request): JsonResponse
+    {
+        $monitor = $this->requireMonitor($request);
+
+        $rawIds = $request->input('schoolIds', []);
+        if (! is_array($rawIds)) {
+            return response()->json(
+                ['message' => 'Invalid batch delete payload.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $requestedIds = collect($rawIds)
+            ->map(static function (mixed $value): int {
+                if (is_int($value)) {
+                    return $value;
+                }
+
+                if (is_string($value) && ctype_digit(trim($value))) {
+                    return (int) trim($value);
+                }
+
+                return 0;
+            })
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($requestedIds->isEmpty()) {
+            return response()->json(
+                ['message' => 'Select at least one flagged school to delete.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        $reason = trim((string) $request->input('reason', ''));
+        $schools = School::query()
+            ->whereIn('id', $requestedIds->all())
+            ->get()
+            ->keyBy(static fn (School $school): int => (int) $school->id);
+
+        $deletedSchoolIds = [];
+        $blocked = [];
+
+        foreach ($requestedIds as $schoolId) {
+            /** @var School|null $school */
+            $school = $schools->get($schoolId);
+            if (! $school) {
+                continue;
+            }
+
+            $result = $this->removeSchoolAndLinkedAccounts(
+                $school,
+                $monitor,
+                $reason,
+                $request->ip(),
+                $request->userAgent(),
+            );
+
+            if (($result['status'] ?? '') === 'deleted') {
+                $deletedSchoolIds[] = (string) $schoolId;
+                continue;
+            }
+
+            $blocked[] = [
+                'schoolId' => (string) $schoolId,
+                'schoolName' => $school->name,
+                'message' => (string) ($result['message'] ?? 'Unable to remove school and account.'),
+            ];
+        }
+
+        $missingSchoolIds = $requestedIds
+            ->filter(static fn (int $id): bool => ! $schools->has($id))
+            ->map(static fn (int $id): string => (string) $id)
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => [
+                'deletedSchoolIds' => array_values($deletedSchoolIds),
+                'blocked' => array_values($blocked),
+                'missingSchoolIds' => $missingSchoolIds,
+                'requestedCount' => $requestedIds->count(),
+                'deletedCount' => count($deletedSchoolIds),
             ],
         ]);
     }
@@ -1337,6 +1309,150 @@ class SchoolHeadAccountController extends Controller
         return [
             'revokedTokens' => $revokedTokens,
             'revokedWebSessions' => $revokedWebSessions,
+        ];
+    }
+
+    /**
+     * @return array{status: 'deleted'|'blocked', message: string, deletedCount?: int}
+     */
+    private function removeSchoolAndLinkedAccounts(
+        School $school,
+        User $monitor,
+        string $reason,
+        ?string $ipAddress,
+        ?string $userAgent,
+    ): array {
+        $linkedUsers = User::query()
+            ->where('school_id', $school->id)
+            ->with('roles')
+            ->get();
+
+        if ($linkedUsers->isEmpty()) {
+            return [
+                'status' => 'blocked',
+                'message' => 'No School Head account is linked to this school.',
+            ];
+        }
+
+        if ($linkedUsers->contains(static fn (User $account): bool => UserRoleResolver::has($account, UserRoleResolver::MONITOR))) {
+            return [
+                'status' => 'blocked',
+                'message' => 'One of the linked accounts has monitor access and cannot be deleted here.',
+            ];
+        }
+
+        $schoolDependencies = [
+            'students' => Student::query()->where('school_id', $school->id)->count(),
+            'sections' => Section::query()->where('school_id', $school->id)->count(),
+            'indicatorSubmissions' => IndicatorSubmission::query()->where('school_id', $school->id)->count(),
+            'histories' => FormSubmissionHistory::query()->where('school_id', $school->id)->count(),
+            'linkedUsers' => User::query()->where('school_id', $school->id)->count(),
+        ];
+
+        $accountEmails = $linkedUsers
+            ->map(static fn (User $account): string => (string) $account->email)
+            ->values()
+            ->all();
+        $accountIds = $linkedUsers
+            ->map(static fn (User $account): string => (string) $account->id)
+            ->values()
+            ->all();
+
+        $removedCount = 0;
+        $setupTokenStorageAvailable = $this->schoolHeadAccountSetupService->storageAvailable();
+        $revocationSummaries = [];
+        $accountIdInts = $linkedUsers
+            ->map(static fn (User $account): int => (int) $account->id)
+            ->values()
+            ->all();
+
+        $tokenRevocationsByUserId = collect();
+        if ($accountIdInts !== []) {
+            $tokenRevocationsByUserId = PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->selectRaw('tokenable_id, COUNT(*) as aggregate_count')
+                ->groupBy('tokenable_id')
+                ->pluck('aggregate_count', 'tokenable_id');
+
+            PersonalAccessToken::query()
+                ->where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $accountIdInts)
+                ->delete();
+        }
+
+        $sessionRevocationsByUserId = collect();
+        if ($this->sessionsTableExists() && $accountIdInts !== []) {
+            $sessionRevocationsByUserId = DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->selectRaw('user_id, COUNT(*) as aggregate_count')
+                ->groupBy('user_id')
+                ->pluck('aggregate_count', 'user_id');
+
+            DB::table('sessions')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        if ($setupTokenStorageAvailable && $accountIdInts !== []) {
+            DB::table('account_setup_tokens')
+                ->whereIn('user_id', $accountIdInts)
+                ->delete();
+        }
+
+        DB::transaction(function () use ($linkedUsers, $school, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
+            foreach ($linkedUsers as $account) {
+                $account->syncPermissions([]);
+                $account->syncRoles([]);
+                $account->delete();
+
+                $revocationSummaries[] = [
+                    'user_id' => (int) $account->id,
+                    'revoked_tokens' => (int) ($tokenRevocationsByUserId->get((int) $account->id, 0)),
+                    'revoked_web_sessions' => (int) ($sessionRevocationsByUserId->get((int) $account->id, 0)),
+                ];
+
+                $removedCount += 1;
+            }
+
+            $school->forceDelete();
+        });
+
+        AuditLog::query()->create([
+            'user_id' => $monitor->id,
+            'action' => 'account_and_school.removed',
+            'auditable_type' => School::class,
+            'auditable_id' => $school->id,
+            'metadata' => [
+                'category' => 'account_management',
+                'outcome' => 'success',
+                'actor_role' => UserRoleResolver::MONITOR,
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'school_name' => (string) $school->name,
+                'removed_user_ids' => $accountIds,
+                'removed_emails' => $accountEmails,
+                'reason' => $reason,
+                'dependencies' => $schoolDependencies,
+                'revocations' => $revocationSummaries,
+            ],
+            'ip_address' => $ipAddress,
+            'user_agent' => $userAgent,
+            'created_at' => now(),
+        ]);
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'dashboard',
+            'eventType' => 'school_head_account_and_school.removed',
+            'schoolId' => (string) $school->id,
+            'schoolCode' => (string) $school->school_code,
+            'removedCount' => $removedCount,
+        ]));
+
+        return [
+            'status' => 'deleted',
+            'message' => 'School record, linked School Head account, and school data permanently deleted.',
+            'deletedCount' => $removedCount,
         ];
     }
 

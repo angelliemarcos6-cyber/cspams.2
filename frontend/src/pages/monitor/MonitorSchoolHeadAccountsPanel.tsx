@@ -52,6 +52,13 @@ export interface MonitorSchoolHeadAccountsPanelProps {
   onPreviewDeleteSchoolRecord: (record: SchoolRecord) => void | Promise<void>;
   onClosePendingDeleteSchoolRecord: () => void;
   onConfirmDeleteSchoolRecord: () => void | Promise<void>;
+  deleteFlaggedSchoolCount?: number;
+  isBatchDeleteSchoolRecordsPending?: boolean;
+  isBatchDeleteSchoolRecordsLoading?: boolean;
+  batchDeleteSchoolRecordsError?: string;
+  onOpenPendingBatchDeleteSchoolRecords?: () => void;
+  onClosePendingBatchDeleteSchoolRecords?: () => void;
+  onConfirmBatchDeleteSchoolRecords?: () => void | Promise<void>;
   formatDateTime: (value: string | null) => string;
   actions: SchoolHeadAccountActionsApi;
 }
@@ -209,6 +216,13 @@ export function MonitorSchoolHeadAccountsPanel({
   onPreviewDeleteSchoolRecord,
   onClosePendingDeleteSchoolRecord,
   onConfirmDeleteSchoolRecord,
+  deleteFlaggedSchoolCount = 0,
+  isBatchDeleteSchoolRecordsPending = false,
+  isBatchDeleteSchoolRecordsLoading = false,
+  batchDeleteSchoolRecordsError = "",
+  onOpenPendingBatchDeleteSchoolRecords = () => {},
+  onClosePendingBatchDeleteSchoolRecords = () => {},
+  onConfirmBatchDeleteSchoolRecords = () => {},
   formatDateTime,
   actions,
 }: MonitorSchoolHeadAccountsPanelProps) {
@@ -325,6 +339,16 @@ export function MonitorSchoolHeadAccountsPanel({
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
                   Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenPendingBatchDeleteSchoolRecords}
+                  disabled={deleteFlaggedSchoolCount === 0 || isSaving || isBatchDeleteSchoolRecordsLoading}
+                  aria-label="Open batch delete flagged schools"
+                  className="inline-flex items-center gap-2 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete flagged schools
                 </button>
               </div>
             </div>
@@ -1018,6 +1042,72 @@ export function MonitorSchoolHeadAccountsPanel({
                 className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isDeleteSchoolRecordLoading ? "Deleting..." : "Delete school"}
+              </button>
+            </div>
+          </section>
+        </>
+      )}
+
+      {isBatchDeleteSchoolRecordsPending && (
+        <>
+          <button
+            type="button"
+            onClick={onClosePendingBatchDeleteSchoolRecords}
+            className="fixed inset-0 z-[90] bg-slate-900/40"
+            aria-label="Close batch delete dialog"
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Batch delete flagged schools"
+            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
+              isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete flagged schools</h3>
+                <p className="mt-1 text-xs text-slate-600">
+                  Permanently delete {deleteFlaggedSchoolCount} flagged school{deleteFlaggedSchoolCount === 1 ? "" : "s"} and their linked School Head account data.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClosePendingBatchDeleteSchoolRecords}
+                className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+              This permanently removes the school record and all linked School Head account rows for each flagged school.
+            </div>
+
+            {batchDeleteSchoolRecordsError ? (
+              <div className="mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                {batchDeleteSchoolRecordsError}
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClosePendingBatchDeleteSchoolRecords}
+                disabled={isBatchDeleteSchoolRecordsLoading}
+                className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void onConfirmBatchDeleteSchoolRecords()}
+                disabled={isBatchDeleteSchoolRecordsLoading || deleteFlaggedSchoolCount === 0}
+                aria-label="Confirm batch delete flagged schools"
+                className="rounded-sm bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isBatchDeleteSchoolRecordsLoading ? "Deleting..." : "Delete flagged schools"}
               </button>
             </div>
           </section>

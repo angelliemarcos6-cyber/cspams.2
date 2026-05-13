@@ -1295,6 +1295,135 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
     }
 
+    public function test_batch_remove_account_and_school_deletes_multiple_flagged_schools(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $firstSchoolHead */
+        $firstSchoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var User $secondSchoolHead */
+        $secondSchoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        /** @var School $firstSchool */
+        $firstSchool = School::query()->findOrFail($firstSchoolHead->school_id);
+        /** @var School $secondSchool */
+        $secondSchool = School::query()->findOrFail($secondSchoolHead->school_id);
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/school-head-accounts', [
+            'schoolIds' => [(string) $firstSchool->id, (string) $secondSchool->id],
+            'reason' => 'Batch remove flagged schools.',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.deletedCount', 2)
+            ->assertJsonPath('data.deletedSchoolIds', [(string) $firstSchool->id, (string) $secondSchool->id])
+            ->assertJsonPath('data.missingSchoolIds', [])
+            ->assertJsonPath('data.blocked', []);
+
+        $this->assertDatabaseMissing('users', ['id' => $firstSchoolHead->id]);
+        $this->assertDatabaseMissing('users', ['id' => $secondSchoolHead->id]);
+        $this->assertDatabaseMissing('schools', ['id' => $firstSchool->id]);
+        $this->assertDatabaseMissing('schools', ['id' => $secondSchool->id]);
+    }
+
+    public function test_batch_remove_account_and_school_reports_missing_and_blocked_schools(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $linkedMonitor = new User();
+        $linkedMonitor->forceFill([
+            'name' => 'Linked Monitor',
+            'email' => 'linked.monitor.batch@cspams.local',
+            'password' => Hash::make('LinkedMonitor@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_monitor',
+        ])->save();
+        $linkedMonitor->assignRole(UserRoleResolver::MONITOR);
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/school-head-accounts', [
+            'schoolIds' => [(string) $school->id, '999999'],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.deletedCount', 0)
+            ->assertJsonPath('data.deletedSchoolIds', [])
+            ->assertJsonPath('data.missingSchoolIds', ['999999']);
+
+        $blocked = $response->json('data.blocked');
+        $this->assertIsArray($blocked);
+        $this->assertCount(1, $blocked);
+        $this->assertSame((string) $school->id, data_get($blocked[0], 'schoolId'));
+        $this->assertSame('One of the linked accounts has monitor access and cannot be deleted here.', data_get($blocked[0], 'message'));
+    }
+
+    public function test_batch_remove_account_and_school_also_deletes_hidden_linked_users_by_school_id(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $hiddenLinkedUser = new User();
+        $hiddenLinkedUser->forceFill([
+            'name' => 'Legacy Linked Account',
+            'email' => 'legacy.batch.linked@cspams.local',
+            'password' => Hash::make('LegacyLinked@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_linked',
+        ])->save();
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/school-head-accounts', [
+            'schoolIds' => [(string) $school->id],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.deletedCount', 1)
+            ->assertJsonPath('data.deletedSchoolIds', [(string) $school->id]);
+
+        $this->assertDatabaseMissing('users', ['id' => $schoolHead->id]);
+        $this->assertDatabaseMissing('users', ['id' => $hiddenLinkedUser->id]);
+        $this->assertDatabaseMissing('schools', ['id' => $school->id]);
+    }
+
     public function test_missing_school_target_returns_clean_not_found_message_for_remove_account_and_school(): void
     {
         $this->seed();

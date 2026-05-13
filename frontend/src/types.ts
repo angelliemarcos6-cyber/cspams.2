@@ -153,6 +153,20 @@ export interface SchoolHeadAccountRemovalResult {
   deletedCount: number;
 }
 
+export interface SchoolHeadAccountBatchRemovalBlockedResult {
+  schoolId: string;
+  schoolName?: string | null;
+  message: string;
+}
+
+export interface SchoolHeadAccountBatchRemovalResult {
+  deletedSchoolIds: string[];
+  blocked: SchoolHeadAccountBatchRemovalBlockedResult[];
+  missingSchoolIds: string[];
+  requestedCount: number;
+  deletedCount: number;
+}
+
 export interface SchoolHeadAccountProvisioningReceipt {
   id: string;
   name: string;
