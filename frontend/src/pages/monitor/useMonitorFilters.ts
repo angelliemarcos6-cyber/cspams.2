@@ -30,7 +30,14 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debouncedValue;
 }
 
-function hydrateFilters(): MonitorFilters {
+function resolveMonitorFilterStorageKey(sessionKey: string): string {
+  const normalizedSessionKey = sessionKey.trim();
+  return normalizedSessionKey
+    ? `${MONITOR_FILTER_STORAGE_KEY}:${normalizedSessionKey}`
+    : MONITOR_FILTER_STORAGE_KEY;
+}
+
+function hydrateFilters(storageKey: string): MonitorFilters {
   if (typeof window === "undefined") {
     return DEFAULT_MONITOR_FILTERS;
   }
@@ -57,7 +64,7 @@ function hydrateFilters(): MonitorFilters {
     };
   } else {
     try {
-      const raw = localStorage.getItem(MONITOR_FILTER_STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
         persisted = JSON.parse(raw) as PersistedMonitorFilters;
       }
@@ -69,7 +76,7 @@ function hydrateFilters(): MonitorFilters {
   const nextFilters: MonitorFilters = {
     ...DEFAULT_MONITOR_FILTERS,
     search: persisted?.search?.trim() ?? "",
-    selectedSchoolScopeKey: persisted?.schoolScopeKey || ALL_SCHOOL_SCOPE,
+    selectedSchoolScopeKey: hasQueryFilters ? persisted?.schoolScopeKey || ALL_SCHOOL_SCOPE : ALL_SCHOOL_SCOPE,
     filterDateFrom: normalizeDateInput(persisted?.filterDateFrom),
     filterDateTo: normalizeDateInput(persisted?.filterDateTo),
     activeTopNavigator:
@@ -128,16 +135,17 @@ export interface UseMonitorFiltersResult {
   resetFilters: () => void;
 }
 
-export function useMonitorFilters(): UseMonitorFiltersResult {
+export function useMonitorFilters(sessionKey = ""): UseMonitorFiltersResult {
   const [filters, setFilters] = useState<MonitorFilters>(DEFAULT_MONITOR_FILTERS);
   const [filtersHydrated, setFiltersHydrated] = useState(false);
   const debouncedSearch = useDebouncedValue(filters.search, MONITOR_SEARCH_DEBOUNCE_MS);
   const effectiveSearch = filters.search.trim().length === 0 ? "" : debouncedSearch;
+  const storageKey = resolveMonitorFilterStorageKey(sessionKey);
 
   useEffect(() => {
-    setFilters(hydrateFilters());
+    setFilters(hydrateFilters(storageKey));
     setFiltersHydrated(true);
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!filters.filterDateFrom || !filters.filterDateTo) {
@@ -166,14 +174,13 @@ export function useMonitorFilters(): UseMonitorFiltersResult {
       requirementFilter: filters.requirementFilter,
       queueLane: filters.queueLane,
       schoolQuickPreset: filters.schoolQuickPreset,
-      schoolScopeKey: filters.selectedSchoolScopeKey,
       filterDateFrom: filters.filterDateFrom,
       filterDateTo: filters.filterDateTo,
       activeTopNavigator: filters.activeTopNavigator,
     };
 
     try {
-      localStorage.setItem(MONITOR_FILTER_STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(storageKey, JSON.stringify(payload));
     } catch {
       // Ignore storage failures in restricted browser modes.
     }
@@ -217,6 +224,7 @@ export function useMonitorFilters(): UseMonitorFiltersResult {
     filters.selectedSchoolScopeKey,
     filters.statusFilter,
     filtersHydrated,
+    storageKey,
   ]);
 
   const patchFilters = useCallback((patch: Partial<MonitorFilters>) => {

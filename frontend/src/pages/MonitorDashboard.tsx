@@ -150,7 +150,7 @@ export function MonitorDashboard() {
     setQueueLane,
     setSchoolQuickPreset,
     resetFilters: resetMonitorFilters,
-  } = useMonitorFilters();
+  } = useMonitorFilters(authSessionKey);
   const { radarTotalsTick, latestRealtimeBatch } = useMonitorUiRefresh();
   const {
     isNavigatorCompact,
