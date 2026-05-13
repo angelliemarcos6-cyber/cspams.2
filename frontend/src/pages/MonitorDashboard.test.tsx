@@ -221,6 +221,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       issueSchoolHeadTemporaryPassword: vi.fn(),
       upsertSchoolHeadAccountProfile: vi.fn(),
       removeSchoolHeadAccount: vi.fn(),
+      removeSchoolHeadAccountsBatch: vi.fn(),
       bulkImportRecords: vi.fn(),
     });
 

@@ -14,6 +14,7 @@ import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
+  SchoolHeadAccountBatchRemovalResult,
   SchoolHeadAccountRemovalResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
@@ -133,6 +134,10 @@ interface SchoolHeadAccountRemovalResponse {
   data: SchoolHeadAccountRemovalResult;
 }
 
+interface SchoolHeadAccountBatchRemovalResponse {
+  data: SchoolHeadAccountBatchRemovalResult;
+}
+
 interface DataContextType {
   records: SchoolRecord[];
   recordCount: number;
@@ -185,6 +190,10 @@ interface DataContextType {
     schoolId: string,
     payload: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
+  removeSchoolHeadAccountsBatch: (
+    schoolIds: string[],
+    payload?: { reason?: string | null },
+  ) => Promise<SchoolHeadAccountBatchRemovalResult>;
   bulkImportRecords: (
     rows: SchoolBulkImportRowPayload[],
     options?: { updateExisting?: boolean; restoreArchived?: boolean },
@@ -1250,6 +1259,69 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError, syncRecords],
   );
 
+  const removeSchoolHeadAccountsBatch = useCallback(
+    async (
+      schoolIds: string[],
+      payload?: { reason?: string | null },
+    ): Promise<SchoolHeadAccountBatchRemovalResult> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      const normalizedSchoolIds = [...new Set(
+        schoolIds
+          .map((value) => String(value).trim())
+          .filter((value) => value.length > 0),
+      )];
+
+      if (normalizedSchoolIds.length === 0) {
+        throw new Error("Select at least one flagged school to delete.");
+      }
+
+      const reason = payload?.reason?.trim() || undefined;
+
+      setIsSaving(true);
+      setError("");
+
+      try {
+        const response = await apiRequestRaw<SchoolHeadAccountBatchRemovalResponse>(
+          "/api/dashboard/records/school-head-accounts",
+          {
+            method: "DELETE",
+            token,
+            timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
+            body: {
+              schoolIds: normalizedSchoolIds,
+              reason,
+            },
+          },
+        );
+
+        const result = response.data?.data;
+        if (!result) {
+          throw new Error("Batch remove schools response is empty.");
+        }
+
+        if (result.deletedSchoolIds.length > 0) {
+          const deletedIdSet = new Set(result.deletedSchoolIds);
+          setRecords((current) => current.filter((record) => !deletedIdSet.has(record.id)));
+        }
+        setLastSyncedAt(new Date().toISOString());
+        setSyncStatus("updated");
+        etagRef.current = "";
+        await syncRecords(true);
+
+        return result;
+      } catch (err) {
+        await handleApiError(err);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [token, handleApiError, syncRecords],
+  );
+
   const bulkImportRecords = useCallback(
     async (
       rows: SchoolBulkImportRowPayload[],
@@ -1399,6 +1471,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       issueSchoolHeadTemporaryPassword,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
+      removeSchoolHeadAccountsBatch,
       bulkImportRecords,
     }),
     [
@@ -1429,6 +1502,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       issueSchoolHeadTemporaryPassword,
       upsertSchoolHeadAccountProfile,
       removeSchoolHeadAccount,
+      removeSchoolHeadAccountsBatch,
       bulkImportRecords,
     ],
   );

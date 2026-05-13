@@ -9,6 +9,7 @@ import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccoun
 import type {
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
+  SchoolHeadAccountBatchRemovalResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountRemovalResult,
@@ -58,6 +59,10 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
     schoolId: string,
     payload: { reason?: string | null },
   ) => Promise<SchoolHeadAccountRemovalResult>;
+  removeSchoolHeadAccountsBatch?: (
+    schoolIds: string[],
+    payload?: { reason?: string | null },
+  ) => Promise<SchoolHeadAccountBatchRemovalResult>;
   deleteRecord: (id: string) => Promise<void>;
   previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
   onOpenSchoolRecord: (record: SchoolRecord) => void;
@@ -84,6 +89,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
   issueSchoolHeadTemporaryPassword,
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
+  removeSchoolHeadAccountsBatch = async () => {
+    throw new Error("Batch delete is unavailable.");
+  },
   deleteRecord,
   previewDeleteRecord,
   onOpenSchoolRecord,
@@ -99,6 +107,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
   const [pendingDeleteSchoolRecordPreview, setPendingDeleteSchoolRecordPreview] = useState<SchoolRecordDeletePreview | null>(null);
   const [pendingDeleteSchoolRecordError, setPendingDeleteSchoolRecordError] = useState("");
   const [isDeleteSchoolRecordLoading, setIsDeleteSchoolRecordLoading] = useState(false);
+  const [isBatchDeleteSchoolRecordsLoading, setIsBatchDeleteSchoolRecordsLoading] = useState(false);
+  const [isBatchDeleteSchoolRecordsPending, setIsBatchDeleteSchoolRecordsPending] = useState(false);
+  const [batchDeleteSchoolRecordsError, setBatchDeleteSchoolRecordsError] = useState("");
 
   const schoolHeadAccountActions = useSchoolHeadAccountActions({
     isPanelOpen: showSchoolHeadAccountsPanel,
@@ -121,6 +132,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
     setPendingDeleteSchoolRecordPreview(null);
     setPendingDeleteSchoolRecordError("");
     setIsDeleteSchoolRecordLoading(false);
+    setIsBatchDeleteSchoolRecordsLoading(false);
+    setIsBatchDeleteSchoolRecordsPending(false);
+    setBatchDeleteSchoolRecordsError("");
   }, [schoolHeadAccountActions]);
 
   const toggleSchoolHeadAccountsPanel = useCallback(() => {
@@ -132,6 +146,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
         setPendingDeleteSchoolRecordPreview(null);
         setPendingDeleteSchoolRecordError("");
         setIsDeleteSchoolRecordLoading(false);
+        setIsBatchDeleteSchoolRecordsLoading(false);
+        setIsBatchDeleteSchoolRecordsPending(false);
+        setBatchDeleteSchoolRecordsError("");
       }
       return next;
     });
@@ -142,6 +159,12 @@ export function useMonitorSchoolHeadAccountsPanelState({
     setPendingDeleteSchoolRecordPreview(null);
     setPendingDeleteSchoolRecordError("");
     setIsDeleteSchoolRecordLoading(false);
+  }, []);
+
+  const closePendingBatchDeleteSchoolRecords = useCallback(() => {
+    setIsBatchDeleteSchoolRecordsPending(false);
+    setIsBatchDeleteSchoolRecordsLoading(false);
+    setBatchDeleteSchoolRecordsError("");
   }, []);
 
   const openPendingDeleteSchoolRecord = useCallback(
@@ -186,6 +209,78 @@ export function useMonitorSchoolHeadAccountsPanelState({
       setIsDeleteSchoolRecordLoading(false);
     }
   }, [closePendingDeleteSchoolRecord, deleteRecord, pendingDeleteSchoolRecord, pushToast]);
+
+  const deleteFlaggedSchoolIds = useMemo(
+    () =>
+      compactSchoolRows
+        .map(({ summary, record }) => record ?? recordBySchoolKey.get(summary.schoolKey) ?? null)
+        .filter((record): record is SchoolRecord => Boolean(record?.schoolHeadAccount?.deleteRecordFlagged))
+        .map((record) => record.id),
+    [compactSchoolRows, recordBySchoolKey],
+  );
+
+  const openPendingBatchDeleteSchoolRecords = useCallback(() => {
+    if (deleteFlaggedSchoolIds.length === 0) {
+      return;
+    }
+
+    setBatchDeleteSchoolRecordsError("");
+    setIsBatchDeleteSchoolRecordsPending(true);
+  }, [deleteFlaggedSchoolIds.length]);
+
+  const confirmBatchDeleteSchoolRecords = useCallback(async () => {
+    if (deleteFlaggedSchoolIds.length === 0) {
+      setBatchDeleteSchoolRecordsError("There are no delete-flagged schools to remove.");
+      return;
+    }
+
+    setBatchDeleteSchoolRecordsError("");
+    setIsBatchDeleteSchoolRecordsLoading(true);
+
+    try {
+      const result = await removeSchoolHeadAccountsBatch(deleteFlaggedSchoolIds, {
+        reason: "Batch remove delete-flagged school records and linked School Head accounts.",
+      });
+
+      if (result.deletedCount > 0) {
+        pushToast(
+          `${result.deletedCount} flagged school${result.deletedCount === 1 ? "" : "s"} permanently deleted.`,
+          "success",
+        );
+      }
+
+      if (result.blocked.length > 0) {
+        pushToast(
+          `${result.blocked.length} school${result.blocked.length === 1 ? " was" : "s were"} blocked from batch delete.`,
+          "warning",
+        );
+      }
+
+      if (result.missingSchoolIds.length > 0) {
+        pushToast(
+          `${result.missingSchoolIds.length} school${result.missingSchoolIds.length === 1 ? " was" : "s were"} already missing.`,
+          "warning",
+        );
+      }
+
+      if (result.deletedCount === 0 && result.blocked.length === 0 && result.missingSchoolIds.length === 0) {
+        pushToast("No flagged schools were deleted.", "info");
+      }
+
+      closePendingBatchDeleteSchoolRecords();
+    } catch (err) {
+      setBatchDeleteSchoolRecordsError(
+        err instanceof Error ? err.message : "Unable to batch delete flagged schools.",
+      );
+    } finally {
+      setIsBatchDeleteSchoolRecordsLoading(false);
+    }
+  }, [
+    closePendingBatchDeleteSchoolRecords,
+    deleteFlaggedSchoolIds,
+    pushToast,
+    removeSchoolHeadAccountsBatch,
+  ]);
 
   const filteredSchoolHeadAccountRows = useMemo(() => {
     const query = schoolHeadAccountsQuery.trim().toLowerCase();
@@ -311,6 +406,13 @@ export function useMonitorSchoolHeadAccountsPanelState({
           onPreviewDeleteSchoolRecord: openPendingDeleteSchoolRecord,
           onClosePendingDeleteSchoolRecord: closePendingDeleteSchoolRecord,
           onConfirmDeleteSchoolRecord: confirmDeleteSchoolRecord,
+          deleteFlaggedSchoolCount: deleteFlaggedSchoolIds.length,
+          isBatchDeleteSchoolRecordsPending,
+          isBatchDeleteSchoolRecordsLoading,
+          batchDeleteSchoolRecordsError,
+          onOpenPendingBatchDeleteSchoolRecords: openPendingBatchDeleteSchoolRecords,
+          onClosePendingBatchDeleteSchoolRecords: closePendingBatchDeleteSchoolRecords,
+          onConfirmBatchDeleteSchoolRecords: confirmBatchDeleteSchoolRecords,
           formatDateTime: (value: string | null) => (value ? formatDateTime(value) : "-"),
           actions: schoolHeadAccountActions,
         }

@@ -105,6 +105,7 @@ export function MonitorDashboard() {
     issueSchoolHeadTemporaryPassword,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
+    removeSchoolHeadAccountsBatch,
     bulkImportRecords,
   } = useData();
   const {
@@ -681,6 +682,7 @@ export function MonitorDashboard() {
     issueSchoolHeadTemporaryPassword,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
+    removeSchoolHeadAccountsBatch,
     onOpenSchoolRecord: handleOpenSchoolRecord,
     onOpenSchool: handleOpenSchool,
     onReviewSchool: handleReviewSchool,
