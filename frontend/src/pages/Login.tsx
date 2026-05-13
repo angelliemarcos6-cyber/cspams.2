@@ -293,7 +293,7 @@ export function Login() {
                   <span className="inline-flex rounded-none bg-white/16 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100">
                     CSPAMS
                   </span>
-                  <h1 className="font-display mt-3 max-w-md text-[1.65rem] leading-[1.2] font-bold text-white sm:text-[1.75rem]">
+                  <h1 className="font-display mt-3 max-w-md text-[1.35rem] leading-[1.22] font-bold text-white sm:text-[1.5rem]">
                     {appTagline}
                   </h1>
                 </div>
