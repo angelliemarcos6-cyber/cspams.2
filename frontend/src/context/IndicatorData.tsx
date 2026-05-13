@@ -328,6 +328,56 @@ function hasSubmissionRows(submission: IndicatorSubmission | null | undefined): 
     : Array.isArray(submission?.indicators) && submission.indicators.length > 0;
 }
 
+function deriveUploadedFileTypeSet(completion: {
+  hasBmefFile: boolean;
+  hasSmeaFile: boolean;
+  uploadedFileTypes?: IndicatorSubmissionFileType[];
+}): Set<IndicatorSubmissionFileType> {
+  const uploadedTypes = new Set<IndicatorSubmissionFileType>(completion.uploadedFileTypes ?? []);
+
+  if (completion.hasBmefFile) {
+    uploadedTypes.add("bmef");
+  }
+  if (completion.hasSmeaFile) {
+    uploadedTypes.add("smea");
+  }
+
+  return uploadedTypes;
+}
+
+function deriveMissingFileTypes(completion: {
+  hasBmefFile: boolean;
+  hasSmeaFile: boolean;
+  requiredFileTypes?: IndicatorSubmissionFileType[];
+  uploadedFileTypes?: IndicatorSubmissionFileType[];
+  missingFileTypes?: IndicatorSubmissionFileType[];
+}): IndicatorSubmissionFileType[] {
+  if (completion.missingFileTypes) {
+    return completion.missingFileTypes;
+  }
+
+  const requiredFileTypes = completion.requiredFileTypes ?? ["bmef", "smea"];
+  const uploadedTypes = deriveUploadedFileTypeSet(completion);
+
+  return requiredFileTypes.filter((type) => !uploadedTypes.has(type));
+}
+
+function deriveIsComplete(completion: {
+  hasImetaFormData: boolean;
+  hasBmefFile: boolean;
+  hasSmeaFile: boolean;
+  isComplete?: boolean;
+  requiredFileTypes?: IndicatorSubmissionFileType[];
+  uploadedFileTypes?: IndicatorSubmissionFileType[];
+  missingFileTypes?: IndicatorSubmissionFileType[];
+}): boolean {
+  if (typeof completion.isComplete === "boolean") {
+    return completion.isComplete;
+  }
+
+  return completion.hasImetaFormData && deriveMissingFileTypes(completion).length === 0;
+}
+
 function mergeSubmissionPreservingDetails(
   existing: IndicatorSubmission | undefined,
   incoming: IndicatorSubmission,
@@ -357,13 +407,15 @@ function patchSubmissionWithLightweightPayload(
         hasImetaFormData: patch.completion.hasImetaFormData,
         hasBmefFile: patch.completion.hasBmefFile,
         hasSmeaFile: patch.completion.hasSmeaFile,
-        isComplete:
-          typeof patch.completion.isComplete === "boolean"
-            ? patch.completion.isComplete
-            : patch.completion.hasImetaFormData && patch.completion.hasBmefFile && patch.completion.hasSmeaFile,
+        isComplete: deriveIsComplete(patch.completion),
         requiredFileTypes: patch.completion.requiredFileTypes ?? current.completion?.requiredFileTypes,
         uploadedFileTypes: patch.completion.uploadedFileTypes ?? current.completion?.uploadedFileTypes,
-        missingFileTypes: patch.completion.missingFileTypes ?? current.completion?.missingFileTypes,
+        missingFileTypes: deriveMissingFileTypes({
+          ...patch.completion,
+          requiredFileTypes: patch.completion.requiredFileTypes ?? current.completion?.requiredFileTypes,
+          uploadedFileTypes: patch.completion.uploadedFileTypes ?? current.completion?.uploadedFileTypes,
+          missingFileTypes: patch.completion.missingFileTypes ?? current.completion?.missingFileTypes,
+        }),
       }
     : existingCompletion;
   const nextFiles: IndicatorSubmission["files"] = patch.files
@@ -473,10 +525,24 @@ function materializeSubmissionFromLightweightPayload(
       hasImetaFormData,
       hasBmefFile,
       hasSmeaFile,
-      isComplete: patch.completion?.isComplete ?? (hasImetaFormData && hasBmefFile && hasSmeaFile),
+      isComplete: deriveIsComplete({
+        hasImetaFormData,
+        hasBmefFile,
+        hasSmeaFile,
+        isComplete: patch.completion?.isComplete,
+        requiredFileTypes: patch.completion?.requiredFileTypes,
+        uploadedFileTypes,
+        missingFileTypes: patch.completion?.missingFileTypes,
+      }),
       requiredFileTypes: patch.completion?.requiredFileTypes ?? ["bmef", "smea"],
       uploadedFileTypes,
-      missingFileTypes: patch.completion?.missingFileTypes ?? [],
+      missingFileTypes: deriveMissingFileTypes({
+        hasBmefFile,
+        hasSmeaFile,
+        requiredFileTypes: patch.completion?.requiredFileTypes ?? ["bmef", "smea"],
+        uploadedFileTypes,
+        missingFileTypes: patch.completion?.missingFileTypes,
+      }),
     },
     indicators: [],
     academicYear: {

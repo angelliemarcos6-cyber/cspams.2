@@ -17,6 +17,7 @@ import {
 import { SUBMISSION_FILE_DEFINITIONS, SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
+import { resolveVisibleSubmissionFileDefinitions } from "@/utils/submissionRequirements";
 import type { FormSubmissionHistoryEntry, IndicatorSubmission, IndicatorSubmissionFileType, SchoolRecord } from "@/types";
 
 interface MonitorIndicatorPanelProps {
@@ -634,6 +635,11 @@ export function MonitorIndicatorPanel({
         }
       }
 
+      for (const type of submission.completion?.missingFileTypes ?? []) {
+        const definition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
+        missingFields.push(`${definition?.shortLabel ?? type.toUpperCase()} file is missing.`);
+      }
+
       const evidenceLinks = extractLinks(
         submission.notes,
         submission.reviewNotes,
@@ -891,6 +897,16 @@ export function MonitorIndicatorPanel({
       ?? null,
     [detailSubmissionId, filteredRows, reviewRows],
   );
+  const detailVisibleFileDefinitions = useMemo(
+    () => detailRow
+      ? resolveVisibleSubmissionFileDefinitions({
+          schoolType: detailRow.submission.school?.type ?? null,
+          requiredFileTypes: detailRow.submission.completion?.requiredFileTypes,
+          uploadedFileTypes: detailRow.submission.completion?.uploadedFileTypes,
+        })
+      : [],
+    [detailRow],
+  );
 
   const detailHistory = detailSubmissionId ? historyBySubmissionId[detailSubmissionId] ?? [] : [];
   const isDetailHistoryLoading = detailSubmissionId !== null && historyLoadingSubmissionId === detailSubmissionId;
@@ -943,6 +959,18 @@ export function MonitorIndicatorPanel({
   useEffect(() => {
     setDetailFileDownloadError("");
   }, [detailSubmissionId, detailTab]);
+
+  useEffect(() => {
+    if (detailTab === "overview" || detailTab === "imeta" || detailTab === "history") {
+      return;
+    }
+
+    if (detailVisibleFileDefinitions.some((definition) => definition.type === detailTab)) {
+      return;
+    }
+
+    setDetailTab("overview");
+  }, [detailTab, detailVisibleFileDefinitions]);
 
   const handleDownloadDetailFile = async (submissionId: string, type: IndicatorSubmissionFileType) => {
     setDetailFileDownloadError("");
@@ -2137,7 +2165,7 @@ export function MonitorIndicatorPanel({
                   >
                     I-META
                   </button>
-                  {SUBMISSION_FILE_DEFINITIONS.map((definition) => (
+                  {detailVisibleFileDefinitions.map((definition) => (
                     <button
                       key={definition.type}
                       type="button"

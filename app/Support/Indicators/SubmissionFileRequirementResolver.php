@@ -30,9 +30,50 @@ final class SubmissionFileRequirementResolver
 
         $schoolType = strtolower(trim((string) $school->type));
         if ($schoolType === 'private') {
-            return SubmissionFileDefinition::types();
+            return SubmissionFileDefinition::nonCoreTypes();
         }
 
         return SubmissionFileDefinition::coreTypes();
+    }
+
+    public function hasAllRequiredFilesForSubmission(IndicatorSubmission $submission): bool
+    {
+        return $this->missingTypesForSubmission($submission) === [];
+    }
+
+    public function isSubmissionComplete(IndicatorSubmission $submission): bool
+    {
+        return $submission->hasImetaFormData() && $this->hasAllRequiredFilesForSubmission($submission);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function missingTypesForSubmission(IndicatorSubmission $submission): array
+    {
+        $uploadedFileTypes = $submission->uploadedSubmissionFileTypes();
+
+        return array_values(array_filter(
+            $this->requiredTypesForSubmission($submission),
+            static fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
+        ));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function missingRequirementLabelsForSubmission(IndicatorSubmission $submission): array
+    {
+        $missingRequirements = [];
+
+        if (! $submission->hasImetaFormData()) {
+            $missingRequirements[] = 'I-META / Group A form data';
+        }
+
+        foreach ($this->missingTypesForSubmission($submission) as $type) {
+            $missingRequirements[] = SubmissionFileDefinition::shortLabelFor($type) . ' file';
+        }
+
+        return $missingRequirements;
     }
 }

@@ -24,15 +24,14 @@ class IndicatorSubmissionResource extends JsonResource
         $complianceRate = $totalIndicators > 0
             ? round(($metIndicators / $totalIndicators) * 100, 2)
             : 0.0;
+        /** @var SubmissionFileRequirementResolver $requirementResolver */
+        $requirementResolver = app(SubmissionFileRequirementResolver::class);
         $hasImeta = $this->hasImetaFormData();
         $hasBmef = $this->hasBmefFile();
         $hasSmea = $this->hasSmeaFile();
         $uploadedFileTypes = $this->uploadedSubmissionFileTypes();
-        $requiredFileTypes = app(SubmissionFileRequirementResolver::class)->requiredTypesForSubmission($this->resource);
-        $missingFileTypes = array_values(array_filter(
-            $requiredFileTypes,
-            fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
-        ));
+        $requiredFileTypes = $requirementResolver->requiredTypesForSubmission($this->resource);
+        $missingFileTypes = $requirementResolver->missingTypesForSubmission($this->resource);
 
         return [
             'id' => (string) $this->id,
@@ -70,7 +69,7 @@ class IndicatorSubmissionResource extends JsonResource
                 'hasImetaFormData' => $hasImeta,
                 'hasBmefFile' => $hasBmef,
                 'hasSmeaFile' => $hasSmea,
-                'isComplete' => $hasImeta && $hasBmef && $hasSmea,
+                'isComplete' => $requirementResolver->isSubmissionComplete($this->resource),
                 'requiredFileTypes' => $requiredFileTypes,
                 'uploadedFileTypes' => $uploadedFileTypes,
                 'missingFileTypes' => $missingFileTypes,

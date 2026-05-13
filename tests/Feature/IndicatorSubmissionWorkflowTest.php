@@ -296,7 +296,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.completion.uploadedFileTypes', []);
     }
 
-    public function test_private_school_required_submission_files_include_all_fm_qad_tabs(): void
+    public function test_private_school_required_submission_files_only_include_private_fm_qad_tabs(): void
     {
         $this->seedIndicatorFixtures();
 
@@ -313,12 +313,14 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
-            ->assertJsonCount(count(SubmissionFileDefinition::types()), 'data.completion.requiredFileTypes');
+            ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes');
 
         $requiredFileTypes = $bootstrapped->json('data.completion.requiredFileTypes', []);
-        $this->assertSame(SubmissionFileDefinition::types(), $requiredFileTypes);
+        $this->assertSame(SubmissionFileDefinition::nonCoreTypes(), $requiredFileTypes);
         $this->assertContains('fm_qad_001', $requiredFileTypes);
         $this->assertContains('fm_qad_041', $requiredFileTypes);
+        $this->assertNotContains('bmef', $requiredFileTypes);
+        $this->assertNotContains('smea', $requiredFileTypes);
     }
 
     public function test_store_response_uses_private_school_requirements_immediately(): void
@@ -347,12 +349,14 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $created->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.school.type', 'private')
-            ->assertJsonCount(count(SubmissionFileDefinition::types()), 'data.completion.requiredFileTypes')
+            ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes')
+            ->assertJsonPath('data.files.bmef.uploaded', false)
+            ->assertJsonPath('data.files.smea.uploaded', false)
             ->assertJsonPath('data.files.fm_qad_001.uploaded', false)
             ->assertJsonPath('data.files.fm_qad_041.uploaded', false);
 
         $requiredFileTypes = $created->json('data.completion.requiredFileTypes', []);
-        $this->assertSame(SubmissionFileDefinition::types(), $requiredFileTypes);
+        $this->assertSame(SubmissionFileDefinition::nonCoreTypes(), $requiredFileTypes);
     }
 
     public function test_updating_indicator_draft_returns_full_submission_resource(): void
@@ -864,6 +868,46 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             );
     }
 
+    public function test_private_school_submit_succeeds_with_private_fm_qad_files_without_bmef_and_smea(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.school.type', 'private')
+            ->assertJsonPath('data.completion.hasImetaFormData', true);
+
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionFiles($token, $submissionId, SubmissionFileDefinition::nonCoreTypes());
+
+        $submitted = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+        $submitted->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.completion.isComplete', true)
+            ->assertJsonPath('data.completion.missingFileTypes', []);
+    }
+
     public function test_submit_with_group_b_values_and_uploaded_files_returns_full_submission_resource(): void
     {
         Storage::fake('local');
@@ -1195,15 +1239,24 @@ class IndicatorSubmissionWorkflowTest extends TestCase
     {
         Storage::fake('local');
 
-        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef-report.pdf', 'application/pdf')
-            ->assertOk();
-        $this->uploadSubmissionDocument(
-            $token,
-            $submissionId,
-            'smea',
-            'smea-report.xlsx',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        )->assertOk();
+        $this->uploadSubmissionFiles($token, $submissionId, ['bmef', 'smea']);
+    }
+
+    /**
+     * @param list<string> $types
+     */
+    private function uploadSubmissionFiles(string $token, string $submissionId, array $types): void
+    {
+        foreach ($types as $type) {
+            $filename = str_replace('_', '-', $type);
+            $extension = $type === 'smea' ? 'xlsx' : 'pdf';
+            $mimeType = $type === 'smea'
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : 'application/pdf';
+
+            $this->uploadSubmissionDocument($token, $submissionId, $type, "{$filename}.{$extension}", $mimeType)
+                ->assertOk();
+        }
     }
 
     private function uploadSubmissionDocument(
