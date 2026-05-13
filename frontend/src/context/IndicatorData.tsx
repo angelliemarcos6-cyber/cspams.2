@@ -11,6 +11,7 @@ import {
 import { useAuth } from "@/context/Auth";
 import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError } from "@/lib/api";
 import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
+import { defaultRequiredSubmissionFileTypesForSchoolType } from "@/utils/submissionRequirements";
 import type {
   AcademicYearOption,
   GroupBWorkspaceResetTarget,
@@ -86,6 +87,7 @@ interface SubmissionMutationOptions {
 interface LightweightIndicatorSubmission {
   id: string;
   schoolId: string;
+  schoolType?: string | null;
   academicYearId: string;
   reportingPeriod: string | null;
   status: string | null;
@@ -346,6 +348,7 @@ function deriveUploadedFileTypeSet(completion: {
 }
 
 function deriveMissingFileTypes(completion: {
+  schoolType?: string | null;
   hasBmefFile: boolean;
   hasSmeaFile: boolean;
   requiredFileTypes?: IndicatorSubmissionFileType[];
@@ -356,13 +359,14 @@ function deriveMissingFileTypes(completion: {
     return completion.missingFileTypes;
   }
 
-  const requiredFileTypes = completion.requiredFileTypes ?? ["bmef", "smea"];
+  const requiredFileTypes = completion.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(completion.schoolType);
   const uploadedTypes = deriveUploadedFileTypeSet(completion);
 
   return requiredFileTypes.filter((type) => !uploadedTypes.has(type));
 }
 
 function deriveIsComplete(completion: {
+  schoolType?: string | null;
   hasImetaFormData: boolean;
   hasBmefFile: boolean;
   hasSmeaFile: boolean;
@@ -402,15 +406,20 @@ function patchSubmissionWithLightweightPayload(
   patch: LightweightIndicatorSubmission,
 ): IndicatorSubmission {
   const existingCompletion = current.completion;
+  const schoolType = patch.schoolType ?? current.school?.type ?? null;
   const nextCompletion = patch.completion
     ? {
         hasImetaFormData: patch.completion.hasImetaFormData,
         hasBmefFile: patch.completion.hasBmefFile,
         hasSmeaFile: patch.completion.hasSmeaFile,
-        isComplete: deriveIsComplete(patch.completion),
+        isComplete: deriveIsComplete({
+          schoolType,
+          ...patch.completion,
+        }),
         requiredFileTypes: patch.completion.requiredFileTypes ?? current.completion?.requiredFileTypes,
         uploadedFileTypes: patch.completion.uploadedFileTypes ?? current.completion?.uploadedFileTypes,
         missingFileTypes: deriveMissingFileTypes({
+          schoolType,
           ...patch.completion,
           requiredFileTypes: patch.completion.requiredFileTypes ?? current.completion?.requiredFileTypes,
           uploadedFileTypes: patch.completion.uploadedFileTypes ?? current.completion?.uploadedFileTypes,
@@ -484,6 +493,7 @@ function materializeSubmissionFromLightweightPayload(
   const hasBmefFile = Boolean(patch.completion?.hasBmefFile);
   const hasSmeaFile = Boolean(patch.completion?.hasSmeaFile);
   const uploadedFileTypes = patch.completion?.uploadedFileTypes ?? [];
+  const schoolType = patch.schoolType ?? null;
   const files = SUBMISSION_FILE_TYPES.reduce<NonNullable<IndicatorSubmission["files"]>>((accumulator, type) => {
     const uploaded = type === "bmef"
       ? hasBmefFile
@@ -526,6 +536,7 @@ function materializeSubmissionFromLightweightPayload(
       hasBmefFile,
       hasSmeaFile,
       isComplete: deriveIsComplete({
+        schoolType,
         hasImetaFormData,
         hasBmefFile,
         hasSmeaFile,
@@ -534,12 +545,13 @@ function materializeSubmissionFromLightweightPayload(
         uploadedFileTypes,
         missingFileTypes: patch.completion?.missingFileTypes,
       }),
-      requiredFileTypes: patch.completion?.requiredFileTypes ?? ["bmef", "smea"],
+      requiredFileTypes: patch.completion?.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType),
       uploadedFileTypes,
       missingFileTypes: deriveMissingFileTypes({
+        schoolType,
         hasBmefFile,
         hasSmeaFile,
-        requiredFileTypes: patch.completion?.requiredFileTypes ?? ["bmef", "smea"],
+        requiredFileTypes: patch.completion?.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType),
         uploadedFileTypes,
         missingFileTypes: patch.completion?.missingFileTypes,
       }),
