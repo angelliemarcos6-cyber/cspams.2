@@ -282,18 +282,18 @@ export function Login() {
       <div className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-4xl items-center justify-center sm:min-h-[calc(100vh-4rem)]">
         <div className="w-full max-w-[620px]">
           <div className="overflow-hidden rounded-none border border-slate-200 bg-white shadow-[0_26px_60px_-42px_rgba(15,23,42,0.38)]">
-            <section className="bg-[#0f4f7d] px-5 py-5 text-white sm:px-6 sm:py-6 md:px-8 md:py-7">
-              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-5">
+            <section className="bg-[#0f4f7d] px-4 py-4 text-white sm:px-5 sm:py-5 md:px-8 md:py-7">
+              <div className="flex items-center gap-3 sm:gap-4 md:gap-5">
                 <img
                   src="/depedlogo.png"
                   alt="Department of Education logo"
-                  className="h-16 w-auto rounded-none bg-white px-2 py-1.5 shadow-[0_10px_18px_-16px_rgba(15,23,42,0.7)] sm:h-18 sm:px-2.5 sm:py-2 md:h-20"
+                  className="h-14 w-auto rounded-none bg-white px-1.5 py-1 shadow-[0_10px_18px_-16px_rgba(15,23,42,0.7)] sm:h-16 sm:px-2 sm:py-1.5 md:h-20 md:px-2.5 md:py-2"
                 />
                 <div className="min-w-0 w-full">
-                  <span className="inline-flex rounded-none bg-white/16 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-100 sm:px-3 sm:text-[11px]">
+                  <span className="inline-flex rounded-none bg-white/16 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-100 sm:px-2.5 sm:text-[10px] md:px-3 md:text-[11px]">
                     CSPAMS
                   </span>
-                  <h1 className="font-display mt-2.5 max-w-none text-[1.12rem] leading-[1.25] font-bold text-white sm:mt-3 sm:text-[1.28rem] md:max-w-md md:text-[1.5rem]">
+                  <h1 className="font-display mt-2 max-w-none text-[1rem] leading-[1.18] font-bold text-white sm:text-[1.12rem] md:mt-3 md:max-w-md md:text-[1.5rem]">
                     {appTagline}
                   </h1>
                 </div>
@@ -303,7 +303,7 @@ export function Login() {
             <section className="bg-white px-5 py-5 font-sans sm:px-6 sm:py-6 md:px-8 md:py-7">
               <div className="mb-5 rounded-none border border-slate-200 bg-slate-50/70 p-2.5 sm:p-3">
                 <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Sign In Role</p>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -314,15 +314,15 @@ export function Login() {
                     clearMfaState();
                   }}
                   disabled={isMfaChallengeActive}
-                  className={`rounded-none border px-4 py-3.5 text-left transition sm:py-4 ${
+                  className={`rounded-none border px-3 py-3 text-left transition sm:px-4 sm:py-4 ${
                     activeRole === "school_head"
                       ? "border-primary-300 bg-white text-primary-900 shadow-[0_14px_32px_-24px_rgba(2,46,80,0.58)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
                   } disabled:cursor-not-allowed disabled:opacity-70`}
                   aria-pressed={activeRole === "school_head"}
                 >
-                  <p className="inline-flex items-center gap-2.5 text-[15px] font-semibold sm:text-base">
-                    <GraduationCap className="h-4 w-4" />
+                  <p className="inline-flex items-center gap-2 text-[14px] font-semibold sm:gap-2.5 sm:text-base">
+                    <GraduationCap className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     School Head
                   </p>
                 </button>
@@ -336,15 +336,15 @@ export function Login() {
                     clearMfaState();
                   }}
                   disabled={isMfaChallengeActive}
-                  className={`rounded-none border px-4 py-3.5 text-left transition sm:py-4 ${
+                  className={`rounded-none border px-3 py-3 text-left transition sm:px-4 sm:py-4 ${
                     activeRole === "monitor"
                       ? "border-primary-300 bg-white text-primary-900 shadow-[0_14px_32px_-24px_rgba(2,46,80,0.58)]"
                       : "border-transparent bg-transparent text-slate-700 hover:border-slate-200 hover:bg-white"
                   } disabled:cursor-not-allowed disabled:opacity-70`}
                   aria-pressed={activeRole === "monitor"}
                 >
-                  <p className="inline-flex items-center gap-2.5 text-[15px] font-semibold sm:text-base">
-                    <ClipboardList className="h-4 w-4" />
+                  <p className="inline-flex items-center gap-2 text-[14px] font-semibold sm:gap-2.5 sm:text-base">
+                    <ClipboardList className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     Division Monitor
                   </p>
                 </button>
