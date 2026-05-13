@@ -33,6 +33,7 @@ export function MonitorDashboardToolbar({
   onSearchChange,
   globalSearchInputRef,
 }: MonitorDashboardToolbarProps) {
+  const isSchoolsScreen = activeTopNavigator === "schools";
   const showToolbarMetaPanel = activeTopNavigator !== "schools";
 
   return (
@@ -41,18 +42,22 @@ export function MonitorDashboardToolbar({
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">{activeScreenMeta.title}</h2>
-            <p className="mt-1 text-xs text-slate-600">{activeScreenMeta.description}</p>
+            {!isSchoolsScreen ? (
+              <p className="mt-1 text-xs text-slate-600">{activeScreenMeta.description}</p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onPrimaryAction}
-              disabled={isPrimaryActionDisabled}
-              className="inline-flex items-center gap-1 rounded-sm border border-primary-300/70 bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Save className="h-3.5 w-3.5" />
-              {activeScreenMeta.primaryLabel}
-            </button>
+            {!isSchoolsScreen ? (
+              <button
+                type="button"
+                onClick={onPrimaryAction}
+                disabled={isPrimaryActionDisabled}
+                className="inline-flex items-center gap-1 rounded-sm border border-primary-300/70 bg-primary px-3 py-2 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {activeScreenMeta.primaryLabel}
+              </button>
+            ) : null}
             <button
               id="monitor-submission-filters-toggle"
               type="button"
