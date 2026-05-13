@@ -192,6 +192,10 @@ function shouldShowResetLinkAction(status: string | null | undefined): boolean {
   return normalized === "active" || normalized === "locked";
 }
 
+function shouldOpenAccountMenuUpward(rowIndex: number, rowCount: number): boolean {
+  return rowCount > 3 && rowIndex >= rowCount - 3;
+}
+
 export function MonitorSchoolHeadAccountsPanel({
   isOpen,
   isSaving,
@@ -232,7 +236,7 @@ export function MonitorSchoolHeadAccountsPanel({
 
   return (
     <>
-      <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
+      <section className="mx-5 mt-4 overflow-visible rounded-sm border border-slate-200 bg-white">
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
@@ -359,7 +363,7 @@ export function MonitorSchoolHeadAccountsPanel({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-visible">
           <table className="min-w-full table-fixed">
             <thead>
               <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
@@ -380,7 +384,7 @@ export function MonitorSchoolHeadAccountsPanel({
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => {
+                rows.map((row, rowIndex) => {
                   const resolvedRecord = row.record;
                   if (!resolvedRecord) {
                     return (
@@ -427,6 +431,7 @@ export function MonitorSchoolHeadAccountsPanel({
                     Number.isFinite(setupLinkExpiresAtMs) && setupLinkExpiresAtMs < Date.now();
                   const nextActionLabel = recommendedActionLabel(account?.recommendedAction);
                   const tempPassword = temporaryPasswordState(account);
+                  const openMenuUpward = shouldOpenAccountMenuUpward(rowIndex, rows.length);
 
                   return (
                     <tr
@@ -642,7 +647,12 @@ export function MonitorSchoolHeadAccountsPanel({
                                 <span className="sr-only">More actions</span>
                               </button>
                               {actions.openAccountRowMenuSchoolId === resolvedRecord.id && (
-                                <div className="absolute right-0 top-full z-30 mt-1 w-48 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
+                                <div
+                                  data-open-direction={openMenuUpward ? "up" : "down"}
+                                  className={`absolute right-0 z-30 w-48 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl ${
+                                    openMenuUpward ? "bottom-full mb-1" : "top-full mt-1"
+                                  }`}
+                                >
                                   {account ? (
                                     <>
                                     {shouldShowResetLinkAction(account.accountStatus) && (

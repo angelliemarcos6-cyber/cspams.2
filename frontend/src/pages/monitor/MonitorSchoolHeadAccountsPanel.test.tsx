@@ -313,6 +313,119 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
   });
 
+  it("keeps remove-account-and-school reachable for lower active rows by opening their menus upward", () => {
+    const buildRecord = (
+      id: string,
+      schoolCode: string,
+      schoolName: string,
+      verifiedAt: string | null,
+    ): SchoolRecord => ({
+      id,
+      schoolId: schoolCode,
+      schoolCode,
+      schoolName,
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-08T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: `account-${id}`,
+        name: `${schoolName} Head`,
+        email: `${id}@cspams.local`,
+        accountStatus: "active",
+        mustResetPassword: false,
+        lifecycleState: "active_ready",
+        lifecycleStateLabel: "Active",
+        recommendedAction: "none",
+        emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedAt,
+        verifiedByUserId: verifiedAt ? "1" : null,
+        verifiedByName: verifiedAt ? "Monitor User" : null,
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    });
+
+    const records = [
+      buildRecord("school-40", "940001", "Approved Top School", "2026-05-02T08:00:00.000Z"),
+      buildRecord("school-41", "940002", "Not Verified Middle School", null),
+      buildRecord("school-42", "940003", "Approved Bottom School", "2026-05-03T08:00:00.000Z"),
+      buildRecord("school-43", "940004", "Another Bottom School", null),
+    ];
+
+    function Wrapper(): ReactElement {
+      const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
+      const actions = buildActions();
+      actions.openAccountRowMenuSchoolId = openAccountRowMenuSchoolId;
+      actions.toggleAccountRowMenu = (schoolId: string) => {
+        setOpenAccountRowMenuSchoolId((current) => (current === schoolId ? null : schoolId));
+      };
+
+      return (
+        <MonitorSchoolHeadAccountsPanel
+          isOpen
+          isSaving={false}
+          isMobileViewport={false}
+          rows={records.map((record) => ({
+            schoolKey: record.id,
+            schoolCode: record.schoolCode ?? "",
+            schoolName: record.schoolName,
+            record,
+          }))}
+          totalCount={records.length}
+          query=""
+          statusFilter="all"
+          onlyFlagged={false}
+          onlyDeleteFlagged={false}
+          onQueryChange={vi.fn()}
+          onStatusFilterChange={vi.fn()}
+          onOnlyFlaggedChange={vi.fn()}
+          onOnlyDeleteFlaggedChange={vi.fn()}
+          onClearFilters={vi.fn()}
+          onClose={vi.fn()}
+          onOpenSchoolRecord={vi.fn()}
+          pendingDeleteSchoolRecord={null}
+          pendingDeleteSchoolRecordPreview={null}
+          pendingDeleteSchoolRecordError=""
+          isDeleteSchoolRecordLoading={false}
+          onPreviewDeleteSchoolRecord={vi.fn()}
+          onClosePendingDeleteSchoolRecord={vi.fn()}
+          onConfirmDeleteSchoolRecord={vi.fn()}
+          formatDateTime={(value) => value ?? "-"}
+          actions={actions}
+        />
+      );
+    }
+
+    const { container } = render(<Wrapper />);
+    const bottomRow = screen.getAllByRole("row").find((row) => row.textContent?.includes("Another Bottom School"));
+
+    expect(bottomRow).not.toBeUndefined();
+
+    fireEvent.click(within(bottomRow!).getByRole("button", { name: "More actions" }));
+
+    expect(screen.getAllByRole("button", { name: "Remove account and school" }).length).toBeGreaterThan(0);
+    expect(container.querySelector('[data-open-direction="up"]')).not.toBeNull();
+  });
+
   it("shows setup-link and temporary-password states distinctly in the Temp Pass column", () => {
     const setupLinkRecord: SchoolRecord = {
       id: "school-5",
