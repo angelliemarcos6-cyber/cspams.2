@@ -61,7 +61,15 @@ export interface MonitorSchoolHeadAccountsPanelProps {
   actions: SchoolHeadAccountActionsApi;
 }
 
-function accountStatusLabel(status: string | null | undefined, lifecycleStateLabel: string | null | undefined): string {
+function accountStatusLabel(
+  status: string | null | undefined,
+  lifecycleStateLabel: string | null | undefined,
+  lifecycleState: string | null | undefined,
+): string {
+  if (String(lifecycleState ?? "").toLowerCase() === "temporary_password_active") {
+    return "Temp Password Active";
+  }
+
   const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
   if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
   if (!status) return "No Account";
@@ -87,39 +95,6 @@ function accountStatusTone(status: string | null | undefined, lifecycleState: st
   if (normalized === "suspended" || normalized === "locked") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
   if (normalized === "archived") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
-}
-
-function recommendedActionLabel(action: string | null | undefined): string | null {
-  const normalized = (action ?? "").toLowerCase();
-  if (normalized === "regenerate_temporary_password") return "Next step: Regenerate Temporary Password";
-  if (normalized === "send_setup_link") return "Send setup link";
-  if (normalized === "activate_account") return "Next step: Activate Account";
-  if (normalized === "send_password_reset_link") return "Next step: Send Password Reset Link";
-  return null;
-}
-
-function temporaryPasswordExpiryLabel(expiresAt: string | null | undefined): string | null {
-  if (!expiresAt) {
-    return null;
-  }
-
-  const expiresAtMs = Date.parse(expiresAt);
-  if (!Number.isFinite(expiresAtMs)) {
-    return null;
-  }
-
-  const diffMs = expiresAtMs - Date.now();
-  if (diffMs <= 0) {
-    return "Expired";
-  }
-
-  const hours = Math.ceil(diffMs / (1000 * 60 * 60));
-  if (hours < 24) {
-    return `Expires in ${hours} hour${hours === 1 ? "" : "s"}`;
-  }
-
-  const days = Math.ceil(hours / 24);
-  return `Expires in ${days} day${days === 1 ? "" : "s"}`;
 }
 
 function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
@@ -350,26 +325,11 @@ export function MonitorSchoolHeadAccountsPanel({
                   const isEditing = actions.editingSchoolHeadAccountSchoolId === resolvedRecord.id;
                   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${resolvedRecord.id}:`));
                   const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-                  const emailVerified = Boolean(account?.emailVerifiedAt);
                   const verificationLabel = normalizedAccountStatus === "pending_setup"
                     ? ""
                     : normalizedAccountStatus === "pending_verification"
                       ? "Awaiting monitor approval"
-                      : account?.verifiedAt
-                        ? "Monitor approved"
-                        : emailVerified
-                          ? "Verified"
-                          : "Not verified";
-                  const verificationTone =
-                    normalizedAccountStatus === "pending_setup" || normalizedAccountStatus === "pending_verification" || !emailVerified
-                      ? "text-amber-700"
-                      : "text-primary-700";
-                  const setupLinkExpiresAtMs = account?.setupLinkExpiresAt
-                    ? Date.parse(account.setupLinkExpiresAt)
-                    : Number.NaN;
-                  const setupLinkExpired =
-                    Number.isFinite(setupLinkExpiresAtMs) && setupLinkExpiresAtMs < Date.now();
-                  const nextActionLabel = recommendedActionLabel(account?.recommendedAction);
+                      : "";
                   const tempPassword = temporaryPasswordState(account);
                   const openMenuUpward = shouldOpenAccountMenuUpward(rowIndex, rows.length);
 
@@ -444,10 +404,10 @@ export function MonitorSchoolHeadAccountsPanel({
                             >
                               {account.deleteRecordFlagged ? <Database className="h-3.5 w-3.5 text-rose-700" /> : null}
                               {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
-                              {accountStatusLabel(account.accountStatus, account.lifecycleStateLabel)}
+                              {accountStatusLabel(account.accountStatus, account.lifecycleStateLabel, account.lifecycleState)}
                             </span>
                             {verificationLabel ? (
-                              <span className={`text-[11px] font-semibold ${verificationTone}`}>
+                              <span className="text-[11px] font-semibold text-amber-700">
                                 {verificationLabel}
                               </span>
                             ) : null}
@@ -461,45 +421,6 @@ export function MonitorSchoolHeadAccountsPanel({
                           <span className="whitespace-nowrap text-[11px] font-medium text-slate-600 tabular-nums">
                             {account?.lastLoginAt ? formatDateTime(account.lastLoginAt) : account ? "Never" : "-"}
                           </span>
-                          {account?.verifiedAt ? (
-                            <span
-                              className="max-w-[12rem] truncate text-[11px] font-medium text-primary-700"
-                              title={
-                                account.verifiedByName
-                                  ? `Approved by ${account.verifiedByName} on ${formatDateTime(account.verifiedAt)}`
-                                  : `Approved ${formatDateTime(account.verifiedAt)}`
-                              }
-                            >
-                              Approved {formatDateTime(account.verifiedAt)}
-                            </span>
-                          ) : null}
-                          {account?.temporaryPasswordExpiresAt && account.lifecycleState === "temporary_password_active" ? (
-                            <span
-                              className="inline-flex max-w-[12rem] truncate whitespace-nowrap rounded-sm border border-primary-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 tabular-nums"
-                              title={`Temporary password expires ${formatDateTime(account.temporaryPasswordExpiresAt)}`}
-                            >
-                              {temporaryPasswordExpiryLabel(account.temporaryPasswordExpiresAt)}
-                            </span>
-                          ) : null}
-                          {account?.setupLinkExpiresAt ? (
-                            <span
-                              className={`inline-flex max-w-[12rem] truncate whitespace-nowrap rounded-sm border px-2 py-1 text-[11px] font-medium tabular-nums ${
-                                setupLinkExpired
-                                  ? "border-rose-200 bg-rose-50 text-rose-700"
-                                  : "border-slate-200 bg-white text-slate-600"
-                              }`}
-                              title={`${setupLinkExpired ? "Expired" : "Expires"} ${formatDateTime(account.setupLinkExpiresAt)}`}
-                            >
-                              {setupLinkExpired ? "Expired" : "Expires"} {formatDateTime(account.setupLinkExpiresAt)}
-                            </span>
-                          ) : null}
-                          {nextActionLabel ? (
-                            <span className="max-w-[12rem] truncate text-[11px] font-semibold text-slate-700" title={nextActionLabel}>
-                              {nextActionLabel}
-                            </span>
-                          ) : !account?.verifiedAt && !account?.temporaryPasswordExpiresAt ? (
-                            <span className="text-slate-400">-</span>
-                          ) : null}
                         </div>
                       </td>
                       <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-700">
