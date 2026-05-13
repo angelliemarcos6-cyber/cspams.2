@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
+use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Domain\FormSubmissionStatus;
@@ -163,9 +164,7 @@ class IndicatorSubmission extends Model
 
     public function isCompleteSubmissionPackage(): bool
     {
-        return $this->hasImetaFormData()
-            && $this->hasBmefFile()
-            && $this->hasSmeaFile();
+        return app(SubmissionFileRequirementResolver::class)->isSubmissionComplete($this);
     }
 
     private function itemHasMeaningfulActualValue(IndicatorSubmissionItem $item): bool

@@ -22,6 +22,10 @@ import {
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import {
+  defaultRequiredSubmissionFileTypesForSchoolType,
+  resolveVisibleSubmissionFileDefinitions,
+} from "@/utils/submissionRequirements";
 import type {
   AcademicYearOption,
   FormSubmissionHistoryEntry,
@@ -149,14 +153,6 @@ function hasUploadedSubmissionFile(
   }
 
   return Boolean(submission.completion?.uploadedFileTypes?.includes(type));
-}
-
-function resolveDefaultRequiredFileTypes(schoolType: string | null | undefined): IndicatorSubmissionFileType[] {
-  if (String(schoolType ?? "").trim().toLowerCase() === "private") {
-    return [...SUBMISSION_FILE_TYPES];
-  }
-
-  return SUBMISSION_FILE_TYPES.filter((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core);
 }
 
 function buildWorkspaceSubmissionFingerprint(
@@ -2740,30 +2736,31 @@ function SchoolIndicatorPanelComponent({
     ?? user?.schoolType
     ?? null;
   const fallbackRequiredFileTypes = useMemo(
-    () => resolveDefaultRequiredFileTypes(fallbackSchoolType),
+    () => defaultRequiredSubmissionFileTypesForSchoolType(fallbackSchoolType),
     [fallbackSchoolType],
   );
   const visibleFileDefinitions = useMemo(() => {
-    const requiredTypes = new Set<IndicatorSubmissionFileType>(
-      latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
-      ?? activeWorkspaceSubmission?.completion?.requiredFileTypes
-      ?? fallbackRequiredFileTypes,
-    );
-    const uploadedTypes = new Set<IndicatorSubmissionFileType>([
+    const uploadedTypes = [
       ...(latestActiveWorkspaceSubmission?.completion?.uploadedFileTypes ?? []),
       ...(activeWorkspaceSubmission?.completion?.uploadedFileTypes ?? []),
       ...SUBMISSION_FILE_TYPES.filter((type) => (
         scopedSubmissionsForYear.some((submission) => hasUploadedSubmissionFile(submission, type))
       )),
-    ]);
+    ];
 
-    return SUBMISSION_FILE_DEFINITIONS.filter((definition) => (
-      requiredTypes.has(definition.type) || uploadedTypes.has(definition.type)
-    ));
+    return resolveVisibleSubmissionFileDefinitions({
+      schoolType: fallbackSchoolType,
+      requiredFileTypes:
+        latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
+        ?? activeWorkspaceSubmission?.completion?.requiredFileTypes
+        ?? fallbackRequiredFileTypes,
+      uploadedFileTypes: uploadedTypes,
+    });
   }, [
     activeWorkspaceSubmission?.completion?.requiredFileTypes,
     activeWorkspaceSubmission?.completion?.uploadedFileTypes,
     fallbackRequiredFileTypes,
+    fallbackSchoolType,
     latestActiveWorkspaceSubmission?.completion?.requiredFileTypes,
     latestActiveWorkspaceSubmission?.completion?.uploadedFileTypes,
     scopedSubmissionsForYear,
@@ -4973,25 +4970,7 @@ function SchoolIndicatorPanelComponent({
                 >
                   Key Performance: {lifecycleStatusLabel}
                 </span>
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                    bmefSubmitted
-                      ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-amber-300 bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  BMEF: {bmefSubmitted ? "Submitted" : "Not Submitted"}
-                </span>
-                <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                    smeaSubmitted
-                      ? "border-primary-300 bg-primary-50 text-primary-700"
-                      : "border-amber-300 bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  SMEA: {smeaSubmitted ? "Submitted" : "Not Submitted"}
-                </span>
-                {visibleFileDefinitions.filter((definition) => !definition.core).map((definition) => {
+                {visibleFileDefinitions.map((definition) => {
                   const submitted = submittedByFileType[definition.type];
 
                   return (

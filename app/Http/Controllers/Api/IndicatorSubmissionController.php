@@ -631,6 +631,8 @@ class IndicatorSubmissionController extends Controller
     {
         $user = $this->requireUser($request);
         $this->assertCanSubmit($user, $submission->school_id);
+        /** @var SubmissionFileRequirementResolver $requirementResolver */
+        $requirementResolver = app(SubmissionFileRequirementResolver::class);
 
         $fromStatus = $this->statusValue($submission->status);
         if (! in_array($fromStatus, [
@@ -642,16 +644,7 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
-        $missingRequirements = [];
-        if (! $submission->hasImetaFormData()) {
-            $missingRequirements[] = 'I-META / Group A form data';
-        }
-        if (! $submission->hasBmefFile()) {
-            $missingRequirements[] = 'BMEF file';
-        }
-        if (! $submission->hasSmeaFile()) {
-            $missingRequirements[] = 'SMEA file';
-        }
+        $missingRequirements = $requirementResolver->missingRequirementLabelsForSubmission($submission);
 
         if ($missingRequirements !== []) {
             throw ValidationException::withMessages([
@@ -848,15 +841,14 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name,type',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
         ]);
+        /** @var SubmissionFileRequirementResolver $requirementResolver */
+        $requirementResolver = app(SubmissionFileRequirementResolver::class);
         $hasImetaFormData = $submission->hasImetaFormData();
         $hasBmefFile = $submission->hasBmefFile();
         $hasSmeaFile = $submission->hasSmeaFile();
         $uploadedFileTypes = $submission->uploadedSubmissionFileTypes();
-        $requiredFileTypes = app(SubmissionFileRequirementResolver::class)->requiredTypesForSubmission($submission);
-        $missingFileTypes = array_values(array_filter(
-            $requiredFileTypes,
-            fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
-        ));
+        $requiredFileTypes = $requirementResolver->requiredTypesForSubmission($submission);
+        $missingFileTypes = $requirementResolver->missingTypesForSubmission($submission);
 
         // Keep mutation payloads small by returning state-only fields (no items.metric eager loading).
         return response()->json([
@@ -879,7 +871,7 @@ class IndicatorSubmissionController extends Controller
                     'hasImetaFormData' => $hasImetaFormData,
                     'hasBmefFile' => $hasBmefFile,
                     'hasSmeaFile' => $hasSmeaFile,
-                    'isComplete' => $hasImetaFormData && $hasBmefFile && $hasSmeaFile,
+                    'isComplete' => $requirementResolver->isSubmissionComplete($submission),
                     'requiredFileTypes' => $requiredFileTypes,
                     'uploadedFileTypes' => $uploadedFileTypes,
                     'missingFileTypes' => $missingFileTypes,

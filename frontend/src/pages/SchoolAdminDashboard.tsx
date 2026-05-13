@@ -13,6 +13,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { SUBMISSION_FILE_DEFINITION_BY_TYPE, type SubmissionFileTabDefinition } from "@/constants/submissionFiles";
 import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { Shell } from "@/components/Shell";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
@@ -22,6 +23,7 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
+import { resolveVisibleSubmissionFileDefinitions } from "@/utils/submissionRequirements";
 import type {
   IndicatorSubmission,
   IndicatorSubmissionFileEntry,
@@ -733,10 +735,7 @@ export function SchoolAdminDashboard() {
 
     return {
       submission,
-      reportFiles: {
-        bmef: submission?.files?.bmef ?? null,
-        smea: submission?.files?.smea ?? null,
-      },
+      reportFiles: submission?.files ?? {},
       hasSubmittedPackage: Boolean(submission),
       getIndicatorByGroupAKey,
       completedIndicators: submission?.summary?.metIndicators ?? 0,
@@ -750,6 +749,22 @@ export function SchoolAdminDashboard() {
     if (!activeReportModalType || !groupAReportView.submission?.files) return null;
     return groupAReportView.submission.files[activeReportModalType] ?? null;
   }, [activeReportModalType, groupAReportView]);
+  const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
+    () => resolveVisibleSubmissionFileDefinitions({
+      schoolType: groupAReportView.submission?.school?.type ?? user?.schoolType ?? null,
+      requiredFileTypes: groupAReportView.submission?.completion?.requiredFileTypes,
+      uploadedFileTypes: groupAReportView.submission?.completion?.uploadedFileTypes,
+    }),
+    [
+      groupAReportView.submission?.completion?.requiredFileTypes,
+      groupAReportView.submission?.completion?.uploadedFileTypes,
+      groupAReportView.submission?.school?.type,
+      user?.schoolType,
+    ],
+  );
+  const activeReportDefinition = activeReportModalType
+    ? SUBMISSION_FILE_DEFINITION_BY_TYPE[activeReportModalType] ?? null
+    : null;
   const activeReportFileName = activeReportFileEntry?.originalFilename ?? null;
   const activeReportExtension = normalizeFileExtension(activeReportFileName);
   const activeSchoolYearLabel = selectedYearLabel(
@@ -1119,37 +1134,27 @@ export function SchoolAdminDashboard() {
             </div>
           )}
 
-          <div className="flex flex-col gap-4 md:flex-row">
-            {([
-              {
-                type: "bmef" as const,
-                title: "BMEF Report",
-                file: groupAReportView.reportFiles.bmef,
-              },
-              {
-                type: "smea" as const,
-                title: "SMEA Report",
-                file: groupAReportView.reportFiles.smea,
-              },
-            ]).map((report) => {
-              const hasFile = Boolean(report.file?.uploaded && report.file?.originalFilename);
-              const buttonLabel = `View ${report.type.toUpperCase()} Report`;
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {visibleSubmittedReportFiles.map((definition) => {
+              const reportFile = groupAReportView.reportFiles?.[definition.type] ?? null;
+              const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
+              const buttonLabel = `View ${definition.shortLabel} Report`;
 
               return (
-                <article key={report.type} className="flex-1 rounded-sm border border-slate-200 bg-white px-6 py-5">
+                <article key={definition.type} className="rounded-sm border border-slate-200 bg-white px-6 py-5">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{report.title}</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{definition.shortLabel} Report</h3>
                   </div>
 
                   <dl className="mt-4 space-y-2">
                     <div className="flex items-start gap-2">
                       <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
-                      <dd className="truncate text-sm font-normal text-slate-900">{report.file?.originalFilename ?? "- (none)"}</dd>
+                      <dd className="truncate text-sm font-normal text-slate-900">{reportFile?.originalFilename ?? "- (none)"}</dd>
                     </div>
                     <div className="flex items-start gap-2">
                       <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">Date</dt>
                       <dd className="text-sm font-normal text-slate-900">
-                        {report.file?.uploadedAt ? new Date(report.file.uploadedAt).toLocaleDateString() : "-"}
+                        {reportFile?.uploadedAt ? new Date(reportFile.uploadedAt).toLocaleDateString() : "-"}
                       </dd>
                     </div>
                   </dl>
@@ -1157,7 +1162,7 @@ export function SchoolAdminDashboard() {
                   <div className="mt-4">
                     <button
                       type="button"
-                      onClick={hasFile ? () => openReportModal(report.type) : undefined}
+                      onClick={hasFile ? () => openReportModal(definition.type) : undefined}
                       disabled={!hasFile}
                       className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-2.5 text-[13px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary-50"
                     >
@@ -1263,7 +1268,7 @@ export function SchoolAdminDashboard() {
           <section className="fixed inset-3 z-[81] flex flex-col overflow-hidden rounded-sm border border-slate-300 bg-white shadow-2xl">
             <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
               <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">
-                {activeReportModalType.toUpperCase()} Report - SY {activeSchoolYearLabel}
+                {(activeReportDefinition?.shortLabel ?? activeReportModalType.toUpperCase())} Report - SY {activeSchoolYearLabel}
               </h3>
               <div className="flex items-center gap-2">
                 {activeReportExtension === "png" || activeReportExtension === "jpg" || activeReportExtension === "jpeg" || activeReportExtension === "webp" || activeReportExtension === "gif" ? (
@@ -1308,7 +1313,7 @@ export function SchoolAdminDashboard() {
             <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
               {activeReportExtension === "pdf" && activeReportFileEntry.downloadUrl ? (
                 <iframe
-                  title={`${activeReportModalType.toUpperCase()} PDF preview`}
+                  title={`${activeReportDefinition?.shortLabel ?? activeReportModalType.toUpperCase()} PDF preview`}
                   src={activeReportFileEntry.downloadUrl}
                   className="h-full w-full rounded-sm border border-slate-300 bg-white"
                 />
@@ -1316,7 +1321,7 @@ export function SchoolAdminDashboard() {
                 <div className="h-full overflow-auto rounded-sm border border-slate-300 bg-white p-4">
                   <img
                     src={activeReportFileEntry.downloadUrl ?? ""}
-                    alt={`${activeReportModalType.toUpperCase()} report`}
+                    alt={`${activeReportDefinition?.shortLabel ?? activeReportModalType.toUpperCase()} report`}
                     className="max-w-none origin-top-left"
                     style={{ transform: `scale(${reportZoomLevel})` }}
                   />
@@ -1346,7 +1351,7 @@ export function SchoolAdminDashboard() {
                 </div>
               ) : activeReportFileEntry.downloadUrl ? (
                 <iframe
-                  title={`${activeReportModalType.toUpperCase()} report preview`}
+                  title={`${activeReportDefinition?.shortLabel ?? activeReportModalType.toUpperCase()} report preview`}
                   src={activeReportFileEntry.downloadUrl}
                   className="h-full w-full rounded-sm border border-slate-300 bg-white"
                 />
