@@ -604,6 +604,180 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(within(expiredRow!).getByText("Expired")).not.toBeNull();
   });
 
+  it("uses compact temp-password wording and keeps Activity driven only by lastLoginAt", () => {
+    const record: SchoolRecord = {
+      id: "school-60",
+      schoolId: "906000",
+      schoolCode: "906000",
+      schoolName: "Temp Password School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-14T06:41:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-60",
+        name: "Temp User",
+        email: "temp-user@cspams.local",
+        accountStatus: "active",
+        mustResetPassword: true,
+        onboardingFlow: "temporary_password",
+        lifecycleState: "temporary_password_active",
+        lifecycleStateLabel: "Temporary password active",
+        recommendedAction: "none",
+        emailVerifiedAt: "2026-05-14T06:41:00.000Z",
+        verifiedAt: "2026-05-14T06:41:00.000Z",
+        verifiedByUserId: "1",
+        verifiedByName: "Monitor User",
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: "2026-05-14T06:41:00.000Z",
+        temporaryPasswordExpiresAt: "2026-05-15T06:41:00.000Z",
+        temporaryPasswordExpired: false,
+        temporaryPasswordDisplay: "fBm57ysr",
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    };
+
+    render(
+      <MonitorSchoolHeadAccountsPanel
+        isOpen
+        isSaving={false}
+        isMobileViewport={false}
+        rows={[{ schoolKey: "school-60", schoolCode: "906000", schoolName: "Temp Password School", record }]}
+        totalCount={1}
+        query=""
+        statusFilter="all"
+        onlyFlagged={false}
+        onlyDeleteFlagged={false}
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onOnlyFlaggedChange={vi.fn()}
+        onOnlyDeleteFlaggedChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        onClose={vi.fn()}
+        onOpenSchoolRecord={vi.fn()}
+        pendingDeleteSchoolRecord={null}
+        pendingDeleteSchoolRecordPreview={null}
+        pendingDeleteSchoolRecordError=""
+        isDeleteSchoolRecordLoading={false}
+        onPreviewDeleteSchoolRecord={vi.fn()}
+        onClosePendingDeleteSchoolRecord={vi.fn()}
+        onConfirmDeleteSchoolRecord={vi.fn()}
+        formatDateTime={() => "5/14/2026 06:41 AM"}
+        actions={buildActions()}
+      />,
+    );
+
+    const row = screen.getAllByRole("row").find((candidate) => candidate.textContent?.includes("Temp Password School"));
+
+    expect(row).not.toBeUndefined();
+    expect(within(row!).getByText("Temp Password Active")).not.toBeNull();
+    expect(within(row!).queryByText("Temporary password active")).toBeNull();
+    expect(within(row!).queryByText("Monitor approved")).toBeNull();
+    expect(within(row!).getByText("Never")).not.toBeNull();
+    expect(within(row!).queryByText(/Approved 5\/14\/2026 06:41 AM/i)).toBeNull();
+  });
+
+  it("shows only formatted lastLoginAt in Activity once the account has been used", () => {
+    const record: SchoolRecord = {
+      id: "school-61",
+      schoolId: "906001",
+      schoolCode: "906001",
+      schoolName: "Used Account School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-14T06:41:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-61",
+        name: "Used User",
+        email: "used-user@cspams.local",
+        accountStatus: "active",
+        mustResetPassword: false,
+        onboardingFlow: "standard",
+        lifecycleState: "active_ready",
+        lifecycleStateLabel: "Active",
+        recommendedAction: "none",
+        emailVerifiedAt: "2026-05-14T06:41:00.000Z",
+        verifiedAt: "2026-05-14T06:41:00.000Z",
+        verifiedByUserId: "1",
+        verifiedByName: "Monitor User",
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        temporaryPasswordDisplay: null,
+        lastLoginAt: "2026-05-14T06:55:00.000Z",
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    };
+
+    render(
+      <MonitorSchoolHeadAccountsPanel
+        isOpen
+        isSaving={false}
+        isMobileViewport={false}
+        rows={[{ schoolKey: "school-61", schoolCode: "906001", schoolName: "Used Account School", record }]}
+        totalCount={1}
+        query=""
+        statusFilter="all"
+        onlyFlagged={false}
+        onlyDeleteFlagged={false}
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onOnlyFlaggedChange={vi.fn()}
+        onOnlyDeleteFlaggedChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        onClose={vi.fn()}
+        onOpenSchoolRecord={vi.fn()}
+        pendingDeleteSchoolRecord={null}
+        pendingDeleteSchoolRecordPreview={null}
+        pendingDeleteSchoolRecordError=""
+        isDeleteSchoolRecordLoading={false}
+        onPreviewDeleteSchoolRecord={vi.fn()}
+        onClosePendingDeleteSchoolRecord={vi.fn()}
+        onConfirmDeleteSchoolRecord={vi.fn()}
+        formatDateTime={() => "5/14/2026 06:55 AM"}
+        actions={buildActions()}
+      />,
+    );
+
+    const row = screen.getAllByRole("row").find((candidate) => candidate.textContent?.includes("Used Account School"));
+
+    expect(row).not.toBeUndefined();
+    expect(within(row!).getByText("5/14/2026 06:55 AM")).not.toBeNull();
+    expect(within(row!).queryByText("Never")).toBeNull();
+    expect(within(row!).queryByText(/Approved/i)).toBeNull();
+  });
+
   it("separates no-account rows from pending-setup rows in the status filter", () => {
     const noAccountRecord: SchoolRecord = {
       id: "school-10",
