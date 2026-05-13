@@ -1,6 +1,6 @@
 import type { Ref } from "react";
-import { Filter, RefreshCw, Save, Search } from "lucide-react";
-import type { SchoolQuickPreset } from "@/pages/monitor/monitorFilters";
+import { Filter, Save, Search } from "lucide-react";
+import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 
 interface ActiveScreenMeta {
   title: string;
@@ -8,14 +8,8 @@ interface ActiveScreenMeta {
   primaryLabel: string;
 }
 
-interface StickySummaryStats {
-  totalSchools: number;
-  pending: number;
-  missing: number;
-  returned: number;
-}
-
 interface MonitorDashboardToolbarProps {
+  activeTopNavigator: MonitorTopNavigatorId;
   activeScreenMeta: ActiveScreenMeta;
   isPrimaryActionDisabled: boolean;
   onPrimaryAction: () => void;
@@ -25,16 +19,10 @@ interface MonitorDashboardToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
   globalSearchInputRef: Ref<HTMLInputElement>;
-  schoolQuickPreset: SchoolQuickPreset;
-  onSelectSchoolQuickPreset: (value: SchoolQuickPreset) => void;
-  stickySummaryStats: StickySummaryStats;
-  schoolPresetCounts: Record<SchoolQuickPreset, number>;
-  onRefresh: () => void;
-  isDashboardSyncing: boolean;
-  dashboardLastSyncedAt: string | null;
 }
 
 export function MonitorDashboardToolbar({
+  activeTopNavigator,
   activeScreenMeta,
   isPrimaryActionDisabled,
   onPrimaryAction,
@@ -44,14 +32,9 @@ export function MonitorDashboardToolbar({
   search,
   onSearchChange,
   globalSearchInputRef,
-  schoolQuickPreset,
-  onSelectSchoolQuickPreset,
-  stickySummaryStats,
-  schoolPresetCounts,
-  onRefresh,
-  isDashboardSyncing,
-  dashboardLastSyncedAt,
 }: MonitorDashboardToolbarProps) {
+  const showToolbarMetaPanel = activeTopNavigator !== "schools";
+
   return (
     <>
       <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
@@ -93,110 +76,23 @@ export function MonitorDashboardToolbar({
         </div>
       </section>
 
-      <section className="dashboard-shell dashboard-shell-visible mb-5 rounded-sm border border-slate-200 bg-white p-2 shadow-sm">
-        <div className="dashboard-nav-shell rounded-sm border border-slate-200 bg-slate-50/60 p-3">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-              <label className="relative w-full lg:max-w-lg">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  ref={globalSearchInputRef}
-                  type="text"
-                  value={search}
-                  onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="Search school code, school name, or school head"
-                  className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-10 pr-20 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
-                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-sm border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                  /
-                </span>
-              </label>
-              <p className="hidden text-[11px] font-medium text-slate-600 lg:block">
-                <span className="font-semibold text-slate-800">/</span> Search ·{" "}
-                <span className="font-semibold text-slate-800">J/K</span> Navigate ·{" "}
-                <span className="font-semibold text-slate-800">R</span> Review
-              </p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-              <button
-                type="button"
-                title="Schools in the current scope."
-                onClick={() => onSelectSchoolQuickPreset("all")}
-                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
-                  schoolQuickPreset === "all"
-                    ? "border-slate-300 bg-slate-100 text-slate-900"
-                    : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                Schools: {stickySummaryStats.totalSchools}
-              </button>
-              <button
-                type="button"
-                title="Schools with submitted requirements waiting for monitor review."
-                onClick={() => onSelectSchoolQuickPreset("pending")}
-                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
-                  schoolQuickPreset === "pending"
-                    ? "border-primary-300 bg-primary-100 text-primary-800"
-                    : "border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100"
-                }`}
-              >
-                Submitted for Review: {stickySummaryStats.pending}
-              </button>
-              <button
-                type="button"
-                title="Schools still missing one or more required submissions."
-                onClick={() => onSelectSchoolQuickPreset("missing")}
-                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
-                  schoolQuickPreset === "missing"
-                    ? "border-indigo-300 bg-indigo-100 text-indigo-800"
-                    : "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                }`}
-              >
-                Submission Incomplete: {stickySummaryStats.missing}
-              </button>
-              <button
-                type="button"
-                title="Schools with submissions returned for correction."
-                onClick={() => onSelectSchoolQuickPreset("returned")}
-                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
-                  schoolQuickPreset === "returned"
-                    ? "border-amber-300 bg-amber-100 text-amber-800"
-                    : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                }`}
-              >
-                Returned for Correction: {stickySummaryStats.returned}
-              </button>
-              <button
-                type="button"
-                title="Schools with no submitted requirement package yet."
-                onClick={() => onSelectSchoolQuickPreset("no_submission")}
-                className={`inline-flex min-w-0 items-center rounded-sm border px-2 py-1 text-[10px] font-semibold leading-tight transition xl:text-[11px] ${
-                  schoolQuickPreset === "no_submission"
-                    ? "border-slate-400 bg-slate-200 text-slate-900"
-                    : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
-              >
-                Not Submitted: {schoolPresetCounts.no_submission}
-              </button>
-              <button
-                type="button"
-                title="Refresh dashboard data."
-                onClick={onRefresh}
-                disabled={isDashboardSyncing}
-                className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold leading-tight text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70 xl:text-[11px]"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isDashboardSyncing ? "animate-spin" : ""}`} />
-                {isDashboardSyncing
-                  ? "Syncing..."
-                  : dashboardLastSyncedAt
-                    ? `Sync: ${new Date(dashboardLastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                    : "Sync: N/A"}
-              </button>
-            </div>
+      {showToolbarMetaPanel ? (
+        <section className="dashboard-shell dashboard-shell-visible mb-5 rounded-sm border border-slate-200 bg-white p-2 shadow-sm">
+          <div className="dashboard-nav-shell rounded-sm border border-slate-200 bg-slate-50/60 p-3">
+            <label className="relative block w-full lg:max-w-lg">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                ref={globalSearchInputRef}
+                type="text"
+                value={search}
+                onChange={(event) => onSearchChange(event.target.value)}
+                placeholder="Search school code, school name, or school head"
+                className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+            </label>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
     </>
   );
 }

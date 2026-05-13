@@ -768,6 +768,7 @@ export function MonitorDashboard() {
 
           {!showNavigatorManual && (
             <MonitorDashboardToolbar
+              activeTopNavigator={activeTopNavigator}
               activeScreenMeta={activeScreenMeta}
               isPrimaryActionDisabled={isPrimaryActionDisabled}
               onPrimaryAction={handlePrimaryAction}
@@ -777,13 +778,6 @@ export function MonitorDashboard() {
               search={search}
               onSearchChange={setSearch}
               globalSearchInputRef={globalSearchInputRef}
-              schoolQuickPreset={schoolQuickPreset}
-              onSelectSchoolQuickPreset={setSchoolQuickPreset}
-              stickySummaryStats={stickySummaryStats}
-              schoolPresetCounts={schoolPresetCounts}
-              onRefresh={() => void handleRefreshDashboard()}
-              isDashboardSyncing={isDashboardSyncing}
-              dashboardLastSyncedAt={dashboardLastSyncedAt}
             />
           )}
 
