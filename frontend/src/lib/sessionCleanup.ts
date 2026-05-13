@@ -2,6 +2,9 @@ export const CLIENT_SESSION_STORAGE_KEYS = [
   "cspams.monitor.filters.v1",
   "cspams.monitor.nav.v1",
 ] as const;
+const CLIENT_SESSION_STORAGE_PREFIXES = [
+  "cspams.monitor.filters.v1:",
+] as const;
 const SCHOOL_HEAD_INDICATOR_AUTOSAVE_PREFIX = "cspams.schoolhead.indicator.autosave";
 
 function removeStorageKeysByPrefix(storage: Storage, prefix: string): void {
@@ -24,6 +27,15 @@ export function clearClientSessionArtifacts(): void {
     try {
       window.localStorage.removeItem(key);
       window.sessionStorage.removeItem(key);
+    } catch {
+      // Ignore storage failures in restricted browser modes.
+    }
+  }
+
+  for (const prefix of CLIENT_SESSION_STORAGE_PREFIXES) {
+    try {
+      removeStorageKeysByPrefix(window.localStorage, prefix);
+      removeStorageKeysByPrefix(window.sessionStorage, prefix);
     } catch {
       // Ignore storage failures in restricted browser modes.
     }

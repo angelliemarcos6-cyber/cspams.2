@@ -48,6 +48,7 @@ describe("AuthProvider logout", () => {
     vi.stubGlobal("fetch", fetchMock);
     const stopRealtimeBridgeSpy = vi.spyOn(realtime, "stopRealtimeBridge").mockImplementation(() => {});
     window.localStorage.setItem("cspams.monitor.filters.v1", JSON.stringify({ q: "north" }));
+    window.localStorage.setItem("cspams.monitor.filters.v1:monitor:1", JSON.stringify({ q: "south" }));
     window.sessionStorage.setItem("cspams.monitor.nav.v1", JSON.stringify({ visible: true }));
     window.history.replaceState(null, "", "/?tab=reviews#/monitor");
 
@@ -79,6 +80,7 @@ describe("AuthProvider logout", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/logout`);
     expect(stopRealtimeBridgeSpy).toHaveBeenCalledTimes(1);
     expect(window.localStorage.getItem("cspams.monitor.filters.v1")).toBeNull();
+    expect(window.localStorage.getItem("cspams.monitor.filters.v1:monitor:1")).toBeNull();
     expect(window.sessionStorage.getItem("cspams.monitor.nav.v1")).toBeNull();
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("#/monitor");

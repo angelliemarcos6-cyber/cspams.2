@@ -5,13 +5,11 @@ import {
   ChevronDown,
   Database,
   Edit2,
-  Filter,
   Plus,
   RefreshCw,
   Save,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
@@ -296,64 +294,6 @@ export function MonitorSchoolHeadAccountsPanel({
                   placeholder="Search school, code, name, or email..."
                   className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700">
-                  <Filter className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Status</span>
-                  <select
-                    value={statusFilter}
-                    onChange={(event) => onStatusFilterChange(event.target.value as SchoolHeadAccountsStatusFilter)}
-                    className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                  >
-                    <option value="all">All</option>
-                    <option value="no_account">No account</option>
-                    <option value="pending_setup">Pending setup</option>
-                    <option value="pending_verification">Pending verification</option>
-                    <option value="password_reset_required">Password reset required</option>
-                    <option value="temporary_password_expired">Temporary password expired</option>
-                    <option value="active">Active</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="locked">Locked</option>
-                    <option value="archived">Archived</option>
-                  </select>
-                </div>
-                <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={onlyFlagged}
-                    onChange={(event) => onOnlyFlaggedChange(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
-                  />
-                  <span>Flagged</span>
-                </label>
-                <label className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={onlyDeleteFlagged}
-                    onChange={(event) => onOnlyDeleteFlaggedChange(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
-                  />
-                  <span>Delete flagged</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={onClearFilters}
-                  className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenPendingBatchDeleteSchoolRecords}
-                  disabled={deleteFlaggedSchoolCount === 0 || isSaving || isBatchDeleteSchoolRecordsLoading}
-                  aria-label="Open batch delete flagged schools"
-                  className="inline-flex items-center gap-2 rounded-sm border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete flagged schools
-                </button>
               </div>
             </div>
             <div className="text-xs font-semibold text-slate-500">
