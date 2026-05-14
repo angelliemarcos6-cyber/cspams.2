@@ -167,6 +167,19 @@ describe("resolveSchoolAdminHeaderContext", () => {
 
     expect(result.schoolAddress).toBe("N/A");
   });
+
+  it("uses the authenticated assigned-school address as a safe fallback when records are not ready yet", () => {
+    const result = resolveSchoolAdminHeaderContext(
+      null,
+      {
+        schoolName: "Private Academy",
+        schoolCode: "900123",
+        schoolAddress: "Santiago City, Isabela",
+      } as never,
+    );
+
+    expect(result.schoolAddress).toBe("Santiago City, Isabela");
+  });
 });
 
 describe("resolveSubmittedReportSubmissionForView", () => {

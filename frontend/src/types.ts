@@ -189,6 +189,7 @@ export interface SessionUser {
   schoolId: number | null;
   schoolCode: string | null;
   schoolName: string | null;
+  schoolAddress?: string | null;
   schoolType?: "public" | "private" | string | null;
 }
 

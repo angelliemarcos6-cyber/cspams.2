@@ -45,7 +45,8 @@ class AuthApiSmokeTest extends TestCase
 
         $me = $this->withToken($token)->getJson('/api/auth/me');
         $me->assertOk()
-            ->assertJsonPath('user.role', 'school_head');
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.schoolAddress', $schoolHead->school?->address ?? $schoolHead->school?->district);
 
         $logout = $this->withToken($token)->postJson('/api/auth/logout');
         $logout->assertStatus(Response::HTTP_NO_CONTENT);

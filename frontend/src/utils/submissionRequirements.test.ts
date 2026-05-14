@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultRequiredSubmissionFileTypesForSchoolType,
+  resolveSecondarySubmittedReportFileDefinitions,
   resolveSubmittedReportVisibleFileDefinitions,
   resolveSubmissionRequirementProfile,
   resolveVisibleSubmissionFileDefinitions,
@@ -73,5 +74,27 @@ describe("resolveSubmittedReportVisibleFileDefinitions", () => {
 
     expect(result.map((definition) => definition.type)).not.toContain("bmef");
     expect(result.map((definition) => definition.type)).not.toContain("smea");
+  });
+});
+
+describe("resolveSecondarySubmittedReportFileDefinitions", () => {
+  it("surfaces uploaded legacy public core files as secondary historical files for private schools", () => {
+    const result = resolveSecondarySubmittedReportFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001"],
+      uploadedFileTypes: ["bmef", "smea", "fm_qad_001"],
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(["bmef", "smea"]);
+  });
+
+  it("does not include active required private files in the secondary historical list", () => {
+    const result = resolveSecondarySubmittedReportFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+      uploadedFileTypes: ["fm_qad_001", "fm_qad_002"],
+    });
+
+    expect(result).toEqual([]);
   });
 });

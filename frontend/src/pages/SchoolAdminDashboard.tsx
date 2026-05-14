@@ -23,7 +23,10 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
-import { resolveSubmittedReportVisibleFileDefinitions } from "@/utils/submissionRequirements";
+import {
+  resolveSecondarySubmittedReportFileDefinitions,
+  resolveSubmittedReportVisibleFileDefinitions,
+} from "@/utils/submissionRequirements";
 import type {
   IndicatorSubmission,
   IndicatorSubmissionFileEntry,
@@ -96,7 +99,7 @@ export function resolveInitialSubmittedReportAcademicYearId(
 
 export function resolveSchoolAdminHeaderContext(
   assignedRecord: Pick<SchoolRecord, "schoolName" | "schoolCode" | "address"> | null,
-  user: Pick<SessionUser, "schoolName" | "schoolCode"> | null,
+  user: Pick<SessionUser, "schoolName" | "schoolCode" | "schoolAddress"> | null,
 ): {
   schoolName: string;
   schoolCode: string;
@@ -105,7 +108,7 @@ export function resolveSchoolAdminHeaderContext(
   return {
     schoolName: assignedRecord?.schoolName || user?.schoolName || "Unassigned School",
     schoolCode: assignedRecord?.schoolCode || user?.schoolCode || "N/A",
-    schoolAddress: assignedRecord?.address || "N/A",
+    schoolAddress: assignedRecord?.address || user?.schoolAddress || "N/A",
   };
 }
 
@@ -792,6 +795,19 @@ export function SchoolAdminDashboard() {
       user?.schoolType,
     ],
   );
+  const secondarySubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
+    () => resolveSecondarySubmittedReportFileDefinitions({
+      schoolType: groupAReportView.submission?.school?.type ?? user?.schoolType ?? null,
+      requiredFileTypes: groupAReportView.submission?.completion?.requiredFileTypes,
+      uploadedFileTypes: groupAReportView.submission?.completion?.uploadedFileTypes,
+    }),
+    [
+      groupAReportView.submission?.completion?.requiredFileTypes,
+      groupAReportView.submission?.completion?.uploadedFileTypes,
+      groupAReportView.submission?.school?.type,
+      user?.schoolType,
+    ],
+  );
   const activeReportDefinition = activeReportModalType
     ? SUBMISSION_FILE_DEFINITION_BY_TYPE[activeReportModalType] ?? null
     : null;
@@ -1207,6 +1223,57 @@ export function SchoolAdminDashboard() {
                   );
                 })}
               </div>
+
+              {secondarySubmittedReportFiles.length > 0 && (
+                <div className="mt-4 rounded-sm border border-amber-200 bg-amber-50/60 p-4">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-amber-900">Historical Extra Files</h3>
+                    <p className="mt-1 text-xs text-amber-800">
+                      These uploaded files are preserved for history, but they are not part of the active submitted report package for this school type.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {secondarySubmittedReportFiles.map((definition) => {
+                      const reportFile = groupAReportView.reportFiles?.[definition.type] ?? null;
+                      const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
+                      const buttonLabel = `View ${definition.shortLabel} Report`;
+
+                      return (
+                        <article key={`secondary-${definition.type}`} className="rounded-sm border border-amber-200 bg-white px-6 py-5">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-sm font-bold uppercase tracking-wide text-amber-900">{definition.shortLabel} Report</h3>
+                          </div>
+
+                          <dl className="mt-4 space-y-2">
+                            <div className="flex items-start gap-2">
+                              <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
+                              <dd className="truncate text-sm font-normal text-slate-900">{reportFile?.originalFilename ?? "- (none)"}</dd>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">Date</dt>
+                              <dd className="text-sm font-normal text-slate-900">
+                                {reportFile?.uploadedAt ? new Date(reportFile.uploadedAt).toLocaleDateString() : "-"}
+                              </dd>
+                            </div>
+                          </dl>
+
+                          <div className="mt-4">
+                            <button
+                              type="button"
+                              onClick={hasFile ? () => openReportModal(definition.type) : undefined}
+                              disabled={!hasFile}
+                              className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-amber-50"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              {buttonLabel}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
                 <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
