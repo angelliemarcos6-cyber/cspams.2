@@ -24,7 +24,9 @@ import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import {
+  getActiveReportVisibleFiles,
   getActiveReportFileTypes,
+  getSecondaryHistoricalVisibleFiles,
   getSecondaryHistoricalFileTypes,
   resolveSecondarySubmittedReportFileDefinitions,
   resolveSubmissionSchoolId,
@@ -792,7 +794,6 @@ export function SchoolAdminDashboard() {
 
     return {
       submission,
-      reportFiles: submission?.files ?? {},
       hasSubmittedPackage: Boolean(submission),
       getIndicatorByGroupAKey,
       completedIndicators: submission?.summary?.metIndicators ?? 0,
@@ -802,10 +803,6 @@ export function SchoolAdminDashboard() {
       kpiRows,
     };
   }, [effectiveAcademicYearId, groupASubmittedSubmission, hydratedSubmittedReportSubmission, selectedSchoolId]);
-  const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
-    if (!activeReportModalType || !groupAReportView.submission?.files) return null;
-    return groupAReportView.submission.files[activeReportModalType] ?? null;
-  }, [activeReportModalType, groupAReportView]);
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({
       schoolType: resolveSubmissionPresentationSchoolType(groupAReportView.submission, user?.schoolType ?? null),
@@ -827,9 +824,23 @@ export function SchoolAdminDashboard() {
       user?.schoolType,
     ],
   );
+  const visibleSubmittedReportFileEntries = useMemo(
+    () => getActiveReportVisibleFiles(groupAReportView.submission, user?.schoolType ?? null),
+    [groupAReportView.submission, user?.schoolType],
+  );
+  const secondarySubmittedReportFileEntries = useMemo(
+    () => getSecondaryHistoricalVisibleFiles(groupAReportView.submission, user?.schoolType ?? null),
+    [groupAReportView.submission, user?.schoolType],
+  );
   const activeReportDefinition = activeReportModalType
     ? SUBMISSION_FILE_DEFINITION_BY_TYPE[activeReportModalType] ?? null
     : null;
+  const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
+    if (!activeReportModalType) return null;
+    return visibleSubmittedReportFileEntries[activeReportModalType]
+      ?? secondarySubmittedReportFileEntries[activeReportModalType]
+      ?? null;
+  }, [activeReportModalType, secondarySubmittedReportFileEntries, visibleSubmittedReportFileEntries]);
   const activeReportFileName = activeReportFileEntry?.originalFilename ?? null;
   const activeReportExtension = normalizeFileExtension(activeReportFileName);
   const activeSchoolYearLabel = selectedYearLabel(
@@ -1060,7 +1071,7 @@ export function SchoolAdminDashboard() {
 
   const handleDownloadActiveReport = useCallback(async () => {
     if (!activeReportModalType || !groupAReportView.submission) return;
-    const activeFile = groupAReportView.submission.files?.[activeReportModalType] ?? null;
+    const activeFile = activeReportFileEntry;
 
     if (activeFile?.downloadUrl) {
       const anchor = document.createElement("a");
@@ -1077,7 +1088,7 @@ export function SchoolAdminDashboard() {
     }
 
     await downloadSubmissionFile(groupAReportView.submission.id, activeReportModalType);
-  }, [activeReportModalType, downloadSubmissionFile, groupAReportView]);
+  }, [activeReportFileEntry, activeReportModalType, downloadSubmissionFile, groupAReportView]);
 
   useEffect(() => {
     if (!activeReportModalType || typeof window === "undefined") return;
@@ -1206,7 +1217,7 @@ export function SchoolAdminDashboard() {
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {visibleSubmittedReportFiles.map((definition) => {
-                  const reportFile = groupAReportView.reportFiles?.[definition.type] ?? null;
+                  const reportFile = visibleSubmittedReportFileEntries[definition.type] ?? null;
                   const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
                   const buttonLabel = `View ${definition.shortLabel} Report`;
 
@@ -1255,7 +1266,7 @@ export function SchoolAdminDashboard() {
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {secondarySubmittedReportFiles.map((definition) => {
-                      const reportFile = groupAReportView.reportFiles?.[definition.type] ?? null;
+                      const reportFile = secondarySubmittedReportFileEntries[definition.type] ?? null;
                       const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
                       const buttonLabel = `View ${definition.shortLabel} Report`;
 

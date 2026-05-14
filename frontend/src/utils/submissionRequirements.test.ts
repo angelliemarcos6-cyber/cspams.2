@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  getActiveReportVisibleFiles,
   resolveActiveWorkspaceVisibleFileDefinitions,
   defaultRequiredSubmissionFileTypesForSchoolType,
   getActiveReportFileTypes,
   getActiveWorkspaceFileTypes,
+  getSecondaryHistoricalVisibleFiles,
   getSecondaryHistoricalFileTypes,
   getSubmissionUploadedFileTypes,
   isSubmissionFileUploaded,
@@ -148,6 +150,88 @@ describe("submission presentation helpers", () => {
         activeReportFileTypes: ["fm_qad_001"],
       },
     } as never, "private")).toEqual(["fm_qad_001"]);
+  });
+
+  it("derives active visible report files from normalized presentation types instead of the full file map", () => {
+    const result = getActiveReportVisibleFiles({
+      schoolType: "private",
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: null,
+          originalFilename: "bmef.pdf",
+          sizeBytes: 1024,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/bmef",
+          viewUrl: "/api/submissions/sub-1/view/bmef",
+        },
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef"],
+      },
+      presentation: {
+        activeReportFileTypes: ["fm_qad_001"],
+      },
+    } as never, "private");
+
+    expect(Object.keys(result)).toEqual(["fm_qad_001"]);
+  });
+
+  it("derives secondary visible report files from normalized historical types instead of the full file map", () => {
+    const result = getSecondaryHistoricalVisibleFiles({
+      schoolType: "private",
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: null,
+          originalFilename: "bmef.pdf",
+          sizeBytes: 1024,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/bmef",
+          viewUrl: "/api/submissions/sub-1/view/bmef",
+        },
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["bmef", "fm_qad_001"],
+      },
+      presentation: {
+        activeReportFileTypes: ["fm_qad_001"],
+        secondaryHistoricalFileTypes: ["bmef"],
+      },
+    } as never, "private");
+
+    expect(Object.keys(result)).toEqual(["bmef"]);
   });
 });
 

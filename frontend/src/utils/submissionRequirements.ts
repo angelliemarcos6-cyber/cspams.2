@@ -4,7 +4,7 @@ import {
   SUBMISSION_FILE_TYPES,
   type SubmissionFileTabDefinition,
 } from "@/constants/submissionFiles";
-import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFiles, IndicatorSubmissionFileType } from "@/types";
 
 export interface SubmissionRequirementProfile {
   schoolType: "public" | "private";
@@ -127,6 +127,39 @@ export function getSecondaryHistoricalFileTypes(
   const uploadedFileTypes = getSubmissionUploadedFileTypes(submission);
 
   return uploadedFileTypes.filter((type) => !activeFileTypes.has(type));
+}
+
+export function getSubmissionVisibleFiles(
+  submission: Pick<IndicatorSubmission, "files"> | null | undefined,
+  visibleFileTypes: readonly IndicatorSubmissionFileType[],
+): IndicatorSubmissionFiles {
+  return visibleFileTypes.reduce<IndicatorSubmissionFiles>((accumulator, type) => {
+    const entry = submission?.files?.[type] ?? null;
+    if (entry) {
+      accumulator[type] = entry;
+    }
+    return accumulator;
+  }, {});
+}
+
+export function getActiveReportVisibleFiles(
+  submission: Pick<IndicatorSubmission, "files" | "presentation" | "completion" | "schoolType" | "school"> | null | undefined,
+  fallbackSchoolType?: string | null,
+): IndicatorSubmissionFiles {
+  return getSubmissionVisibleFiles(
+    submission,
+    getActiveReportFileTypes(submission, fallbackSchoolType),
+  );
+}
+
+export function getSecondaryHistoricalVisibleFiles(
+  submission: Pick<IndicatorSubmission, "files" | "presentation" | "completion" | "schoolType" | "school"> | null | undefined,
+  fallbackSchoolType?: string | null,
+): IndicatorSubmissionFiles {
+  return getSubmissionVisibleFiles(
+    submission,
+    getSecondaryHistoricalFileTypes(submission, fallbackSchoolType),
+  );
 }
 
 export function resolveVisibleSubmissionFileDefinitions(options: {

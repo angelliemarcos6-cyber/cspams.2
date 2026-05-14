@@ -2386,8 +2386,8 @@ function SchoolIndicatorPanelComponent({
       latestActiveWorkspaceSubmission?.updatedAt,
       latestActiveWorkspaceSubmission?.submittedAt,
       latestActiveWorkspaceSubmission?.reviewedAt,
-      latestActiveWorkspaceSubmission?.completion?.hasBmefFile,
-      latestActiveWorkspaceSubmission?.completion?.hasSmeaFile,
+      isSubmissionFileUploaded(latestActiveWorkspaceSubmission, "bmef"),
+      isSubmissionFileUploaded(latestActiveWorkspaceSubmission, "smea"),
     ],
   );
   const runCriticalWorkspaceMutation = useCallback(
