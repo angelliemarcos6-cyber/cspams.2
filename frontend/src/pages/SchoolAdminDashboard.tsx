@@ -41,6 +41,14 @@ import type {
 
 export const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashboard:view-year";
 
+export function buildSchoolAdminRefreshBatches(
+  refreshRecords: () => Promise<unknown>,
+  refreshSubmissions: () => Promise<unknown>,
+  refreshAllSubmissions: () => Promise<unknown>,
+) {
+  return [[refreshRecords, refreshSubmissions], [refreshAllSubmissions]];
+}
+
 /* ── Quick-jump targets ── */
 /* ── Helpers ── */
 function latestSubmission<T extends { updatedAt: string | null; createdAt: string | null }>(entries: T[]): T | null {
@@ -570,6 +578,7 @@ export function SchoolAdminDashboard() {
     downloadSubmissionFile,
     fetchSubmission,
     loadSubmissionsForYear,
+    refreshAllSubmissions,
     refreshSubmissions,
   } = useIndicatorData();
 
@@ -644,6 +653,7 @@ export function SchoolAdminDashboard() {
     }
 
     previousDashboardContextKeyRef.current = dashboardContextKey;
+    initialLoadStartedRef.current = false;
     initialAcademicYearAppliedRef.current = false;
     finalizedSubmissionRefreshRef.current = "";
     lastLoadedYearKeyRef.current = "";
@@ -830,8 +840,10 @@ export function SchoolAdminDashboard() {
 
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
-    async () => runRefreshBatches([[refreshRecords], [refreshSubmissions]]),
-    [refreshRecords, refreshSubmissions],
+    async () => runRefreshBatches(
+      buildSchoolAdminRefreshBatches(refreshRecords, refreshSubmissions, refreshAllSubmissions),
+    ),
+    [refreshAllSubmissions, refreshRecords, refreshSubmissions],
   );
 
   const handleRefreshAll = useCallback(async () => {
@@ -845,6 +857,7 @@ export function SchoolAdminDashboard() {
   }, [isRefreshingAll, runDashboardRefresh]);
 
   useEffect(() => {
+    if (!dashboardContextKey) return;
     if (initialLoadStartedRef.current) return;
     initialLoadStartedRef.current = true;
     let active = true;
@@ -855,7 +868,7 @@ export function SchoolAdminDashboard() {
     return () => {
       active = false;
     };
-  }, [runDashboardRefresh]);
+  }, [dashboardContextKey, runDashboardRefresh]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

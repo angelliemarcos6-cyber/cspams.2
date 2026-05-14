@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSchoolAdminRefreshBatches,
   buildDashboardViewYearStorageKey,
   resolveInitialSubmittedReportAcademicYearId,
   resolveSchoolAdminHeaderContext,
@@ -128,6 +129,21 @@ describe("buildDashboardViewYearStorageKey", () => {
   it("returns an empty key when either the user or school context is missing", () => {
     expect(buildDashboardViewYearStorageKey(null, "103811")).toBe("");
     expect(buildDashboardViewYearStorageKey(25, "")).toBe("");
+  });
+});
+
+describe("buildSchoolAdminRefreshBatches", () => {
+  it("eagerly includes the full School Head submission preload after the snapshot refresh", () => {
+    const refreshRecords = async () => undefined;
+    const refreshSubmissions = async () => undefined;
+    const refreshAllSubmissions = async () => undefined;
+
+    expect(
+      buildSchoolAdminRefreshBatches(refreshRecords, refreshSubmissions, refreshAllSubmissions),
+    ).toEqual([
+      [refreshRecords, refreshSubmissions],
+      [refreshAllSubmissions],
+    ]);
   });
 });
 
