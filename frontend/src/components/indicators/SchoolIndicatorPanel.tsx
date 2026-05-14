@@ -117,6 +117,7 @@ type WorkspaceSaveSection =
   | IndicatorSubmissionFileType;
 
 const LOCAL_WORKSPACE_HYDRATION_GRACE_MS = 5_000;
+const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 1_500;
 
 function createInitialSubmittedByTypeState(): Record<IndicatorSubmissionFileType, boolean> {
   return SUBMISSION_FILE_TYPES.reduce((accumulator, type) => {
@@ -141,6 +142,13 @@ function hasUploadedSubmissionFile(
   type: IndicatorSubmissionFileType,
 ): boolean {
   return isSubmissionFileUploaded(submission, type);
+}
+
+export function buildWorkspaceAutosavePayloadOptions() {
+  return {
+    allowIncomplete: true,
+    includeAllEntries: false,
+  } as const;
 }
 
 function buildWorkspaceSubmissionFingerprint(
@@ -1347,6 +1355,7 @@ function SchoolIndicatorPanelComponent({
   }, [user?.id, user?.schoolId]);
 
   const autosaveInFlightRef = useRef(false);
+  const autosaveTimeoutRef = useRef<number | null>(null);
   const lastAutosaveFingerprintRef = useRef("");
   const criticalActionInFlightRef = useRef(false);
   const groupBActionInFlightRef = useRef(false);
@@ -3929,14 +3938,7 @@ function SchoolIndicatorPanelComponent({
       return;
     }
 
-    const shouldPersistFullWorkspace = Boolean(
-      activeWorkspaceSubmission
-      && isSubmissionInAcademicYear(activeWorkspaceSubmission, activeAcademicYearId),
-    );
-    const prepared = buildSubmissionPayloadFromCurrentWorkspace({
-      allowIncomplete: true,
-      includeAllEntries: shouldPersistFullWorkspace,
-    });
+    const prepared = buildSubmissionPayloadFromCurrentWorkspace(buildWorkspaceAutosavePayloadOptions());
     if (!prepared.payload) {
       return;
     }
@@ -3967,17 +3969,36 @@ function SchoolIndicatorPanelComponent({
     }
   }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayloadFromCurrentWorkspace, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isSaving, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
 
+  const scheduleServerAutosave = useCallback((delayMs: number) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (autosaveTimeoutRef.current !== null) {
+      window.clearTimeout(autosaveTimeoutRef.current);
+    }
+    autosaveTimeoutRef.current = window.setTimeout(() => {
+      autosaveTimeoutRef.current = null;
+      void triggerServerAutosave();
+    }, delayMs);
+  }, [triggerServerAutosave]);
+
   useEffect(() => {
     if (typeof window === "undefined" || complianceMetrics.length === 0) {
       return;
     }
 
     const interval = window.setInterval(() => {
-      void triggerServerAutosave();
+      scheduleServerAutosave(WORKSPACE_AUTOSAVE_DEBOUNCE_MS);
     }, 25_000);
 
-    return () => window.clearInterval(interval);
-  }, [complianceMetrics.length, triggerServerAutosave]);
+    return () => {
+      window.clearInterval(interval);
+      if (autosaveTimeoutRef.current !== null) {
+        window.clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = null;
+      }
+    };
+  }, [complianceMetrics.length, scheduleServerAutosave]);
 
   const handleFormBlurAutosave = useCallback((event: FocusEvent<HTMLFormElement>) => {
     if (!isTypingTarget(event.target)) {
@@ -3991,8 +4012,8 @@ function SchoolIndicatorPanelComponent({
       return;
     }
 
-    void triggerServerAutosave();
-  }, [triggerServerAutosave]);
+    scheduleServerAutosave(WORKSPACE_AUTOSAVE_DEBOUNCE_MS);
+  }, [scheduleServerAutosave]);
 
   const handleCopyPreviousYearValues = useCallback(() => {
     let copiedCount = 0;
