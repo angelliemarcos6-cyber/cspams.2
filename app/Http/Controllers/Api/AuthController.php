@@ -78,7 +78,7 @@ class AuthController extends Controller
             );
 
             $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid School Head email/school code or password.'
+                ? 'Invalid school code or password.'
                 : 'Invalid credentials for the selected role.';
 
             return response()->json(
@@ -265,7 +265,7 @@ class AuthController extends Controller
             );
 
             $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid School Head email/school code or password.'
+                ? 'Invalid school code or password.'
                 : 'Invalid credentials for the selected role.';
 
             return response()->json(
@@ -1995,6 +1995,11 @@ class AuthController extends Controller
     private function resolveUserForLogin(string $role, string $login): ?User
     {
         if ($role === UserRoleResolver::SCHOOL_HEAD) {
+            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
+            if ($normalizedSchoolCode === null) {
+                return null;
+            }
+
             $baseQuery = User::query()
                 ->select([
                     'id',
@@ -2014,32 +2019,12 @@ class AuthController extends Controller
                 ->with(['school:id,school_code,name'])
                 ->orderByDesc('id');
 
-            $normalizedSchoolCode = $this->normalizeSchoolCode($login);
-            $normalizedEmail = strtolower(trim($login));
-            $isEmailLogin = filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL) !== false;
-
-            if ($normalizedSchoolCode === null && ! $isEmailLogin) {
-                return null;
-            }
-
-            $baseQuery->where(function ($builder) use ($isEmailLogin, $normalizedEmail, $normalizedSchoolCode): void {
-                if ($normalizedSchoolCode !== null) {
-                    $builder->whereIn(
-                        'school_id',
-                        School::withTrashed()
-                            ->where('school_code_normalized', strtolower($normalizedSchoolCode))
-                            ->select('id'),
-                    );
-                }
-
-                if ($isEmailLogin) {
-                    if ($normalizedSchoolCode !== null) {
-                        $builder->orWhere('email_normalized', $normalizedEmail);
-                    } else {
-                        $builder->where('email_normalized', $normalizedEmail);
-                    }
-                }
-            });
+            $baseQuery->whereIn(
+                'school_id',
+                School::withTrashed()
+                    ->where('school_code_normalized', strtolower($normalizedSchoolCode))
+                    ->select('id'),
+            );
 
             if ($this->usersHaveAccountTypeColumn()) {
                 return $baseQuery

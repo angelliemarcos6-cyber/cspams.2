@@ -97,10 +97,12 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
 
         Notification::assertNothingSent();
+        $schoolHead->loadMissing('school');
+        $schoolCode = (string) $schoolHead->school?->school_code;
 
         $login = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => 'setup.head@cspams.local',
+            'login' => $schoolCode,
             'password' => (string) $provisioning['temporaryPassword'],
         ]);
 
@@ -110,7 +112,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $resetRequired = $this->postJson('/api/auth/reset-required-password', [
             'role' => 'school_head',
-            'login' => 'setup.head@cspams.local',
+            'login' => $schoolCode,
             'current_password' => (string) $provisioning['temporaryPassword'],
             'new_password' => 'NewSchool@2026!123',
             'new_password_confirmation' => 'NewSchool@2026!123',
@@ -128,7 +130,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $loginWithNewPassword = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => 'setup.head@cspams.local',
+            'login' => $schoolCode,
             'password' => 'NewSchool@2026!123',
         ]);
 
@@ -523,19 +525,20 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertIsArray($record);
         $this->assertArrayNotHasKey('temporaryPassword', (array) ($record['schoolHeadAccount'] ?? []));
         $this->assertSame((string) $receipt['temporaryPassword'], data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
+        $schoolCode = (string) $school->school_code;
 
         $oldLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => $schoolHead->email,
+            'login' => $schoolCode,
             'password' => $oldPassword,
         ]);
 
         $oldLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('message', 'Invalid School Head email/school code or password.');
+            ->assertJsonPath('message', 'Invalid school code or password.');
 
         $tempLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => $schoolHead->email,
+            'login' => $schoolCode,
             'password' => (string) $receipt['temporaryPassword'],
         ]);
 
@@ -544,7 +547,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $resetRequired = $this->postJson('/api/auth/reset-required-password', [
             'role' => 'school_head',
-            'login' => $schoolHead->email,
+            'login' => $schoolCode,
             'current_password' => (string) $receipt['temporaryPassword'],
             'new_password' => 'UpdatedSchool@2026!123',
             'new_password_confirmation' => 'UpdatedSchool@2026!123',
@@ -561,7 +564,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $newLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => $schoolHead->email,
+            'login' => $schoolCode,
             'password' => 'UpdatedSchool@2026!123',
         ]);
 
@@ -650,13 +653,15 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'expired.temp.head@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+        $schoolCode = (string) $schoolHead->school?->school_code;
         $schoolHead->forceFill([
             'temporary_password_issued_at' => now()->subHours(73),
         ])->save();
 
         $continuedLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => 'expired.temp.head@cspams.local',
+            'login' => $schoolCode,
             'password' => (string) $provisioning['temporaryPassword'],
         ]);
 
@@ -676,7 +681,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $resetRequired = $this->postJson('/api/auth/reset-required-password', [
             'role' => 'school_head',
-            'login' => 'expired.temp.head@cspams.local',
+            'login' => $schoolCode,
             'current_password' => (string) $provisioning['temporaryPassword'],
             'new_password' => 'TempPasswordReset@2026!123',
             'new_password_confirmation' => 'TempPasswordReset@2026!123',
@@ -977,7 +982,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $loginOld->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('message', 'Invalid School Head email/school code or password.');
+            ->assertJsonPath('message', 'Invalid school code or password.');
 
         $loginNew = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -1488,9 +1493,8 @@ class SchoolHeadAccountManagementTest extends TestCase
             'password' => $schoolHeadPassword,
         ]);
 
-        $emailLogin->assertStatus(Response::HTTP_FORBIDDEN)
-            ->assertJsonPath('accountStatus', AccountStatus::ARCHIVED->value)
-            ->assertJsonPath('message', 'Your account is archived and can no longer sign in.');
+        $emailLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['login']);
 
         $schoolCodeLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',

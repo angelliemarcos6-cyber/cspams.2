@@ -42,11 +42,8 @@ class ResetRequiredPasswordRequest extends FormRequest
                     UserRoleResolver::normalizeLoginRole($this->input('role')) === UserRoleResolver::SCHOOL_HEAD,
                     [function (string $attribute, mixed $value, \Closure $fail): void {
                         $normalized = trim((string) $value);
-                        $isSchoolCode = preg_match('/^\d{6}$/', $normalized) === 1;
-                        $isEmail = filter_var($normalized, FILTER_VALIDATE_EMAIL) !== false;
-
-                        if (! $isSchoolCode && ! $isEmail) {
-                            $fail('School Head login must use a valid email address or 6-digit school code.');
+                        if (preg_match('/^\d{6}$/', $normalized) !== 1) {
+                            $fail('School Head login must use a 6-digit school code.');
                         }
                     }],
                 ),

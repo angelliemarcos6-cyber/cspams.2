@@ -50,7 +50,7 @@ class AuthLoginInputNormalizationTest extends TestCase
             ->assertJsonPath('user.email', 'cspamsmonitor@gmail.com');
     }
 
-    public function test_school_head_login_accepts_email_identifier(): void
+    public function test_school_head_login_rejects_email_identifier(): void
     {
         $this->seed();
 
@@ -67,9 +67,8 @@ class AuthLoginInputNormalizationTest extends TestCase
             'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
         ]);
 
-        $response->assertStatus(Response::HTTP_OK)
-            ->assertJsonPath('user.role', 'school_head')
-            ->assertJsonPath('user.email', 'schoolhead1@cspams.local');
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['login']);
     }
 }
 

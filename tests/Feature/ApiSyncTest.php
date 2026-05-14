@@ -27,11 +27,12 @@ class ApiSyncTest extends TestCase
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolCode = $this->schoolHeadLogin($schoolHead);
 
         $emailLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
             'login' => $schoolHead->email,
-            'password' => $this->demoPasswordForLogin('school_head', $schoolHead->email),
+            'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
         ]);
 
         $emailLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
@@ -39,8 +40,8 @@ class ApiSyncTest extends TestCase
 
         $codeLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
-            'login' => $this->schoolHeadLogin($schoolHead),
-            'password' => $this->demoPasswordForLogin('school_head', $this->schoolHeadLogin($schoolHead)),
+            'login' => $schoolCode,
+            'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
         ]);
 
         $codeLogin->assertOk()
