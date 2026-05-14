@@ -12,6 +12,7 @@ import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, isApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
+  SessionUser,
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountBatchRemovalResult,
@@ -206,6 +207,27 @@ const SCHOOL_BULK_IMPORT_TIMEOUT_MS = 120_000;
 const SCHOOL_SEND_REMINDER_TIMEOUT_MS = 45_000;
 const SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS = 45_000;
 
+export function buildDataProviderSessionKey(user: Pick<SessionUser, "id" | "role" | "schoolId" | "schoolType"> | null): string {
+  if (!user) {
+    return "";
+  }
+
+  const role = String(user.role ?? "").trim();
+  const userId = String(user.id ?? "").trim();
+  const schoolId = String(user.schoolId ?? "").trim();
+  const schoolType = String(user.schoolType ?? "").trim().toLowerCase();
+
+  if (!role || !userId) {
+    return "";
+  }
+
+  if (role !== "school_head") {
+    return `${role}:${userId}`;
+  }
+
+  return `${role}:${userId}:${schoolId || "unassigned"}:${schoolType || "unknown"}`;
+}
+
 function normalizeScope(value: string | undefined): SyncScope {
   if (value === "division" || value === "school") return value;
   return null;
@@ -231,7 +253,7 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, role, apiToken } = useAuth();
   const token = user ? apiToken : "";
-  const sessionKey = user ? `${user.role}:${user.id}` : "";
+  const sessionKey = buildDataProviderSessionKey(user);
 
   const [records, setRecords] = useState<SchoolRecord[]>([]);
   const [recordCount, setRecordCount] = useState(0);

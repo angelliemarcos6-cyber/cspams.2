@@ -21,6 +21,7 @@ import type {
   IndicatorSubmissionFileType,
   FormSubmissionHistoryEntry,
   IndicatorSubmissionPayload,
+  SessionUser,
 } from "@/types";
 
 type ReviewDecision = "validated" | "returned";
@@ -620,10 +621,31 @@ function parseDownloadFilename(contentDisposition: string | null): string | null
   return null;
 }
 
+export function buildIndicatorDataSessionKey(user: Pick<SessionUser, "id" | "role" | "schoolId" | "schoolType"> | null): string {
+  if (!user) {
+    return "";
+  }
+
+  const role = String(user.role ?? "").trim();
+  const userId = String(user.id ?? "").trim();
+  const schoolId = String(user.schoolId ?? "").trim();
+  const schoolType = String(user.schoolType ?? "").trim().toLowerCase();
+
+  if (!role || !userId) {
+    return "";
+  }
+
+  if (role !== "school_head") {
+    return `${role}:${userId}`;
+  }
+
+  return `${role}:${userId}:${schoolId || "unassigned"}:${schoolType || "unknown"}`;
+}
+
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const { user, apiToken } = useAuth();
   const token = user ? apiToken : "";
-  const sessionKey = user ? `${user.role}:${user.id}` : "";
+  const sessionKey = buildIndicatorDataSessionKey(user);
 
   const [submissions, setSubmissions] = useState<IndicatorSubmission[]>([]);
   const [allSubmissions, setAllSubmissions] = useState<IndicatorSubmission[]>([]);

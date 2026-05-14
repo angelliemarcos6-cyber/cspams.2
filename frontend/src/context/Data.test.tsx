@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { DataProvider, useData } from "@/context/Data";
+import { buildDataProviderSessionKey, DataProvider, useData } from "@/context/Data";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
@@ -202,5 +202,42 @@ describe("DataProvider school record sync recovery", () => {
       extraHeaders: undefined,
     });
     expect(subscribeSharedSyncPolling).toHaveBeenCalled();
+  });
+});
+
+describe("buildDataProviderSessionKey", () => {
+  it("includes assigned school context for School Head users", () => {
+    expect(buildDataProviderSessionKey({
+      id: 25,
+      role: "school_head",
+      schoolId: 900123,
+      schoolType: "private",
+    } as never)).toBe("school_head:25:900123:private");
+  });
+
+  it("changes when School Head school context changes", () => {
+    const first = buildDataProviderSessionKey({
+      id: 25,
+      role: "school_head",
+      schoolId: 900123,
+      schoolType: "private",
+    } as never);
+    const second = buildDataProviderSessionKey({
+      id: 25,
+      role: "school_head",
+      schoolId: 900124,
+      schoolType: "public",
+    } as never);
+
+    expect(first).not.toBe(second);
+  });
+
+  it("keeps monitor session identity keyed only by role and user id", () => {
+    expect(buildDataProviderSessionKey({
+      id: 1,
+      role: "monitor",
+      schoolId: null,
+      schoolType: null,
+    } as never)).toBe("monitor:1");
   });
 });
