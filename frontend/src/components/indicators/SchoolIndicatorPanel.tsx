@@ -26,6 +26,7 @@ import {
   getActiveWorkspaceFileTypes,
   isSubmissionFileUploaded,
   resolveActiveWorkspaceVisibleFileDefinitions,
+  resolveSubmissionSchoolId,
   resolveSubmissionPresentationSchoolType,
   defaultRequiredSubmissionFileTypesForSchoolType,
 } from "@/utils/submissionRequirements";
@@ -1603,15 +1604,23 @@ function SchoolIndicatorPanelComponent({
     () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
     [allSubmissions, submissionSnapshot],
   );
+  const schoolScopedSubmissions = useMemo(() => {
+    const selectedSchoolId = String(user?.schoolId ?? "").trim();
+    if (!selectedSchoolId) {
+      return [];
+    }
+
+    return submissions.filter((submission) => resolveSubmissionSchoolId(submission) === selectedSchoolId);
+  }, [submissions, user?.schoolId]);
   const isSubmissionDataLoading = isLoading || isAllSubmissionsLoading;
   const sortedSubmissions = useMemo(
     () =>
-      [...submissions].sort((a, b) => {
+      [...schoolScopedSubmissions].sort((a, b) => {
         const aDate = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
         const bDate = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
         return bDate - aDate;
       }),
-    [submissions],
+    [schoolScopedSubmissions],
   );
   const preferredAcademicYearIdFromSubmissions = useMemo(() => {
     const priorityByStatus: Record<string, number> = {
@@ -1986,6 +1995,7 @@ function SchoolIndicatorPanelComponent({
         }
 
         const inScopeRows = [...rows]
+          .filter((submission) => resolveSubmissionSchoolId(submission) === schoolId)
           .filter((submission) => String(submission.academicYear?.id ?? "") === String(activeAcademicYearId))
           .sort((left, right) => toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left));
         const preferredSubmission = (
@@ -3083,7 +3093,7 @@ function SchoolIndicatorPanelComponent({
         } else {
           const activeSubmission = latestActiveWorkspaceSubmission;
           const latestSubmission = activeSubmission?.id
-            ? submissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
+            ? schoolScopedSubmissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
             : null;
           console.log("[GroupB] Reset using submission:", latestSubmission?.id ?? null);
           if (latestSubmission) {
@@ -3109,7 +3119,7 @@ function SchoolIndicatorPanelComponent({
       },
     });
     return didReset === true;
-  }, [autosaveKey, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, runCriticalWorkspaceTransition, submissions]);
+  }, [autosaveKey, latestActiveWorkspaceSubmission, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, runCriticalWorkspaceTransition, schoolScopedSubmissions]);
 
   const handleEditDraft = (submission: IndicatorSubmission) => {
     const submissionExists = sortedSubmissions.some((candidate) => candidate.id === submission.id);

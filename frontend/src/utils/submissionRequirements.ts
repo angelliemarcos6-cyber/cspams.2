@@ -48,6 +48,12 @@ export function resolveSubmissionPresentationSchoolType(
     ?? null;
 }
 
+export function resolveSubmissionSchoolId(
+  submission: Pick<IndicatorSubmission, "schoolId" | "school"> | null | undefined,
+): string {
+  return String(submission?.schoolId ?? submission?.school?.id ?? "").trim();
+}
+
 export function hasUploadedSubmissionFileEntry(
   entry: Pick<IndicatorSubmissionFileEntry, "uploaded"> | null | undefined,
 ): boolean {

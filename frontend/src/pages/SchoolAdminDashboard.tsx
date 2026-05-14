@@ -27,6 +27,7 @@ import {
   getActiveReportFileTypes,
   getSecondaryHistoricalFileTypes,
   resolveSecondarySubmittedReportFileDefinitions,
+  resolveSubmissionSchoolId,
   resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
 } from "@/utils/submissionRequirements";
@@ -75,7 +76,7 @@ export function resolvePreferredSubmittedReportAcademicYearId(
     .filter((entry) => isFinalizedSubmissionStatus(entry.status))
     .filter((entry) => (
       selectedSchoolId.length === 0
-      || String(entry.school?.id ?? "") === selectedSchoolId
+      || resolveSubmissionSchoolId(entry) === selectedSchoolId
     ))
     .slice()
     .sort((left, right) => submissionRecencyScore(right) - submissionRecencyScore(left));
@@ -172,7 +173,7 @@ export function resolveSubmittedReportSubmissionForView(
   }
 
   const selectedSchoolId = String(options.selectedSchoolId ?? "").trim();
-  if (selectedSchoolId && String(submission.school?.id ?? "").trim() !== selectedSchoolId) {
+  if (selectedSchoolId && resolveSubmissionSchoolId(submission) !== selectedSchoolId) {
     return null;
   }
 
@@ -630,6 +631,14 @@ export function SchoolAdminDashboard() {
     () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
     [allSubmissions, submissionSnapshot],
   );
+  const schoolScopedSubmissions = useMemo(
+    () => (
+      selectedSchoolId
+        ? indicatorSubmissions.filter((submission) => resolveSubmissionSchoolId(submission) === selectedSchoolId)
+        : []
+    ),
+    [indicatorSubmissions, selectedSchoolId],
+  );
   const submissionsForSelectedContext = useMemo(() => {
     if (!effectiveAcademicYearId) {
       return [];
@@ -639,8 +648,8 @@ export function SchoolAdminDashboard() {
       return dashboardViewSubmissions;
     }
 
-    return filterFinalizedDashboardSubmissions(indicatorSubmissions);
-  }, [dashboardViewSubmissions, effectiveAcademicYearId, indicatorSubmissions]);
+    return filterFinalizedDashboardSubmissions(schoolScopedSubmissions);
+  }, [dashboardViewSubmissions, effectiveAcademicYearId, schoolScopedSubmissions]);
   const groupASubmittedSubmission = useMemo(
     () => resolveSelectedYearReportSubmission(submissionsForSelectedContext),
     [submissionsForSelectedContext],
@@ -952,10 +961,9 @@ export function SchoolAdminDashboard() {
       return;
     }
 
-    const matchingRows = indicatorSubmissions
+    const matchingRows = schoolScopedSubmissions
       .filter((submission) => (
         String(submission.academicYear?.id ?? "") === String(dashboardViewAcademicYearId)
-        && String(submission.school?.id ?? selectedSchoolId) === String(selectedSchoolId)
         && isFinalizedSubmissionStatus(submission.status)
       ))
       .sort((a, b) => (
@@ -979,7 +987,7 @@ export function SchoolAdminDashboard() {
 
       return matchingRows;
     });
-  }, [dashboardViewAcademicYearId, dashboardViewSubmissions.length, indicatorSubmissions, isDashboardYearSwitching, selectedSchoolId]);
+  }, [dashboardViewAcademicYearId, dashboardViewSubmissions.length, isDashboardYearSwitching, schoolScopedSubmissions, selectedSchoolId]);
 
   useEffect(() => {
     setActiveReportModalType(null);

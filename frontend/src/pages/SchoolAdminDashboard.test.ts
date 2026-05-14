@@ -72,6 +72,7 @@ describe("resolvePreferredSubmittedReportAcademicYearId", () => {
         id: "submitted-old",
         status: "submitted",
         statusLabel: "Submitted",
+        schoolId: "school-1",
         academicYear: { id: "year-1", name: "2025-2026" },
         updatedAt: "2026-04-29T00:00:00.000Z",
         school: { id: "school-1", schoolCode: "001", name: "Test School" },
@@ -80,6 +81,7 @@ describe("resolvePreferredSubmittedReportAcademicYearId", () => {
         id: "validated-new",
         status: "validated",
         statusLabel: "Validated",
+        schoolId: "school-1",
         academicYear: { id: "year-2", name: "2026-2027" },
         updatedAt: "2026-04-30T00:00:00.000Z",
         school: { id: "school-1", schoolCode: "001", name: "Test School" },
@@ -95,6 +97,29 @@ describe("resolvePreferredSubmittedReportAcademicYearId", () => {
     ], "school-1");
 
     expect(result).toBe("year-2");
+  });
+
+  it("ignores finalized submissions whose strict school identity does not match the School Head school", () => {
+    const result = resolvePreferredSubmittedReportAcademicYearId([
+      submission({
+        id: "wrong-school",
+        status: "submitted",
+        statusLabel: "Submitted",
+        schoolId: "school-2",
+        academicYear: { id: "year-2", name: "2026-2027" },
+        updatedAt: "2026-04-30T00:00:00.000Z",
+      }),
+      submission({
+        id: "right-school",
+        status: "submitted",
+        statusLabel: "Submitted",
+        schoolId: "school-1",
+        academicYear: { id: "year-1", name: "2025-2026" },
+        updatedAt: "2026-04-29T00:00:00.000Z",
+      }),
+    ], "school-1");
+
+    expect(result).toBe("year-1");
   });
 });
 
@@ -204,7 +229,22 @@ describe("resolveSubmittedReportSubmissionForView", () => {
       submission({
         status: "submitted",
         statusLabel: "Submitted",
+        schoolId: "school-2",
         school: { id: "school-2", schoolCode: "002", name: "Other School", type: "private" },
+      }),
+      { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("rejects a finalized submission when its strict school identity mismatches even if nested school data is absent", () => {
+    const result = resolveSubmittedReportSubmissionForView(
+      submission({
+        status: "submitted",
+        statusLabel: "Submitted",
+        schoolId: "school-2",
+        school: undefined,
       }),
       { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
     );

@@ -7,6 +7,7 @@ import {
   getSecondaryHistoricalFileTypes,
   getSubmissionUploadedFileTypes,
   isSubmissionFileUploaded,
+  resolveSubmissionSchoolId,
   resolveSecondarySubmittedReportFileDefinitions,
   resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
@@ -54,6 +55,18 @@ describe("submission presentation helpers", () => {
         type: "public",
       },
     } as never, "public")).toBe("private");
+  });
+
+  it("prefers top-level schoolId over nested school.id for strict School Head scoping", () => {
+    expect(resolveSubmissionSchoolId({
+      schoolId: "school-1",
+      school: {
+        id: "school-2",
+        schoolCode: "123456",
+        name: "Sample School",
+        type: "public",
+      },
+    } as never)).toBe("school-1");
   });
 
   it("prefers normalized presentation workspace file types over raw completion required file types", () => {

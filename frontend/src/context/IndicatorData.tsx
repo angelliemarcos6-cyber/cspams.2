@@ -413,6 +413,7 @@ function patchSubmissionWithLightweightPayload(
   patch: LightweightIndicatorSubmission,
 ): IndicatorSubmission {
   const existingCompletion = current.completion;
+  const schoolId = String(patch.schoolId ?? current.schoolId ?? current.school?.id ?? "").trim() || null;
   const schoolType = patch.schoolType ?? current.schoolType ?? current.school?.type ?? null;
   const nextCompletion = patch.completion
     ? {
@@ -465,6 +466,7 @@ function patchSubmissionWithLightweightPayload(
     status: patch.status ?? current.status,
     reportingPeriod: patch.reportingPeriod ?? current.reportingPeriod,
     version: patch.version ?? current.version,
+    schoolId,
     schoolType,
     notes: patch.notes ?? current.notes,
     submittedAt: patch.submittedAt ?? current.submittedAt,
@@ -502,6 +504,7 @@ export function materializeSubmissionFromLightweightPayload(
   const hasBmefFile = Boolean(patch.completion?.hasBmefFile);
   const hasSmeaFile = Boolean(patch.completion?.hasSmeaFile);
   const uploadedFileTypes = patch.completion?.uploadedFileTypes ?? [];
+  const schoolId = String(patch.schoolId ?? "").trim() || null;
   const schoolType = patch.schoolType ?? null;
   const files = SUBMISSION_FILE_TYPES.reduce<NonNullable<IndicatorSubmission["files"]>>((accumulator, type) => {
     const uploaded = type === "bmef"
@@ -532,6 +535,7 @@ export function materializeSubmissionFromLightweightPayload(
     statusLabel: toWorkflowStatusLabel(patch.status),
     reportingPeriod: patch.reportingPeriod ?? null,
     version: typeof patch.version === "number" ? patch.version : 1,
+    schoolId,
     schoolType,
     notes: patch.notes ?? null,
     reviewNotes: null,
