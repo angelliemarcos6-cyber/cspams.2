@@ -291,6 +291,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.schoolId', (string) $schoolHead->school_id)
+            ->assertJsonPath('data.schoolType', 'public')
             ->assertJsonPath('data.completion.requiredFileTypes', ['bmef', 'smea'])
             ->assertJsonPath('data.completion.missingFileTypes', ['bmef', 'smea'])
             ->assertJsonPath('data.completion.uploadedFileTypes', [])
@@ -315,6 +317,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.schoolId', (string) $schoolHead->school_id)
+            ->assertJsonPath('data.schoolType', 'private')
             ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes')
             ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', SubmissionFileDefinition::nonCoreTypes())
             ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', []);
@@ -352,6 +356,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.schoolId', (string) $schoolHead->school_id)
+            ->assertJsonPath('data.schoolType', 'private')
             ->assertJsonPath('data.school.type', 'private')
             ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes')
             ->assertJsonPath('data.presentation.activeReportFileTypes', SubmissionFileDefinition::nonCoreTypes())

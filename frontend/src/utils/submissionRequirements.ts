@@ -95,6 +95,7 @@ export function getActiveWorkspaceFileTypes(
 ): IndicatorSubmissionFileType[] {
   const schoolType = resolveSubmissionPresentationSchoolType(submission, fallbackSchoolType);
 
+  // School Head package meaning should prefer the normalized presentation contract.
   return submission?.presentation?.activeWorkspaceFileTypes
     ?? submission?.presentation?.activeFileTypes
     ?? submission?.completion?.requiredFileTypes
@@ -107,6 +108,7 @@ export function getActiveReportFileTypes(
 ): IndicatorSubmissionFileType[] {
   const schoolType = resolveSubmissionPresentationSchoolType(submission, fallbackSchoolType);
 
+  // Raw completion.requiredFileTypes remains a compatibility fallback only.
   return submission?.presentation?.activeReportFileTypes
     ?? submission?.presentation?.activeFileTypes
     ?? submission?.completion?.requiredFileTypes

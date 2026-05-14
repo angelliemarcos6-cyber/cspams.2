@@ -41,6 +41,8 @@ class IndicatorSubmissionResource extends JsonResource
             'statusLabel' => $this->statusLabel($this->status),
             'reportingPeriod' => $this->reporting_period,
             'version' => (int) $this->version,
+            'schoolId' => (string) $this->school_id,
+            'schoolType' => $this->school?->type,
             'school' => $this->when(
                 $this->relationLoaded('school') && $this->school,
                 fn (): array => [
@@ -66,6 +68,8 @@ class IndicatorSubmissionResource extends JsonResource
                 'complianceRatePercent' => $complianceRate,
             ],
             'files' => $this->buildSubmissionFiles(),
+            // Legacy completion flags remain for compatibility. School Head package
+            // presentation should prefer the normalized presentation.* contract below.
             'completion' => [
                 'hasImetaFormData' => $hasImeta,
                 'hasBmefFile' => $hasBmef,
@@ -75,6 +79,8 @@ class IndicatorSubmissionResource extends JsonResource
                 'uploadedFileTypes' => $uploadedFileTypes,
                 'missingFileTypes' => $missingFileTypes,
             ],
+            // Canonical School Head package meaning. Active/private-vs-public screens
+            // should use these normalized fields instead of inferring from raw history.
             'presentation' => [
                 'activeFileTypes' => $requiredFileTypes,
                 'activeReportFileTypes' => $requiredFileTypes,
