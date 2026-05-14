@@ -5,6 +5,8 @@ import {
   getActiveReportFileTypes,
   getActiveWorkspaceFileTypes,
   getSecondaryHistoricalFileTypes,
+  getSubmissionUploadedFileTypes,
+  isSubmissionFileUploaded,
   resolveSecondarySubmittedReportFileDefinitions,
   resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
@@ -82,6 +84,41 @@ describe("submission presentation helpers", () => {
         uploadedFileTypes: ["bmef", "fm_qad_001"],
       },
     } as never, "private")).toEqual(["bmef"]);
+  });
+
+  it("derives uploaded file types from raw completion flags and file metadata as a shared fallback", () => {
+    expect(getSubmissionUploadedFileTypes({
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        uploadedFileTypes: ["fm_qad_002"],
+      },
+    } as never)).toEqual(["fm_qad_002", "fm_qad_001", "bmef"]);
+  });
+
+  it("uses the shared uploaded-file helper for direct uploaded-state checks", () => {
+    expect(isSubmissionFileUploaded({
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: true,
+        isComplete: false,
+      },
+    } as never, "smea")).toBe(true);
   });
 
   it("prefers normalized report file types over raw required file types", () => {

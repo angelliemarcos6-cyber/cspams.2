@@ -24,6 +24,7 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import {
   getActiveWorkspaceFileTypes,
+  isSubmissionFileUploaded,
   resolveActiveWorkspaceVisibleFileDefinitions,
   resolveSubmissionPresentationSchoolType,
   defaultRequiredSubmissionFileTypesForSchoolType,
@@ -138,23 +139,7 @@ function hasUploadedSubmissionFile(
   submission: IndicatorSubmission | null | undefined,
   type: IndicatorSubmissionFileType,
 ): boolean {
-  if (!submission) {
-    return false;
-  }
-
-  if (hasUploadedReportFile(submission.files?.[type] ?? null)) {
-    return true;
-  }
-
-  if (type === "bmef") {
-    return Boolean(submission.completion?.hasBmefFile);
-  }
-
-  if (type === "smea") {
-    return Boolean(submission.completion?.hasSmeaFile);
-  }
-
-  return Boolean(submission.completion?.uploadedFileTypes?.includes(type));
+  return isSubmissionFileUploaded(submission, type);
 }
 
 function buildWorkspaceSubmissionFingerprint(
@@ -467,21 +452,6 @@ function formatDateTime(value: string | null): string {
   if (!value) return "N/A";
   const date = new Date(value);
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-}
-
-function hasUploadedReportFile(entry: IndicatorSubmissionFileEntry | null | undefined): boolean {
-  if (!entry) {
-    return false;
-  }
-
-  return Boolean(
-    entry.uploaded
-    || entry.downloadUrl
-    || entry.path
-    || entry.originalFilename
-    || entry.uploadedAt
-    || ((entry.sizeBytes ?? 0) > 0),
-  );
 }
 
 function isSubmittedWorkflowStatus(status: string | null | undefined): boolean {

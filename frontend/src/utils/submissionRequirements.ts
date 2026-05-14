@@ -4,7 +4,7 @@ import {
   SUBMISSION_FILE_TYPES,
   type SubmissionFileTabDefinition,
 } from "@/constants/submissionFiles";
-import type { IndicatorSubmission, IndicatorSubmissionFileType } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFileType } from "@/types";
 
 export interface SubmissionRequirementProfile {
   schoolType: "public" | "private";
@@ -48,6 +48,41 @@ export function resolveSubmissionPresentationSchoolType(
     ?? null;
 }
 
+export function hasUploadedSubmissionFileEntry(
+  entry: Pick<IndicatorSubmissionFileEntry, "uploaded"> | null | undefined,
+): boolean {
+  return Boolean(entry?.uploaded);
+}
+
+export function getSubmissionUploadedFileTypes(
+  submission: Pick<IndicatorSubmission, "files" | "completion"> | null | undefined,
+): IndicatorSubmissionFileType[] {
+  const uploadedTypes = new Set<IndicatorSubmissionFileType>(submission?.completion?.uploadedFileTypes ?? []);
+
+  for (const type of SUBMISSION_FILE_TYPES) {
+    if (hasUploadedSubmissionFileEntry(submission?.files?.[type] ?? null)) {
+      uploadedTypes.add(type);
+    }
+  }
+
+  if (submission?.completion?.hasBmefFile) {
+    uploadedTypes.add("bmef");
+  }
+
+  if (submission?.completion?.hasSmeaFile) {
+    uploadedTypes.add("smea");
+  }
+
+  return Array.from(uploadedTypes);
+}
+
+export function isSubmissionFileUploaded(
+  submission: Pick<IndicatorSubmission, "files" | "completion"> | null | undefined,
+  type: IndicatorSubmissionFileType,
+): boolean {
+  return getSubmissionUploadedFileTypes(submission).includes(type);
+}
+
 export function getActiveWorkspaceFileTypes(
   submission: Pick<IndicatorSubmission, "presentation" | "completion" | "schoolType" | "school"> | null | undefined,
   fallbackSchoolType?: string | null,
@@ -81,7 +116,7 @@ export function getSecondaryHistoricalFileTypes(
   }
 
   const activeFileTypes = new Set(getActiveReportFileTypes(submission, fallbackSchoolType));
-  const uploadedFileTypes = submission?.completion?.uploadedFileTypes ?? [];
+  const uploadedFileTypes = getSubmissionUploadedFileTypes(submission);
 
   return uploadedFileTypes.filter((type) => !activeFileTypes.has(type));
 }
