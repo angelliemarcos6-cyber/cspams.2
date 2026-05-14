@@ -512,6 +512,7 @@ export interface IndicatorSubmission {
   statusLabel: string;
   reportingPeriod: string | null;
   version: number;
+  schoolType?: string | null;
   school?: {
     id: string;
     schoolCode: string;

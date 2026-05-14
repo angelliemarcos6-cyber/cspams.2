@@ -2731,17 +2731,19 @@ function SchoolIndicatorPanelComponent({
   );
   const bmefSubmitted = submittedByFileType.bmef;
   const smeaSubmitted = submittedByFileType.smea;
-  const fallbackSchoolType = latestActiveWorkspaceSubmission?.school?.type
+  const activeWorkspaceSchoolType = user?.schoolType
+    ?? latestActiveWorkspaceSubmission?.schoolType
+    ?? latestActiveWorkspaceSubmission?.school?.type
+    ?? activeWorkspaceSubmission?.schoolType
     ?? activeWorkspaceSubmission?.school?.type
-    ?? user?.schoolType
     ?? null;
   const fallbackRequiredFileTypes = useMemo(
-    () => defaultRequiredSubmissionFileTypesForSchoolType(fallbackSchoolType),
-    [fallbackSchoolType],
+    () => defaultRequiredSubmissionFileTypesForSchoolType(activeWorkspaceSchoolType),
+    [activeWorkspaceSchoolType],
   );
   const visibleFileDefinitions = useMemo(() => {
     return resolveActiveWorkspaceVisibleFileDefinitions({
-      schoolType: fallbackSchoolType,
+      schoolType: activeWorkspaceSchoolType,
       requiredFileTypes:
         latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
         ?? activeWorkspaceSubmission?.completion?.requiredFileTypes
@@ -2749,9 +2751,11 @@ function SchoolIndicatorPanelComponent({
     });
   }, [
     activeWorkspaceSubmission?.completion?.requiredFileTypes,
+    activeWorkspaceSubmission?.schoolType,
     fallbackRequiredFileTypes,
-    fallbackSchoolType,
+    activeWorkspaceSchoolType,
     latestActiveWorkspaceSubmission?.completion?.requiredFileTypes,
+    latestActiveWorkspaceSubmission?.schoolType,
   ]);
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name

@@ -407,7 +407,7 @@ function patchSubmissionWithLightweightPayload(
   patch: LightweightIndicatorSubmission,
 ): IndicatorSubmission {
   const existingCompletion = current.completion;
-  const schoolType = patch.schoolType ?? current.school?.type ?? null;
+  const schoolType = patch.schoolType ?? current.schoolType ?? current.school?.type ?? null;
   const nextCompletion = patch.completion
     ? {
         hasImetaFormData: patch.completion.hasImetaFormData,
@@ -459,6 +459,7 @@ function patchSubmissionWithLightweightPayload(
     status: patch.status ?? current.status,
     reportingPeriod: patch.reportingPeriod ?? current.reportingPeriod,
     version: patch.version ?? current.version,
+    schoolType,
     notes: patch.notes ?? current.notes,
     submittedAt: patch.submittedAt ?? current.submittedAt,
     reviewedAt: patch.reviewedAt ?? current.reviewedAt,
@@ -487,7 +488,7 @@ function toWorkflowStatusLabel(status: string | null | undefined): string {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-function materializeSubmissionFromLightweightPayload(
+export function materializeSubmissionFromLightweightPayload(
   patch: LightweightIndicatorSubmission,
 ): IndicatorSubmission {
   const hasImetaFormData = Boolean(patch.completion?.hasImetaFormData);
@@ -501,14 +502,15 @@ function materializeSubmissionFromLightweightPayload(
       : type === "smea"
         ? hasSmeaFile
         : uploadedFileTypes.includes(type);
+    const patchFile = patch.files?.[type];
 
     accumulator[type] = {
       type,
       uploaded,
       path: null,
-      originalFilename: null,
-      sizeBytes: null,
-      uploadedAt: patch.files?.[type]?.uploadedAt ?? null,
+      originalFilename: patchFile?.originalFilename ?? null,
+      sizeBytes: patchFile?.sizeBytes ?? null,
+      uploadedAt: patchFile?.uploadedAt ?? null,
       downloadUrl: uploaded ? `/api/submissions/${patch.id}/download/${type}` : null,
       viewUrl: uploaded ? `/api/submissions/${patch.id}/view/${type}` : null,
     };
@@ -523,6 +525,7 @@ function materializeSubmissionFromLightweightPayload(
     statusLabel: toWorkflowStatusLabel(patch.status),
     reportingPeriod: patch.reportingPeriod ?? null,
     version: typeof patch.version === "number" ? patch.version : 1,
+    schoolType,
     notes: patch.notes ?? null,
     reviewNotes: null,
     summary: {

@@ -72,8 +72,11 @@ export function resolveActiveWorkspaceVisibleFileDefinitions(options: {
   schoolType?: string | null;
   requiredFileTypes?: IndicatorSubmissionFileType[] | null;
 }): SubmissionFileTabDefinition[] {
+  const normalizedSchoolType = String(options.schoolType ?? "").trim().toLowerCase();
   const requiredTypes = new Set<IndicatorSubmissionFileType>(
-    options.requiredFileTypes?.length
+    normalizedSchoolType
+      ? defaultRequiredSubmissionFileTypesForSchoolType(normalizedSchoolType)
+      : options.requiredFileTypes?.length
       ? options.requiredFileTypes
       : defaultRequiredSubmissionFileTypesForSchoolType(options.schoolType),
   );

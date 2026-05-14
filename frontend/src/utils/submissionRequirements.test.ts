@@ -79,13 +79,26 @@ describe("resolveSubmittedReportVisibleFileDefinitions", () => {
 });
 
 describe("resolveActiveWorkspaceVisibleFileDefinitions", () => {
+  it("prefers the assigned school type over stale submission-derived required file types", () => {
+    const result = resolveActiveWorkspaceVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["bmef", "smea"],
+    });
+
+    expect(result.map((definition) => definition.type)).toContain("fm_qad_001");
+    expect(result.map((definition) => definition.type)).not.toContain("bmef");
+    expect(result.map((definition) => definition.type)).not.toContain("smea");
+  });
+
   it("shows only the active private requirement set for private-school workspaces", () => {
     const result = resolveActiveWorkspaceVisibleFileDefinitions({
       schoolType: "private",
       requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
     });
 
-    expect(result.map((definition) => definition.type)).toEqual(["fm_qad_001", "fm_qad_002"]);
+    expect(result.map((definition) => definition.type)).toEqual(
+      defaultRequiredSubmissionFileTypesForSchoolType("private"),
+    );
   });
 
   it("does not surface legacy uploaded public core files as active private-school workspace tabs", () => {
