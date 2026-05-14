@@ -3,10 +3,12 @@ import {
   buildDashboardViewYearStorageKey,
   resolveInitialSubmittedReportAcademicYearId,
   resolveSchoolAdminHeaderContext,
+  resolveSubmittedReportIndicatorByMetricCode,
+  resolveSubmittedReportSubmissionForView,
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
 } from "@/pages/SchoolAdminDashboard";
-import type { IndicatorSubmission } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
 
 function submission(overrides: Partial<IndicatorSubmission>): IndicatorSubmission {
   return {
@@ -164,5 +166,73 @@ describe("resolveSchoolAdminHeaderContext", () => {
     );
 
     expect(result.schoolAddress).toBe("N/A");
+  });
+});
+
+describe("resolveSubmittedReportSubmissionForView", () => {
+  it("rejects a finalized submission when it belongs to a different school", () => {
+    const result = resolveSubmittedReportSubmissionForView(
+      submission({
+        status: "submitted",
+        statusLabel: "Submitted",
+        school: { id: "school-2", schoolCode: "002", name: "Other School", type: "private" },
+      }),
+      { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("rejects a finalized submission when it belongs to a different academic year", () => {
+    const result = resolveSubmittedReportSubmissionForView(
+      submission({
+        status: "submitted",
+        statusLabel: "Submitted",
+        school: { id: "school-1", schoolCode: "001", name: "Test School", type: "private" },
+        academicYear: { id: "year-2", name: "2026-2027" },
+      }),
+      { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
+    );
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("resolveSubmittedReportIndicatorByMetricCode", () => {
+  function indicator(metricCode: string, metricName: string): IndicatorSubmissionItem {
+    return {
+      id: `${metricCode}-${metricName}`,
+      metric: {
+        id: metricCode,
+        code: metricCode,
+        name: metricName,
+        category: "test",
+        framework: "imeta",
+        dataType: "number",
+      },
+      targetValue: 1,
+      actualValue: 2,
+      varianceValue: 1,
+      complianceStatus: "met",
+      remarks: null,
+    };
+  }
+
+  it("returns the exact metric-code match when it is unique", () => {
+    const result = resolveSubmittedReportIndicatorByMetricCode(
+      [indicator("NER", "Net Enrollment Rate"), indicator("RR", "Retention Rate")],
+      "NER",
+    );
+
+    expect(result?.metric?.code).toBe("NER");
+  });
+
+  it("returns null when the same metric code appears more than once", () => {
+    const result = resolveSubmittedReportIndicatorByMetricCode(
+      [indicator("NER", "Net Enrollment Rate"), indicator("NER", "Duplicate NER")],
+      "NER",
+    );
+
+    expect(result).toBeNull();
   });
 });

@@ -146,6 +146,60 @@ export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission
   return ranked[0] ?? null;
 }
 
+export function resolveSubmittedReportSubmissionForView(
+  submission: IndicatorSubmission | null | undefined,
+  options: {
+    selectedSchoolId: string | null | undefined;
+    selectedAcademicYearId: string | null | undefined;
+  },
+): IndicatorSubmission | null {
+  if (!submission || !isFinalizedSubmissionStatus(submission.status)) {
+    return null;
+  }
+
+  const selectedSchoolId = String(options.selectedSchoolId ?? "").trim();
+  if (selectedSchoolId && String(submission.school?.id ?? "").trim() !== selectedSchoolId) {
+    return null;
+  }
+
+  const selectedAcademicYearId = String(options.selectedAcademicYearId ?? "").trim();
+  if (
+    selectedAcademicYearId
+    && selectedAcademicYearId !== "all"
+    && String(submission.academicYear?.id ?? "").trim() !== selectedAcademicYearId
+  ) {
+    return null;
+  }
+
+  return submission;
+}
+
+export function resolveSubmittedReportIndicatorByMetricCode(
+  indicators: IndicatorSubmissionItem[],
+  expectedMetricCode: string | null | undefined,
+): IndicatorSubmissionItem | null {
+  const normalizedExpectedMetricCode = normalizeMetricLookupKey(expectedMetricCode);
+  if (!normalizedExpectedMetricCode) {
+    return null;
+  }
+
+  let matchedIndicator: IndicatorSubmissionItem | null = null;
+
+  for (const indicator of indicators) {
+    if (normalizeMetricLookupKey(indicator.metric?.code) !== normalizedExpectedMetricCode) {
+      continue;
+    }
+
+    if (matchedIndicator) {
+      return null;
+    }
+
+    matchedIndicator = indicator;
+  }
+
+  return matchedIndicator;
+}
+
 function normalizeFileExtension(filename: string | null | undefined): string {
   const value = String(filename ?? "").trim().toLowerCase();
   if (!value.includes(".")) return "";
@@ -495,21 +549,6 @@ const GROUP_A_NORMALIZED_METRIC_CODES = {
   ) as Record<keyof typeof GROUP_A_METRIC_CODES.kpi, string>,
 };
 
-const GROUP_A_NORMALIZED_METRIC_ALIASES = {
-  schoolAchievement: Object.fromEntries(
-    Object.entries(GROUP_A_METRIC_KEYS.schoolAchievement).map(([key, aliases]) => [
-      key,
-      aliases.map((alias) => normalizeMetricLookupKey(alias)),
-    ]),
-  ) as Record<keyof typeof GROUP_A_METRIC_KEYS.schoolAchievement, string[]>,
-  kpi: Object.fromEntries(
-    Object.entries(GROUP_A_METRIC_KEYS.kpi).map(([key, aliases]) => [
-      key,
-      aliases.map((alias) => normalizeMetricLookupKey(alias)),
-    ]),
-  ) as Record<keyof typeof GROUP_A_METRIC_KEYS.kpi, string[]>,
-};
-
 function isSubItemMetric(label: string): boolean {
   return /^[a-e]\.\s/i.test(label);
 }
@@ -646,56 +685,35 @@ export function SchoolAdminDashboard() {
     };
   }, [fetchSubmission, groupASubmittedSubmission]);
   const groupAReportView = useMemo(() => {
-    const submission = (
-      hydratedSubmittedReportSubmission?.id === groupASubmittedSubmission?.id
-        ? hydratedSubmittedReportSubmission
-        : groupASubmittedSubmission
-    ) ?? null;
+    const selectedSubmission = resolveSubmittedReportSubmissionForView(groupASubmittedSubmission, {
+      selectedSchoolId,
+      selectedAcademicYearId: effectiveAcademicYearId,
+    });
+    const hydratedSubmission = (
+      hydratedSubmittedReportSubmission?.id === selectedSubmission?.id
+        ? resolveSubmittedReportSubmissionForView(hydratedSubmittedReportSubmission, {
+            selectedSchoolId,
+            selectedAcademicYearId: effectiveAcademicYearId,
+          })
+        : null
+    );
+    const submission = hydratedSubmission ?? selectedSubmission;
     const indicators = submissionRows(submission);
-    const missingMappings: Array<{
-      group: keyof typeof GROUP_A_METRIC_KEYS;
-      key: string;
-      metricCode: string | null;
-      aliases: readonly string[];
-      fallbackAttempted: boolean;
-    }> = [];
-    const aliasFallbackMatches: Array<{
-      group: keyof typeof GROUP_A_METRIC_KEYS;
-      key: string;
-      metricCode: string | null;
-      matchedAlias: string;
-      matchedMetricName: string | null;
-      matchedMetricCode: string | null;
-      usedFallback: true;
-    }> = [];
-    let resolvedByMetricCodeCount = 0;
     const duplicateMetricCodes = new Set<string>();
-    const duplicateMetricNames = new Set<string>();
-    const indicatorByMetricCode = new Map<string, IndicatorSubmissionItem>();
-    const indicatorByNormalizedName = new Map<string, IndicatorSubmissionItem>();
+    const indicatorCodeCounts = new Map<string, number>();
 
     for (const item of indicators) {
       const normalizedMetricCode = normalizeMetricLookupKey(item.metric?.code);
       if (normalizedMetricCode) {
-        if (indicatorByMetricCode.has(normalizedMetricCode)) {
+        const nextCount = (indicatorCodeCounts.get(normalizedMetricCode) ?? 0) + 1;
+        indicatorCodeCounts.set(normalizedMetricCode, nextCount);
+        if (nextCount > 1) {
           duplicateMetricCodes.add(normalizedMetricCode);
-        } else {
-          indicatorByMetricCode.set(normalizedMetricCode, item);
-        }
-      }
-
-      const normalizedMetricName = normalizeMetricLookupKey(item.metric?.name);
-      if (normalizedMetricName) {
-        if (indicatorByNormalizedName.has(normalizedMetricName)) {
-          duplicateMetricNames.add(normalizedMetricName);
-        } else {
-          indicatorByNormalizedName.set(normalizedMetricName, item);
         }
       }
     }
 
-    const availableMetricCodes = Array.from(indicatorByMetricCode.keys()).sort();
-    const availableMetricNames = Array.from(indicatorByNormalizedName.keys()).sort();
+    const availableMetricCodes = Array.from(indicatorCodeCounts.keys()).sort();
     const getIndicatorByGroupAKey = (
       group: keyof typeof GROUP_A_METRIC_KEYS,
       key: string,
@@ -704,54 +722,14 @@ export function SchoolAdminDashboard() {
         group === "schoolAchievement"
           ? GROUP_A_NORMALIZED_METRIC_CODES.schoolAchievement
           : GROUP_A_NORMALIZED_METRIC_CODES.kpi;
-      const groupAliasMappings: Record<string, readonly string[]> =
-        group === "schoolAchievement"
-          ? GROUP_A_NORMALIZED_METRIC_ALIASES.schoolAchievement
-          : GROUP_A_NORMALIZED_METRIC_ALIASES.kpi;
       const metricCode = groupCodeMappings[key];
-      const aliases = groupAliasMappings[key];
       if (metricCode) {
-        const codeMatch = indicatorByMetricCode.get(metricCode);
+        const codeMatch = resolveSubmittedReportIndicatorByMetricCode(indicators, metricCode);
         if (codeMatch) {
-          resolvedByMetricCodeCount += 1;
           return codeMatch;
         }
       }
 
-      if (!aliases) {
-        missingMappings.push({
-          group,
-          key,
-          metricCode: metricCode ?? null,
-          aliases: [],
-          fallbackAttempted: false,
-        });
-        return null;
-      }
-
-      for (const alias of aliases) {
-        const match = indicatorByNormalizedName.get(alias);
-        if (match) {
-          aliasFallbackMatches.push({
-            group,
-            key,
-            metricCode: metricCode ?? null,
-            matchedAlias: alias,
-            matchedMetricName: match.metric?.name ?? null,
-            matchedMetricCode: match.metric?.code ?? null,
-            usedFallback: true,
-          });
-          return match;
-        }
-      }
-
-      missingMappings.push({
-        group,
-        key,
-        metricCode: metricCode ?? null,
-        aliases,
-        fallbackAttempted: true,
-      });
       return null;
     };
     const schoolAchievementRows = SCHOOL_ACHIEVEMENT_ROWS.map((row) => {
@@ -777,23 +755,13 @@ export function SchoolAdminDashboard() {
 
     if (
       import.meta.env.DEV &&
-      (missingMappings.length > 0 || aliasFallbackMatches.length > 0 || duplicateMetricCodes.size > 0 || duplicateMetricNames.size > 0)
+      duplicateMetricCodes.size > 0
     ) {
       console.warn("Group A mapping diagnostics", {
         submissionId: submission?.id ?? null,
         academicYearId: submission?.academicYear?.id ?? null,
-        resolutionSummary: {
-          totalIndicators: indicators.length,
-          resolvedByMetricCodeCount,
-          resolvedByAliasFallbackCount: aliasFallbackMatches.length,
-          missingMappingCount: missingMappings.length,
-        },
-        missingMappings,
-        aliasFallbackMatches,
         duplicateMetricCodes: Array.from(duplicateMetricCodes).sort(),
-        duplicateMetricNames: Array.from(duplicateMetricNames).sort(),
         availableMetricCodes,
-        availableMetricNames,
       });
     }
 
@@ -808,7 +776,7 @@ export function SchoolAdminDashboard() {
       schoolAchievementRows,
       kpiRows,
     };
-  }, [groupASubmittedSubmission, hydratedSubmittedReportSubmission]);
+  }, [effectiveAcademicYearId, groupASubmittedSubmission, hydratedSubmittedReportSubmission, selectedSchoolId]);
   const activeReportFileEntry: IndicatorSubmissionFileEntry | null = useMemo(() => {
     if (!activeReportModalType || !groupAReportView.submission?.files) return null;
     return groupAReportView.submission.files[activeReportModalType] ?? null;
