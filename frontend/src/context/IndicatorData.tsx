@@ -106,6 +106,12 @@ interface LightweightIndicatorSubmission {
     uploadedFileTypes?: IndicatorSubmissionFileType[];
     missingFileTypes?: IndicatorSubmissionFileType[];
   };
+  presentation?: {
+    activeFileTypes?: IndicatorSubmissionFileType[];
+    activeReportFileTypes?: IndicatorSubmissionFileType[];
+    activeWorkspaceFileTypes?: IndicatorSubmissionFileType[];
+    secondaryHistoricalFileTypes?: IndicatorSubmissionFileType[];
+  };
   files?: IndicatorSubmissionFiles;
   academicYear?: {
     id: string;
@@ -465,6 +471,7 @@ function patchSubmissionWithLightweightPayload(
     reviewedAt: patch.reviewedAt ?? current.reviewedAt,
     updatedAt: patch.updatedAt ?? current.updatedAt,
     completion: nextCompletion,
+    presentation: patch.presentation ?? current.presentation,
     files: nextFiles,
     academicYear: patch.academicYear?.id
       ? {
@@ -559,6 +566,14 @@ export function materializeSubmissionFromLightweightPayload(
         uploadedFileTypes,
         missingFileTypes: patch.completion?.missingFileTypes,
       }),
+    },
+    presentation: patch.presentation ?? {
+      activeFileTypes: patch.completion?.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType),
+      activeReportFileTypes: patch.completion?.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType),
+      activeWorkspaceFileTypes: patch.completion?.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType),
+      secondaryHistoricalFileTypes: uploadedFileTypes.filter((type) => !(
+        patch.completion?.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType)
+      ).includes(type)),
     },
     indicators: [],
     academicYear: {

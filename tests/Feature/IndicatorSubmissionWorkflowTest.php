@@ -293,7 +293,9 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.completion.requiredFileTypes', ['bmef', 'smea'])
             ->assertJsonPath('data.completion.missingFileTypes', ['bmef', 'smea'])
-            ->assertJsonPath('data.completion.uploadedFileTypes', []);
+            ->assertJsonPath('data.completion.uploadedFileTypes', [])
+            ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', ['bmef', 'smea'])
+            ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', []);
     }
 
     public function test_private_school_required_submission_files_only_include_private_fm_qad_tabs(): void
@@ -313,7 +315,9 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
-            ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes');
+            ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes')
+            ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', SubmissionFileDefinition::nonCoreTypes())
+            ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', []);
 
         $requiredFileTypes = $bootstrapped->json('data.completion.requiredFileTypes', []);
         $this->assertSame(SubmissionFileDefinition::nonCoreTypes(), $requiredFileTypes);
@@ -350,6 +354,9 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $created->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.school.type', 'private')
             ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes')
+            ->assertJsonPath('data.presentation.activeReportFileTypes', SubmissionFileDefinition::nonCoreTypes())
+            ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', SubmissionFileDefinition::nonCoreTypes())
+            ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', [])
             ->assertJsonPath('data.files.bmef.uploaded', false)
             ->assertJsonPath('data.files.smea.uploaded', false)
             ->assertJsonPath('data.files.fm_qad_001.uploaded', false)
@@ -357,6 +364,44 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $requiredFileTypes = $created->json('data.completion.requiredFileTypes', []);
         $this->assertSame(SubmissionFileDefinition::nonCoreTypes(), $requiredFileTypes);
+    }
+
+    public function test_private_submission_presentation_contract_marks_legacy_core_uploads_as_secondary_historical_files(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef-report.pdf', 'application/pdf')
+            ->assertOk();
+        $this->uploadSubmissionDocument(
+            $token,
+            $submissionId,
+            'fm_qad_001',
+            'fm-qad-001.pdf',
+            'application/pdf',
+        )->assertOk();
+
+        $fetched = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}");
+
+        $fetched->assertOk()
+            ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', SubmissionFileDefinition::nonCoreTypes())
+            ->assertJsonPath('data.presentation.activeReportFileTypes', SubmissionFileDefinition::nonCoreTypes())
+            ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', ['bmef']);
     }
 
     public function test_updating_indicator_draft_returns_full_submission_resource(): void

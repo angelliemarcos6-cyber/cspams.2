@@ -849,6 +849,7 @@ class IndicatorSubmissionController extends Controller
         $uploadedFileTypes = $submission->uploadedSubmissionFileTypes();
         $requiredFileTypes = $requirementResolver->requiredTypesForSubmission($submission);
         $missingFileTypes = $requirementResolver->missingTypesForSubmission($submission);
+        $secondaryHistoricalFileTypes = $requirementResolver->secondaryHistoricalTypesForSubmission($submission);
 
         // Keep mutation payloads small by returning state-only fields (no items.metric eager loading).
         return response()->json([
@@ -876,6 +877,12 @@ class IndicatorSubmissionController extends Controller
                     'requiredFileTypes' => $requiredFileTypes,
                     'uploadedFileTypes' => $uploadedFileTypes,
                     'missingFileTypes' => $missingFileTypes,
+                ],
+                'presentation' => [
+                    'activeFileTypes' => $requiredFileTypes,
+                    'activeReportFileTypes' => $requiredFileTypes,
+                    'activeWorkspaceFileTypes' => $requiredFileTypes,
+                    'secondaryHistoricalFileTypes' => $secondaryHistoricalFileTypes,
                 ],
                 'files' => $this->buildSubmissionFilesPayload($submission, false),
             ],

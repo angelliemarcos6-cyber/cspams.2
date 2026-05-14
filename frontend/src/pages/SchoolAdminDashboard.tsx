@@ -787,9 +787,12 @@ export function SchoolAdminDashboard() {
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({
       schoolType: groupAReportView.submission?.school?.type ?? user?.schoolType ?? null,
-      requiredFileTypes: groupAReportView.submission?.completion?.requiredFileTypes,
+      requiredFileTypes:
+        groupAReportView.submission?.presentation?.activeReportFileTypes
+        ?? groupAReportView.submission?.completion?.requiredFileTypes,
     }),
     [
+      groupAReportView.submission?.presentation?.activeReportFileTypes,
       groupAReportView.submission?.completion?.requiredFileTypes,
       groupAReportView.submission?.school?.type,
       user?.schoolType,
@@ -798,10 +801,16 @@ export function SchoolAdminDashboard() {
   const secondarySubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSecondarySubmittedReportFileDefinitions({
       schoolType: groupAReportView.submission?.school?.type ?? user?.schoolType ?? null,
-      requiredFileTypes: groupAReportView.submission?.completion?.requiredFileTypes,
-      uploadedFileTypes: groupAReportView.submission?.completion?.uploadedFileTypes,
+      requiredFileTypes:
+        groupAReportView.submission?.presentation?.activeReportFileTypes
+        ?? groupAReportView.submission?.completion?.requiredFileTypes,
+      uploadedFileTypes:
+        groupAReportView.submission?.presentation?.secondaryHistoricalFileTypes
+        ?? groupAReportView.submission?.completion?.uploadedFileTypes,
     }),
     [
+      groupAReportView.submission?.presentation?.activeReportFileTypes,
+      groupAReportView.submission?.presentation?.secondaryHistoricalFileTypes,
       groupAReportView.submission?.completion?.requiredFileTypes,
       groupAReportView.submission?.completion?.uploadedFileTypes,
       groupAReportView.submission?.school?.type,

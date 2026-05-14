@@ -536,6 +536,12 @@ export interface IndicatorSubmission {
     uploadedFileTypes?: IndicatorSubmissionFileType[];
     missingFileTypes?: IndicatorSubmissionFileType[];
   };
+  presentation?: {
+    activeFileTypes?: IndicatorSubmissionFileType[];
+    activeReportFileTypes?: IndicatorSubmissionFileType[];
+    activeWorkspaceFileTypes?: IndicatorSubmissionFileType[];
+    secondaryHistoricalFileTypes?: IndicatorSubmissionFileType[];
+  };
   indicators: IndicatorSubmissionItem[];
   items?: IndicatorSubmissionItem[];
   createdBy?: {

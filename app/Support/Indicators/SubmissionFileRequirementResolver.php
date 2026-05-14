@@ -76,4 +76,18 @@ final class SubmissionFileRequirementResolver
 
         return $missingRequirements;
     }
+
+    /**
+     * @return list<string>
+     */
+    public function secondaryHistoricalTypesForSubmission(IndicatorSubmission $submission): array
+    {
+        $requiredTypes = $this->requiredTypesForSubmission($submission);
+        $uploadedFileTypes = $submission->uploadedSubmissionFileTypes();
+
+        return array_values(array_filter(
+            $uploadedFileTypes,
+            static fn (string $type): bool => ! in_array($type, $requiredTypes, true),
+        ));
+    }
 }

@@ -32,6 +32,7 @@ class IndicatorSubmissionResource extends JsonResource
         $uploadedFileTypes = $this->uploadedSubmissionFileTypes();
         $requiredFileTypes = $requirementResolver->requiredTypesForSubmission($this->resource);
         $missingFileTypes = $requirementResolver->missingTypesForSubmission($this->resource);
+        $secondaryHistoricalFileTypes = $requirementResolver->secondaryHistoricalTypesForSubmission($this->resource);
 
         return [
             'id' => (string) $this->id,
@@ -73,6 +74,12 @@ class IndicatorSubmissionResource extends JsonResource
                 'requiredFileTypes' => $requiredFileTypes,
                 'uploadedFileTypes' => $uploadedFileTypes,
                 'missingFileTypes' => $missingFileTypes,
+            ],
+            'presentation' => [
+                'activeFileTypes' => $requiredFileTypes,
+                'activeReportFileTypes' => $requiredFileTypes,
+                'activeWorkspaceFileTypes' => $requiredFileTypes,
+                'secondaryHistoricalFileTypes' => $secondaryHistoricalFileTypes,
             ],
             'indicators' => IndicatorSubmissionItemResource::collection($itemCollection),
             'createdBy' => $this->when(

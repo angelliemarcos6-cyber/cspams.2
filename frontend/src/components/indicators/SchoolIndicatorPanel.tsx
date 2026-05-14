@@ -2745,15 +2745,19 @@ function SchoolIndicatorPanelComponent({
     return resolveActiveWorkspaceVisibleFileDefinitions({
       schoolType: activeWorkspaceSchoolType,
       requiredFileTypes:
-        latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
+        latestActiveWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes
+        ?? latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
+        ?? activeWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes
         ?? activeWorkspaceSubmission?.completion?.requiredFileTypes
         ?? fallbackRequiredFileTypes,
     });
   }, [
+    activeWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes,
     activeWorkspaceSubmission?.completion?.requiredFileTypes,
     activeWorkspaceSubmission?.schoolType,
     fallbackRequiredFileTypes,
     activeWorkspaceSchoolType,
+    latestActiveWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes,
     latestActiveWorkspaceSubmission?.completion?.requiredFileTypes,
     latestActiveWorkspaceSubmission?.schoolType,
   ]);

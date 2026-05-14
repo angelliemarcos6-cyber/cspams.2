@@ -85,6 +85,8 @@ describe("materializeSubmissionFromLightweightPayload", () => {
     const file = submission.files?.fm_qad_001;
 
     expect(submission.schoolType).toBe("private");
+    expect(submission.presentation?.activeWorkspaceFileTypes).toEqual(["fm_qad_001"]);
+    expect(submission.presentation?.secondaryHistoricalFileTypes).toEqual([]);
     expect(file).toBeDefined();
     expect(file?.originalFilename).toBe("fm-qad-001.pdf");
     expect(file?.sizeBytes).toBe(2048);
