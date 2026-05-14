@@ -68,6 +68,19 @@ export function resolveSubmittedReportVisibleFileDefinitions(options: {
   return SUBMISSION_FILE_DEFINITIONS.filter((definition) => requiredTypes.has(definition.type));
 }
 
+export function resolveActiveWorkspaceVisibleFileDefinitions(options: {
+  schoolType?: string | null;
+  requiredFileTypes?: IndicatorSubmissionFileType[] | null;
+}): SubmissionFileTabDefinition[] {
+  const requiredTypes = new Set<IndicatorSubmissionFileType>(
+    options.requiredFileTypes?.length
+      ? options.requiredFileTypes
+      : defaultRequiredSubmissionFileTypesForSchoolType(options.schoolType),
+  );
+
+  return SUBMISSION_FILE_DEFINITIONS.filter((definition) => requiredTypes.has(definition.type));
+}
+
 export function resolveSecondarySubmittedReportFileDefinitions(options: {
   schoolType?: string | null;
   requiredFileTypes?: IndicatorSubmissionFileType[] | null;

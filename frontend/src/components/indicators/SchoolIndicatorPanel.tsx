@@ -23,8 +23,8 @@ import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import {
+  resolveActiveWorkspaceVisibleFileDefinitions,
   defaultRequiredSubmissionFileTypesForSchoolType,
-  resolveVisibleSubmissionFileDefinitions,
 } from "@/utils/submissionRequirements";
 import type {
   AcademicYearOption,
@@ -2740,30 +2740,18 @@ function SchoolIndicatorPanelComponent({
     [fallbackSchoolType],
   );
   const visibleFileDefinitions = useMemo(() => {
-    const uploadedTypes = [
-      ...(latestActiveWorkspaceSubmission?.completion?.uploadedFileTypes ?? []),
-      ...(activeWorkspaceSubmission?.completion?.uploadedFileTypes ?? []),
-      ...SUBMISSION_FILE_TYPES.filter((type) => (
-        scopedSubmissionsForYear.some((submission) => hasUploadedSubmissionFile(submission, type))
-      )),
-    ];
-
-    return resolveVisibleSubmissionFileDefinitions({
+    return resolveActiveWorkspaceVisibleFileDefinitions({
       schoolType: fallbackSchoolType,
       requiredFileTypes:
         latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
         ?? activeWorkspaceSubmission?.completion?.requiredFileTypes
         ?? fallbackRequiredFileTypes,
-      uploadedFileTypes: uploadedTypes,
     });
   }, [
     activeWorkspaceSubmission?.completion?.requiredFileTypes,
-    activeWorkspaceSubmission?.completion?.uploadedFileTypes,
     fallbackRequiredFileTypes,
     fallbackSchoolType,
     latestActiveWorkspaceSubmission?.completion?.requiredFileTypes,
-    latestActiveWorkspaceSubmission?.completion?.uploadedFileTypes,
-    scopedSubmissionsForYear,
   ]);
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name

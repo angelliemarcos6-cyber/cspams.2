@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveActiveWorkspaceVisibleFileDefinitions,
   defaultRequiredSubmissionFileTypesForSchoolType,
   resolveSecondarySubmittedReportFileDefinitions,
   resolveSubmittedReportVisibleFileDefinitions,
@@ -68,6 +69,27 @@ describe("resolveSubmittedReportVisibleFileDefinitions", () => {
 
   it("does not surface legacy uploaded public core files for private-school submitted report cards", () => {
     const result = resolveSubmittedReportVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001"],
+    });
+
+    expect(result.map((definition) => definition.type)).not.toContain("bmef");
+    expect(result.map((definition) => definition.type)).not.toContain("smea");
+  });
+});
+
+describe("resolveActiveWorkspaceVisibleFileDefinitions", () => {
+  it("shows only the active private requirement set for private-school workspaces", () => {
+    const result = resolveActiveWorkspaceVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(["fm_qad_001", "fm_qad_002"]);
+  });
+
+  it("does not surface legacy uploaded public core files as active private-school workspace tabs", () => {
+    const result = resolveActiveWorkspaceVisibleFileDefinitions({
       schoolType: "private",
       requiredFileTypes: ["fm_qad_001"],
     });

@@ -1036,6 +1036,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $upload = $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf');
         $upload->assertOk()
             ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
+            ->assertJsonPath('data.files.fm_qad_001.originalFilename', 'fm-qad-001.pdf')
             ->assertJsonPath('data.files.fm_qad_001.viewUrl', "/api/submissions/{$submissionId}/view/fm_qad_001")
             ->assertJsonPath('data.files.fm_qad_001.downloadUrl', "/api/submissions/{$submissionId}/download/fm_qad_001");
 
@@ -1084,13 +1085,20 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'path' => $storedPath,
         ]);
 
+        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_002', 'fm-qad-002.pdf', 'application/pdf')
+            ->assertOk()
+            ->assertJsonPath('data.files.fm_qad_002.uploaded', true);
+
         $reset = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/reset-workspace", [
             'workspace' => 'fm_qad_001',
         ]);
 
         $reset->assertOk()
             ->assertJsonPath('data.files.fm_qad_001.uploaded', false)
-            ->assertJsonPath('data.files.fm_qad_001.path', null);
+            ->assertJsonPath('data.files.fm_qad_001.path', null)
+            ->assertJsonPath('data.files.fm_qad_002.uploaded', true)
+            ->assertJsonPath('data.files.fm_qad_002.originalFilename', 'fm-qad-002.pdf')
+            ->assertJsonPath('data.files.fm_qad_002.path', null);
 
         Storage::disk('local')->assertMissing($storedPath);
         $this->assertDatabaseMissing('indicator_submission_files', [
