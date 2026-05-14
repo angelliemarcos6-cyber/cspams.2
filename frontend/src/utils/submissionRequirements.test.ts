@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   resolveActiveWorkspaceVisibleFileDefinitions,
   defaultRequiredSubmissionFileTypesForSchoolType,
+  getActiveReportFileTypes,
+  getActiveWorkspaceFileTypes,
+  getSecondaryHistoricalFileTypes,
   resolveSecondarySubmittedReportFileDefinitions,
+  resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
   resolveSubmissionRequirementProfile,
   resolveVisibleSubmissionFileDefinitions,
@@ -34,6 +38,66 @@ describe("resolveSubmissionRequirementProfile", () => {
     expect(resolveSubmissionRequirementProfile("private").createSchoolHint).toBe(
       "School Head will submit fillable forms and the required FM-QAD files.",
     );
+  });
+});
+
+describe("submission presentation helpers", () => {
+  it("prefers top-level schoolType over nested school.type for School Head presentation decisions", () => {
+    expect(resolveSubmissionPresentationSchoolType({
+      schoolType: "private",
+      school: {
+        id: "1",
+        schoolCode: "123456",
+        name: "Sample School",
+        type: "public",
+      },
+    } as never, "public")).toBe("private");
+  });
+
+  it("prefers normalized presentation workspace file types over raw completion required file types", () => {
+    expect(getActiveWorkspaceFileTypes({
+      schoolType: "private",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef", "smea"],
+      },
+      presentation: {
+        activeWorkspaceFileTypes: ["fm_qad_001", "fm_qad_002"],
+      },
+    } as never, "private")).toEqual(["fm_qad_001", "fm_qad_002"]);
+  });
+
+  it("derives secondary historical file types from uploaded file types only as a fallback", () => {
+    expect(getSecondaryHistoricalFileTypes({
+      schoolType: "private",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["bmef", "fm_qad_001"],
+      },
+    } as never, "private")).toEqual(["bmef"]);
+  });
+
+  it("prefers normalized report file types over raw required file types", () => {
+    expect(getActiveReportFileTypes({
+      schoolType: "private",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef", "smea"],
+      },
+      presentation: {
+        activeReportFileTypes: ["fm_qad_001"],
+      },
+    } as never, "private")).toEqual(["fm_qad_001"]);
   });
 });
 

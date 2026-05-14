@@ -4,7 +4,7 @@ import {
   SUBMISSION_FILE_TYPES,
   type SubmissionFileTabDefinition,
 } from "@/constants/submissionFiles";
-import type { IndicatorSubmissionFileType } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionFileType } from "@/types";
 
 export interface SubmissionRequirementProfile {
   schoolType: "public" | "private";
@@ -36,6 +36,54 @@ export function defaultRequiredSubmissionFileTypesForSchoolType(
   schoolType: string | null | undefined,
 ): IndicatorSubmissionFileType[] {
   return resolveSubmissionRequirementProfile(schoolType).requiredFileTypes;
+}
+
+export function resolveSubmissionPresentationSchoolType(
+  submission: Pick<IndicatorSubmission, "schoolType" | "school"> | null | undefined,
+  fallbackSchoolType?: string | null,
+): string | null {
+  return submission?.schoolType
+    ?? submission?.school?.type
+    ?? fallbackSchoolType
+    ?? null;
+}
+
+export function getActiveWorkspaceFileTypes(
+  submission: Pick<IndicatorSubmission, "presentation" | "completion" | "schoolType" | "school"> | null | undefined,
+  fallbackSchoolType?: string | null,
+): IndicatorSubmissionFileType[] {
+  const schoolType = resolveSubmissionPresentationSchoolType(submission, fallbackSchoolType);
+
+  return submission?.presentation?.activeWorkspaceFileTypes
+    ?? submission?.presentation?.activeFileTypes
+    ?? submission?.completion?.requiredFileTypes
+    ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType);
+}
+
+export function getActiveReportFileTypes(
+  submission: Pick<IndicatorSubmission, "presentation" | "completion" | "schoolType" | "school"> | null | undefined,
+  fallbackSchoolType?: string | null,
+): IndicatorSubmissionFileType[] {
+  const schoolType = resolveSubmissionPresentationSchoolType(submission, fallbackSchoolType);
+
+  return submission?.presentation?.activeReportFileTypes
+    ?? submission?.presentation?.activeFileTypes
+    ?? submission?.completion?.requiredFileTypes
+    ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType);
+}
+
+export function getSecondaryHistoricalFileTypes(
+  submission: Pick<IndicatorSubmission, "presentation" | "completion" | "schoolType" | "school"> | null | undefined,
+  fallbackSchoolType?: string | null,
+): IndicatorSubmissionFileType[] {
+  if (submission?.presentation?.secondaryHistoricalFileTypes) {
+    return submission.presentation.secondaryHistoricalFileTypes;
+  }
+
+  const activeFileTypes = new Set(getActiveReportFileTypes(submission, fallbackSchoolType));
+  const uploadedFileTypes = submission?.completion?.uploadedFileTypes ?? [];
+
+  return uploadedFileTypes.filter((type) => !activeFileTypes.has(type));
 }
 
 export function resolveVisibleSubmissionFileDefinitions(options: {

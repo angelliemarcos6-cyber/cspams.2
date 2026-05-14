@@ -23,7 +23,9 @@ import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import {
+  getActiveWorkspaceFileTypes,
   resolveActiveWorkspaceVisibleFileDefinitions,
+  resolveSubmissionPresentationSchoolType,
   defaultRequiredSubmissionFileTypesForSchoolType,
 } from "@/utils/submissionRequirements";
 import type {
@@ -2731,12 +2733,10 @@ function SchoolIndicatorPanelComponent({
   );
   const bmefSubmitted = submittedByFileType.bmef;
   const smeaSubmitted = submittedByFileType.smea;
-  const activeWorkspaceSchoolType = user?.schoolType
-    ?? latestActiveWorkspaceSubmission?.schoolType
-    ?? latestActiveWorkspaceSubmission?.school?.type
-    ?? activeWorkspaceSubmission?.schoolType
-    ?? activeWorkspaceSubmission?.school?.type
-    ?? null;
+  const activeWorkspaceSchoolType = resolveSubmissionPresentationSchoolType(
+    latestActiveWorkspaceSubmission ?? activeWorkspaceSubmission,
+    user?.schoolType ?? null,
+  );
   const fallbackRequiredFileTypes = useMemo(
     () => defaultRequiredSubmissionFileTypesForSchoolType(activeWorkspaceSchoolType),
     [activeWorkspaceSchoolType],
@@ -2744,22 +2744,16 @@ function SchoolIndicatorPanelComponent({
   const visibleFileDefinitions = useMemo(() => {
     return resolveActiveWorkspaceVisibleFileDefinitions({
       schoolType: activeWorkspaceSchoolType,
-      requiredFileTypes:
-        latestActiveWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes
-        ?? latestActiveWorkspaceSubmission?.completion?.requiredFileTypes
-        ?? activeWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes
-        ?? activeWorkspaceSubmission?.completion?.requiredFileTypes
-        ?? fallbackRequiredFileTypes,
+      requiredFileTypes: getActiveWorkspaceFileTypes(
+        latestActiveWorkspaceSubmission ?? activeWorkspaceSubmission,
+        activeWorkspaceSchoolType,
+      ) ?? fallbackRequiredFileTypes,
     });
   }, [
-    activeWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes,
-    activeWorkspaceSubmission?.completion?.requiredFileTypes,
-    activeWorkspaceSubmission?.schoolType,
     fallbackRequiredFileTypes,
     activeWorkspaceSchoolType,
-    latestActiveWorkspaceSubmission?.presentation?.activeWorkspaceFileTypes,
-    latestActiveWorkspaceSubmission?.completion?.requiredFileTypes,
-    latestActiveWorkspaceSubmission?.schoolType,
+    activeWorkspaceSubmission,
+    latestActiveWorkspaceSubmission,
   ]);
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name

@@ -24,7 +24,10 @@ import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import {
+  getActiveReportFileTypes,
+  getSecondaryHistoricalFileTypes,
   resolveSecondarySubmittedReportFileDefinitions,
+  resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
 } from "@/utils/submissionRequirements";
 import type {
@@ -786,34 +789,22 @@ export function SchoolAdminDashboard() {
   }, [activeReportModalType, groupAReportView]);
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({
-      schoolType: groupAReportView.submission?.school?.type ?? user?.schoolType ?? null,
-      requiredFileTypes:
-        groupAReportView.submission?.presentation?.activeReportFileTypes
-        ?? groupAReportView.submission?.completion?.requiredFileTypes,
+      schoolType: resolveSubmissionPresentationSchoolType(groupAReportView.submission, user?.schoolType ?? null),
+      requiredFileTypes: getActiveReportFileTypes(groupAReportView.submission, user?.schoolType ?? null),
     }),
     [
-      groupAReportView.submission?.presentation?.activeReportFileTypes,
-      groupAReportView.submission?.completion?.requiredFileTypes,
-      groupAReportView.submission?.school?.type,
+      groupAReportView.submission,
       user?.schoolType,
     ],
   );
   const secondarySubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSecondarySubmittedReportFileDefinitions({
-      schoolType: groupAReportView.submission?.school?.type ?? user?.schoolType ?? null,
-      requiredFileTypes:
-        groupAReportView.submission?.presentation?.activeReportFileTypes
-        ?? groupAReportView.submission?.completion?.requiredFileTypes,
-      uploadedFileTypes:
-        groupAReportView.submission?.presentation?.secondaryHistoricalFileTypes
-        ?? groupAReportView.submission?.completion?.uploadedFileTypes,
+      schoolType: resolveSubmissionPresentationSchoolType(groupAReportView.submission, user?.schoolType ?? null),
+      requiredFileTypes: getActiveReportFileTypes(groupAReportView.submission, user?.schoolType ?? null),
+      uploadedFileTypes: getSecondaryHistoricalFileTypes(groupAReportView.submission, user?.schoolType ?? null),
     }),
     [
-      groupAReportView.submission?.presentation?.activeReportFileTypes,
-      groupAReportView.submission?.presentation?.secondaryHistoricalFileTypes,
-      groupAReportView.submission?.completion?.requiredFileTypes,
-      groupAReportView.submission?.completion?.uploadedFileTypes,
-      groupAReportView.submission?.school?.type,
+      groupAReportView.submission,
       user?.schoolType,
     ],
   );
