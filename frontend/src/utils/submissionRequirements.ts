@@ -54,3 +54,16 @@ export function resolveVisibleSubmissionFileDefinitions(options: {
     requiredTypes.has(definition.type) || uploadedTypes.has(definition.type)
   ));
 }
+
+export function resolveSubmittedReportVisibleFileDefinitions(options: {
+  schoolType?: string | null;
+  requiredFileTypes?: IndicatorSubmissionFileType[] | null;
+}): SubmissionFileTabDefinition[] {
+  const requiredTypes = new Set<IndicatorSubmissionFileType>(
+    options.requiredFileTypes?.length
+      ? options.requiredFileTypes
+      : defaultRequiredSubmissionFileTypesForSchoolType(options.schoolType),
+  );
+
+  return SUBMISSION_FILE_DEFINITIONS.filter((definition) => requiredTypes.has(definition.type));
+}

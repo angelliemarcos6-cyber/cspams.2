@@ -23,12 +23,14 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
-import { resolveVisibleSubmissionFileDefinitions } from "@/utils/submissionRequirements";
+import { resolveSubmittedReportVisibleFileDefinitions } from "@/utils/submissionRequirements";
 import type {
   IndicatorSubmission,
   IndicatorSubmissionFileEntry,
   IndicatorSubmissionFileType,
   IndicatorSubmissionItem,
+  SchoolRecord,
+  SessionUser,
 } from "@/types";
 
 export const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashboard:view-year";
@@ -90,6 +92,21 @@ export function resolveInitialSubmittedReportAcademicYearId(
   }
 
   return years.find((year) => year.isCurrent)?.id ?? years[0]?.id ?? "";
+}
+
+export function resolveSchoolAdminHeaderContext(
+  assignedRecord: Pick<SchoolRecord, "schoolName" | "schoolCode" | "address"> | null,
+  user: Pick<SessionUser, "schoolName" | "schoolCode"> | null,
+): {
+  schoolName: string;
+  schoolCode: string;
+  schoolAddress: string;
+} {
+  return {
+    schoolName: assignedRecord?.schoolName || user?.schoolName || "Unassigned School",
+    schoolCode: assignedRecord?.schoolCode || user?.schoolCode || "N/A",
+    schoolAddress: assignedRecord?.address || "N/A",
+  };
 }
 
 export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
@@ -538,12 +555,13 @@ export function SchoolAdminDashboard() {
   const selectedSchoolId = String(user?.schoolId ?? "").trim();
   const dashboardContextKey = `${String(user?.id ?? "").trim()}:${selectedSchoolId}`;
   const assignedRecord = useMemo(
-    () => records.find((record) => String(record.schoolId ?? record.id ?? "").trim() === selectedSchoolId) ?? records[0] ?? null,
+    () => records.find((record) => String(record.schoolId ?? record.id ?? "").trim() === selectedSchoolId) ?? null,
     [records, selectedSchoolId],
   );
-  const schoolName = assignedRecord?.schoolName || user?.schoolName || "Unassigned School";
-  const schoolCode = assignedRecord?.schoolCode || user?.schoolCode || "N/A";
-  const schoolRegion = assignedRecord?.region || "N/A";
+  const { schoolName, schoolCode, schoolAddress } = useMemo(
+    () => resolveSchoolAdminHeaderContext(assignedRecord, user),
+    [assignedRecord, user],
+  );
   const dashboardYearSelectionStorageKey = useMemo(
     () => buildDashboardViewYearStorageKey(user?.id, selectedSchoolId),
     [selectedSchoolId, user?.id],
@@ -796,14 +814,12 @@ export function SchoolAdminDashboard() {
     return groupAReportView.submission.files[activeReportModalType] ?? null;
   }, [activeReportModalType, groupAReportView]);
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
-    () => resolveVisibleSubmissionFileDefinitions({
+    () => resolveSubmittedReportVisibleFileDefinitions({
       schoolType: groupAReportView.submission?.school?.type ?? user?.schoolType ?? null,
       requiredFileTypes: groupAReportView.submission?.completion?.requiredFileTypes,
-      uploadedFileTypes: groupAReportView.submission?.completion?.uploadedFileTypes,
     }),
     [
       groupAReportView.submission?.completion?.requiredFileTypes,
-      groupAReportView.submission?.completion?.uploadedFileTypes,
       groupAReportView.submission?.school?.type,
       user?.schoolType,
     ],
@@ -1130,8 +1146,8 @@ export function SchoolAdminDashboard() {
           <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolCode}</p>
         </article>
         <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Region</p>
-          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolRegion}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Address</p>
+          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolAddress}</p>
         </article>
         <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Academic Year</p>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDashboardViewYearStorageKey,
   resolveInitialSubmittedReportAcademicYearId,
+  resolveSchoolAdminHeaderContext,
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
 } from "@/pages/SchoolAdminDashboard";
@@ -125,5 +126,43 @@ describe("buildDashboardViewYearStorageKey", () => {
   it("returns an empty key when either the user or school context is missing", () => {
     expect(buildDashboardViewYearStorageKey(null, "103811")).toBe("");
     expect(buildDashboardViewYearStorageKey(25, "")).toBe("");
+  });
+});
+
+describe("resolveSchoolAdminHeaderContext", () => {
+  it("uses the assigned school address instead of region-oriented fallback data", () => {
+    const result = resolveSchoolAdminHeaderContext(
+      {
+        schoolName: "Private Academy",
+        schoolCode: "900123",
+        address: "Santiago City, Isabela",
+      },
+      {
+        schoolName: "Different Name",
+        schoolCode: "111111",
+      } as never,
+    );
+
+    expect(result).toEqual({
+      schoolName: "Private Academy",
+      schoolCode: "900123",
+      schoolAddress: "Santiago City, Isabela",
+    });
+  });
+
+  it("does not fall back to unrelated address data when the assigned record has no address", () => {
+    const result = resolveSchoolAdminHeaderContext(
+      {
+        schoolName: "Private Academy",
+        schoolCode: "900123",
+        address: null,
+      } as never,
+      {
+        schoolName: "Private Academy",
+        schoolCode: "900123",
+      } as never,
+    );
+
+    expect(result.schoolAddress).toBe("N/A");
   });
 });
