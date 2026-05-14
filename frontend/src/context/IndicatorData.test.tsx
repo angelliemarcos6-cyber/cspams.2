@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIndicatorDataSessionKey,
+  filterSchoolHeadScopedSubmissions,
   materializeSubmissionFromLightweightPayload,
 } from "@/context/IndicatorData";
 
@@ -93,5 +94,79 @@ describe("materializeSubmissionFromLightweightPayload", () => {
     expect(file?.sizeBytes).toBe(2048);
     expect(file?.uploadedAt).toBe("2026-05-14T08:00:00.000Z");
     expect(file?.path).toBeNull();
+  });
+});
+
+describe("filterSchoolHeadScopedSubmissions", () => {
+  it("keeps only the assigned-school submissions for School Head sessions", () => {
+    const rows = filterSchoolHeadScopedSubmissions([
+      {
+        id: "sub-1",
+        formType: "indicator",
+        status: "draft",
+        statusLabel: "Draft",
+        reportingPeriod: "ANNUAL",
+        version: 1,
+        schoolId: "school-1",
+        notes: null,
+        reviewNotes: null,
+        summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+        indicators: [],
+      },
+      {
+        id: "sub-2",
+        formType: "indicator",
+        status: "draft",
+        statusLabel: "Draft",
+        reportingPeriod: "ANNUAL",
+        version: 1,
+        schoolId: "school-2",
+        notes: null,
+        reviewNotes: null,
+        summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+        indicators: [],
+      },
+    ] as never, {
+      role: "school_head",
+      schoolId: "school-1",
+    } as never);
+
+    expect(rows.map((row) => row.id)).toEqual(["sub-1"]);
+  });
+
+  it("does not filter monitor submission rows", () => {
+    const rows = filterSchoolHeadScopedSubmissions([
+      {
+        id: "sub-1",
+        formType: "indicator",
+        status: "draft",
+        statusLabel: "Draft",
+        reportingPeriod: "ANNUAL",
+        version: 1,
+        schoolId: "school-1",
+        notes: null,
+        reviewNotes: null,
+        summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+        indicators: [],
+      },
+      {
+        id: "sub-2",
+        formType: "indicator",
+        status: "draft",
+        statusLabel: "Draft",
+        reportingPeriod: "ANNUAL",
+        version: 1,
+        schoolId: "school-2",
+        notes: null,
+        reviewNotes: null,
+        summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+        indicators: [],
+      },
+    ] as never, {
+      role: "monitor",
+      schoolId: null,
+    } as never);
+
+    expect(rows.map((row) => row.id)).toEqual(["sub-1", "sub-2"]);
   });
 });

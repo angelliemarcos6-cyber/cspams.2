@@ -11,7 +11,10 @@ import {
 import { useAuth } from "@/context/Auth";
 import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError } from "@/lib/api";
 import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
-import { defaultRequiredSubmissionFileTypesForSchoolType } from "@/utils/submissionRequirements";
+import {
+  defaultRequiredSubmissionFileTypesForSchoolType,
+  resolveSubmissionSchoolId,
+} from "@/utils/submissionRequirements";
 import type {
   AcademicYearOption,
   GroupBWorkspaceResetTarget,
@@ -664,6 +667,22 @@ export function buildIndicatorDataSessionKey(user: Pick<SessionUser, "id" | "rol
   return `${role}:${userId}:${schoolId || "unassigned"}:${schoolType || "unknown"}`;
 }
 
+export function filterSchoolHeadScopedSubmissions(
+  rows: IndicatorSubmission[],
+  user: Pick<SessionUser, "role" | "schoolId"> | null,
+): IndicatorSubmission[] {
+  if (user?.role !== "school_head") {
+    return rows;
+  }
+
+  const assignedSchoolId = String(user.schoolId ?? "").trim();
+  if (!assignedSchoolId) {
+    return [];
+  }
+
+  return rows.filter((submission) => resolveSubmissionSchoolId(submission) === assignedSchoolId);
+}
+
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const { user, apiToken } = useAuth();
   const token = user ? apiToken : "";
@@ -755,7 +774,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           signal: params?.signal,
         });
 
-        const data = readSubmissionRows(response.data);
+        const data = filterSchoolHeadScopedSubmissions(readSubmissionRows(response.data), user);
         const meta = normalizeSubmissionListMeta(response.data?.meta, normalized, data.length);
 
         return {
@@ -771,7 +790,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, user],
   );
 
   const buildAllSubmissionsVersionKey = useCallback(
@@ -822,7 +841,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         nextPage += 1;
       }
 
-      const sortedRows = [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
+      const sortedRows = filterSchoolHeadScopedSubmissions(
+        [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a)),
+        user,
+      );
       schoolSubmissionsCacheRef.current.set(normalizedSchoolId, {
         versionKey,
         rows: sortedRows,
@@ -830,7 +852,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       return sortedRows;
     },
-    [buildAllSubmissionsVersionKey, listSubmissions, token],
+    [buildAllSubmissionsVersionKey, listSubmissions, token, user],
   );
 
   const loadSubmissionsForYear = useCallback(
@@ -860,11 +882,14 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         perPage: MAX_LIST_PER_PAGE,
       });
 
-      const rows = [...result.data].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
+      const rows = filterSchoolHeadScopedSubmissions(
+        [...result.data].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a)),
+        user,
+      );
       yearSubmissionsCacheRef.current.set(cacheKey, rows);
       return rows;
     },
-    [listSubmissions, sessionKey, token],
+    [listSubmissions, sessionKey, token, user],
   );
 
   const readAllSubmissions = useCallback(
@@ -885,13 +910,13 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         allRows.push(...result.data);
 
         if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
-          return allRows;
+          return filterSchoolHeadScopedSubmissions(allRows, user);
         }
 
         nextPage += 1;
       }
     },
-    [listSubmissions],
+    [listSubmissions, user],
   );
 
   const loadAllSubmissions = useCallback(
@@ -1163,7 +1188,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           yearSubmissionsCacheRef.current.clear();
           allSubmissionsCacheRef.current = null;
           allSubmissionsInFlightRef.current = null;
-          const incomingRows = readSubmissionRows(submissionsResponse.data);
+          const incomingRows = filterSchoolHeadScopedSubmissions(readSubmissionRows(submissionsResponse.data), user);
           setSubmissions((current) => mergeSubmissionsPreservingFreshest(current, incomingRows));
           setAllSubmissions((current) => (
             current.length > 0 ? mergeSubmissionsPreservingFreshest(current, incomingRows) : current
@@ -1201,7 +1226,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [academicYears.length, handleApiError, metrics.length, shouldSkipBackgroundSync, token],
+    [academicYears.length, handleApiError, metrics.length, shouldSkipBackgroundSync, token, user],
   );
 
   const refreshSubmissions = useCallback(async () => {
