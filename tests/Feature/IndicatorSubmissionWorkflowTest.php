@@ -47,22 +47,27 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             });
     }
 
-    public function test_auto_calculated_kpi_preserves_manual_payload_values_when_provided(): void
+    public function test_auto_calculated_kpi_overrides_manual_payload_values_when_provided(): void
     {
         $this->seedIndicatorFixtures();
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $currentSchoolYear = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+        $expectedStudentTotal = Student::query()
+            ->where('school_id', (int) $schoolHead->school_id)
+            ->where('academic_year_id', $academicYearId)
+            ->count();
         $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
-        $nerMetricId = (int) PerformanceMetric::query()->where('code', 'NER')->value('id');
+        $enrollmentMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_ENROLL_TOTAL')->value('id');
 
         $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
             'reporting_period' => 'Q1',
             'indicators' => [
                 [
-                    'metric_id' => $nerMetricId,
+                    'metric_id' => $enrollmentMetricId,
                     'target_value' => 999,
                     'actual_value' => 1,
                     'remarks' => 'Manual KPI values encoded by school head.',
@@ -73,13 +78,20 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $created->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.summary.totalIndicators', 1);
 
-        /** @var array<string, mixed>|null $nerRow */
-        $nerRow = collect($created->json('data.indicators', []))
-            ->first(static fn (mixed $row): bool => is_array($row) && (($row['metric']['code'] ?? null) === 'NER'));
+        /** @var array<string, mixed>|null $metricRow */
+        $metricRow = collect($created->json('data.indicators', []))
+            ->first(static fn (mixed $row): bool => is_array($row) && (($row['metric']['code'] ?? null) === 'IMETA_ENROLL_TOTAL'));
 
-        $this->assertIsArray($nerRow);
-        $this->assertSame(999.0, (float) ($nerRow['targetValue'] ?? 0));
-        $this->assertSame(1.0, (float) ($nerRow['actualValue'] ?? 0));
+        $this->assertIsArray($metricRow);
+        $this->assertSame(
+            (float) $expectedStudentTotal,
+            (float) data_get($metricRow, "actualTypedValue.values.{$currentSchoolYear}"),
+        );
+        $this->assertSame(
+            (float) $expectedStudentTotal,
+            (float) data_get($metricRow, "targetTypedValue.values.{$currentSchoolYear}"),
+        );
+        $this->assertSame('Manual KPI values encoded by school head.', $metricRow['remarks'] ?? null);
     }
 
     public function test_school_achievement_counts_auto_sync_from_reports_and_teacher_records(): void

@@ -2011,10 +2011,6 @@ class IndicatorSubmissionController extends Controller
                     return $row;
                 }
 
-                if ($this->hasManualTargetActualValues($row)) {
-                    return $row;
-                }
-
                 $metricId = (string) $this->normalizeMetricId($row['metric_id'] ?? null);
                 $metricCode = $this->normalizeMetricCode($row['metric_code'] ?? null);
                 /** @var PerformanceMetric|null $metric */
@@ -2071,44 +2067,4 @@ class IndicatorSubmissionController extends Controller
         );
     }
 
-    /**
-     * @param array<string, mixed> $row
-     */
-    private function hasManualTargetActualValues(array $row): bool
-    {
-        foreach (['target', 'actual', 'target_value', 'actual_value'] as $key) {
-            if (! array_key_exists($key, $row)) {
-                continue;
-            }
-
-            if ($this->hasNonEmptyIndicatorValue($row[$key])) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function hasNonEmptyIndicatorValue(mixed $value): bool
-    {
-        if (is_array($value)) {
-            if ($value === []) {
-                return false;
-            }
-
-            foreach ($value as $entry) {
-                if ($this->hasNonEmptyIndicatorValue($entry)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        if (is_string($value)) {
-            return trim($value) !== '';
-        }
-
-        return $value !== null;
-    }
 }

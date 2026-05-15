@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentPerformanceRecord;
 use App\Models\Teacher;
 use App\Support\Domain\StudentStatus;
+use BackedEnum;
 use Illuminate\Support\Collection;
 
 class TargetsMetAutoCalculator
@@ -152,40 +153,75 @@ class TargetsMetAutoCalculator
             'reported_teacher_count',
         ]);
 
-        $studentsQuery = Student::query()
+        $studentRows = Student::query()
             ->where('school_id', $schoolId)
-            ->where('academic_year_id', $academicYearId);
+            ->where('academic_year_id', $academicYearId)
+            ->get(['status', 'sex']);
 
-        $trackedLearners = (clone $studentsQuery)->count();
-        $enrolledLearners = (clone $studentsQuery)->whereIn('status', [
-            StudentStatus::ENROLLED->value,
-            StudentStatus::RETURNING->value,
-        ])->count();
-        $dropoutLearners = (clone $studentsQuery)->where('status', StudentStatus::DROPPED_OUT->value)->count();
-        $transfereeLearners = (clone $studentsQuery)->where('status', StudentStatus::TRANSFEREE->value)->count();
-        $completerLearners = (clone $studentsQuery)->whereIn('status', [
-            StudentStatus::COMPLETER->value,
-            StudentStatus::GRADUATED->value,
-        ])->count();
+        $trackedLearners = $studentRows->count();
+        $enrolledLearners = 0;
+        $dropoutLearners = 0;
+        $transfereeLearners = 0;
+        $completerLearners = 0;
+        $femaleLearners = 0;
+        $maleLearners = 0;
+
+        foreach ($studentRows as $student) {
+            $status = $student->status instanceof BackedEnum
+                ? (string) $student->status->value
+                : trim((string) $student->status);
+            $sex = strtolower(trim((string) $student->sex));
+
+            if (in_array($status, [
+                StudentStatus::ENROLLED->value,
+                StudentStatus::RETURNING->value,
+            ], true)) {
+                $enrolledLearners++;
+            }
+
+            if ($status === StudentStatus::DROPPED_OUT->value) {
+                $dropoutLearners++;
+            }
+
+            if ($status === StudentStatus::TRANSFEREE->value) {
+                $transfereeLearners++;
+            }
+
+            if (in_array($status, [
+                StudentStatus::COMPLETER->value,
+                StudentStatus::GRADUATED->value,
+            ], true)) {
+                $completerLearners++;
+            }
+
+            if ($sex === 'female') {
+                $femaleLearners++;
+            } elseif ($sex === 'male') {
+                $maleLearners++;
+            }
+        }
+
         $retainedLearners = max($trackedLearners - $dropoutLearners, 0);
-        $femaleLearners = (clone $studentsQuery)->where('sex', 'female')->count();
-        $maleLearners = (clone $studentsQuery)->where('sex', 'male')->count();
 
         $sections = Section::query()
             ->where('school_id', $schoolId)
             ->where('academic_year_id', $academicYearId)
             ->count();
-        $teachers = Teacher::query()
+        $teacherRows = Teacher::query()
             ->where('school_id', $schoolId)
-            ->count();
-        $teachersMale = Teacher::query()
-            ->where('school_id', $schoolId)
-            ->where('sex', 'male')
-            ->count();
-        $teachersFemale = Teacher::query()
-            ->where('school_id', $schoolId)
-            ->where('sex', 'female')
-            ->count();
+            ->get(['sex']);
+        $teachers = $teacherRows->count();
+        $teachersMale = 0;
+        $teachersFemale = 0;
+
+        foreach ($teacherRows as $teacher) {
+            $sex = strtolower(trim((string) $teacher->sex));
+            if ($sex === 'male') {
+                $teachersMale++;
+            } elseif ($sex === 'female') {
+                $teachersFemale++;
+            }
+        }
 
         /** @var Collection<int, float> $performanceValues */
         $performanceValues = StudentPerformanceRecord::query()
@@ -197,19 +233,31 @@ class TargetsMetAutoCalculator
             ->map(static fn (mixed $value): float => (float) $value)
             ->values();
 
-        $performanceTotal = $performanceValues->count();
-        $nearlyProficient = $performanceValues->filter(
-            static fn (float $value): bool => $value >= 50 && $value < 75,
-        )->count();
-        $proficient = $performanceValues->filter(
-            static fn (float $value): bool => $value >= 75 && $value < 90,
-        )->count();
-        $highlyProficient = $performanceValues->filter(
-            static fn (float $value): bool => $value >= 90,
-        )->count();
-        $aePassers = $performanceValues->filter(
-            static fn (float $value): bool => $value >= 75,
-        )->count();
+        $performanceTotal = 0;
+        $nearlyProficient = 0;
+        $proficient = 0;
+        $highlyProficient = 0;
+        $aePassers = 0;
+
+        foreach ($performanceValues as $value) {
+            $performanceTotal++;
+
+            if ($value >= 50 && $value < 75) {
+                $nearlyProficient++;
+            }
+
+            if ($value >= 75 && $value < 90) {
+                $proficient++;
+            }
+
+            if ($value >= 90) {
+                $highlyProficient++;
+            }
+
+            if ($value >= 75) {
+                $aePassers++;
+            }
+        }
 
         $reportedTeachers = (int) ($school?->reported_teacher_count ?? 0);
 
