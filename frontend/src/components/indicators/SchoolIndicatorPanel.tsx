@@ -144,6 +144,37 @@ function hasUploadedSubmissionFile(
   return isSubmissionFileUploaded(submission, type);
 }
 
+export function buildReportFileSubmissionByType(
+  submissions: IndicatorSubmission[],
+): Record<IndicatorSubmissionFileType, IndicatorSubmission | null> {
+  return SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, IndicatorSubmission | null>>((accumulator, type) => {
+    accumulator[type] = submissions.find((submission) => (
+      isSubmittedWorkflowStatus(submission.status) && hasUploadedSubmissionFile(submission, type)
+    )) ?? null;
+    return accumulator;
+  }, {} as Record<IndicatorSubmissionFileType, IndicatorSubmission | null>);
+}
+
+export function buildWorkspaceFileSubmissionByType(
+  workspaceCandidate: IndicatorSubmission | null,
+): Record<IndicatorSubmissionFileType, IndicatorSubmission | null> {
+  return SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, IndicatorSubmission | null>>((accumulator, type) => {
+    accumulator[type] = workspaceCandidate && hasUploadedSubmissionFile(workspaceCandidate, type)
+      ? workspaceCandidate
+      : null;
+    return accumulator;
+  }, {} as Record<IndicatorSubmissionFileType, IndicatorSubmission | null>);
+}
+
+export function buildStrictSubmittedByType(
+  fileSubmissionByType: Record<IndicatorSubmissionFileType, IndicatorSubmission | null>,
+): Record<IndicatorSubmissionFileType, boolean> {
+  return SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((accumulator, type) => {
+    accumulator[type] = hasUploadedSubmissionFile(fileSubmissionByType[type], type);
+    return accumulator;
+  }, {} as Record<IndicatorSubmissionFileType, boolean>);
+}
+
 export function buildWorkspaceAutosavePayloadOptions() {
   return {
     allowIncomplete: true,
@@ -1069,11 +1100,14 @@ function buildEntryFromSubmission(metric: IndicatorMetric, indicator: IndicatorS
   return entry;
 }
 
-function resolveMetricFromIndicator(
+function resolveMetricFromIndicatorInternal(
   indicator: IndicatorSubmissionItem,
   metricsById: Map<string, IndicatorMetric>,
   metricsByCode: Map<string, IndicatorMetric>,
   metricsByName: Map<string, IndicatorMetric>,
+  options: {
+    allowNameFallback: boolean;
+  },
 ): IndicatorMetric | null {
   const record = indicator as unknown as Record<string, unknown>;
   const directMetric = (record.metric ?? null) as Record<string, unknown> | null;
@@ -1113,24 +1147,37 @@ function resolveMetricFromIndicator(
     }
   }
 
-  const nameCandidates = [
-    directMetric?.name,
-    record.metricName,
-    record.metric_name,
-  ];
-  for (const candidate of nameCandidates) {
-    const normalizedName = normalizeMetricName(String(candidate ?? ""));
-    if (!normalizedName) {
-      continue;
-    }
+  if (options.allowNameFallback) {
+    const nameCandidates = [
+      directMetric?.name,
+      record.metricName,
+      record.metric_name,
+    ];
+    for (const candidate of nameCandidates) {
+      const normalizedName = normalizeMetricName(String(candidate ?? ""));
+      if (!normalizedName) {
+        continue;
+      }
 
-    const metric = metricsByName.get(normalizedName);
-    if (metric) {
-      return metric;
+      const metric = metricsByName.get(normalizedName);
+      if (metric) {
+        return metric;
+      }
     }
   }
 
   return null;
+}
+
+export function resolveMetricFromIndicatorInWorkspace(
+  indicator: IndicatorSubmissionItem,
+  metricsById: Map<string, IndicatorMetric>,
+  metricsByCode: Map<string, IndicatorMetric>,
+  metricsByName: Map<string, IndicatorMetric>,
+): IndicatorMetric | null {
+  return resolveMetricFromIndicatorInternal(indicator, metricsById, metricsByCode, metricsByName, {
+    allowNameFallback: false,
+  });
 }
 
 function submissionRows(submission: IndicatorSubmission | null | undefined): IndicatorSubmissionItem[] {
@@ -1820,7 +1867,7 @@ function SchoolIndicatorPanelComponent({
     for (const submission of sortedSubmissions) {
       const indicatorByMetricId = new Map<string, IndicatorSubmissionItem>();
       for (const indicator of submissionRows(submission)) {
-        const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
+        const metric = resolveMetricFromIndicatorInWorkspace(indicator, metricsById, metricsByCode, metricsByName);
         if (!metric) {
           continue;
         }
@@ -2541,7 +2588,7 @@ function SchoolIndicatorPanelComponent({
 
     if (submission && hasHydratableRows) {
       for (const indicator of submissionRows(submission)) {
-        const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
+        const metric = resolveMetricFromIndicatorInWorkspace(indicator, metricsById, metricsByCode, metricsByName);
         if (!metric) continue;
 
         nextEntries[metric.id] = buildEntryFromSubmission(metric, indicator);
@@ -2639,55 +2686,9 @@ function SchoolIndicatorPanelComponent({
     setRestoreBannerDismissed(false);
     endControlledWorkspaceTransition();
   }, [activeAcademicYearId, complianceMetrics.length, endControlledWorkspaceTransition, isSubmissionDataLoading, rehydrateWorkspaceFromSubmission, resetWorkspaceToBlankStateForSelectedYear, workspaceSubmissionFingerprint]);
-  const groupASubmittedSubmission = useMemo(
-    () =>
-      scopedSubmissionsForYear
-        .filter((submission) => isSubmittedWorkflowStatus(submission.status))
-        .sort((a, b) => (
-          new Date(b.submittedAt ?? b.updatedAt ?? b.createdAt ?? 0).getTime()
-          - new Date(a.submittedAt ?? a.updatedAt ?? a.createdAt ?? 0).getTime()
-        ))[0] ?? null,
-    [scopedSubmissionsForYear],
-  );
-  const groupASubmittedIndicatorByMetricId = useMemo(() => {
-    const map = new Map<string, IndicatorSubmissionItem>();
-    const metricsById = new Map(complianceMetrics.map((metric) => [metric.id, metric]));
-    const metricsByCode = new Map(complianceMetrics.map((metric) => [normalizeMetricCode(metric.code), metric]));
-    const metricsByName = new Map(complianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
-
-    for (const item of submissionRows(groupASubmittedSubmission)) {
-      const metric = resolveMetricFromIndicator(item, metricsById, metricsByCode, metricsByName);
-      if (!metric) {
-        continue;
-      }
-
-      map.set(metric.id, item);
-    }
-
-    return map;
-  }, [complianceMetrics, groupASubmittedSubmission]);
-  const fileReportSubmissionByType = useMemo(
-    () =>
-      SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, IndicatorSubmission | null>>((accumulator, type) => {
-        accumulator[type] = scopedSubmissionsForYear.find((submission) => (
-          isSubmittedWorkflowStatus(submission.status) && hasUploadedSubmissionFile(submission, type)
-        )) ?? groupASubmittedSubmission ?? null;
-        return accumulator;
-      }, {} as Record<IndicatorSubmissionFileType, IndicatorSubmission | null>),
-    [groupASubmittedSubmission, scopedSubmissionsForYear],
-  );
   const fileWorkspaceSubmissionByType = useMemo(
-    () => {
-      const workspaceCandidate = editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission ?? null;
-
-      return SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, IndicatorSubmission | null>>((accumulator, type) => {
-        accumulator[type] = workspaceCandidate && hasUploadedSubmissionFile(workspaceCandidate, type)
-          ? workspaceCandidate
-          : fileReportSubmissionByType[type];
-        return accumulator;
-      }, {} as Record<IndicatorSubmissionFileType, IndicatorSubmission | null>);
-    },
-    [editableWorkspaceSubmissionInScope, fileReportSubmissionByType, latestActiveWorkspaceSubmission],
+    () => buildWorkspaceFileSubmissionByType(selectedSubmissionForUploads),
+    [selectedSubmissionForUploads],
   );
   const fileEntryByType = useMemo(
     () =>
@@ -2703,13 +2704,7 @@ function SchoolIndicatorPanelComponent({
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
   const isFormSubmitted = isSubmittedWorkflowStatus(activeFormStatus);
   const serverSubmittedByType = useMemo(
-    () =>
-      SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((accumulator, type) => {
-        const sourceSubmission = fileWorkspaceSubmissionByType[type];
-        const isSubmittedPackage = isSubmittedWorkflowStatus(String(sourceSubmission?.status ?? "").toLowerCase());
-        accumulator[type] = hasUploadedSubmissionFile(sourceSubmission, type) || (isSubmittedPackage && Boolean(sourceSubmission));
-        return accumulator;
-      }, {} as Record<IndicatorSubmissionFileType, boolean>),
+    () => buildStrictSubmittedByType(fileWorkspaceSubmissionByType),
     [fileWorkspaceSubmissionByType],
   );
   const submittedByFileType = useMemo(
@@ -3373,10 +3368,10 @@ function SchoolIndicatorPanelComponent({
     const savedEntries = buildInitialMetricEntries(complianceMetrics, {});
 
     for (const indicator of submissionRows(submission)) {
-      const metric = resolveMetricFromIndicator(
-        indicator,
-        metricsById,
-        metricsByNormalizedCode,
+        const metric = resolveMetricFromIndicatorInWorkspace(
+          indicator,
+          metricsById,
+          metricsByNormalizedCode,
         metricsByNormalizedName,
       );
       if (!metric) {
@@ -4087,7 +4082,7 @@ function SchoolIndicatorPanelComponent({
     const metricsByName = new Map(orderedComplianceMetrics.map((metric) => [normalizeMetricName(metric.name), metric]));
     const sourceByMetricId = new Map<string, IndicatorSubmissionItem>();
     for (const indicator of submissionRows(latestValidatedSubmission)) {
-      const metric = resolveMetricFromIndicator(indicator, metricsById, metricsByCode, metricsByName);
+      const metric = resolveMetricFromIndicatorInWorkspace(indicator, metricsById, metricsByCode, metricsByName);
       if (!metric) {
         continue;
       }
