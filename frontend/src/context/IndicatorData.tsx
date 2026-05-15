@@ -76,10 +76,6 @@ interface IndicatorAcademicYearsResponse {
   data: AcademicYearOption[];
 }
 
-interface IndicatorSubmissionResponse {
-  data: IndicatorSubmission;
-}
-
 interface IndicatorHistoryResponse {
   data: FormSubmissionHistoryEntry[];
 }
@@ -120,6 +116,14 @@ interface LightweightIndicatorSubmission {
     id: string;
     name?: string | null;
   };
+}
+
+interface IndicatorSubmissionResponse {
+  data: IndicatorSubmission | LightweightIndicatorSubmission;
+}
+
+interface FullIndicatorSubmissionResponse {
+  data: IndicatorSubmission;
 }
 
 interface LocalIndicatorMutationEcho {
@@ -1337,7 +1341,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
+        const response = await apiRequest<FullIndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
           token,
         });
         const submission = response.data;

@@ -248,8 +248,9 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.status', 'draft')
-            ->assertJsonPath('data.summary.totalIndicators', 0)
-            ->assertJsonPath('data.completion.hasImetaFormData', false);
+            ->assertJsonPath('data.completion.hasImetaFormData', false)
+            ->assertJsonMissingPath('data.summary')
+            ->assertJsonMissingPath('data.indicators');
 
         $submissionId = (string) $bootstrapped->json('data.id');
 
@@ -270,8 +271,9 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $updated->assertOk()
             ->assertJsonPath('data.id', $submissionId)
             ->assertJsonPath('data.status', 'draft')
-            ->assertJsonPath('data.summary.totalIndicators', 1)
-            ->assertJsonPath('data.completion.hasImetaFormData', false);
+            ->assertJsonPath('data.completion.hasImetaFormData', false)
+            ->assertJsonMissingPath('data.summary')
+            ->assertJsonMissingPath('data.indicators');
     }
 
     public function test_public_school_required_submission_files_only_include_core_documents(): void
@@ -293,6 +295,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.schoolId', (string) $schoolHead->school_id)
             ->assertJsonPath('data.schoolType', 'public')
+            ->assertJsonMissingPath('data.indicators')
             ->assertJsonPath('data.completion.requiredFileTypes', ['bmef', 'smea'])
             ->assertJsonPath('data.completion.missingFileTypes', ['bmef', 'smea'])
             ->assertJsonPath('data.completion.uploadedFileTypes', [])
@@ -319,6 +322,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $bootstrapped->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.schoolId', (string) $schoolHead->school_id)
             ->assertJsonPath('data.schoolType', 'private')
+            ->assertJsonMissingPath('data.indicators')
             ->assertJsonCount(count(SubmissionFileDefinition::nonCoreTypes()), 'data.completion.requiredFileTypes')
             ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', SubmissionFileDefinition::nonCoreTypes())
             ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', []);
@@ -410,7 +414,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', ['bmef']);
     }
 
-    public function test_updating_indicator_draft_returns_full_submission_resource(): void
+    public function test_updating_indicator_draft_returns_lightweight_submission_resource(): void
     {
         $this->seedIndicatorFixtures();
 
@@ -446,9 +450,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $updated->assertOk()
             ->assertJsonPath('data.id', $submissionId)
             ->assertJsonPath('data.status', 'draft')
-            ->assertJsonCount(1, 'data.indicators')
-            ->assertJsonPath('data.indicators.0.metric.code', 'IMETA_HEAD_NAME')
-            ->assertJsonPath('data.indicators.0.actualTypedValue.values.2026-2027', 'Dr. Elena Cruz');
+            ->assertJsonPath('data.schoolId', (string) $schoolHead->school_id)
+            ->assertJsonPath('data.academicYearId', (string) $academicYearId)
+            ->assertJsonPath('data.academicYear.id', (string) $academicYearId)
+            ->assertJsonPath('data.academicYear.name', null)
+            ->assertJsonMissingPath('data.indicators')
+            ->assertJsonMissingPath('data.summary');
     }
 
     public function test_school_head_cannot_submit_other_schools_indicator_package(): void
@@ -946,7 +953,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $created->assertStatus(Response::HTTP_CREATED)
-            ->assertJsonPath('data.school.type', 'private')
+            ->assertJsonPath('data.schoolType', 'private')
             ->assertJsonPath('data.completion.hasImetaFormData', true);
 
         $submissionId = (string) $created->json('data.id');
@@ -1086,6 +1093,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $upload = $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf');
         $upload->assertOk()
+            ->assertJsonMissingPath('data.indicators')
             ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
             ->assertJsonPath('data.files.fm_qad_001.originalFilename', 'fm-qad-001.pdf')
             ->assertJsonPath('data.files.fm_qad_001.viewUrl', "/api/submissions/{$submissionId}/view/fm_qad_001")
