@@ -11,6 +11,7 @@ interface UploadFileMetadata {
 
 interface FileUploadFieldProps {
   label: string;
+  actionLabel?: string;
   description: string;
   file: UploadFileMetadata | null;
   submitted: boolean;
@@ -32,6 +33,7 @@ function formatUploadedAt(value: string | null): string {
 
 export function FileUploadField({
   label,
+  actionLabel,
   description,
   file,
   submitted,
@@ -44,6 +46,7 @@ export function FileUploadField({
   error = "",
 }: FileUploadFieldProps) {
   const isDownloadDisabled = disabled || !submitted;
+  const conciseLabel = actionLabel ?? label;
 
   return (
     <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -97,7 +100,7 @@ export function FileUploadField({
         </div>
       ) : (
         <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
-          <p className="text-sm font-semibold text-slate-700">{label} file not submitted yet.</p>
+          <p className="text-sm font-semibold text-slate-700">{conciseLabel} not submitted yet.</p>
           <p className="mt-1 text-xs text-slate-500">Upload to mark this requirement as submitted.</p>
           <button
             type="button"
@@ -106,7 +109,7 @@ export function FileUploadField({
             className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Upload className="h-3.5 w-3.5" />
-            {isUploading ? "Uploading..." : `Upload ${label}`}
+            {isUploading ? "Uploading..." : `Upload ${conciseLabel}`}
           </button>
         </div>
       )}

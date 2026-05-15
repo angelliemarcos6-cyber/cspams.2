@@ -5270,6 +5270,7 @@ function SchoolIndicatorPanelComponent({
                   <div className="space-y-3">
                     <FileUploadField
                       label={fileDefinition.label}
+                      actionLabel={fileDefinition.shortLabel}
                       description={fileDefinition.description}
                       file={fileEntry
                         ? {
