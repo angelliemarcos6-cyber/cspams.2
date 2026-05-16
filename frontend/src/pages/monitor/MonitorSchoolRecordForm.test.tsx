@@ -37,7 +37,7 @@ describe("MonitorSchoolRecordForm", () => {
     render(<MonitorSchoolRecordForm {...buildProps()} />);
 
     expect(
-      screen.getByText("School Head will submit fillable forms, BMEF, and SMEA."),
+      screen.getByText("Public School Head workspace uses BMEF and SMEA as the active package requirements."),
     ).toBeTruthy();
   });
 
@@ -62,7 +62,17 @@ describe("MonitorSchoolRecordForm", () => {
     );
 
     expect(
-      screen.getByText("School Head will submit fillable forms and the required FM-QAD files."),
+      screen.getByText("Private School Head workspace uses FM-QAD uploads only. BMEF and SMEA are not part of the active package."),
     ).toBeTruthy();
+  });
+
+  it("explains that temporary passwords remain visible to the monitor until the first password change", () => {
+    render(<MonitorSchoolRecordForm {...buildProps()} />);
+
+    expect(
+      screen.getAllByText(
+        "A temporary password will be generated after save. The School Head must change it on first login, and it remains visible in the monitor panel until then.",
+      ).length,
+    ).toBeGreaterThan(0);
   });
 });

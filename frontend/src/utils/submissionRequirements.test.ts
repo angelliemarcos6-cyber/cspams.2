@@ -35,13 +35,13 @@ describe("defaultRequiredSubmissionFileTypesForSchoolType", () => {
 describe("resolveSubmissionRequirementProfile", () => {
   it("returns the public create-school hint for public schools", () => {
     expect(resolveSubmissionRequirementProfile("public").createSchoolHint).toBe(
-      "School Head will submit fillable forms, BMEF, and SMEA.",
+      "Public School Head workspace uses BMEF and SMEA as the active package requirements.",
     );
   });
 
   it("returns the private create-school hint for private schools", () => {
     expect(resolveSubmissionRequirementProfile("private").createSchoolHint).toBe(
-      "School Head will submit fillable forms and the required FM-QAD files.",
+      "Private School Head workspace uses FM-QAD uploads only. BMEF and SMEA are not part of the active package.",
     );
   });
 });

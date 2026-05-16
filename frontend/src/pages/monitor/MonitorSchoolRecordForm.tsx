@@ -249,7 +249,7 @@ export function MonitorSchoolRecordForm({
                   )}
                 </div>
                 <p className="md:col-span-2 rounded-sm border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-semibold text-primary-800">
-                  A temporary password will be generated after save. The School Head must change it on first login, and it is shown only once.
+                  A temporary password will be generated after save. The School Head must change it on first login, and it remains visible in the monitor panel until then.
                 </p>
               </div>
             )}

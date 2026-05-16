@@ -21,14 +21,14 @@ export function resolveSubmissionRequirementProfile(
     return {
       schoolType: "private",
       requiredFileTypes: SUBMISSION_FILE_TYPES.filter((type) => !SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core),
-      createSchoolHint: "School Head will submit fillable forms and the required FM-QAD files.",
+      createSchoolHint: "Private School Head workspace uses FM-QAD uploads only. BMEF and SMEA are not part of the active package.",
     };
   }
 
   return {
     schoolType: "public",
     requiredFileTypes: SUBMISSION_FILE_TYPES.filter((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core),
-    createSchoolHint: "School Head will submit fillable forms, BMEF, and SMEA.",
+    createSchoolHint: "Public School Head workspace uses BMEF and SMEA as the active package requirements.",
   };
 }
 
