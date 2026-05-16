@@ -68,6 +68,18 @@ function isMissingSchoolRecordError(error: unknown): boolean {
   return message === "School record not found. It may have been archived or permanently deleted.";
 }
 
+function buildSyncedCountsUnavailableMessage(hasStudentFailure: boolean, hasTeacherFailure: boolean): string {
+  if (hasStudentFailure && hasTeacherFailure) {
+    return "Unable to refresh synced student and teacher totals right now. Showing last available counts.";
+  }
+
+  if (hasStudentFailure) {
+    return "Unable to refresh synced student totals right now. Showing last available counts.";
+  }
+
+  return "Unable to refresh synced teacher totals right now. Showing last available counts.";
+}
+
 export function useSchoolDrawer({
   authSessionKey,
   isAuthenticated,
@@ -95,6 +107,7 @@ export function useSchoolDrawer({
   const schoolDetailCountsCacheRef = useRef<Map<string, { students: number; teachers: number; fetchedAt: number }>>(
     new Map(),
   );
+  const accurateSyncedCountsRef = useRef<Record<string, { students: number; teachers: number }>>({});
   const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
 
   const schoolDrawerRecordId = useMemo(
@@ -142,6 +155,7 @@ export function useSchoolDrawer({
     setIsSchoolDrawerSubmissionsLoading(false);
     setSchoolDrawerSubmissionsError("");
     setAccurateSyncedCountsBySchoolKey({});
+    accurateSyncedCountsRef.current = {};
     setSyncedCountsLoadingSchoolKey(null);
     setSyncedCountsError("");
     setSubmissionRefreshTick(0);
@@ -275,7 +289,15 @@ export function useSchoolDrawer({
 
     const hydrateAccurateSyncedCounts = async () => {
       const cached = shouldForceRefresh ? null : readCachedCounts();
+      const currentKnownCounts = accurateSyncedCountsRef.current[schoolDrawerKey] ?? cached;
       if (cached) {
+        accurateSyncedCountsRef.current = {
+          ...accurateSyncedCountsRef.current,
+          [schoolDrawerKey]: {
+            students: cached.students,
+            teachers: cached.teachers,
+          },
+        };
         setAccurateSyncedCountsBySchoolKey((current) => ({
           ...current,
           [schoolDrawerKey]: {
@@ -295,7 +317,7 @@ export function useSchoolDrawer({
       setSyncedCountsError("");
 
       try {
-        const [studentsResult, teachersResult] = await Promise.all([
+        const [studentsResult, teachersResult] = await Promise.allSettled([
           queryStudents({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
           listTeachers({ page: 1, perPage: 1, schoolCode: normalizedSchoolCode, signal: controller.signal }),
         ]);
@@ -304,18 +326,56 @@ export function useSchoolDrawer({
           return;
         }
 
+        const studentAborted =
+          studentsResult.status === "rejected" &&
+          studentsResult.reason instanceof DOMException &&
+          studentsResult.reason.name === "AbortError";
+        const teacherAborted =
+          teachersResult.status === "rejected" &&
+          teachersResult.reason instanceof DOMException &&
+          teachersResult.reason.name === "AbortError";
+        if (studentAborted || teacherAborted) {
+          return;
+        }
+
         const nextCounts = {
-          students: Number(studentsResult.meta.total ?? studentsResult.meta.recordCount ?? studentsResult.data.length ?? 0),
-          teachers: Number(teachersResult.meta.total ?? teachersResult.meta.recordCount ?? teachersResult.data.length ?? 0),
+          students:
+            studentsResult.status === "fulfilled"
+              ? Number(
+                  studentsResult.value.meta.total
+                    ?? studentsResult.value.meta.recordCount
+                    ?? studentsResult.value.data.length
+                    ?? 0,
+                )
+              : Number(currentKnownCounts?.students ?? 0),
+          teachers:
+            teachersResult.status === "fulfilled"
+              ? Number(
+                  teachersResult.value.meta.total
+                    ?? teachersResult.value.meta.recordCount
+                    ?? teachersResult.value.data.length
+                    ?? 0,
+                )
+              : Number(currentKnownCounts?.teachers ?? 0),
         };
         schoolDetailCountsCacheRef.current.set(schoolDrawerKey, {
           ...nextCounts,
           fetchedAt: Date.now(),
         });
+        accurateSyncedCountsRef.current = {
+          ...accurateSyncedCountsRef.current,
+          [schoolDrawerKey]: nextCounts,
+        };
         setAccurateSyncedCountsBySchoolKey((current) => ({
           ...current,
           [schoolDrawerKey]: nextCounts,
         }));
+
+        const hasStudentFailure = studentsResult.status === "rejected";
+        const hasTeacherFailure = teachersResult.status === "rejected";
+        if (hasStudentFailure || hasTeacherFailure) {
+          setSyncedCountsError(buildSyncedCountsUnavailableMessage(hasStudentFailure, hasTeacherFailure));
+        }
       } catch (err) {
         if (!active) {
           return;
@@ -324,7 +384,7 @@ export function useSchoolDrawer({
           return;
         }
 
-        setSyncedCountsError(err instanceof Error ? err.message : "Unable to refresh synced counts.");
+        setSyncedCountsError("Unable to refresh synced totals right now. Showing last available counts.");
       } finally {
         if (active && schoolDetailCountsAbortRef.current === controller) {
           schoolDetailCountsAbortRef.current = null;
@@ -340,7 +400,13 @@ export function useSchoolDrawer({
       schoolDetailCountsAbortRef.current?.abort();
       schoolDetailCountsAbortRef.current = null;
     };
-  }, [countsRefreshTick, listTeachers, queryStudents, schoolDrawerKey, schoolDrawerSchoolCode]);
+  }, [
+    countsRefreshTick,
+    listTeachers,
+    queryStudents,
+    schoolDrawerKey,
+    schoolDrawerSchoolCode,
+  ]);
 
   return {
     schoolDrawerKey,

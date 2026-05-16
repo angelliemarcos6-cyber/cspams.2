@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\Filterable;
 use App\Support\Audit\AuditsActivity;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\FormSubmissionStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -130,5 +131,25 @@ class School extends Model
             'updated_at' => 'max',
             'id' => 'max',
         ]);
+    }
+
+    public function latestMonitorRelevantIndicatorSubmission(): HasOne
+    {
+        $monitorRelevantStatuses = [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::VALIDATED->value,
+            FormSubmissionStatus::RETURNED->value,
+        ];
+
+        return $this->hasOne(IndicatorSubmission::class)
+            ->ofMany(
+                [
+                    'updated_at' => 'max',
+                    'id' => 'max',
+                ],
+                static function ($query) use ($monitorRelevantStatuses): void {
+                    $query->whereIn('status', $monitorRelevantStatuses);
+                },
+            );
     }
 }

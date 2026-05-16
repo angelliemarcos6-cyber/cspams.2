@@ -98,6 +98,17 @@ class SchoolRecordController extends Controller
 
         $query = (clone $baseQuery)
             ->with('submittedBy:id,name')
+            ->with(['latestMonitorRelevantIndicatorSubmission' => function ($query): void {
+                $query->select([
+                    'id',
+                    'indicator_submissions.school_id',
+                    'status',
+                    'submitted_at',
+                    'reviewed_at',
+                    'created_at',
+                    'updated_at',
+                ]);
+            }])
             ->with(['latestIndicatorSubmission' => function ($query): void {
                 $query->select([
                     'id',
@@ -1096,6 +1107,17 @@ class SchoolRecordController extends Controller
         $response = response()->json([
             'data' => (new SchoolRecordResource($school->load([
                 'submittedBy:id,name',
+                'latestMonitorRelevantIndicatorSubmission' => function ($query): void {
+                    $query->select([
+                        'id',
+                        'indicator_submissions.school_id',
+                        'status',
+                        'submitted_at',
+                        'reviewed_at',
+                        'created_at',
+                        'updated_at',
+                    ]);
+                },
                 'latestIndicatorSubmission' => function ($query): void {
                     $query->select([
                         'id',

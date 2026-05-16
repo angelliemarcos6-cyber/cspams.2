@@ -24,7 +24,7 @@ export function workflowLabel(status: string | null): string {
   if (status === "validated") return "Validated";
   if (status === "returned") return "Returned for Correction";
   if (status === "draft") return "Not Submitted";
-  return status;
+  return "In Progress";
 }
 
 export function navigatorButtonClass(active: boolean, compact: boolean): string {

@@ -50,11 +50,21 @@ class SchoolRecordResource extends JsonResource
      */
     private function serializeIndicatorLatest(): ?array
     {
-        if (! $this->relationLoaded('latestIndicatorSubmission')) {
+        $monitorRelevantLoaded = $this->relationLoaded('latestMonitorRelevantIndicatorSubmission');
+        $latestLoaded = $this->relationLoaded('latestIndicatorSubmission');
+
+        if (! $monitorRelevantLoaded && ! $latestLoaded) {
             return null;
         }
 
-        $submission = $this->latestIndicatorSubmission;
+        $submission = $monitorRelevantLoaded
+            ? ($this->latestMonitorRelevantIndicatorSubmission ?? null)
+            : null;
+
+        if (! $submission && $latestLoaded) {
+            $submission = $this->latestIndicatorSubmission;
+        }
+
         if (! $submission) {
             return null;
         }

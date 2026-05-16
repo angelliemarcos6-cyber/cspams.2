@@ -37,4 +37,43 @@ describe("useSchoolDrawer", () => {
       }),
     );
   });
+
+  it("degrades synced count refresh gracefully when one synced total request fails", async () => {
+    const queryStudents = vi.fn().mockResolvedValue({
+      data: [],
+      meta: {
+        total: 12,
+        recordCount: 12,
+      },
+    });
+    const listTeachers = vi.fn().mockRejectedValue(new Error("Server Error"));
+
+    const { result } = renderHook(() =>
+      useSchoolDrawer({
+        authSessionKey: "monitor:1",
+        isAuthenticated: true,
+        latestRealtimeBatch: null,
+        resolveRecordId: (schoolKey) => (schoolKey ? "school-record-2" : ""),
+        resolveSchoolCode: (schoolKey) => (schoolKey ? "SCH-002" : ""),
+        listSubmissionsForSchool: vi.fn().mockResolvedValue([]),
+        queryStudents,
+        listTeachers,
+      }),
+    );
+
+    await act(async () => {
+      result.current.openSchoolDrawer("school-2");
+    });
+
+    await waitFor(() => {
+      expect(result.current.accurateSyncedCountsBySchoolKey["school-2"]).toEqual({
+        students: 12,
+        teachers: 0,
+      });
+    });
+
+    expect(result.current.syncedCountsError).toBe(
+      "Unable to refresh synced teacher totals right now. Showing last available counts.",
+    );
+  });
 });
