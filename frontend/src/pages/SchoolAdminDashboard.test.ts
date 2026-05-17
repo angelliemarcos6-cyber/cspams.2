@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildSubmittedReportBlankStateLines,
-  buildSubmittedReportSourceContext,
   buildSchoolAdminRefreshBatches,
   buildDashboardViewYearStorageKey,
   resolveInitialSubmittedReportAcademicYearId,
   resolveSchoolAdminHeaderContext,
-  resolveSubmittedReportIndicatorByMetricCode,
-  resolveSubmittedReportSubmissionForView,
+} from "@/pages/SchoolAdminDashboard";
+import {
+  buildSubmittedReportBlankStateLines,
+  buildSubmittedReportSourceContext,
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
   resolveStableSubmittedReportViewSubmission,
-} from "@/pages/SchoolAdminDashboard";
+  resolveSubmittedReportIndicatorByMetricCode,
+  resolveSubmittedReportSubmissionForView,
+} from "@/pages/schoolAdminSubmittedReportView";
 import type { IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
 
 function submission(overrides: Partial<IndicatorSubmission>): IndicatorSubmission {
@@ -213,12 +215,22 @@ describe("buildSubmittedReportSourceContext", () => {
           id: "42",
           status: "submitted",
           statusLabel: "Submitted",
+          submittedAt: "2026-05-17T00:00:00.000Z",
         }),
         "2025-2026",
       ),
     ).toEqual([
       "Viewing finalized submitted report for SY 2025-2026.",
       "Source package: #42 (Submitted).",
+      `Submitted: ${new Date("2026-05-17T00:00:00.000Z").toLocaleDateString()}.`,
+    ]);
+  });
+
+  it("shows explicit reference-only source context when no finalized package exists yet", () => {
+    expect(buildSubmittedReportSourceContext(null, "2025-2026")).toEqual([
+      "Viewing finalized submitted report for SY 2025-2026.",
+      "Source package: None yet.",
+      "Status: Reference only.",
     ]);
   });
 });
