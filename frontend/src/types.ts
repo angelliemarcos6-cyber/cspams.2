@@ -570,7 +570,7 @@ export interface IndicatorSubmissionPayload {
   academicYearId: number;
   reportingPeriod?: string | null;
   notes?: string | null;
-  mode?: "full_replace" | "partial";
+  mode?: "upsert" | "full_replace";
   replace_missing?: boolean;
   indicators: Array<{
     metricId: number;

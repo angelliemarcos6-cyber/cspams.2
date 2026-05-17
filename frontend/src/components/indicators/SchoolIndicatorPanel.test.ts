@@ -15,7 +15,7 @@ import { buildSubmissionUploadedFileFingerprint } from "@/utils/submissionRequir
 import type { IndicatorMetric, IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
 
 describe("buildWorkspaceAutosavePayloadOptions", () => {
-  it("keeps routine autosave in partial mode instead of promoting it to a full workspace replace", () => {
+  it("keeps routine autosave incremental instead of promoting it to a full workspace replace", () => {
     expect(buildWorkspaceAutosavePayloadOptions()).toEqual({
       allowIncomplete: true,
       includeAllEntries: false,

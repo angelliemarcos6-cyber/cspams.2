@@ -4385,7 +4385,7 @@ function SchoolIndicatorPanelComponent({
       }
       const payload = {
         ...prepared.payload,
-        mode: "partial",
+        mode: "upsert",
         replace_missing: false,
       } satisfies IndicatorSubmissionPayload;
       console.log("[GroupB] payload:", payload);
