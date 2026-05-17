@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSubmittedReportBlankStateLines,
+  buildSubmittedReportSourceContext,
   buildSchoolAdminRefreshBatches,
   buildDashboardViewYearStorageKey,
   resolveInitialSubmittedReportAcademicYearId,
@@ -9,6 +10,7 @@ import {
   resolveSubmittedReportSubmissionForView,
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
+  resolveStableSubmittedReportViewSubmission,
 } from "@/pages/SchoolAdminDashboard";
 import type { IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
 
@@ -63,6 +65,27 @@ describe("resolveSelectedYearReportSubmission", () => {
     ]);
 
     expect(result?.id).toBe("validated-1");
+  });
+
+  it("uses submitted lineage recency before generic update freshness", () => {
+    const result = resolveSelectedYearReportSubmission([
+      submission({
+        id: "submitted-newer-lineage",
+        status: "submitted",
+        statusLabel: "Submitted",
+        submittedAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      }),
+      submission({
+        id: "validated-later-touch",
+        status: "validated",
+        statusLabel: "Validated",
+        submittedAt: "2026-04-20T00:00:00.000Z",
+        updatedAt: "2026-05-10T00:00:00.000Z",
+      }),
+    ]);
+
+    expect(result?.id).toBe("submitted-newer-lineage");
   });
 });
 
@@ -182,6 +205,24 @@ describe("buildSubmittedReportBlankStateLines", () => {
   });
 });
 
+describe("buildSubmittedReportSourceContext", () => {
+  it("keeps the submitted report header explicitly scoped to the selected report year", () => {
+    expect(
+      buildSubmittedReportSourceContext(
+        submission({
+          id: "42",
+          status: "submitted",
+          statusLabel: "Submitted",
+        }),
+        "2025-2026",
+      ),
+    ).toEqual([
+      "Viewing finalized submitted report for SY 2025-2026.",
+      "Source package: #42 (Submitted).",
+    ]);
+  });
+});
+
 describe("resolveSchoolAdminHeaderContext", () => {
   it("uses the assigned school address instead of region-oriented fallback data", () => {
     const result = resolveSchoolAdminHeaderContext(
@@ -274,6 +315,96 @@ describe("resolveSubmittedReportSubmissionForView", () => {
     );
 
     expect(result).toBeNull();
+  });
+});
+
+describe("resolveStableSubmittedReportViewSubmission", () => {
+  it("keeps hydrated finalized detail when it belongs to the same selected-year finalized report source", () => {
+    const selected = submission({
+      id: "submission-1",
+      status: "submitted",
+      statusLabel: "Submitted",
+      indicators: [],
+      items: [],
+      schoolId: "school-1",
+    });
+    const hydrated = submission({
+      id: "submission-1",
+      status: "submitted",
+      statusLabel: "Submitted",
+      schoolId: "school-1",
+      indicators: [
+        {
+          id: "indicator-1",
+          metric: {
+            id: "NER",
+            code: "NER",
+            name: "Net Enrollment Rate",
+            category: "test",
+            framework: "imeta",
+            dataType: "number",
+          },
+          targetValue: 1,
+          actualValue: 2,
+          varianceValue: 1,
+          complianceStatus: "met",
+          remarks: null,
+        },
+      ],
+      items: [],
+    });
+
+    const result = resolveStableSubmittedReportViewSubmission(selected, hydrated, {
+      selectedSchoolId: "school-1",
+      selectedAcademicYearId: "year-1",
+    });
+
+    expect(result).toBe(hydrated);
+  });
+
+  it("does not let an older hydrated finalized row override a newer selected-year finalized package", () => {
+    const selected = submission({
+      id: "submission-2",
+      status: "submitted",
+      statusLabel: "Submitted",
+      schoolId: "school-1",
+      submittedAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const hydrated = submission({
+      id: "submission-1",
+      status: "submitted",
+      statusLabel: "Submitted",
+      schoolId: "school-1",
+      submittedAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-05-10T00:00:00.000Z",
+      indicators: [
+        {
+          id: "indicator-1",
+          metric: {
+            id: "NER",
+            code: "NER",
+            name: "Net Enrollment Rate",
+            category: "test",
+            framework: "imeta",
+            dataType: "number",
+          },
+          targetValue: 1,
+          actualValue: 2,
+          varianceValue: 1,
+          complianceStatus: "met",
+          remarks: null,
+        },
+      ],
+      items: [],
+    });
+
+    const result = resolveStableSubmittedReportViewSubmission(selected, hydrated, {
+      selectedSchoolId: "school-1",
+      selectedAcademicYearId: "year-1",
+    });
+
+    expect(result).toBe(selected);
   });
 });
 

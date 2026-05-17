@@ -65,10 +65,39 @@ function latestSubmission<T extends { updatedAt: string | null; createdAt: strin
   return sorted[0] ?? null;
 }
 
+function safeSubmissionTimestamp(value: string | null | undefined): number {
+  const timestamp = new Date(value ?? 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function submittedReportLineageTimestamp(submission: IndicatorSubmission): number {
+  return safeSubmissionTimestamp(submission.submittedAt)
+    || safeSubmissionTimestamp(submission.reviewedAt)
+    || safeSubmissionTimestamp(submission.updatedAt)
+    || safeSubmissionTimestamp(submission.createdAt);
+}
+
 function submissionRecencyScore(submission: IndicatorSubmission): number {
-  const timestamp = new Date(submission.updatedAt ?? submission.submittedAt ?? submission.createdAt ?? 0).getTime();
+  const timestamp = submittedReportLineageTimestamp(submission);
   const version = Number(submission.version ?? 0);
   return (Number.isFinite(timestamp) ? timestamp : 0) * 1_000 + (Number.isFinite(version) ? version : 0);
+}
+
+function compareSelectedYearFinalizedReportSubmissions(
+  left: IndicatorSubmission,
+  right: IndicatorSubmission,
+): number {
+  const recencyDelta = submissionRecencyScore(right) - submissionRecencyScore(left);
+  if (recencyDelta !== 0) {
+    return recencyDelta;
+  }
+
+  const updatedDelta = safeSubmissionTimestamp(right.updatedAt) - safeSubmissionTimestamp(left.updatedAt);
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+
+  return String(right.id ?? "").localeCompare(String(left.id ?? ""));
 }
 
 export function resolvePreferredSubmittedReportAcademicYearId(
@@ -82,7 +111,7 @@ export function resolvePreferredSubmittedReportAcademicYearId(
       || resolveSubmissionSchoolId(entry) === selectedSchoolId
     ))
     .slice()
-    .sort((left, right) => submissionRecencyScore(right) - submissionRecencyScore(left));
+    .sort(compareSelectedYearFinalizedReportSubmissions);
 
   return finalizedEntries[0]?.academicYear?.id ?? null;
 }
@@ -133,33 +162,7 @@ export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission
     return null;
   }
 
-  const priorityByStatus: Record<string, number> = {
-    submitted: 0,
-    validated: 1,
-  };
-
-  const ranked = finalizedEntries
-    .slice()
-    .sort((left, right) => {
-      const freshnessDelta = submissionRecencyScore(right) - submissionRecencyScore(left);
-      if (freshnessDelta !== 0) {
-        return freshnessDelta;
-      }
-
-      const leftStatus = String(left.status ?? "").trim().toLowerCase();
-      const rightStatus = String(right.status ?? "").trim().toLowerCase();
-      const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
-      const rightRank = priorityByStatus[rightStatus] ?? Number.MAX_SAFE_INTEGER;
-
-      if (leftRank !== rightRank) {
-        return leftRank - rightRank;
-      }
-
-      return (
-        new Date(right.submittedAt ?? right.updatedAt ?? right.createdAt ?? 0).getTime()
-        - new Date(left.submittedAt ?? left.updatedAt ?? left.createdAt ?? 0).getTime()
-      );
-    });
+  const ranked = finalizedEntries.slice().sort(compareSelectedYearFinalizedReportSubmissions);
 
   return ranked[0] ?? null;
 }
@@ -192,6 +195,33 @@ export function resolveSubmittedReportSubmissionForView(
   return submission;
 }
 
+export function resolveStableSubmittedReportViewSubmission(
+  selectedSubmission: IndicatorSubmission | null | undefined,
+  hydratedSubmission: IndicatorSubmission | null | undefined,
+  options: {
+    selectedSchoolId: string | null | undefined;
+    selectedAcademicYearId: string | null | undefined;
+  },
+): IndicatorSubmission | null {
+  const eligibleSelectedSubmission = resolveSubmittedReportSubmissionForView(selectedSubmission, options);
+  const eligibleHydratedSubmission = resolveSubmittedReportSubmissionForView(hydratedSubmission, options);
+
+  const preferredSubmission = resolveSelectedYearReportSubmission(
+    [eligibleSelectedSubmission, eligibleHydratedSubmission].filter((entry): entry is IndicatorSubmission => Boolean(entry)),
+  );
+
+  if (
+    eligibleHydratedSubmission
+    && preferredSubmission
+    && eligibleHydratedSubmission.id === preferredSubmission.id
+    && submissionHasRenderableIndicatorDetails(eligibleHydratedSubmission)
+  ) {
+    return eligibleHydratedSubmission;
+  }
+
+  return eligibleSelectedSubmission;
+}
+
 export function resolveSubmittedReportIndicatorByMetricCode(
   indicators: IndicatorSubmissionItem[],
   expectedMetricCode: string | null | undefined,
@@ -204,6 +234,23 @@ export function buildSubmittedReportBlankStateLines(): [string, string] {
     "No finalized submitted report package exists yet for the selected academic year.",
     "The report tables are shown for reference. Finalized values will appear here after you submit the package.",
   ];
+}
+
+export function buildSubmittedReportSourceContext(
+  submission: IndicatorSubmission | null | undefined,
+  selectedReportYearLabel: string,
+): string[] {
+  const lines = [`Viewing finalized submitted report for SY ${selectedReportYearLabel}.`];
+
+  if (!submission?.id) {
+    return lines;
+  }
+
+  const packageId = String(submission.id ?? "").trim();
+  const statusLabel = String(submission.statusLabel ?? submission.status ?? "").trim() || "Submitted";
+  lines.push(`Source package: #${packageId} (${statusLabel}).`);
+
+  return lines;
 }
 
 function normalizeFileExtension(filename: string | null | undefined): string {
@@ -325,8 +372,8 @@ function compareAcademicYearsAscending(a: { name: string }, b: { name: string })
   return String(a.name).localeCompare(String(b.name));
 }
 
-function buildSelectedYearLoadKey(schoolId: string, academicYearId: string): string {
-  return `${schoolId}:${academicYearId}`;
+function buildSelectedYearLoadKey(schoolId: string, academicYearId: string, syncMarker: string | null | undefined = ""): string {
+  return `${schoolId}:${academicYearId}:${String(syncMarker ?? "").trim()}`;
 }
 
 const MOBILE_BREAKPOINT = 768;
@@ -701,15 +748,14 @@ export function SchoolAdminDashboard() {
       selectedSchoolId,
       selectedAcademicYearId: effectiveAcademicYearId,
     });
-    const hydratedSubmission = (
-      hydratedSubmittedReportSubmission?.id === selectedSubmission?.id
-        ? resolveSubmittedReportSubmissionForView(hydratedSubmittedReportSubmission, {
-            selectedSchoolId,
-            selectedAcademicYearId: effectiveAcademicYearId,
-          })
-        : null
+    const submission = resolveStableSubmittedReportViewSubmission(
+      selectedSubmission,
+      hydratedSubmittedReportSubmission,
+      {
+        selectedSchoolId,
+        selectedAcademicYearId: effectiveAcademicYearId,
+      },
     );
-    const submission = hydratedSubmission ?? selectedSubmission;
     const indicators = submissionRows(submission);
     const duplicateMetricCodes = new Set<string>();
     const indicatorCodeCounts = new Map<string, number>();
@@ -838,6 +884,10 @@ export function SchoolAdminDashboard() {
     orderedAcademicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
   );
+  const submittedReportSourceContext = useMemo(
+    () => buildSubmittedReportSourceContext(groupAReportView.submission, selectedReportYearLabel),
+    [groupAReportView.submission, selectedReportYearLabel],
+  );
   const submittedIndicatorRows = useMemo(
     () => groupAReportView.indicators,
     [groupAReportView],
@@ -926,7 +976,7 @@ export function SchoolAdminDashboard() {
       return;
     }
 
-    const key = buildSelectedYearLoadKey(selectedSchoolId, dashboardViewAcademicYearId);
+    const key = buildSelectedYearLoadKey(selectedSchoolId, dashboardViewAcademicYearId, lastSyncedAt);
     if (lastLoadedYearKeyRef.current === key) {
       return;
     }
@@ -950,40 +1000,7 @@ export function SchoolAdminDashboard() {
           setIsDashboardYearSwitching(false);
         }
       });
-  }, [dashboardViewAcademicYearId, loadSubmissionsForYear, selectedSchoolId]);
-
-  useEffect(() => {
-    if (!selectedSchoolId || !dashboardViewAcademicYearId || dashboardViewAcademicYearId === "all" || isDashboardYearSwitching) {
-      return;
-    }
-
-    const matchingRows = schoolScopedSubmissions
-      .filter((submission) => (
-        String(submission.academicYear?.id ?? "") === String(dashboardViewAcademicYearId)
-        && isFinalizedSubmissionStatus(submission.status)
-      ))
-      .sort((a, b) => (
-        new Date(b.updatedAt ?? b.createdAt ?? 0).getTime()
-        - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime()
-      ));
-
-    if (matchingRows.length === 0 && dashboardViewSubmissions.length === 0) {
-      return;
-    }
-
-    setDashboardViewSubmissions((current) => {
-      const currentIds = current.map((submission) => submission.id).join("|");
-      const nextIds = matchingRows.map((submission) => submission.id).join("|");
-      const currentFingerprint = current.map((submission) => buildSubmissionRefreshFingerprint(submission)).join("|");
-      const nextFingerprint = matchingRows.map((submission) => buildSubmissionRefreshFingerprint(submission)).join("|");
-
-      if (currentIds === nextIds && currentFingerprint === nextFingerprint) {
-        return current;
-      }
-
-      return matchingRows;
-    });
-  }, [dashboardViewAcademicYearId, dashboardViewSubmissions.length, isDashboardYearSwitching, schoolScopedSubmissions, selectedSchoolId]);
+  }, [dashboardViewAcademicYearId, lastSyncedAt, loadSubmissionsForYear, selectedSchoolId]);
 
   useEffect(() => {
     setActiveReportModalType(null);
@@ -1181,6 +1198,15 @@ export function SchoolAdminDashboard() {
               <p className="mt-1 text-xs text-slate-500">
                 Finalized packages are shown for the selected academic year only. Older school submissions remain available when you switch years.
               </p>
+              {!isYearScopedLoading && (
+                <div className="mt-2 space-y-1">
+                  {submittedReportSourceContext.map((line) => (
+                    <p key={line} className="text-xs text-slate-500">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
