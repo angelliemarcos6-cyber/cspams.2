@@ -199,6 +199,13 @@ export function resolveSubmittedReportIndicatorByMetricCode(
   return resolveExactSubmissionItemByMetricCode(indicators, expectedMetricCode);
 }
 
+export function buildSubmittedReportBlankStateLines(): [string, string] {
+  return [
+    "No finalized submitted report package exists yet for the selected academic year.",
+    "The report tables are shown for reference. Finalized values will appear here after you submit the package.",
+  ];
+}
+
 function normalizeFileExtension(filename: string | null | undefined): string {
   const value = String(filename ?? "").trim().toLowerCase();
   if (!value.includes(".")) return "";
@@ -1183,10 +1190,10 @@ export function SchoolAdminDashboard() {
           {!isYearScopedLoading && !groupASubmittedSubmission && (
             <div className="mb-3 space-y-1">
               <p className="text-xs font-medium text-slate-500">
-                No finalized submitted report package exists yet for the selected academic year.
+                {buildSubmittedReportBlankStateLines()[0]}
               </p>
               <p className="text-xs text-slate-500">
-                Save Draft keeps your editable package in the workspace below. This report package updates only after you click Submit.
+                {buildSubmittedReportBlankStateLines()[1]}
               </p>
             </div>
           )}
@@ -1284,88 +1291,93 @@ export function SchoolAdminDashboard() {
                   </div>
                 </div>
               )}
-
-              <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
-                <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
-                  <div className="flex flex-col gap-1">
-                    <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
-                    {groupAReportView.totalIndicators > 0 && (
-                      <span className="pl-3 text-xs font-medium text-slate-500">
-                        Submitted package completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
-                      </span>
-                    )}
-                  </div>
-                </h2>
-                <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-                {/* School's Achievement Table */}
-                <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
-                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                    <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
-                  </div>
-                  <table className="w-full text-[13px] text-slate-900">
-                    <thead>
-                      <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
-                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E5E7EB]">
-                      {groupAReportView.schoolAchievementRows.map((row) => (
-                        <tr key={row.key}>
-                          <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
-                            {row.label}
-                          </td>
-                          <td className="px-4 py-2.5 text-right text-slate-900">
-                            <span className="font-semibold text-slate-900">
-                              {row.value}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Key Performance Indicators Table */}
-                <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
-                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                    <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
-                  </div>
-                  <table className="w-full text-[13px] text-slate-900">
-                    <thead>
-                      <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
-                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
-                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
-                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E5E7EB]">
-                      {groupAReportView.kpiRows.map((row) => (
-                        <tr key={row.key}>
-                          <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
-                          <td className="px-4 py-2.5 text-center text-slate-900">
-                            <span className="font-semibold text-slate-900">
-                              {row.target}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-center text-slate-900">
-                            <span className="font-semibold text-slate-900">
-                              {row.actual}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-center text-slate-900">
-                            {row.status}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
             </>
           )}
+
+          <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
+            <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
+              <div className="flex flex-col gap-1">
+                <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
+                {groupAReportView.submission && groupAReportView.totalIndicators > 0 && (
+                  <span className="pl-3 text-xs font-medium text-slate-500">
+                    Submitted package completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
+                  </span>
+                )}
+                {!groupAReportView.submission && (
+                  <span className="pl-3 text-xs font-medium text-slate-500">
+                    Reference table structure only. Finalized values appear here after package submission.
+                  </span>
+                )}
+              </div>
+            </h2>
+            <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+            {/* School's Achievement Table */}
+            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
+              </div>
+              <table className="w-full text-[13px] text-slate-900">
+                <thead>
+                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
+                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E5E7EB]">
+                  {groupAReportView.schoolAchievementRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
+                        {row.label}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-900">
+                        <span className="font-semibold text-slate-900">
+                          {row.value}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Key Performance Indicators Table */}
+            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
+              </div>
+              <table className="w-full text-[13px] text-slate-900">
+                <thead>
+                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
+                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
+                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
+                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E5E7EB]">
+                  {groupAReportView.kpiRows.map((row) => (
+                    <tr key={row.key}>
+                      <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        <span className="font-semibold text-slate-900">
+                          {row.target}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        <span className="font-semibold text-slate-900">
+                          {row.actual}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-slate-900">
+                        {row.status}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         </div>
       </section>
 

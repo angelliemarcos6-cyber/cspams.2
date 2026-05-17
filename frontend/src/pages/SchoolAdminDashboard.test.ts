@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSubmittedReportBlankStateLines,
   buildSchoolAdminRefreshBatches,
   buildDashboardViewYearStorageKey,
   resolveInitialSubmittedReportAcademicYearId,
@@ -168,6 +169,15 @@ describe("buildSchoolAdminRefreshBatches", () => {
     ).toEqual([
       [refreshRecords, refreshSubmissions],
       [refreshAllSubmissions],
+    ]);
+  });
+});
+
+describe("buildSubmittedReportBlankStateLines", () => {
+  it("keeps the selected-year no-finalized-package explanation explicit while preserving reference-table semantics", () => {
+    expect(buildSubmittedReportBlankStateLines()).toEqual([
+      "No finalized submitted report package exists yet for the selected academic year.",
+      "The report tables are shown for reference. Finalized values will appear here after you submit the package.",
     ]);
   });
 });
