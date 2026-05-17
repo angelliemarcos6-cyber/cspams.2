@@ -23,14 +23,6 @@ export interface SchoolDetailSnapshot {
   synchronizedTeachers: number;
 }
 
-export interface MonitorDrawerSnapshotSummary {
-  currentIssueLabel: string;
-  currentIssueTone: "warning" | "info" | "success";
-  selectedYearLabel: string | null;
-  checklistCompleteCount: number;
-  checklistMissingCount: number;
-}
-
 export interface MonitorDrawerYearOption {
   id: string;
   label: string;

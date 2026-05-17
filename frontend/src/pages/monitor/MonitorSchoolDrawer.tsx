@@ -3,7 +3,6 @@ import { X } from "lucide-react";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
   MonitorDrawerHistorySummary,
-  MonitorDrawerSnapshotSummary,
   MonitorDrawerYearDetail,
   SchoolDetailSnapshot,
   SchoolDrawerCriticalAlert,
@@ -35,7 +34,6 @@ interface MonitorSchoolDrawerLoadingState {
 interface MonitorSchoolDrawerData {
   schoolDetail: SchoolDetailSnapshot | null;
   availableSchoolDrawerYears: string[];
-  schoolDrawerSnapshotSummary: MonitorDrawerSnapshotSummary | null;
   schoolDrawerYearDetail: MonitorDrawerYearDetail | null;
   schoolDrawerHistorySummary: MonitorDrawerHistorySummary | null;
   schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
@@ -114,7 +112,6 @@ export function MonitorSchoolDrawer({
   const {
     schoolDetail,
     availableSchoolDrawerYears,
-    schoolDrawerSnapshotSummary,
     schoolDrawerYearDetail,
     schoolDrawerHistorySummary,
     schoolDrawerCriticalAlerts,
@@ -208,9 +205,8 @@ export function MonitorSchoolDrawer({
                   <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
                     <div className="inline-flex rounded-sm border border-slate-200 bg-slate-50 p-1">
                       {([
-                        { id: "snapshot", label: "Snapshot" },
                         { id: "submissions", label: "Submissions" },
-                        { id: "history", label: "History" },
+                        { id: "history", label: "History (Reference)" },
                       ] as Array<{ id: SchoolDrawerTab; label: string }>).map((tab) => (
                         <button
                           key={`school-drawer-tab-${tab.id}`}
@@ -269,145 +265,6 @@ export function MonitorSchoolDrawer({
                 </p>
               </article>
 
-              {activeSchoolDrawerTab === "snapshot" && (
-                <div className="space-y-3">
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Year Overview</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {schoolDrawerSnapshotSummary?.selectedYearLabel
-                              ? `Viewing SY ${schoolDrawerSnapshotSummary.selectedYearLabel}.`
-                              : "Select an academic year to review this school."}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <div className="rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2">
-                            <p className="text-[11px] text-slate-600">School</p>
-                            <p className="text-sm font-semibold text-slate-900">
-                              {schoolDetail.schoolCode} | {schoolDetail.level} | {schoolDetail.type}
-                            </p>
-                          </div>
-                          <div className="rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-2">
-                            <p className="text-[11px] text-slate-600">Checklist</p>
-                            <p className="text-sm font-semibold text-slate-900">
-                              {schoolDrawerSnapshotSummary
-                                ? `${schoolDrawerSnapshotSummary.checklistCompleteCount} complete, ${schoolDrawerSnapshotSummary.checklistMissingCount} missing`
-                                : "No year summary yet"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <div
-                        className={`rounded-sm border px-3 py-2 text-sm font-semibold ${
-                          schoolDrawerSnapshotSummary?.currentIssueTone === "warning"
-                            ? "border-amber-300 bg-amber-50 text-amber-800"
-                            : schoolDrawerSnapshotSummary?.currentIssueTone === "success"
-                              ? "border-primary-200 bg-primary-50 text-primary-700"
-                              : "border-slate-200 bg-slate-50 text-slate-700"
-                        }`}
-                      >
-                        <p className="text-[11px] uppercase tracking-wide">Current Issue</p>
-                        <p className="mt-1">{schoolDrawerSnapshotSummary?.currentIssueLabel ?? "No immediate issue."}</p>
-                      </div>
-                    </div>
-                  </article>
-
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Checklist Summary</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">Straightforward year-based submission status for this school.</p>
-                      </div>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Selected Year</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerSnapshotSummary?.selectedYearLabel ?? "N/A"}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Complete</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerSnapshotSummary?.checklistCompleteCount.toLocaleString() ?? "0"}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Missing</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerSnapshotSummary?.checklistMissingCount.toLocaleString() ?? "0"}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Current Issue</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerSnapshotSummary?.currentIssueLabel ?? "N/A"}</p>
-                      </div>
-                    </div>
-                  </article>
-
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Data Sync</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">Reported totals compared with current synced students and teachers.</p>
-                      </div>
-                      {syncedCountsLoadingSchoolKey === schoolDetail.schoolKey ? (
-                        <p className="text-[11px] text-slate-500">Refreshing synced totals...</p>
-                      ) : null}
-                    </div>
-                    {syncedCountsError ? (
-                      <div className="mt-2 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-                        {syncedCountsError}
-                      </div>
-                    ) : null}
-                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Reported Students</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedStudents.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Synced Students</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedStudents.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Reported Teachers</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedTeachers.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Synced Teachers</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedTeachers.toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </article>
-
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Critical Alerts</p>
-                      <p className="text-[11px] text-slate-500">
-                        Last activity: {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
-                      </p>
-                    </div>
-                    {schoolDrawerCriticalAlerts.length === 0 ? (
-                      <div className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-2 text-xs font-medium text-primary-700">
-                        No critical alerts for this school.
-                      </div>
-                    ) : (
-                      <div className="mt-2 space-y-2">
-                        {schoolDrawerCriticalAlerts.map((alert) => (
-                          <div
-                            key={`school-critical-alert-${alert.id}`}
-                            className={`rounded-sm border px-2.5 py-2 ${
-                              alert.tone === "warning"
-                                ? "border-amber-300 bg-amber-50 text-amber-800"
-                                : "border-primary-200 bg-primary-50 text-primary-700"
-                            }`}
-                          >
-                            <p className="text-xs font-semibold">{alert.title}</p>
-                            <p className="mt-0.5 text-xs">{alert.detail}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </article>
-                </div>
-              )}
-
               {activeSchoolDrawerTab === "submissions" && (
                 <div className="space-y-3">
                   <article className="rounded-sm border border-slate-200 bg-white p-3">
@@ -425,6 +282,9 @@ export function MonitorSchoolDrawer({
                               ? "Private school requirements are shown below."
                               : "Public school requirements are shown below."}
                           </p>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Older package lineage stays available in <span className="font-semibold text-slate-700">History (Reference)</span>.
+                          </p>
                         </div>
                       </div>
                       <div
@@ -439,6 +299,26 @@ export function MonitorSchoolDrawer({
                         <p className="text-[11px] uppercase tracking-wide">Current Issue</p>
                         <p className="mt-1">
                           {schoolDrawerYearDetail?.currentIssueLabel ?? "No immediate issue."}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Selected Year</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerYearDetail?.selectedYearLabel ?? "N/A"}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Complete</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerYearDetail?.checklistCompleteCount.toLocaleString() ?? "0"}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Missing</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerYearDetail?.checklistMissingCount.toLocaleString() ?? "0"}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Latest Activity</p>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {schoolDrawerYearDetail?.selectedYearLatestStatus ? workflowLabel(schoolDrawerYearDetail.selectedYearLatestStatus) : "None yet"}
                         </p>
                       </div>
                     </div>
@@ -597,6 +477,71 @@ export function MonitorSchoolDrawer({
                         </div>
                       </div>
                     </div>
+                  </article>
+
+                  <article className="rounded-sm border border-slate-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Data Sync</p>
+                        <p className="mt-0.5 text-[11px] text-slate-500">Reported totals compared with current synced students and teachers.</p>
+                      </div>
+                      {syncedCountsLoadingSchoolKey === schoolDetail.schoolKey ? (
+                        <p className="text-[11px] text-slate-500">Refreshing synced totals...</p>
+                      ) : null}
+                    </div>
+                    {syncedCountsError ? (
+                      <div className="mt-2 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+                        {syncedCountsError}
+                      </div>
+                    ) : null}
+                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Reported Students</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedStudents.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Synced Students</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedStudents.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Reported Teachers</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedTeachers.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
+                        <p className="text-[11px] text-slate-600">Synced Teachers</p>
+                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedTeachers.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </article>
+
+                  <article className="rounded-sm border border-slate-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Critical Alerts</p>
+                      <p className="text-[11px] text-slate-500">
+                        Last activity: {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
+                      </p>
+                    </div>
+                    {schoolDrawerCriticalAlerts.length === 0 ? (
+                      <div className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-2 text-xs font-medium text-primary-700">
+                        No critical alerts for this school.
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {schoolDrawerCriticalAlerts.map((alert) => (
+                          <div
+                            key={`school-critical-alert-${alert.id}`}
+                            className={`rounded-sm border px-2.5 py-2 ${
+                              alert.tone === "warning"
+                                ? "border-amber-300 bg-amber-50 text-amber-800"
+                                : "border-primary-200 bg-primary-50 text-primary-700"
+                            }`}
+                          >
+                            <p className="text-xs font-semibold">{alert.title}</p>
+                            <p className="mt-0.5 text-xs">{alert.detail}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </article>
                 </div>
               )}

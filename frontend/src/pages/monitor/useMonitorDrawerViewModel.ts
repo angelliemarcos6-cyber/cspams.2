@@ -6,7 +6,6 @@ import type {
   MonitorDrawerHistorySummary,
   MonitorDrawerKpiReportRow,
   MonitorDrawerSchoolAchievementReportRow,
-  MonitorDrawerSnapshotSummary,
   MonitorDrawerYearDetail,
   MonitorDrawerChecklistItem,
   MonitorDrawerYearOption,
@@ -63,7 +62,6 @@ export interface UseMonitorDrawerViewModelResult {
   missingDrawerIndicatorKeySet: Set<string>;
   returnedDrawerIndicatorKeySet: Set<string>;
   schoolDetail: SchoolDetailSnapshot | null;
-  schoolDrawerSnapshotSummary: MonitorDrawerSnapshotSummary | null;
   schoolDrawerYearDetail: MonitorDrawerYearDetail | null;
   schoolDrawerHistorySummary: MonitorDrawerHistorySummary | null;
   schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
@@ -123,22 +121,6 @@ function resolveChecklistTone(statusLabel: MonitorDrawerChecklistItem["statusLab
     return "info";
   }
   return "success";
-}
-
-export function buildMonitorDrawerSnapshotSummary(
-  yearDetail: MonitorDrawerYearDetail | null,
-): MonitorDrawerSnapshotSummary | null {
-  if (!yearDetail) {
-    return null;
-  }
-
-  return {
-    currentIssueLabel: yearDetail.currentIssueLabel,
-    currentIssueTone: yearDetail.currentIssueTone,
-    selectedYearLabel: yearDetail.selectedYearLabel,
-    checklistCompleteCount: yearDetail.checklistCompleteCount,
-    checklistMissingCount: yearDetail.checklistMissingCount,
-  };
 }
 
 export function buildMonitorDrawerYearDetail(
@@ -676,11 +658,6 @@ export function useMonitorDrawerViewModel({
     [effectiveSelectedSchoolDrawerYear, schoolDetail, schoolDrawerSubmissions, schoolIndicatorMatrix.rows],
   );
 
-  const schoolDrawerSnapshotSummary = useMemo(
-    () => buildMonitorDrawerSnapshotSummary(schoolDrawerYearDetail),
-    [schoolDrawerYearDetail],
-  );
-
   const schoolDrawerHistorySummary = useMemo(
     () => buildMonitorDrawerHistorySummary(schoolDrawerSubmissions),
     [schoolDrawerSubmissions],
@@ -768,7 +745,6 @@ export function useMonitorDrawerViewModel({
     missingDrawerIndicatorKeySet,
     returnedDrawerIndicatorKeySet,
     schoolDetail,
-    schoolDrawerSnapshotSummary,
     schoolDrawerYearDetail,
     schoolDrawerHistorySummary,
     schoolDrawerCriticalAlerts,

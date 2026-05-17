@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 
 describe("MonitorSchoolDrawer", () => {
-  it("renders the year-based submissions view without the old package-summary language", () => {
+  it("keeps submissions as the main page and history as secondary reference", () => {
     render(
       <MonitorSchoolDrawer
         viewState={{
@@ -46,13 +46,6 @@ describe("MonitorSchoolDrawer", () => {
             synchronizedTeachers: 0,
           },
           availableSchoolDrawerYears: ["2025-2026"],
-          schoolDrawerSnapshotSummary: {
-            currentIssueLabel: "Awaiting monitor review.",
-            currentIssueTone: "info",
-            selectedYearLabel: "2025-2026",
-            checklistCompleteCount: 2,
-            checklistMissingCount: 0,
-          },
           schoolDrawerYearDetail: {
             selectedYearLabel: "2025-2026",
             availableYears: [{ id: "2025-2026", label: "2025-2026" }],
@@ -105,8 +98,13 @@ describe("MonitorSchoolDrawer", () => {
     );
 
     expect(screen.getByLabelText("Monitor school detail academic year")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Submissions" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "History (Reference)" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Snapshot" })).toBeNull();
     expect(screen.getByText("Year Checklist")).toBeTruthy();
     expect(screen.getByText("Submitted Report View")).toBeTruthy();
+    expect(screen.getByText("Data Sync")).toBeTruthy();
+    expect(screen.getByText("Critical Alerts")).toBeTruthy();
     expect(screen.queryByText("Active Package Context")).toBeNull();
     expect(screen.queryByText("Monitor Package")).toBeNull();
     expect(screen.queryByText("Active package requirements: FM-QAD uploads only.")).toBeNull();

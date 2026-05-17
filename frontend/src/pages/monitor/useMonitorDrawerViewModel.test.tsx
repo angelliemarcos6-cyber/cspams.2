@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMonitorDrawerHistorySummary,
-  buildMonitorDrawerSnapshotSummary,
   buildMonitorDrawerYearDetail,
 } from "@/pages/monitor/useMonitorDrawerViewModel";
 
@@ -202,38 +201,6 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(detail?.reportBlankStateLines[0]).toContain("No finalized submitted report package exists yet");
     expect(detail?.checklistItems.some((item) => item.label === "FM-QAD-001" && item.statusLabel === "Uploaded")).toBe(true);
     expect(detail?.checklistItems.some((item) => item.label === "FM-QAD-002" && item.statusLabel === "Missing")).toBe(true);
-  });
-});
-
-describe("buildMonitorDrawerSnapshotSummary", () => {
-  it("reduces snapshot to simple year overview details", () => {
-    const summary = buildMonitorDrawerSnapshotSummary({
-      selectedYearLabel: "2025-2026",
-      availableYears: [{ id: "2025-2026", label: "2025-2026" }],
-      currentIssueLabel: "Awaiting monitor review.",
-      currentIssueTone: "info",
-      checklistItems: [],
-      checklistCompleteCount: 3,
-      checklistMissingCount: 1,
-      selectedYearLatestSubmissionId: "sub-1",
-      selectedYearLatestStatus: "submitted",
-      finalizedReportSubmission: null,
-      reportSourceContext: [],
-      reportBlankStateLines: [
-        "No finalized submitted report package exists yet for the selected academic year.",
-        "The report tables are shown for reference. Finalized values will appear here after you submit the package.",
-      ],
-      schoolAchievementRows: [],
-      kpiRows: [],
-    });
-
-    expect(summary).toEqual({
-      currentIssueLabel: "Awaiting monitor review.",
-      currentIssueTone: "info",
-      selectedYearLabel: "2025-2026",
-      checklistCompleteCount: 3,
-      checklistMissingCount: 1,
-    });
   });
 });
 
