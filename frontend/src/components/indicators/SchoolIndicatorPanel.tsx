@@ -23,9 +23,11 @@ import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import {
+  buildSubmissionUploadedFileFingerprint,
   getActiveWorkspaceFileTypes,
   isSubmissionFileUploaded,
   resolveActiveWorkspaceVisibleFileDefinitions,
+  resolveExactMetricIdentity,
   resolveSubmissionSchoolId,
   resolveSubmissionPresentationSchoolType,
   defaultRequiredSubmissionFileTypesForSchoolType,
@@ -180,6 +182,77 @@ export function buildWorkspaceAutosavePayloadOptions() {
     allowIncomplete: true,
     includeAllEntries: false,
   } as const;
+}
+
+function rankWorkspaceSubmissionStatus(status: string | null | undefined): number {
+  switch (String(status ?? "").toLowerCase()) {
+    case "draft":
+      return 0;
+    case "returned":
+      return 1;
+    case "submitted":
+      return 2;
+    case "validated":
+      return 3;
+    default:
+      return Number.MAX_SAFE_INTEGER;
+  }
+}
+
+function compareWorkspaceSubmissionRecency(
+  left: IndicatorSubmission,
+  right: IndicatorSubmission,
+): number {
+  const recencyDelta = toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left);
+  if (recencyDelta !== 0) {
+    return recencyDelta;
+  }
+
+  const statusDelta = rankWorkspaceSubmissionStatus(left.status) - rankWorkspaceSubmissionStatus(right.status);
+  if (statusDelta !== 0) {
+    return statusDelta;
+  }
+
+  return String(right.id ?? "").localeCompare(String(left.id ?? ""));
+}
+
+export function resolveEditableWorkspaceSubmission(
+  submissions: IndicatorSubmission[],
+  editingSubmissionId: string | null,
+): IndicatorSubmission | null {
+  const editingSubmission = editingSubmissionId
+    ? submissions.find((submission) => submission.id === editingSubmissionId) ?? null
+    : null;
+
+  if (editingSubmission && isDraftOrReturnedWorkflowStatus(editingSubmission.status)) {
+    return editingSubmission;
+  }
+
+  return submissions
+    .filter((submission) => isDraftOrReturnedWorkflowStatus(submission.status))
+    .slice()
+    .sort(compareWorkspaceSubmissionRecency)[0] ?? null;
+}
+
+export function resolvePreferredWorkspaceSubmission(
+  submissions: IndicatorSubmission[],
+  editingSubmissionId: string | null,
+): IndicatorSubmission | null {
+  const ranked = submissions.slice().sort(compareWorkspaceSubmissionRecency);
+  const editingSubmission = editingSubmissionId
+    ? ranked.find((submission) => submission.id === editingSubmissionId) ?? null
+    : null;
+  const editableSubmission = resolveEditableWorkspaceSubmission(ranked, editingSubmissionId);
+
+  if (editableSubmission) {
+    return editableSubmission;
+  }
+
+  if (editingSubmission) {
+    return editingSubmission;
+  }
+
+  return ranked[0] ?? null;
 }
 
 function buildWorkspaceSubmissionFingerprint(
@@ -1110,46 +1183,15 @@ function resolveMetricFromIndicatorInternal(
   },
 ): IndicatorMetric | null {
   const record = indicator as unknown as Record<string, unknown>;
-  const directMetric = (record.metric ?? null) as Record<string, unknown> | null;
-  const idCandidates = [
-    directMetric?.id,
-    record.metricId,
-    record.metric_id,
-    record.performance_metric_id,
-  ];
+  const exactMetric = resolveExactMetricIdentity(record as Pick<IndicatorSubmissionItem, "metric"> & Record<string, unknown>, metricsById, metricsByCode);
 
-  for (const candidate of idCandidates) {
-    const metricId = String(candidate ?? "").trim();
-    if (!metricId) {
-      continue;
-    }
-
-    const metric = metricsById.get(metricId);
-    if (metric) {
-      return metric;
-    }
-  }
-
-  const codeCandidates = [
-    directMetric?.code,
-    record.metricCode,
-    record.metric_code,
-  ];
-  for (const candidate of codeCandidates) {
-    const normalizedCode = normalizeMetricCode(String(candidate ?? ""));
-    if (!normalizedCode) {
-      continue;
-    }
-
-    const metric = metricsByCode.get(normalizedCode);
-    if (metric) {
-      return metric;
-    }
+  if (exactMetric) {
+    return exactMetric;
   }
 
   if (options.allowNameFallback) {
     const nameCandidates = [
-      directMetric?.name,
+      (record.metric as Record<string, unknown> | null | undefined)?.name,
       record.metricName,
       record.metric_name,
     ];
@@ -1951,35 +1993,6 @@ function SchoolIndicatorPanelComponent({
     () => scopedSubmissionsForYear[0] ?? null,
     [scopedSubmissionsForYear],
   );
-  const resolvedWorkspaceSubmission = useMemo(
-    () => {
-      const priorityByStatus: Record<string, number> = {
-        submitted: 0,
-        validated: 1,
-        returned: 2,
-        draft: 3,
-      };
-
-      const ranked = scopedSubmissionsForYear
-        .slice()
-        .sort((left, right) => {
-          const recencyDelta = toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left);
-          if (recencyDelta !== 0) {
-            return recencyDelta;
-          }
-
-          const leftStatus = String(left.status ?? "").toLowerCase();
-          const rightStatus = String(right.status ?? "").toLowerCase();
-          const leftRank = priorityByStatus[leftStatus] ?? Number.MAX_SAFE_INTEGER;
-          const rightRank = priorityByStatus[rightStatus] ?? Number.MAX_SAFE_INTEGER;
-
-          return leftRank - rightRank;
-        });
-
-      return ranked[0] ?? latestSubmissionInScope ?? null;
-    },
-    [latestSubmissionInScope, scopedSubmissionsForYear],
-  );
   const restorableServerSubmissionInScope = useMemo(
     () => draftSubmissionInScope,
     [draftSubmissionInScope],
@@ -1989,31 +2002,12 @@ function SchoolIndicatorPanelComponent({
     [editingSubmissionId, scopedSubmissionsForYear],
   );
   const editableWorkspaceSubmissionInScope = useMemo(
-      () => {
-        if (editingSubmissionInScope && isDraftOrReturnedWorkflowStatus(editingSubmissionInScope.status)) {
-          return editingSubmissionInScope;
-        }
-
-        return scopedSubmissionsForYear
-          .filter((submission) => isDraftOrReturnedWorkflowStatus(submission.status))
-          .slice()
-          .sort((left, right) => toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left))[0] ?? null;
-      },
-      [editingSubmissionInScope, scopedSubmissionsForYear],
-    );
+    () => resolveEditableWorkspaceSubmission(scopedSubmissionsForYear, editingSubmissionId),
+    [editingSubmissionId, scopedSubmissionsForYear],
+  );
   const preferredWorkspaceSubmission = useMemo(
-    () => {
-      if (editingSubmissionInScope) {
-        return editingSubmissionInScope;
-      }
-
-      if (editableWorkspaceSubmissionInScope) {
-        return editableWorkspaceSubmissionInScope;
-      }
-
-      return resolvedWorkspaceSubmission ?? null;
-    },
-    [editingSubmissionInScope, editableWorkspaceSubmissionInScope, resolvedWorkspaceSubmission],
+    () => resolvePreferredWorkspaceSubmission(scopedSubmissionsForYear, editingSubmissionId) ?? latestSubmissionInScope ?? null,
+    [editingSubmissionId, latestSubmissionInScope, scopedSubmissionsForYear],
   );
   useEffect(() => {
     if (!activeAcademicYearId) {
@@ -2028,6 +2022,15 @@ function SchoolIndicatorPanelComponent({
       )
         ? (scopedSubmissionsForYear.find((submission) => submission.id === current.id) ?? current)
         : null;
+      if (
+        currentInScope
+        && preferredWorkspaceSubmission
+        && currentInScope.id !== preferredWorkspaceSubmission.id
+        && isDraftOrReturnedWorkflowStatus(preferredWorkspaceSubmission.status)
+      ) {
+        return preferredWorkspaceSubmission;
+      }
+
       if (currentInScope) {
         return currentInScope;
       }
@@ -2053,15 +2056,8 @@ function SchoolIndicatorPanelComponent({
         const inScopeRows = [...rows]
           .filter((submission) => resolveSubmissionSchoolId(submission) === schoolId)
           .filter((submission) => String(submission.academicYear?.id ?? "") === String(activeAcademicYearId))
-          .sort((left, right) => toSubmissionRecencyScore(right) - toSubmissionRecencyScore(left));
-        const preferredSubmission = (
-          inScopeRows.find((submission) => String(submission.status ?? "").toLowerCase() === "returned")
-          ?? inScopeRows.find((submission) => String(submission.status ?? "").toLowerCase() === "draft")
-          ?? inScopeRows.find((submission) => submission.id === editingSubmissionId)
-          ?? inScopeRows.find((submission) => String(submission.status ?? "").toLowerCase() === "submitted")
-          ?? inScopeRows[0]
-          ?? null
-        );
+          .sort(compareWorkspaceSubmissionRecency);
+        const preferredSubmission = resolvePreferredWorkspaceSubmission(inScopeRows, editingSubmissionId);
 
         setActiveWorkspaceSubmission((current) => {
           const currentInScope = (
@@ -2070,6 +2066,15 @@ function SchoolIndicatorPanelComponent({
           )
             ? current
             : null;
+          if (
+            currentInScope
+            && preferredSubmission
+            && currentInScope.id !== preferredSubmission.id
+            && isDraftOrReturnedWorkflowStatus(preferredSubmission.status)
+          ) {
+            return preferredSubmission;
+          }
+
           if (currentInScope) {
             const matchingRow = inScopeRows.find((submission) => submission.id === currentInScope.id);
             return matchingRow ?? currentInScope;
@@ -2442,8 +2447,7 @@ function SchoolIndicatorPanelComponent({
       latestActiveWorkspaceSubmission?.updatedAt,
       latestActiveWorkspaceSubmission?.submittedAt,
       latestActiveWorkspaceSubmission?.reviewedAt,
-      isSubmissionFileUploaded(latestActiveWorkspaceSubmission, "bmef"),
-      isSubmissionFileUploaded(latestActiveWorkspaceSubmission, "smea"),
+      buildSubmissionUploadedFileFingerprint(latestActiveWorkspaceSubmission),
     ],
   );
   const runCriticalWorkspaceMutation = useCallback(
@@ -4559,6 +4563,10 @@ function SchoolIndicatorPanelComponent({
               setServerAutosaveAt(savedAt);
               lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
             }
+          }
+
+          if (!submissionToSubmit) {
+            throw new Error("Unable to resolve a workspace submission for this academic year.");
           }
 
           return await submitSubmission(submissionToSubmit.id);

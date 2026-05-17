@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSubmissionUploadedFileFingerprint,
   getActiveReportVisibleFiles,
   resolveActiveWorkspaceVisibleFileDefinitions,
   defaultRequiredSubmissionFileTypesForSchoolType,
@@ -122,7 +123,7 @@ describe("submission presentation helpers", () => {
         isComplete: false,
         uploadedFileTypes: ["fm_qad_002"],
       },
-    } as never)).toEqual(["fm_qad_002", "fm_qad_001", "bmef"]);
+    } as never)).toEqual(["fm_qad_001", "fm_qad_002", "bmef"]);
   });
 
   it("uses the shared uploaded-file helper for direct uploaded-state checks", () => {
@@ -134,6 +135,63 @@ describe("submission presentation helpers", () => {
         isComplete: false,
       },
     } as never, "smea")).toBe(true);
+  });
+
+  it("prefers actual file entries over broad raw compatibility flags in active private file-state helpers", () => {
+    expect(getSubmissionUploadedFileTypes({
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        uploadedFileTypes: ["fm_qad_001"],
+      },
+    } as never)).toEqual(["fm_qad_001", "bmef"]);
+  });
+
+  it("changes the uploaded-file fingerprint when a private FM-QAD upload appears", () => {
+    const emptyFingerprint = buildSubmissionUploadedFileFingerprint({
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+      },
+    } as never);
+    const uploadedFingerprint = buildSubmissionUploadedFileFingerprint({
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+      },
+    } as never);
+
+    expect(uploadedFingerprint).not.toBe(emptyFingerprint);
   });
 
   it("prefers normalized report file types over raw required file types", () => {

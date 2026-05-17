@@ -331,6 +331,29 @@ function sortSubmissionRows(rows: IndicatorSubmission[]): IndicatorSubmission[] 
   return [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a));
 }
 
+export async function collectPaginatedSubmissionRows(
+  listPage: (page: number) => Promise<IndicatorListResult>,
+  signal?: AbortSignal,
+): Promise<IndicatorSubmission[]> {
+  const rows: IndicatorSubmission[] = [];
+  let nextPage = 1;
+
+  while (true) {
+    throwIfAborted(signal);
+
+    const result = await listPage(nextPage);
+
+    throwIfAborted(signal);
+    rows.push(...result.data);
+
+    if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
+      return rows;
+    }
+
+    nextPage += 1;
+  }
+}
+
 function isLightweightSubmission(
   submission: IndicatorSubmission | LightweightIndicatorSubmission,
 ): submission is LightweightIndicatorSubmission {
@@ -822,28 +845,15 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         return cached.rows;
       }
 
-      const rows: IndicatorSubmission[] = [];
-      let nextPage = 1;
-
-      while (true) {
-        throwIfAborted(signal);
-
-        const result = await listSubmissions({
+      const rows = await collectPaginatedSubmissionRows(
+        (page) => listSubmissions({
           schoolId: normalizedSchoolId,
-          page: nextPage,
+          page,
           perPage: MAX_LIST_PER_PAGE,
           signal,
-        });
-
-        throwIfAborted(signal);
-        rows.push(...result.data);
-
-        if (!result.meta.hasMorePages || nextPage >= result.meta.lastPage) {
-          break;
-        }
-
-        nextPage += 1;
-      }
+        }),
+        signal,
+      );
 
       const sortedRows = filterSchoolHeadScopedSubmissions(
         [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a)),
@@ -879,19 +889,22 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         return cached;
       }
 
-      const result = await listSubmissions({
-        schoolId: normalizedSchoolId,
-        academicYearId: normalizedAcademicYearId,
-        status: normalizedStatus || null,
-        perPage: MAX_LIST_PER_PAGE,
-      });
+      const rows = await collectPaginatedSubmissionRows(
+        (page) => listSubmissions({
+          schoolId: normalizedSchoolId,
+          academicYearId: normalizedAcademicYearId,
+          status: normalizedStatus || null,
+          page,
+          perPage: MAX_LIST_PER_PAGE,
+        }),
+      );
 
-      const rows = filterSchoolHeadScopedSubmissions(
-        [...result.data].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a)),
+      const sortedRows = filterSchoolHeadScopedSubmissions(
+        [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a)),
         user,
       );
-      yearSubmissionsCacheRef.current.set(cacheKey, rows);
-      return rows;
+      yearSubmissionsCacheRef.current.set(cacheKey, sortedRows);
+      return sortedRows;
     },
     [listSubmissions, sessionKey, token, user],
   );

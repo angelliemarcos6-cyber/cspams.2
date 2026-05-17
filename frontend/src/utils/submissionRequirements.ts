@@ -4,7 +4,14 @@ import {
   SUBMISSION_FILE_TYPES,
   type SubmissionFileTabDefinition,
 } from "@/constants/submissionFiles";
-import type { IndicatorSubmission, IndicatorSubmissionFileEntry, IndicatorSubmissionFiles, IndicatorSubmissionFileType } from "@/types";
+import type {
+  IndicatorMetric,
+  IndicatorSubmission,
+  IndicatorSubmissionFileEntry,
+  IndicatorSubmissionFiles,
+  IndicatorSubmissionFileType,
+  IndicatorSubmissionItem,
+} from "@/types";
 
 export interface SubmissionRequirementProfile {
   schoolType: "public" | "private";
@@ -63,19 +70,26 @@ export function hasUploadedSubmissionFileEntry(
 export function getSubmissionUploadedFileTypes(
   submission: Pick<IndicatorSubmission, "files" | "completion"> | null | undefined,
 ): IndicatorSubmissionFileType[] {
-  const uploadedTypes = new Set<IndicatorSubmissionFileType>(submission?.completion?.uploadedFileTypes ?? []);
+  const uploadedTypes = new Set<IndicatorSubmissionFileType>();
+  const fileEntries = submission?.files ?? null;
 
   for (const type of SUBMISSION_FILE_TYPES) {
-    if (hasUploadedSubmissionFileEntry(submission?.files?.[type] ?? null)) {
+    if (hasUploadedSubmissionFileEntry(fileEntries?.[type] ?? null)) {
       uploadedTypes.add(type);
     }
   }
 
-  if (submission?.completion?.hasBmefFile) {
+  for (const type of submission?.completion?.uploadedFileTypes ?? []) {
+    if (!fileEntries || !(type in fileEntries)) {
+      uploadedTypes.add(type);
+    }
+  }
+
+  if (submission?.completion?.hasBmefFile && !fileEntries?.bmef) {
     uploadedTypes.add("bmef");
   }
 
-  if (submission?.completion?.hasSmeaFile) {
+  if (submission?.completion?.hasSmeaFile && !fileEntries?.smea) {
     uploadedTypes.add("smea");
   }
 
@@ -87,6 +101,60 @@ export function isSubmissionFileUploaded(
   type: IndicatorSubmissionFileType,
 ): boolean {
   return getSubmissionUploadedFileTypes(submission).includes(type);
+}
+
+export function buildSubmissionUploadedFileFingerprint(
+  submission: Pick<IndicatorSubmission, "files" | "completion"> | null | undefined,
+): string {
+  return SUBMISSION_FILE_TYPES
+    .map((type) => `${type}:${isSubmissionFileUploaded(submission, type) ? 1 : 0}`)
+    .join("|");
+}
+
+export function resolveExactMetricIdentity(
+  indicator: (Pick<IndicatorSubmissionItem, "metric"> & Record<string, unknown>) | null | undefined,
+  metricsById: ReadonlyMap<string, IndicatorMetric>,
+  metricsByCode: ReadonlyMap<string, IndicatorMetric>,
+): IndicatorMetric | null {
+  const directMetric = indicator?.metric ?? null;
+  const idCandidates = [
+    directMetric?.id,
+    indicator?.metricId,
+    indicator?.metric_id,
+    indicator?.performance_metric_id,
+  ];
+
+  for (const candidate of idCandidates) {
+    const metricId = String(candidate ?? "").trim();
+    if (!metricId) {
+      continue;
+    }
+
+    const exactMetric = metricsById.get(metricId);
+    if (exactMetric) {
+      return exactMetric;
+    }
+  }
+
+  const codeCandidates = [
+    directMetric?.code,
+    indicator?.metricCode,
+    indicator?.metric_code,
+  ];
+
+  for (const candidate of codeCandidates) {
+    const metricCode = String(candidate ?? "").trim();
+    if (!metricCode) {
+      continue;
+    }
+
+    const exactMetric = metricsByCode.get(metricCode);
+    if (exactMetric) {
+      return exactMetric;
+    }
+  }
+
+  return null;
 }
 
 export function getActiveWorkspaceFileTypes(

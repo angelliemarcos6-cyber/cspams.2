@@ -4,8 +4,11 @@ import {
   buildStrictSubmittedByType,
   buildWorkspaceAutosavePayloadOptions,
   buildWorkspaceFileSubmissionByType,
+  resolveEditableWorkspaceSubmission,
   resolveMetricFromIndicatorInWorkspace,
+  resolvePreferredWorkspaceSubmission,
 } from "@/components/indicators/SchoolIndicatorPanel";
+import { buildSubmissionUploadedFileFingerprint } from "@/utils/submissionRequirements";
 import type { IndicatorMetric, IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
 
 describe("buildWorkspaceAutosavePayloadOptions", () => {
@@ -113,6 +116,75 @@ describe("private workspace file lineage hardening", () => {
     expect(submittedByType.fm_qad_001).toBe(false);
     expect(byType.fm_qad_002?.id).toBe("submission-1");
     expect(submittedByType.fm_qad_002).toBe(true);
+  });
+
+  it("includes private FM-QAD upload-state changes in the shared workspace fingerprint helper", () => {
+    const withoutUpload = buildSubmission({
+      files: {},
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+      },
+    });
+    const withUpload = buildSubmission({
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: "/tmp/fm-qad-001.pdf",
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 100,
+          uploadedAt: "2026-01-01T00:00:00Z",
+          downloadUrl: "/download/fm_qad_001",
+          viewUrl: "/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+      },
+    });
+
+    expect(buildSubmissionUploadedFileFingerprint(withoutUpload)).not.toBe(
+      buildSubmissionUploadedFileFingerprint(withUpload),
+    );
+  });
+});
+
+describe("workspace submission precedence", () => {
+  it("prefers the freshest editable draft or returned submission over newer finalized rows", () => {
+    const returned = buildSubmission({
+      id: "returned-1",
+      status: "returned",
+      updatedAt: "2026-05-17T08:00:00Z",
+    });
+    const submitted = buildSubmission({
+      id: "submitted-1",
+      status: "submitted",
+      updatedAt: "2026-05-17T09:00:00Z",
+    });
+
+    expect(resolveEditableWorkspaceSubmission([submitted, returned], null)?.id).toBe("returned-1");
+    expect(resolvePreferredWorkspaceSubmission([submitted, returned], null)?.id).toBe("returned-1");
+  });
+
+  it("falls back to the editing submission only after no editable draft or returned row exists", () => {
+    const submitted = buildSubmission({
+      id: "submitted-1",
+      status: "submitted",
+      updatedAt: "2026-05-17T09:00:00Z",
+    });
+    const validated = buildSubmission({
+      id: "validated-1",
+      status: "validated",
+      updatedAt: "2026-05-17T08:00:00Z",
+    });
+
+    expect(resolvePreferredWorkspaceSubmission([submitted, validated], "validated-1")?.id).toBe("validated-1");
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIndicatorDataSessionKey,
+  collectPaginatedSubmissionRows,
   filterSchoolHeadScopedSubmissions,
   materializeSubmissionFromLightweightPayload,
 } from "@/context/IndicatorData";
@@ -168,5 +169,36 @@ describe("filterSchoolHeadScopedSubmissions", () => {
     } as never);
 
     expect(rows.map((row) => row.id)).toEqual(["sub-1", "sub-2"]);
+  });
+});
+
+describe("collectPaginatedSubmissionRows", () => {
+  it("loads all same-scope pages instead of stopping after page one", async () => {
+    const rows = await collectPaginatedSubmissionRows(async (page) => ({
+      data: [
+        {
+          id: `sub-${page}`,
+          formType: "indicator",
+          status: "draft",
+          statusLabel: "Draft",
+          reportingPeriod: "ANNUAL",
+          version: 1,
+          schoolId: "school-1",
+          notes: null,
+          reviewNotes: null,
+          summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+          indicators: [],
+        },
+      ] as never,
+      meta: {
+        currentPage: page,
+        lastPage: 3,
+        perPage: 100,
+        total: 3,
+        hasMorePages: page < 3,
+      },
+    }));
+
+    expect(rows.map((row) => row.id)).toEqual(["sub-1", "sub-2", "sub-3"]);
   });
 });
