@@ -1,10 +1,15 @@
 import { useMemo } from "react";
+import { SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type {
   IndicatorMatrixRow,
   MonitorDrawerHistorySummary,
+  MonitorDrawerKpiReportRow,
+  MonitorDrawerSchoolAchievementReportRow,
   MonitorDrawerSnapshotSummary,
-  MonitorDrawerSubmissionSummary,
+  MonitorDrawerYearDetail,
+  MonitorDrawerChecklistItem,
+  MonitorDrawerYearOption,
   SchoolDetailSnapshot,
   SchoolDrawerCriticalAlert,
   SchoolIndicatorMatrix,
@@ -12,6 +17,7 @@ import type {
   SchoolIndicatorRowGroup,
 } from "@/pages/monitor/monitorDrawerTypes";
 import {
+  KEY_PERFORMANCE_CATEGORY_LABEL,
   resolveSubmissionItemDisplayValue,
   SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL,
   deriveSchoolYearLabel,
@@ -21,11 +27,23 @@ import {
   sortSchoolYears,
   typedYearValues,
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
-import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
+import {
+  getSubmissionUploadedFileTypes,
+  resolveSubmissionRequirementProfile,
+} from "@/utils/submissionRequirements";
+import {
+  buildSubmittedReportBlankStateLines,
+  buildSubmittedReportSourceContext,
+  resolveIndicatorValue,
+  resolveSelectedYearReportSubmission,
+  resolveSubmittedReportIndicatorByMetricCode,
+  submissionRows,
+} from "@/pages/schoolAdminSubmittedReportView";
 import type { IndicatorSubmission, SchoolRecord } from "@/types";
 
 interface UseMonitorDrawerViewModelArgs {
   schoolDrawerKey: string | null;
+  selectedSchoolDrawerYear: string | null;
   schoolDrawerSubmissions: IndicatorSubmission[];
   schoolDrawerSubmissionsError: string;
   schoolRequirementByKey: Map<string, MonitorSchoolRequirementSummary>;
@@ -46,7 +64,7 @@ export interface UseMonitorDrawerViewModelResult {
   returnedDrawerIndicatorKeySet: Set<string>;
   schoolDetail: SchoolDetailSnapshot | null;
   schoolDrawerSnapshotSummary: MonitorDrawerSnapshotSummary | null;
-  schoolDrawerSubmissionSummary: MonitorDrawerSubmissionSummary | null;
+  schoolDrawerYearDetail: MonitorDrawerYearDetail | null;
   schoolDrawerHistorySummary: MonitorDrawerHistorySummary | null;
   schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
 }
@@ -83,163 +101,216 @@ function hasRenderableIndicatorRows(submission: IndicatorSubmission | null | und
   return Array.isArray(submission?.indicators) && submission!.indicators.length > 0;
 }
 
+function resolveMonitorSubmissionSchoolYearLabel(submission: IndicatorSubmission | null | undefined): string {
+  return (submission?.academicYear?.name ?? "").trim()
+    || deriveSchoolYearLabel(submission?.submittedAt ?? submission?.updatedAt ?? submission?.createdAt);
+}
+
+function normalizeWorkflowStatus(status: string | null | undefined): string | null {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  return normalizedStatus || null;
+}
+
+function hasDisplayValue(value: string): boolean {
+  return value.trim().length > 0 && value.trim() !== "-";
+}
+
+function resolveChecklistTone(statusLabel: MonitorDrawerChecklistItem["statusLabel"]): MonitorDrawerChecklistItem["tone"] {
+  if (statusLabel === "Missing" || statusLabel === "Returned") {
+    return "warning";
+  }
+  if (statusLabel === "For Review") {
+    return "info";
+  }
+  return "success";
+}
+
 export function buildMonitorDrawerSnapshotSummary(
-  schoolDetail: SchoolDetailSnapshot | null,
+  yearDetail: MonitorDrawerYearDetail | null,
 ): MonitorDrawerSnapshotSummary | null {
-  if (!schoolDetail) {
+  if (!yearDetail) {
     return null;
   }
 
-  const requirementProfile = resolveSubmissionRequirementProfile(schoolDetail.schoolTypeRaw);
-  const activePackageLabel = schoolDetail.activePackageLabel || (
-    requirementProfile.schoolType === "private" ? "FM-QAD uploads only" : "BMEF and SMEA"
-  );
-  const requirementModeLabel = schoolDetail.requirementModeLabel || (
-    requirementProfile.schoolType === "private"
-      ? "Active package requirements: FM-QAD uploads only."
-      : "Active package requirements: BMEF and SMEA."
-  );
-
-  if (!schoolDetail.hasComplianceRecord) {
-    return {
-      requirementModeLabel,
-      activePackageLabel,
-      summaryHeadline: `Compliance is still missing. Active ${requirementProfile.schoolType} package is ${schoolDetail.indicatorStatus ? schoolDetail.indicatorStatus : "not submitted"} and needs School Head action.`,
-      currentIssueLabel: "Compliance record still missing.",
-      currentIssueTone: "warning",
-      needsAction: true,
-    };
-  }
-
-  if (schoolDetail.indicatorStatus === "returned") {
-    return {
-      requirementModeLabel,
-      activePackageLabel,
-      summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package was returned for correction and needs School Head action.`,
-      currentIssueLabel: "Returned package needs correction.",
-      currentIssueTone: "warning",
-      needsAction: true,
-    };
-  }
-
-  if (schoolDetail.awaitingReviewCount > 0 || schoolDetail.indicatorStatus === "submitted") {
-    return {
-      requirementModeLabel,
-      activePackageLabel,
-      summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package is awaiting monitor review.`,
-      currentIssueLabel: "Awaiting monitor review.",
-      currentIssueTone: "info",
-      needsAction: false,
-    };
-  }
-
-  if (schoolDetail.missingCount > 0) {
-    return {
-      requirementModeLabel,
-      activePackageLabel,
-      summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package is not yet submitted. ${schoolDetail.missingCount} requirement${schoolDetail.missingCount === 1 ? "" : "s"} remain missing.`,
-      currentIssueLabel: `${schoolDetail.missingCount} requirement${schoolDetail.missingCount === 1 ? "" : "s"} still missing.`,
-      currentIssueTone: "warning",
-      needsAction: true,
-    };
-  }
-
-  if (schoolDetail.indicatorStatus === "validated") {
-    return {
-      requirementModeLabel,
-      activePackageLabel,
-      summaryHeadline: `Compliance and the active ${requirementProfile.schoolType} package are complete and monitor-validated.`,
-      currentIssueLabel: "No immediate issue.",
-      currentIssueTone: "success",
-      needsAction: false,
-    };
-  }
-
   return {
-    requirementModeLabel,
-    activePackageLabel,
-    summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package status is ${schoolDetail.indicatorStatus ? schoolDetail.indicatorStatus : "not submitted"}.`,
-    currentIssueLabel: "Review current package status.",
-    currentIssueTone: "info",
-    needsAction: false,
+    currentIssueLabel: yearDetail.currentIssueLabel,
+    currentIssueTone: yearDetail.currentIssueTone,
+    selectedYearLabel: yearDetail.selectedYearLabel,
+    checklistCompleteCount: yearDetail.checklistCompleteCount,
+    checklistMissingCount: yearDetail.checklistMissingCount,
   };
 }
 
-export function buildMonitorDrawerSubmissionSummary(
+export function buildMonitorDrawerYearDetail(
   schoolDetail: SchoolDetailSnapshot | null,
+  selectedSchoolDrawerYear: string | null,
   schoolDrawerSubmissions: IndicatorSubmission[],
-): MonitorDrawerSubmissionSummary | null {
+  schoolIndicatorRows: IndicatorMatrixRow[],
+): MonitorDrawerYearDetail | null {
   if (!schoolDetail) {
     return null;
   }
 
-  const sortedSubmissions = schoolDrawerSubmissions.slice().sort(compareMonitorPackagePriority);
-  const latestActivitySubmission = sortedSubmissions[0] ?? null;
-  const latestMonitorRelevantSubmission =
-    sortedSubmissions.find((submission) => isMonitorRelevantPackageStatus(submission.status)) ?? null;
+  const availableYears = sortSchoolYears(
+    schoolDrawerSubmissions.map((submission) => resolveMonitorSubmissionSchoolYearLabel(submission)),
+  ).reverse();
+  const effectiveSelectedYear = selectedSchoolDrawerYear && availableYears.includes(selectedSchoolDrawerYear)
+    ? selectedSchoolDrawerYear
+    : availableYears[0] ?? null;
+  const selectedYearSubmissions = effectiveSelectedYear
+    ? schoolDrawerSubmissions.filter((submission) => resolveMonitorSubmissionSchoolYearLabel(submission) === effectiveSelectedYear)
+    : [];
+  const sortedSelectedYearSubmissions = selectedYearSubmissions.slice().sort(compareMonitorPackagePriority);
+  const latestYearSubmission = sortedSelectedYearSubmissions[0] ?? null;
+  const selectedYearFinalizedSubmission = resolveSelectedYearReportSubmission(sortedSelectedYearSubmissions);
+  const selectedYearWorkflowStatus = normalizeWorkflowStatus(
+    sortedSelectedYearSubmissions.find((submission) => isMonitorRelevantPackageStatus(submission.status))?.status
+    ?? latestYearSubmission?.status,
+  );
+  const currentYearRows = schoolIndicatorRows.filter((row) => Object.prototype.hasOwnProperty.call(row.valuesByYear, effectiveSelectedYear ?? ""));
+  const reportRows = currentYearRows.length > 0 ? currentYearRows : schoolIndicatorRows;
 
-  const latestActivityStatus = latestActivitySubmission?.status ?? null;
-  const monitorRelevantStatus = latestMonitorRelevantSubmission?.status ?? null;
+  const finalizedSubmissionRows = submissionRows(selectedYearFinalizedSubmission);
+  const latestYearIndicatorRows = submissionRows(latestYearSubmission);
+  const indicatorsByCode = new Map(
+    selectedYearFinalizedSubmission
+      ? finalizedSubmissionRows
+        .map((indicator) => [String(indicator.metric?.code ?? "").trim(), indicator] as const)
+        .filter(([metricCode]) => metricCode.length > 0)
+      : [],
+  );
 
-  const submissionLineageLabel = latestMonitorRelevantSubmission
-    ? `Monitor-facing package context is driven by package #${latestMonitorRelevantSubmission.id}.`
-    : latestActivitySubmission
-      ? `Latest activity is package #${latestActivitySubmission.id}, but no monitor-relevant package has been submitted yet.`
-      : "No indicator package activity is available yet for this school.";
+  const schoolAchievementRows = reportRows
+    .filter((row) => row.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL)
+    .map<MonitorDrawerSchoolAchievementReportRow>((row) => ({
+      key: row.key,
+      label: row.label,
+      value: indicatorsByCode.has(row.code)
+        ? resolveIndicatorValue(resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code), "actual")
+        : "-",
+    }));
 
-  let submissionStateExplanation = "";
-  if (!latestActivitySubmission) {
-    submissionStateExplanation = "No package activity yet. Monitor is waiting for the School Head to start the active package.";
-  } else if (
-    latestActivitySubmission
-    && latestMonitorRelevantSubmission
-    && latestActivitySubmission.id !== latestMonitorRelevantSubmission.id
-    && String(latestActivityStatus ?? "").trim().toLowerCase() === "draft"
-  ) {
-    submissionStateExplanation = `Latest activity is a draft (${latestActivitySubmission.academicYear?.name ?? "Unknown school year"}), but the actionable monitor package is still #${latestMonitorRelevantSubmission.id} (${String(monitorRelevantStatus ?? "not submitted").toLowerCase()}).`;
-  } else if (!latestMonitorRelevantSubmission) {
-    submissionStateExplanation = "Recent activity exists, but the school has not yet produced a submitted, returned, or validated active package for monitor action.";
-  } else if (String(monitorRelevantStatus ?? "").trim().toLowerCase() === "returned") {
-    submissionStateExplanation = "The latest monitor-relevant package was returned for correction. Monitor is waiting for School Head revisions.";
-  } else if (String(monitorRelevantStatus ?? "").trim().toLowerCase() === "submitted") {
-    submissionStateExplanation = "The latest monitor-relevant package is submitted and awaiting monitor review.";
-  } else if (String(monitorRelevantStatus ?? "").trim().toLowerCase() === "validated") {
-    submissionStateExplanation = "The latest monitor-relevant package is validated. Review history remains available for context.";
-  } else {
-    submissionStateExplanation = "Review the current package lineage and status for this school.";
+  const kpiRows = reportRows
+    .filter((row) => row.category === KEY_PERFORMANCE_CATEGORY_LABEL)
+    .map<MonitorDrawerKpiReportRow>((row) => {
+      const indicator = resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code);
+      return {
+        key: row.key,
+        label: row.label,
+        target: indicator ? resolveIndicatorValue(indicator, "target") : "-",
+        actual: indicator ? resolveIndicatorValue(indicator, "actual") : "-",
+        status: String(indicator?.complianceStatus ?? "-").trim() || "-",
+      };
+    });
+
+  const sectionDefinitions = [
+    { id: "school_achievements", label: "School Achievements", category: SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL },
+    { id: "key_performance", label: "Key Performance", category: KEY_PERFORMANCE_CATEGORY_LABEL },
+  ] as const;
+  const latestYearIndicators = latestYearIndicatorRows;
+  const checklistItems: MonitorDrawerChecklistItem[] = [];
+
+  for (const section of sectionDefinitions) {
+    const categoryRows = currentYearRows.filter((row) => row.category === section.category);
+    const indicators = latestYearIndicators.filter((indicator) => indicatorCategoryLabel(indicator.metric?.code ?? null) === section.category);
+    const isSchoolAchievements = section.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL;
+    const isComplete = categoryRows.length > 0 && categoryRows.every((row) => {
+      const indicator = resolveSubmittedReportIndicatorByMetricCode(indicators, row.code);
+      if (!indicator) {
+        return false;
+      }
+
+      if (isSchoolAchievements) {
+        return hasDisplayValue(resolveIndicatorValue(indicator, "actual"));
+      }
+
+      return hasDisplayValue(resolveIndicatorValue(indicator, "target")) && hasDisplayValue(resolveIndicatorValue(indicator, "actual"));
+    });
+
+    let statusLabel: MonitorDrawerChecklistItem["statusLabel"] = isComplete ? "Complete" : "Missing";
+    if (isComplete && selectedYearWorkflowStatus === "returned") {
+      statusLabel = "Returned";
+    } else if (isComplete && selectedYearWorkflowStatus === "submitted") {
+      statusLabel = "For Review";
+    }
+
+    checklistItems.push({
+      id: section.id,
+      label: section.label,
+      statusLabel,
+      tone: resolveChecklistTone(statusLabel),
+      detail: isComplete
+        ? section.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL
+          ? "Section values are available for this year."
+          : "Targets and actual values are available for this year."
+        : "Section data is still incomplete for this year.",
+      kind: "section",
+    });
   }
 
+  const requirementProfile = resolveSubmissionRequirementProfile(schoolDetail.schoolTypeRaw);
+  const uploadedFileTypes = new Set(getSubmissionUploadedFileTypes(latestYearSubmission));
+  for (const type of requirementProfile.requiredFileTypes) {
+    const definition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
+    let statusLabel: MonitorDrawerChecklistItem["statusLabel"] = uploadedFileTypes.has(type) ? "Uploaded" : "Missing";
+    if (uploadedFileTypes.has(type) && selectedYearWorkflowStatus === "returned") {
+      statusLabel = "Returned";
+    } else if (uploadedFileTypes.has(type) && selectedYearWorkflowStatus === "submitted") {
+      statusLabel = "For Review";
+    }
+
+    checklistItems.push({
+      id: type,
+      label: definition.shortLabel,
+      statusLabel,
+      tone: resolveChecklistTone(statusLabel),
+      detail: uploadedFileTypes.has(type) ? "File is present for the selected year." : "File is still missing for the selected year.",
+      kind: "file",
+    });
+  }
+
+  const checklistCompleteCount = checklistItems.filter((item) => item.statusLabel === "Complete" || item.statusLabel === "Uploaded").length;
+  const checklistMissingCount = checklistItems.length - checklistCompleteCount;
+
+  let currentIssueLabel = "No submission activity yet for this year.";
+  let currentIssueTone: MonitorDrawerYearDetail["currentIssueTone"] = "info";
+  if (selectedYearWorkflowStatus === "returned") {
+    currentIssueLabel = "Returned items need correction.";
+    currentIssueTone = "warning";
+  } else if (selectedYearWorkflowStatus === "submitted") {
+    currentIssueLabel = "Awaiting monitor review.";
+    currentIssueTone = "info";
+  } else if (selectedYearWorkflowStatus === "validated") {
+    currentIssueLabel = "Submission validated.";
+    currentIssueTone = "success";
+  } else if (checklistMissingCount > 0) {
+    currentIssueLabel = `${checklistMissingCount} checklist item${checklistMissingCount === 1 ? "" : "s"} still missing.`;
+    currentIssueTone = "warning";
+  } else if (latestYearSubmission) {
+    currentIssueLabel = "Current year submission progress is available.";
+    currentIssueTone = "success";
+  }
+
+  const reportSourceContext = buildSubmittedReportSourceContext(
+    selectedYearFinalizedSubmission,
+    effectiveSelectedYear ?? "N/A",
+  );
+
   return {
-    requirementModeLabel: schoolDetail.requirementModeLabel,
-    activePackageLabel: schoolDetail.activePackageLabel,
-    monitorRelevantPackageStatus: monitorRelevantStatus,
-    latestActivityStatus,
-    latestMonitorRelevantSubmissionId: latestMonitorRelevantSubmission?.id ?? null,
-    latestPackageSchoolYear: latestMonitorRelevantSubmission?.academicYear?.name?.trim() || null,
-    latestPackageReportingPeriod: latestMonitorRelevantSubmission?.reportingPeriod ?? null,
-    latestPackageSubmittedAt:
-      latestMonitorRelevantSubmission?.submittedAt
-      ?? latestMonitorRelevantSubmission?.updatedAt
-      ?? latestMonitorRelevantSubmission?.createdAt
-      ?? null,
-    latestPackageReviewedAt: latestMonitorRelevantSubmission?.reviewedAt ?? null,
-    latestPackageComplianceRatePercent:
-      typeof latestMonitorRelevantSubmission?.summary?.complianceRatePercent === "number"
-      && Number.isFinite(latestMonitorRelevantSubmission.summary.complianceRatePercent)
-        ? latestMonitorRelevantSubmission.summary.complianceRatePercent
-        : null,
-    latestActivitySubmissionId: latestActivitySubmission?.id ?? null,
-    latestActivitySchoolYear: latestActivitySubmission?.academicYear?.name?.trim() || null,
-    latestActivityAt:
-      latestActivitySubmission?.updatedAt
-      ?? latestActivitySubmission?.submittedAt
-      ?? latestActivitySubmission?.createdAt
-      ?? null,
-    submissionLineageLabel,
-    submissionStateExplanation,
-    needsMonitorAction:
-      String(monitorRelevantStatus ?? "").trim().toLowerCase() === "submitted"
-      || schoolDetail.awaitingReviewCount > 0,
+    selectedYearLabel: effectiveSelectedYear,
+    availableYears: availableYears.map<MonitorDrawerYearOption>((year) => ({ id: year, label: year })),
+    currentIssueLabel,
+    currentIssueTone,
+    checklistItems,
+    checklistCompleteCount,
+    checklistMissingCount,
+    selectedYearLatestSubmissionId: latestYearSubmission?.id ?? null,
+    selectedYearLatestStatus: latestYearSubmission?.status ?? null,
+    finalizedReportSubmission: selectedYearFinalizedSubmission,
+    reportSourceContext,
+    reportBlankStateLines: buildSubmittedReportBlankStateLines(),
+    schoolAchievementRows,
+    kpiRows,
   };
 }
 
@@ -322,6 +393,7 @@ export function buildMonitorDrawerHistorySummary(
 
 export function useMonitorDrawerViewModel({
   schoolDrawerKey,
+  selectedSchoolDrawerYear,
   schoolDrawerSubmissions,
   schoolDrawerSubmissionsError,
   schoolRequirementByKey,
@@ -500,24 +572,37 @@ export function useMonitorDrawerViewModel({
     [schoolIndicatorMatrix.years],
   );
 
+  const effectiveSelectedSchoolDrawerYear = useMemo(() => {
+    const availableYears = sortSchoolYears(
+      schoolDrawerSubmissions.map((submission) => resolveMonitorSubmissionSchoolYearLabel(submission)),
+    ).reverse();
+    if (selectedSchoolDrawerYear && availableYears.includes(selectedSchoolDrawerYear)) {
+      return selectedSchoolDrawerYear;
+    }
+    return availableYears[0] ?? "";
+  }, [schoolDrawerSubmissions, selectedSchoolDrawerYear]);
+
   const schoolIndicatorRowKeySet = useMemo(
     () => new Set(schoolIndicatorMatrix.rows.map((row) => row.key)),
     [schoolIndicatorMatrix.rows],
   );
 
   const missingDrawerIndicatorKeys = useMemo(() => {
-    if (!latestSchoolIndicatorYear) return [] as string[];
+    if (!effectiveSelectedSchoolDrawerYear) return [] as string[];
 
     return schoolIndicatorMatrix.rows
       .filter((row) => {
-        const values = row.valuesByYear[latestSchoolIndicatorYear] ?? { target: "", actual: "" };
+        const values = row.valuesByYear[effectiveSelectedSchoolDrawerYear] ?? { target: "", actual: "" };
         return values.target.trim().length === 0 || values.actual.trim().length === 0;
       })
       .map((row) => row.key);
-  }, [latestSchoolIndicatorYear, schoolIndicatorMatrix.rows]);
+  }, [effectiveSelectedSchoolDrawerYear, schoolIndicatorMatrix.rows]);
 
   const returnedDrawerIndicatorKeys = useMemo(() => {
-    const latestSubmission = schoolIndicatorMatrix.latestSubmission;
+    const latestSubmission = schoolDrawerSubmissions
+      .filter((submission) => resolveMonitorSubmissionSchoolYearLabel(submission) === effectiveSelectedSchoolDrawerYear)
+      .slice()
+      .sort(compareMonitorPackagePriority)[0] ?? null;
     if (!latestSubmission) return [] as string[];
 
     const mappedKeys = latestSubmission.indicators
@@ -526,7 +611,7 @@ export function useMonitorDrawerViewModel({
       .filter((value): value is string => Boolean(value && value.trim().length > 0));
 
     return [...new Set(mappedKeys)].filter((key) => schoolIndicatorRowKeySet.has(key));
-  }, [schoolIndicatorMatrix.latestSubmission, schoolIndicatorRowKeySet]);
+  }, [effectiveSelectedSchoolDrawerYear, schoolDrawerSubmissions, schoolIndicatorRowKeySet]);
 
   const missingDrawerIndicatorKeySet = useMemo(
     () => new Set(missingDrawerIndicatorKeys),
@@ -586,14 +671,14 @@ export function useMonitorDrawerViewModel({
     studentStatsBySchoolKey,
   ]);
 
-  const schoolDrawerSnapshotSummary = useMemo(
-    () => buildMonitorDrawerSnapshotSummary(schoolDetail),
-    [schoolDetail],
+  const schoolDrawerYearDetail = useMemo(
+    () => buildMonitorDrawerYearDetail(schoolDetail, effectiveSelectedSchoolDrawerYear, schoolDrawerSubmissions, schoolIndicatorMatrix.rows),
+    [effectiveSelectedSchoolDrawerYear, schoolDetail, schoolDrawerSubmissions, schoolIndicatorMatrix.rows],
   );
 
-  const schoolDrawerSubmissionSummary = useMemo(
-    () => buildMonitorDrawerSubmissionSummary(schoolDetail, schoolDrawerSubmissions),
-    [schoolDetail, schoolDrawerSubmissions],
+  const schoolDrawerSnapshotSummary = useMemo(
+    () => buildMonitorDrawerSnapshotSummary(schoolDrawerYearDetail),
+    [schoolDrawerYearDetail],
   );
 
   const schoolDrawerHistorySummary = useMemo(
@@ -684,7 +769,7 @@ export function useMonitorDrawerViewModel({
     returnedDrawerIndicatorKeySet,
     schoolDetail,
     schoolDrawerSnapshotSummary,
-    schoolDrawerSubmissionSummary,
+    schoolDrawerYearDetail,
     schoolDrawerHistorySummary,
     schoolDrawerCriticalAlerts,
   };

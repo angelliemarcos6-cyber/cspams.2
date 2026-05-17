@@ -24,31 +24,56 @@ export interface SchoolDetailSnapshot {
 }
 
 export interface MonitorDrawerSnapshotSummary {
-  requirementModeLabel: string;
-  activePackageLabel: string;
-  summaryHeadline: string;
   currentIssueLabel: string;
   currentIssueTone: "warning" | "info" | "success";
-  needsAction: boolean;
+  selectedYearLabel: string | null;
+  checklistCompleteCount: number;
+  checklistMissingCount: number;
 }
 
-export interface MonitorDrawerSubmissionSummary {
-  requirementModeLabel: string;
-  activePackageLabel: string;
-  monitorRelevantPackageStatus: string | null;
-  latestActivityStatus: string | null;
-  latestMonitorRelevantSubmissionId: string | null;
-  latestPackageSchoolYear: string | null;
-  latestPackageReportingPeriod: string | null;
-  latestPackageSubmittedAt: string | null;
-  latestPackageReviewedAt: string | null;
-  latestPackageComplianceRatePercent: number | null;
-  latestActivitySubmissionId: string | null;
-  latestActivitySchoolYear: string | null;
-  latestActivityAt: string | null;
-  submissionLineageLabel: string;
-  submissionStateExplanation: string;
-  needsMonitorAction: boolean;
+export interface MonitorDrawerYearOption {
+  id: string;
+  label: string;
+}
+
+export interface MonitorDrawerChecklistItem {
+  id: string;
+  label: string;
+  statusLabel: "Complete" | "Missing" | "Uploaded" | "Returned" | "For Review";
+  tone: "success" | "warning" | "info";
+  detail: string;
+  kind: "section" | "file";
+}
+
+export interface MonitorDrawerSchoolAchievementReportRow {
+  key: string;
+  label: string;
+  value: string;
+}
+
+export interface MonitorDrawerKpiReportRow {
+  key: string;
+  label: string;
+  target: string;
+  actual: string;
+  status: string;
+}
+
+export interface MonitorDrawerYearDetail {
+  selectedYearLabel: string | null;
+  availableYears: MonitorDrawerYearOption[];
+  currentIssueLabel: string;
+  currentIssueTone: "warning" | "info" | "success";
+  checklistItems: MonitorDrawerChecklistItem[];
+  checklistCompleteCount: number;
+  checklistMissingCount: number;
+  selectedYearLatestSubmissionId: string | null;
+  selectedYearLatestStatus: string | null;
+  finalizedReportSubmission: IndicatorSubmission | null;
+  reportSourceContext: string[];
+  reportBlankStateLines: [string, string];
+  schoolAchievementRows: MonitorDrawerSchoolAchievementReportRow[];
+  kpiRows: MonitorDrawerKpiReportRow[];
 }
 
 export interface MonitorDrawerHistorySummary {

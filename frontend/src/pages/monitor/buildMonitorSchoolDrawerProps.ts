@@ -14,6 +14,8 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   isMobileViewport: MonitorSchoolDrawerViewState["isMobileViewport"];
   activeTopNavigator: MonitorSchoolDrawerViewState["activeTopNavigator"];
   activeSchoolDrawerTab: MonitorSchoolDrawerViewState["activeSchoolDrawerTab"];
+  selectedSchoolDrawerYear: MonitorSchoolDrawerViewState["selectedSchoolDrawerYear"];
+  availableSchoolDrawerYears: MonitorSchoolDrawerData["availableSchoolDrawerYears"];
   highlightedDrawerIndicatorKey: MonitorSchoolDrawerViewState["highlightedDrawerIndicatorKey"];
   expandedDrawerIndicatorRows: MonitorSchoolDrawerViewState["expandedDrawerIndicatorRows"];
   syncedCountsLoadingSchoolKey: MonitorSchoolDrawerLoadingState["syncedCountsLoadingSchoolKey"];
@@ -22,7 +24,7 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   schoolDrawerSubmissionsError: MonitorSchoolDrawerLoadingState["schoolDrawerSubmissionsError"];
   schoolDetail: MonitorSchoolDrawerData["schoolDetail"];
   schoolDrawerSnapshotSummary: MonitorSchoolDrawerData["schoolDrawerSnapshotSummary"];
-  schoolDrawerSubmissionSummary: MonitorSchoolDrawerData["schoolDrawerSubmissionSummary"];
+  schoolDrawerYearDetail: MonitorSchoolDrawerData["schoolDrawerYearDetail"];
   schoolDrawerHistorySummary: MonitorSchoolDrawerData["schoolDrawerHistorySummary"];
   schoolDrawerCriticalAlerts: MonitorSchoolDrawerData["schoolDrawerCriticalAlerts"];
   schoolIndicatorPackageRows: MonitorSchoolDrawerData["schoolIndicatorPackageRows"];
@@ -36,6 +38,7 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   missingDrawerIndicatorKeySet: MonitorSchoolDrawerData["missingDrawerIndicatorKeySet"];
   returnedDrawerIndicatorKeySet: MonitorSchoolDrawerData["returnedDrawerIndicatorKeySet"];
   setActiveSchoolDrawerTab: MonitorSchoolDrawerActions["setActiveSchoolDrawerTab"];
+  setSelectedSchoolDrawerYear: MonitorSchoolDrawerActions["setSelectedSchoolDrawerYear"];
   closeSchoolDrawer: MonitorSchoolDrawerActions["closeSchoolDrawer"];
   handleJumpToMissingIndicators: MonitorSchoolDrawerActions["handleJumpToMissingIndicators"];
   handleJumpToReturnedIndicators: MonitorSchoolDrawerActions["handleJumpToReturnedIndicators"];
@@ -51,6 +54,8 @@ export function buildMonitorSchoolDrawerProps({
   isMobileViewport,
   activeTopNavigator,
   activeSchoolDrawerTab,
+  selectedSchoolDrawerYear,
+  availableSchoolDrawerYears,
   highlightedDrawerIndicatorKey,
   expandedDrawerIndicatorRows,
   syncedCountsLoadingSchoolKey,
@@ -59,7 +64,7 @@ export function buildMonitorSchoolDrawerProps({
   schoolDrawerSubmissionsError,
   schoolDetail,
   schoolDrawerSnapshotSummary,
-  schoolDrawerSubmissionSummary,
+  schoolDrawerYearDetail,
   schoolDrawerHistorySummary,
   schoolDrawerCriticalAlerts,
   schoolIndicatorPackageRows,
@@ -73,6 +78,7 @@ export function buildMonitorSchoolDrawerProps({
   missingDrawerIndicatorKeySet,
   returnedDrawerIndicatorKeySet,
   setActiveSchoolDrawerTab,
+  setSelectedSchoolDrawerYear,
   closeSchoolDrawer,
   handleJumpToMissingIndicators,
   handleJumpToReturnedIndicators,
@@ -88,6 +94,7 @@ export function buildMonitorSchoolDrawerProps({
       isMobileViewport,
       activeTopNavigator,
       activeSchoolDrawerTab,
+      selectedSchoolDrawerYear,
       highlightedDrawerIndicatorKey,
       expandedDrawerIndicatorRows,
     },
@@ -99,8 +106,9 @@ export function buildMonitorSchoolDrawerProps({
     },
     data: {
       schoolDetail,
+      availableSchoolDrawerYears,
       schoolDrawerSnapshotSummary,
-      schoolDrawerSubmissionSummary,
+      schoolDrawerYearDetail,
       schoolDrawerHistorySummary,
       schoolDrawerCriticalAlerts,
       schoolIndicatorPackageRows,
@@ -116,6 +124,7 @@ export function buildMonitorSchoolDrawerProps({
     },
     actions: {
       setActiveSchoolDrawerTab,
+      setSelectedSchoolDrawerYear,
       closeSchoolDrawer,
       handleJumpToMissingIndicators,
       handleJumpToReturnedIndicators,

@@ -10,6 +10,7 @@ import {
 import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
+import { deriveSchoolYearLabel, sortSchoolYears } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import type { IndicatorSubmission } from "@/types";
 import type { MonitorUiRealtimeBatch } from "./useMonitorUiRefresh";
 
@@ -35,6 +36,8 @@ export interface UseSchoolDrawerResult {
   schoolDrawerRecordId: string;
   schoolDrawerSchoolCode: string;
   activeSchoolDrawerTab: SchoolDrawerTab;
+  selectedSchoolDrawerYear: string | null;
+  availableSchoolDrawerYears: string[];
   expandedDrawerIndicatorRows: Record<string, boolean>;
   highlightedDrawerIndicatorKey: string | null;
   schoolDrawerSubmissions: IndicatorSubmission[];
@@ -47,8 +50,18 @@ export interface UseSchoolDrawerResult {
   closeSchoolDrawer: () => void;
   refreshSchoolDrawer: () => void;
   setActiveSchoolDrawerTab: Dispatch<SetStateAction<SchoolDrawerTab>>;
+  setSelectedSchoolDrawerYear: Dispatch<SetStateAction<string | null>>;
   setHighlightedDrawerIndicatorKey: Dispatch<SetStateAction<string | null>>;
   toggleDrawerIndicatorLabel: (key: string) => void;
+}
+
+export function deriveAvailableSchoolDrawerYears(submissions: IndicatorSubmission[]): string[] {
+  const years = submissions.map((submission) => (
+    (submission.academicYear?.name ?? "").trim()
+    || deriveSchoolYearLabel(submission.submittedAt ?? submission.updatedAt ?? submission.createdAt)
+  ));
+
+  return sortSchoolYears(years).reverse();
 }
 
 export function matchesDrawerSchool(
@@ -134,7 +147,8 @@ export function useSchoolDrawer({
   listTeachers,
 }: UseSchoolDrawerOptions): UseSchoolDrawerResult {
   const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
-  const [activeSchoolDrawerTab, setActiveSchoolDrawerTab] = useState<SchoolDrawerTab>("snapshot");
+  const [activeSchoolDrawerTab, setActiveSchoolDrawerTab] = useState<SchoolDrawerTab>("submissions");
+  const [selectedSchoolDrawerYear, setSelectedSchoolDrawerYear] = useState<string | null>(null);
   const [expandedDrawerIndicatorRows, setExpandedDrawerIndicatorRows] = useState<Record<string, boolean>>({});
   const [highlightedDrawerIndicatorKey, setHighlightedDrawerIndicatorKey] = useState<string | null>(null);
   const [schoolDrawerSubmissions, setSchoolDrawerSubmissions] = useState<IndicatorSubmission[]>([]);
@@ -164,13 +178,15 @@ export function useSchoolDrawer({
 
   const openSchoolDrawer = useCallback((schoolKey: string) => {
     setSchoolDrawerKey(schoolKey);
-    setActiveSchoolDrawerTab("snapshot");
+    setActiveSchoolDrawerTab("submissions");
+    setSelectedSchoolDrawerYear(null);
     setExpandedDrawerIndicatorRows({});
     setHighlightedDrawerIndicatorKey(null);
   }, []);
 
   const closeSchoolDrawer = useCallback(() => {
     setSchoolDrawerKey(null);
+    setSelectedSchoolDrawerYear(null);
     setHighlightedDrawerIndicatorKey(null);
   }, []);
 
@@ -191,7 +207,8 @@ export function useSchoolDrawer({
     schoolDetailCountsAbortRef.current?.abort();
     schoolDetailCountsAbortRef.current = null;
     setSchoolDrawerKey(null);
-    setActiveSchoolDrawerTab("snapshot");
+    setActiveSchoolDrawerTab("submissions");
+    setSelectedSchoolDrawerYear(null);
     setExpandedDrawerIndicatorRows({});
     setHighlightedDrawerIndicatorKey(null);
     setSchoolDrawerSubmissions([]);
@@ -298,6 +315,24 @@ export function useSchoolDrawer({
       abortController.abort();
     };
   }, [closeSchoolDrawer, isAuthenticated, listSubmissionsForSchool, schoolDrawerRecordId, submissionRefreshTick]);
+
+  const availableSchoolDrawerYears = useMemo(
+    () => deriveAvailableSchoolDrawerYears(schoolDrawerSubmissions),
+    [schoolDrawerSubmissions],
+  );
+
+  useEffect(() => {
+    if (availableSchoolDrawerYears.length === 0) {
+      setSelectedSchoolDrawerYear(null);
+      return;
+    }
+
+    setSelectedSchoolDrawerYear((current) => (
+      current && availableSchoolDrawerYears.includes(current)
+        ? current
+        : availableSchoolDrawerYears[0]
+    ));
+  }, [availableSchoolDrawerYears]);
 
   useEffect(() => {
     if (!schoolDrawerKey) {
@@ -436,6 +471,8 @@ export function useSchoolDrawer({
     schoolDrawerRecordId,
     schoolDrawerSchoolCode,
     activeSchoolDrawerTab,
+    selectedSchoolDrawerYear,
+    availableSchoolDrawerYears,
     expandedDrawerIndicatorRows,
     highlightedDrawerIndicatorKey,
     schoolDrawerSubmissions,
@@ -448,6 +485,7 @@ export function useSchoolDrawer({
     closeSchoolDrawer,
     refreshSchoolDrawer,
     setActiveSchoolDrawerTab,
+    setSelectedSchoolDrawerYear,
     setHighlightedDrawerIndicatorKey,
     toggleDrawerIndicatorLabel,
   };

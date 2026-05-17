@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildSyncedCountsRefreshOutcome,
   buildSyncedCountsUnavailableMessage,
+  deriveAvailableSchoolDrawerYears,
   isFreshSchoolDetailCountsCacheEntry,
   isMissingSchoolRecordError,
   matchesDrawerSchool,
@@ -96,5 +97,45 @@ describe("useSchoolDrawer", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("derives available drawer years in newest-first order", () => {
+    expect(deriveAvailableSchoolDrawerYears([
+      {
+        id: "sub-1",
+        academicYear: { id: "1", name: "2024-2025" },
+        submittedAt: null,
+        updatedAt: null,
+        createdAt: null,
+      },
+      {
+        id: "sub-2",
+        academicYear: { id: "2", name: "2025-2026" },
+        submittedAt: null,
+        updatedAt: null,
+        createdAt: null,
+      },
+    ] as never)).toEqual(["2025-2026", "2024-2025"]);
+  });
+
+  it("opens the drawer on the submissions tab by default", () => {
+    const { result } = renderHook(() =>
+      useSchoolDrawer({
+        authSessionKey: "monitor:1",
+        isAuthenticated: true,
+        latestRealtimeBatch: null,
+        resolveRecordId: () => "",
+        resolveSchoolCode: () => "",
+        listSubmissionsForSchool: vi.fn(),
+        queryStudents: vi.fn(),
+        listTeachers: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.openSchoolDrawer("school-1");
+    });
+
+    expect(result.current.activeSchoolDrawerTab).toBe("submissions");
   });
 });
