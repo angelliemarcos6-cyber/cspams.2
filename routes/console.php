@@ -2,6 +2,7 @@
 
 use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -160,6 +161,46 @@ Artisan::command('accounts:audit-school-head-duplicates', function (): int {
 
     return self::FAILURE;
 })->purpose('Audit duplicate School Head accounts grouped by school_id.');
+
+Artisan::command('indicators:audit-school-head-data-integrity', function (): int {
+    $report = app(SchoolHeadDataIntegrityAudit::class)->run();
+
+    $this->info('School Head data-integrity audit');
+    $this->line('  school_head_users: ' . $report['counts']['school_head_users']);
+    $this->line('  indicator_submissions: ' . $report['counts']['indicator_submissions']);
+    $this->line('  indicator_submission_files: ' . $report['counts']['indicator_submission_files']);
+
+    foreach ($report['warnings'] as $warning) {
+        $this->warn('Warning: ' . $warning);
+    }
+
+    foreach ($report['anomalies'] as $key => $rows) {
+        if ($rows === []) {
+            $this->line("  {$key}: OK");
+            continue;
+        }
+
+        $this->error("  {$key}: " . count($rows) . ' issue(s)');
+        foreach ($rows as $row) {
+            $serialized = collect($row)
+                ->map(static fn (mixed $value, string $field): string => $field . '=' . (is_scalar($value) || $value === null ? (string) ($value ?? 'null') : json_encode($value)))
+                ->implode(' ');
+            $this->line('    - ' . $serialized);
+        }
+    }
+
+    if ($report['has_anomalies']) {
+        $this->newLine();
+        $this->error('School Head data-integrity anomalies detected.');
+
+        return self::FAILURE;
+    }
+
+    $this->newLine();
+    $this->info('No School Head data-integrity anomalies detected.');
+
+    return self::SUCCESS;
+})->purpose('Audit School Head ownership, submission, and package/file integrity anomalies.');
 
 Artisan::command('app:check-production-config', function (): int {
     try {
