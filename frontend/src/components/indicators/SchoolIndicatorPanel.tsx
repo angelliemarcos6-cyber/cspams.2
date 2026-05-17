@@ -723,6 +723,14 @@ function workspaceSaveSectionLabel(section: WorkspaceSaveSection | null): string
   }
 }
 
+export function workspaceFileDraftStatusLabel(uploaded: boolean): "Uploaded" | "Not Uploaded" {
+  return uploaded ? "Uploaded" : "Not Uploaded";
+}
+
+export function workspaceDraftGuidanceCopy(): string {
+  return "You can save sections and upload files individually. Final Submit sends the full package to the monitor for review.";
+}
+
 function currentSchoolYearStart(now: Date = new Date()): number {
   return now.getMonth() + 1 >= SCHOOL_YEAR_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
 }
@@ -5151,7 +5159,7 @@ function SchoolIndicatorPanelComponent({
                             </span>
                           ) : (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
-                              {uploadSubmitted ? "Submitted" : "Not submitted"}
+                              {workspaceFileDraftStatusLabel(Boolean(uploadSubmitted))}
                             </span>
                           )}
                         </span>
@@ -5166,9 +5174,7 @@ function SchoolIndicatorPanelComponent({
                         >
                           {tab.kind === "category"
                             ? (categoryRailBadge?.label ?? "Draft")
-                            : uploadSubmitted
-                              ? "Submitted"
-                              : "Not Submitted"}
+                            : workspaceFileDraftStatusLabel(Boolean(uploadSubmitted))}
                         </span>
                       </button>
                     );
@@ -5775,6 +5781,11 @@ function SchoolIndicatorPanelComponent({
         {showSubmitEligibilityHelper && (
           <p className="text-xs font-semibold text-amber-700">
             {submitBlockedReason || "Complete required fields before submitting."}
+          </p>
+        )}
+        {canShowSaveAndSubmitActions && (
+          <p className="text-xs font-medium text-slate-600">
+            {workspaceDraftGuidanceCopy()}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">

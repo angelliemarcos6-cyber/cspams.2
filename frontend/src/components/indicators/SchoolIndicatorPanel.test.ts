@@ -8,6 +8,8 @@ import {
   resolveMetricFromIndicatorInWorkspace,
   resolvePreferredWorkspaceSubmission,
   shouldReplaceInScopeWorkspaceSubmission,
+  workspaceDraftGuidanceCopy,
+  workspaceFileDraftStatusLabel,
 } from "@/components/indicators/SchoolIndicatorPanel";
 import { buildSubmissionUploadedFileFingerprint } from "@/utils/submissionRequirements";
 import type { IndicatorMetric, IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
@@ -18,6 +20,19 @@ describe("buildWorkspaceAutosavePayloadOptions", () => {
       allowIncomplete: true,
       includeAllEntries: false,
     });
+  });
+});
+
+describe("workspace draft guidance", () => {
+  it("keeps file-part status language distinct from final package submission", () => {
+    expect(workspaceFileDraftStatusLabel(true)).toBe("Uploaded");
+    expect(workspaceFileDraftStatusLabel(false)).toBe("Not Uploaded");
+  });
+
+  it("explains that sections and files can be persisted before final submit", () => {
+    expect(workspaceDraftGuidanceCopy()).toContain("save sections");
+    expect(workspaceDraftGuidanceCopy()).toContain("upload files individually");
+    expect(workspaceDraftGuidanceCopy()).toContain("Final Submit");
   });
 });
 

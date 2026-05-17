@@ -62,18 +62,21 @@ export function FileUploadField({
               : "border border-amber-300 bg-amber-50 text-amber-700"
           }`}
         >
-          {submitted ? "Submitted" : "Not Submitted"}
+          {submitted ? "Uploaded" : "Not Uploaded"}
         </span>
       </div>
 
       {submitted ? (
         <div className="rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-8 text-center">
           <p className="text-sm font-semibold text-slate-700">
-            {label} Report has been submitted. You can view or download the file anytime.
+            {label} file is uploaded to this draft package. You can view or download it anytime.
           </p>
           <p className="mt-1 text-xs text-slate-500">
             {file?.filename || `${label} report`}
             {file?.uploadedAt ? ` | ${formatUploadedAt(file.uploadedAt)}` : ""}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Final Submit sends the full package to the monitor for review.
           </p>
           <div className="mt-3 flex items-center justify-center gap-2">
             <button
@@ -83,7 +86,7 @@ export function FileUploadField({
               className="inline-flex items-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Eye className="h-3.5 w-3.5" />
-              {`View ${label} Report`}
+              {`View ${label} File`}
             </button>
             <button
               type="button"
@@ -100,8 +103,8 @@ export function FileUploadField({
         </div>
       ) : (
         <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
-          <p className="text-sm font-semibold text-slate-700">{conciseLabel} not submitted yet.</p>
-          <p className="mt-1 text-xs text-slate-500">Upload to mark this requirement as submitted.</p>
+          <p className="text-sm font-semibold text-slate-700">{conciseLabel} not uploaded yet.</p>
+          <p className="mt-1 text-xs text-slate-500">Upload this file now. Final Submit sends the full package for review.</p>
           <button
             type="button"
             onClick={onUploadClick}
