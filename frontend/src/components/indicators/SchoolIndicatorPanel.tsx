@@ -46,7 +46,6 @@ import type {
   MetricInputSchema,
   MetricDataType,
 } from "@/types";
-
 type MetricEntryState = Record<
   string,
   {
@@ -63,7 +62,6 @@ type MetricEntryState = Record<
     remarks: string;
   }
 >;
-
 type MetricEntryValue = MetricEntryState[string];
 
 interface ComplianceCategory {
@@ -4941,7 +4939,7 @@ function SchoolIndicatorPanelComponent({
       <div className="border-b border-slate-200 bg-white px-4 py-4">
         <div className="rounded-sm border border-slate-200 bg-slate-50/80 p-3">
           <div className="flex justify-end">
-            {false && <div className="min-w-0">
+            {/*
               <p className="text-[11px] font-semibold tracking-wide text-slate-500">Form status</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span
@@ -4988,8 +4986,7 @@ function SchoolIndicatorPanelComponent({
                   Submitted by {submittedByLabel ?? "Unknown"} • {formatDateTime(submittedAtLabel)}
                 </p>
               )}
-            </div>}
-
+            */}
             <div className="w-full md:w-[320px]">
               <p className="text-right text-lg font-bold leading-none text-slate-900">
                 {completeIndicators}/{totalIndicators} complete
