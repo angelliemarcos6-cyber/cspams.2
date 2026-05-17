@@ -10,7 +10,7 @@ import {
 import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
-import { deriveSchoolYearLabel, sortSchoolYears } from "@/pages/monitor/monitorDrawerViewModelUtils";
+import { deriveAvailableMonitorSchoolDetailYears } from "@/pages/monitor/monitorSchoolDetailYear";
 import type { IndicatorSubmission } from "@/types";
 import type { MonitorUiRealtimeBatch } from "./useMonitorUiRefresh";
 
@@ -56,12 +56,7 @@ export interface UseSchoolDrawerResult {
 }
 
 export function deriveAvailableSchoolDrawerYears(submissions: IndicatorSubmission[]): string[] {
-  const years = submissions.map((submission) => (
-    (submission.academicYear?.name ?? "").trim()
-    || deriveSchoolYearLabel(submission.submittedAt ?? submission.updatedAt ?? submission.createdAt)
-  ));
-
-  return sortSchoolYears(years).reverse();
+  return deriveAvailableMonitorSchoolDetailYears(submissions);
 }
 
 export function matchesDrawerSchool(

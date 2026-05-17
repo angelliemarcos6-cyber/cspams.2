@@ -4,11 +4,7 @@ import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSch
 import type {
   IndicatorMatrixRow,
   MonitorDrawerHistorySummary,
-  MonitorDrawerKpiReportRow,
-  MonitorDrawerSchoolAchievementReportRow,
   MonitorDrawerYearDetail,
-  MonitorDrawerChecklistItem,
-  MonitorDrawerYearOption,
   SchoolDetailSnapshot,
   SchoolDrawerCriticalAlert,
   SchoolIndicatorMatrix,
@@ -26,18 +22,15 @@ import {
   sortSchoolYears,
   typedYearValues,
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
+import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
 import {
-  getSubmissionUploadedFileTypes,
-  resolveSubmissionRequirementProfile,
-} from "@/utils/submissionRequirements";
-import {
-  buildSubmittedReportBlankStateLines,
-  buildSubmittedReportSourceContext,
-  resolveIndicatorValue,
-  resolveSelectedYearReportSubmission,
-  resolveSubmittedReportIndicatorByMetricCode,
-  submissionRows,
-} from "@/pages/schoolAdminSubmittedReportView";
+  buildMonitorDrawerYearDetail,
+  compareMonitorPackagePriority,
+  deriveAvailableMonitorSchoolDetailYears,
+  resolveMonitorSchoolDetailYearSelection,
+  resolveMonitorSubmissionSchoolYearLabel,
+} from "@/pages/monitor/monitorSchoolDetailYear";
+import { buildMonitorDrawerHistorySummary } from "@/pages/monitor/monitorSchoolDetailHistory";
 import type { IndicatorSubmission, SchoolRecord } from "@/types";
 
 interface UseMonitorDrawerViewModelArgs {
@@ -65,312 +58,6 @@ export interface UseMonitorDrawerViewModelResult {
   schoolDrawerYearDetail: MonitorDrawerYearDetail | null;
   schoolDrawerHistorySummary: MonitorDrawerHistorySummary | null;
   schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
-}
-
-function toSubmissionActivityTime(submission: IndicatorSubmission | null | undefined): number {
-  return new Date(
-    submission?.submittedAt
-    ?? submission?.updatedAt
-    ?? submission?.createdAt
-    ?? 0,
-  ).getTime();
-}
-
-function isMonitorRelevantPackageStatus(status: string | null | undefined): boolean {
-  const normalizedStatus = String(status ?? "").trim().toLowerCase();
-  return normalizedStatus === "submitted" || normalizedStatus === "validated" || normalizedStatus === "returned";
-}
-
-function compareMonitorPackagePriority(left: IndicatorSubmission, right: IndicatorSubmission): number {
-  const recencyDelta = toSubmissionActivityTime(right) - toSubmissionActivityTime(left);
-  if (recencyDelta !== 0) {
-    return recencyDelta;
-  }
-
-  const versionDelta = Number(right.version ?? 0) - Number(left.version ?? 0);
-  if (versionDelta !== 0) {
-    return versionDelta;
-  }
-
-  return String(right.id ?? "").localeCompare(String(left.id ?? ""));
-}
-
-function hasRenderableIndicatorRows(submission: IndicatorSubmission | null | undefined): boolean {
-  return Array.isArray(submission?.indicators) && submission!.indicators.length > 0;
-}
-
-function resolveMonitorSubmissionSchoolYearLabel(submission: IndicatorSubmission | null | undefined): string {
-  return (submission?.academicYear?.name ?? "").trim()
-    || deriveSchoolYearLabel(submission?.submittedAt ?? submission?.updatedAt ?? submission?.createdAt);
-}
-
-function normalizeWorkflowStatus(status: string | null | undefined): string | null {
-  const normalizedStatus = String(status ?? "").trim().toLowerCase();
-  return normalizedStatus || null;
-}
-
-function hasDisplayValue(value: string): boolean {
-  return value.trim().length > 0 && value.trim() !== "-";
-}
-
-function resolveChecklistTone(statusLabel: MonitorDrawerChecklistItem["statusLabel"]): MonitorDrawerChecklistItem["tone"] {
-  if (statusLabel === "Missing" || statusLabel === "Returned") {
-    return "warning";
-  }
-  if (statusLabel === "For Review") {
-    return "info";
-  }
-  return "success";
-}
-
-export function buildMonitorDrawerYearDetail(
-  schoolDetail: SchoolDetailSnapshot | null,
-  selectedSchoolDrawerYear: string | null,
-  schoolDrawerSubmissions: IndicatorSubmission[],
-  schoolIndicatorRows: IndicatorMatrixRow[],
-): MonitorDrawerYearDetail | null {
-  if (!schoolDetail) {
-    return null;
-  }
-
-  const availableYears = sortSchoolYears(
-    schoolDrawerSubmissions.map((submission) => resolveMonitorSubmissionSchoolYearLabel(submission)),
-  ).reverse();
-  const effectiveSelectedYear = selectedSchoolDrawerYear && availableYears.includes(selectedSchoolDrawerYear)
-    ? selectedSchoolDrawerYear
-    : availableYears[0] ?? null;
-  const selectedYearSubmissions = effectiveSelectedYear
-    ? schoolDrawerSubmissions.filter((submission) => resolveMonitorSubmissionSchoolYearLabel(submission) === effectiveSelectedYear)
-    : [];
-  const sortedSelectedYearSubmissions = selectedYearSubmissions.slice().sort(compareMonitorPackagePriority);
-  const latestYearSubmission = sortedSelectedYearSubmissions[0] ?? null;
-  const selectedYearFinalizedSubmission = resolveSelectedYearReportSubmission(sortedSelectedYearSubmissions);
-  const selectedYearWorkflowStatus = normalizeWorkflowStatus(
-    sortedSelectedYearSubmissions.find((submission) => isMonitorRelevantPackageStatus(submission.status))?.status
-    ?? latestYearSubmission?.status,
-  );
-  const currentYearRows = schoolIndicatorRows.filter((row) => Object.prototype.hasOwnProperty.call(row.valuesByYear, effectiveSelectedYear ?? ""));
-  const reportRows = currentYearRows.length > 0 ? currentYearRows : schoolIndicatorRows;
-
-  const finalizedSubmissionRows = submissionRows(selectedYearFinalizedSubmission);
-  const latestYearIndicatorRows = submissionRows(latestYearSubmission);
-  const indicatorsByCode = new Map(
-    selectedYearFinalizedSubmission
-      ? finalizedSubmissionRows
-        .map((indicator) => [String(indicator.metric?.code ?? "").trim(), indicator] as const)
-        .filter(([metricCode]) => metricCode.length > 0)
-      : [],
-  );
-
-  const schoolAchievementRows = reportRows
-    .filter((row) => row.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL)
-    .map<MonitorDrawerSchoolAchievementReportRow>((row) => ({
-      key: row.key,
-      label: row.label,
-      value: indicatorsByCode.has(row.code)
-        ? resolveIndicatorValue(resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code), "actual")
-        : "-",
-    }));
-
-  const kpiRows = reportRows
-    .filter((row) => row.category === KEY_PERFORMANCE_CATEGORY_LABEL)
-    .map<MonitorDrawerKpiReportRow>((row) => {
-      const indicator = resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code);
-      return {
-        key: row.key,
-        label: row.label,
-        target: indicator ? resolveIndicatorValue(indicator, "target") : "-",
-        actual: indicator ? resolveIndicatorValue(indicator, "actual") : "-",
-        status: String(indicator?.complianceStatus ?? "-").trim() || "-",
-      };
-    });
-
-  const sectionDefinitions = [
-    { id: "school_achievements", label: "School Achievements", category: SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL },
-    { id: "key_performance", label: "Key Performance", category: KEY_PERFORMANCE_CATEGORY_LABEL },
-  ] as const;
-  const latestYearIndicators = latestYearIndicatorRows;
-  const checklistItems: MonitorDrawerChecklistItem[] = [];
-
-  for (const section of sectionDefinitions) {
-    const categoryRows = currentYearRows.filter((row) => row.category === section.category);
-    const indicators = latestYearIndicators.filter((indicator) => indicatorCategoryLabel(indicator.metric?.code ?? null) === section.category);
-    const isSchoolAchievements = section.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL;
-    const isComplete = categoryRows.length > 0 && categoryRows.every((row) => {
-      const indicator = resolveSubmittedReportIndicatorByMetricCode(indicators, row.code);
-      if (!indicator) {
-        return false;
-      }
-
-      if (isSchoolAchievements) {
-        return hasDisplayValue(resolveIndicatorValue(indicator, "actual"));
-      }
-
-      return hasDisplayValue(resolveIndicatorValue(indicator, "target")) && hasDisplayValue(resolveIndicatorValue(indicator, "actual"));
-    });
-
-    let statusLabel: MonitorDrawerChecklistItem["statusLabel"] = isComplete ? "Complete" : "Missing";
-    if (isComplete && selectedYearWorkflowStatus === "returned") {
-      statusLabel = "Returned";
-    } else if (isComplete && selectedYearWorkflowStatus === "submitted") {
-      statusLabel = "For Review";
-    }
-
-    checklistItems.push({
-      id: section.id,
-      label: section.label,
-      statusLabel,
-      tone: resolveChecklistTone(statusLabel),
-      detail: isComplete
-        ? section.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL
-          ? "Section values are available for this year."
-          : "Targets and actual values are available for this year."
-        : "Section data is still incomplete for this year.",
-      kind: "section",
-    });
-  }
-
-  const requirementProfile = resolveSubmissionRequirementProfile(schoolDetail.schoolTypeRaw);
-  const uploadedFileTypes = new Set(getSubmissionUploadedFileTypes(latestYearSubmission));
-  for (const type of requirementProfile.requiredFileTypes) {
-    const definition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
-    let statusLabel: MonitorDrawerChecklistItem["statusLabel"] = uploadedFileTypes.has(type) ? "Uploaded" : "Missing";
-    if (uploadedFileTypes.has(type) && selectedYearWorkflowStatus === "returned") {
-      statusLabel = "Returned";
-    } else if (uploadedFileTypes.has(type) && selectedYearWorkflowStatus === "submitted") {
-      statusLabel = "For Review";
-    }
-
-    checklistItems.push({
-      id: type,
-      label: definition.shortLabel,
-      statusLabel,
-      tone: resolveChecklistTone(statusLabel),
-      detail: uploadedFileTypes.has(type) ? "File is present for the selected year." : "File is still missing for the selected year.",
-      kind: "file",
-    });
-  }
-
-  const checklistCompleteCount = checklistItems.filter((item) => item.statusLabel === "Complete" || item.statusLabel === "Uploaded").length;
-  const checklistMissingCount = checklistItems.length - checklistCompleteCount;
-
-  let currentIssueLabel = "No submission activity yet for this year.";
-  let currentIssueTone: MonitorDrawerYearDetail["currentIssueTone"] = "info";
-  if (selectedYearWorkflowStatus === "returned") {
-    currentIssueLabel = "Returned items need correction.";
-    currentIssueTone = "warning";
-  } else if (selectedYearWorkflowStatus === "submitted") {
-    currentIssueLabel = "Awaiting monitor review.";
-    currentIssueTone = "info";
-  } else if (selectedYearWorkflowStatus === "validated") {
-    currentIssueLabel = "Submission validated.";
-    currentIssueTone = "success";
-  } else if (checklistMissingCount > 0) {
-    currentIssueLabel = `${checklistMissingCount} checklist item${checklistMissingCount === 1 ? "" : "s"} still missing.`;
-    currentIssueTone = "warning";
-  } else if (latestYearSubmission) {
-    currentIssueLabel = "Current year submission progress is available.";
-    currentIssueTone = "success";
-  }
-
-  const reportSourceContext = buildSubmittedReportSourceContext(
-    selectedYearFinalizedSubmission,
-    effectiveSelectedYear ?? "N/A",
-  );
-
-  return {
-    selectedYearLabel: effectiveSelectedYear,
-    availableYears: availableYears.map<MonitorDrawerYearOption>((year) => ({ id: year, label: year })),
-    currentIssueLabel,
-    currentIssueTone,
-    checklistItems,
-    checklistCompleteCount,
-    checklistMissingCount,
-    selectedYearLatestSubmissionId: latestYearSubmission?.id ?? null,
-    selectedYearLatestStatus: latestYearSubmission?.status ?? null,
-    finalizedReportSubmission: selectedYearFinalizedSubmission,
-    reportSourceContext,
-    reportBlankStateLines: buildSubmittedReportBlankStateLines(),
-    schoolAchievementRows,
-    kpiRows,
-  };
-}
-
-export function buildMonitorDrawerHistorySummary(
-  schoolDrawerSubmissions: IndicatorSubmission[],
-): MonitorDrawerHistorySummary | null {
-  const sortedSubmissions = schoolDrawerSubmissions.slice().sort(compareMonitorPackagePriority);
-  const latestHistorySubmission = sortedSubmissions[0] ?? null;
-  const latestRenderableSubmission = sortedSubmissions.find((submission) => hasRenderableIndicatorRows(submission)) ?? null;
-  const schoolYears = new Set<string>();
-
-  for (const submission of sortedSubmissions) {
-    const schoolYear =
-      (submission.academicYear?.name ?? "").trim() ||
-      deriveSchoolYearLabel(submission.submittedAt ?? submission.updatedAt ?? submission.createdAt);
-    if (schoolYear) {
-      schoolYears.add(schoolYear);
-    }
-  }
-
-  const packagesWithRenderableRowsCount = sortedSubmissions.filter((submission) => hasRenderableIndicatorRows(submission)).length;
-  const packagesWithoutRenderableRowsCount = Math.max(0, sortedSubmissions.length - packagesWithRenderableRowsCount);
-
-  if (sortedSubmissions.length === 0) {
-    return {
-      historyPackageCount: 0,
-      historySchoolYearCount: 0,
-      latestHistoryPackageId: null,
-      latestHistorySchoolYear: null,
-      latestRenderableSubmissionId: null,
-      latestRenderableSchoolYear: null,
-      packagesWithRenderableRowsCount: 0,
-      packagesWithoutRenderableRowsCount: 0,
-      historyAvailabilityLabel: "No package history yet",
-      historyExplanation: "No package history exists yet for this school.",
-      historyFallbackReason: "No package history exists yet for this school.",
-    };
-  }
-
-  const latestHistorySchoolYear =
-    (latestHistorySubmission?.academicYear?.name ?? "").trim() ||
-    deriveSchoolYearLabel(
-      latestHistorySubmission?.submittedAt ?? latestHistorySubmission?.updatedAt ?? latestHistorySubmission?.createdAt,
-    );
-  const latestRenderableSchoolYear = latestRenderableSubmission
-    ? (latestRenderableSubmission.academicYear?.name ?? "").trim() ||
-      deriveSchoolYearLabel(
-        latestRenderableSubmission.submittedAt ?? latestRenderableSubmission.updatedAt ?? latestRenderableSubmission.createdAt,
-      )
-    : null;
-
-  let historyAvailabilityLabel = "Historical indicator detail available";
-  let historyExplanation = "Showing the most recent package with renderable indicator rows, plus older year values where available.";
-  let historyFallbackReason: string | null = null;
-
-  if (!latestRenderableSubmission) {
-    historyAvailabilityLabel = "Packages exist without indicator detail";
-    historyExplanation = "Packages exist for this school, but none contain renderable indicator rows for history view.";
-    historyFallbackReason = "Packages exist, but none contain indicator rows for history rendering.";
-  } else if (latestHistorySubmission && latestRenderableSubmission.id !== latestHistorySubmission.id) {
-    historyAvailabilityLabel = "Latest package differs from history source";
-    historyExplanation = `Latest package #${latestHistorySubmission.id} has no renderable indicator rows. Showing package #${latestRenderableSubmission.id} as the most recent history source with indicator detail.`;
-    historyFallbackReason = "Latest package has no indicator rows. Showing the most recent package with historical indicator detail.";
-  }
-
-  return {
-    historyPackageCount: sortedSubmissions.length,
-    historySchoolYearCount: schoolYears.size,
-    latestHistoryPackageId: latestHistorySubmission?.id ?? null,
-    latestHistorySchoolYear: latestHistorySchoolYear || null,
-    latestRenderableSubmissionId: latestRenderableSubmission?.id ?? null,
-    latestRenderableSchoolYear: latestRenderableSchoolYear || null,
-    packagesWithRenderableRowsCount,
-    packagesWithoutRenderableRowsCount,
-    historyAvailabilityLabel,
-    historyExplanation,
-    historyFallbackReason,
-  };
 }
 
 export function useMonitorDrawerViewModel({
@@ -555,13 +242,10 @@ export function useMonitorDrawerViewModel({
   );
 
   const effectiveSelectedSchoolDrawerYear = useMemo(() => {
-    const availableYears = sortSchoolYears(
-      schoolDrawerSubmissions.map((submission) => resolveMonitorSubmissionSchoolYearLabel(submission)),
-    ).reverse();
-    if (selectedSchoolDrawerYear && availableYears.includes(selectedSchoolDrawerYear)) {
-      return selectedSchoolDrawerYear;
-    }
-    return availableYears[0] ?? "";
+    return resolveMonitorSchoolDetailYearSelection(
+      schoolDrawerSubmissions,
+      selectedSchoolDrawerYear,
+    ).effectiveSelectedYear ?? "";
   }, [schoolDrawerSubmissions, selectedSchoolDrawerYear]);
 
   const schoolIndicatorRowKeySet = useMemo(

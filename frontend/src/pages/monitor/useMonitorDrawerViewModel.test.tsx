@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildMonitorDrawerHistorySummary,
-  buildMonitorDrawerYearDetail,
-} from "@/pages/monitor/useMonitorDrawerViewModel";
+import { buildMonitorDrawerYearDetail } from "@/pages/monitor/monitorSchoolDetailYear";
+import { buildMonitorDrawerHistorySummary } from "@/pages/monitor/monitorSchoolDetailHistory";
 
 describe("buildMonitorDrawerYearDetail", () => {
   it("builds a simple public selected-year checklist and keeps finalized report truth year-scoped", () => {
