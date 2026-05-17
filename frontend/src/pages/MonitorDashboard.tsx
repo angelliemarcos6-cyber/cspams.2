@@ -425,6 +425,7 @@ export function MonitorDashboard() {
     missingDrawerIndicatorKeySet,
     returnedDrawerIndicatorKeySet,
     schoolDetail,
+    schoolDrawerSnapshotSummary,
     schoolDrawerCriticalAlerts,
   } = useMonitorDrawerViewModel({
     schoolDrawerKey,
@@ -624,6 +625,7 @@ export function MonitorDashboard() {
       isSchoolDrawerSubmissionsLoading,
       schoolDrawerSubmissionsError,
       schoolDetail,
+      schoolDrawerSnapshotSummary,
       schoolDrawerCriticalAlerts,
       schoolIndicatorPackageRows,
       latestSchoolPackage,

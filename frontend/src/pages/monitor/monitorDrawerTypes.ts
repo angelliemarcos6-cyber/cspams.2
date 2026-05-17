@@ -7,6 +7,7 @@ export interface SchoolDetailSnapshot {
   region: string;
   level: string;
   type: string;
+  schoolTypeRaw: string | null;
   address: string;
   hasComplianceRecord: boolean;
   indicatorStatus: string | null;
@@ -17,6 +18,15 @@ export interface SchoolDetailSnapshot {
   reportedTeachers: number;
   synchronizedStudents: number;
   synchronizedTeachers: number;
+}
+
+export interface MonitorDrawerSnapshotSummary {
+  requirementModeLabel: string;
+  activePackageLabel: string;
+  summaryHeadline: string;
+  currentIssueLabel: string;
+  currentIssueTone: "warning" | "info" | "success";
+  needsAction: boolean;
 }
 
 export interface IndicatorMatrixRowCell {

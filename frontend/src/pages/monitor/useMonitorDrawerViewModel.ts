@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type {
   IndicatorMatrixRow,
+  MonitorDrawerSnapshotSummary,
   SchoolDetailSnapshot,
   SchoolDrawerCriticalAlert,
   SchoolIndicatorMatrix,
@@ -18,6 +19,7 @@ import {
   sortSchoolYears,
   typedYearValues,
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
+import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
 import type { IndicatorSubmission, SchoolRecord } from "@/types";
 
 interface UseMonitorDrawerViewModelArgs {
@@ -41,7 +43,88 @@ export interface UseMonitorDrawerViewModelResult {
   missingDrawerIndicatorKeySet: Set<string>;
   returnedDrawerIndicatorKeySet: Set<string>;
   schoolDetail: SchoolDetailSnapshot | null;
+  schoolDrawerSnapshotSummary: MonitorDrawerSnapshotSummary | null;
   schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
+}
+
+export function buildMonitorDrawerSnapshotSummary(
+  schoolDetail: SchoolDetailSnapshot | null,
+): MonitorDrawerSnapshotSummary | null {
+  if (!schoolDetail) {
+    return null;
+  }
+
+  const requirementProfile = resolveSubmissionRequirementProfile(schoolDetail.schoolTypeRaw);
+  const activePackageLabel = requirementProfile.schoolType === "private"
+    ? "FM-QAD uploads only"
+    : "BMEF and SMEA";
+  const requirementModeLabel = requirementProfile.schoolType === "private"
+    ? "Active package requirements: FM-QAD uploads only."
+    : "Active package requirements: BMEF and SMEA.";
+
+  if (!schoolDetail.hasComplianceRecord) {
+    return {
+      requirementModeLabel,
+      activePackageLabel,
+      summaryHeadline: `Compliance is still missing. Active ${requirementProfile.schoolType} package is ${schoolDetail.indicatorStatus ? schoolDetail.indicatorStatus : "not submitted"} and needs School Head action.`,
+      currentIssueLabel: "Compliance record still missing.",
+      currentIssueTone: "warning",
+      needsAction: true,
+    };
+  }
+
+  if (schoolDetail.indicatorStatus === "returned") {
+    return {
+      requirementModeLabel,
+      activePackageLabel,
+      summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package was returned for correction and needs School Head action.`,
+      currentIssueLabel: "Returned package needs correction.",
+      currentIssueTone: "warning",
+      needsAction: true,
+    };
+  }
+
+  if (schoolDetail.awaitingReviewCount > 0 || schoolDetail.indicatorStatus === "submitted") {
+    return {
+      requirementModeLabel,
+      activePackageLabel,
+      summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package is awaiting monitor review.`,
+      currentIssueLabel: "Awaiting monitor review.",
+      currentIssueTone: "info",
+      needsAction: false,
+    };
+  }
+
+  if (schoolDetail.missingCount > 0) {
+    return {
+      requirementModeLabel,
+      activePackageLabel,
+      summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package is not yet submitted. ${schoolDetail.missingCount} requirement${schoolDetail.missingCount === 1 ? "" : "s"} remain missing.`,
+      currentIssueLabel: `${schoolDetail.missingCount} requirement${schoolDetail.missingCount === 1 ? "" : "s"} still missing.`,
+      currentIssueTone: "warning",
+      needsAction: true,
+    };
+  }
+
+  if (schoolDetail.indicatorStatus === "validated") {
+    return {
+      requirementModeLabel,
+      activePackageLabel,
+      summaryHeadline: `Compliance and the active ${requirementProfile.schoolType} package are complete and monitor-validated.`,
+      currentIssueLabel: "No immediate issue.",
+      currentIssueTone: "success",
+      needsAction: false,
+    };
+  }
+
+  return {
+    requirementModeLabel,
+    activePackageLabel,
+    summaryHeadline: `Compliance is submitted. Active ${requirementProfile.schoolType} package status is ${schoolDetail.indicatorStatus ? schoolDetail.indicatorStatus : "not submitted"}.`,
+    currentIssueLabel: "Review current package status.",
+    currentIssueTone: "info",
+    needsAction: false,
+  };
 }
 
 export function useMonitorDrawerViewModel({
@@ -278,6 +361,7 @@ export function useMonitorDrawerViewModel({
       region: summary?.region ?? record?.region ?? "N/A",
       level: record?.level ?? "N/A",
       type: schoolTypeLabel(record?.type),
+      schoolTypeRaw: record?.type ?? null,
       address: record?.address ?? record?.district ?? "N/A",
       hasComplianceRecord: summary?.hasComplianceRecord ?? false,
       indicatorStatus: summary?.indicatorStatus ?? null,
@@ -297,6 +381,11 @@ export function useMonitorDrawerViewModel({
     schoolTypeLabel,
     studentStatsBySchoolKey,
   ]);
+
+  const schoolDrawerSnapshotSummary = useMemo(
+    () => buildMonitorDrawerSnapshotSummary(schoolDetail),
+    [schoolDetail],
+  );
 
   const schoolDrawerCriticalAlerts = useMemo<SchoolDrawerCriticalAlert[]>(() => {
     if (!schoolDetail) return [];
@@ -380,6 +469,7 @@ export function useMonitorDrawerViewModel({
     missingDrawerIndicatorKeySet,
     returnedDrawerIndicatorKeySet,
     schoolDetail,
+    schoolDrawerSnapshotSummary,
     schoolDrawerCriticalAlerts,
   };
 }

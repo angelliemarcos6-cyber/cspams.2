@@ -21,6 +21,7 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   isSchoolDrawerSubmissionsLoading: MonitorSchoolDrawerLoadingState["isSchoolDrawerSubmissionsLoading"];
   schoolDrawerSubmissionsError: MonitorSchoolDrawerLoadingState["schoolDrawerSubmissionsError"];
   schoolDetail: MonitorSchoolDrawerData["schoolDetail"];
+  schoolDrawerSnapshotSummary: MonitorSchoolDrawerData["schoolDrawerSnapshotSummary"];
   schoolDrawerCriticalAlerts: MonitorSchoolDrawerData["schoolDrawerCriticalAlerts"];
   schoolIndicatorPackageRows: MonitorSchoolDrawerData["schoolIndicatorPackageRows"];
   latestSchoolPackage: MonitorSchoolDrawerData["latestSchoolPackage"];
@@ -55,6 +56,7 @@ export function buildMonitorSchoolDrawerProps({
   isSchoolDrawerSubmissionsLoading,
   schoolDrawerSubmissionsError,
   schoolDetail,
+  schoolDrawerSnapshotSummary,
   schoolDrawerCriticalAlerts,
   schoolIndicatorPackageRows,
   latestSchoolPackage,
@@ -93,6 +95,7 @@ export function buildMonitorSchoolDrawerProps({
     },
     data: {
       schoolDetail,
+      schoolDrawerSnapshotSummary,
       schoolDrawerCriticalAlerts,
       schoolIndicatorPackageRows,
       latestSchoolPackage,
