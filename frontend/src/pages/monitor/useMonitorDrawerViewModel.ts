@@ -3,6 +3,7 @@ import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSch
 import type {
   IndicatorMatrixRow,
   MonitorDrawerSnapshotSummary,
+  MonitorDrawerSubmissionSummary,
   SchoolDetailSnapshot,
   SchoolDrawerCriticalAlert,
   SchoolIndicatorMatrix,
@@ -44,7 +45,36 @@ export interface UseMonitorDrawerViewModelResult {
   returnedDrawerIndicatorKeySet: Set<string>;
   schoolDetail: SchoolDetailSnapshot | null;
   schoolDrawerSnapshotSummary: MonitorDrawerSnapshotSummary | null;
+  schoolDrawerSubmissionSummary: MonitorDrawerSubmissionSummary | null;
   schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
+}
+
+function toSubmissionActivityTime(submission: IndicatorSubmission | null | undefined): number {
+  return new Date(
+    submission?.submittedAt
+    ?? submission?.updatedAt
+    ?? submission?.createdAt
+    ?? 0,
+  ).getTime();
+}
+
+function isMonitorRelevantPackageStatus(status: string | null | undefined): boolean {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  return normalizedStatus === "submitted" || normalizedStatus === "validated" || normalizedStatus === "returned";
+}
+
+function compareMonitorPackagePriority(left: IndicatorSubmission, right: IndicatorSubmission): number {
+  const recencyDelta = toSubmissionActivityTime(right) - toSubmissionActivityTime(left);
+  if (recencyDelta !== 0) {
+    return recencyDelta;
+  }
+
+  const versionDelta = Number(right.version ?? 0) - Number(left.version ?? 0);
+  if (versionDelta !== 0) {
+    return versionDelta;
+  }
+
+  return String(right.id ?? "").localeCompare(String(left.id ?? ""));
 }
 
 export function buildMonitorDrawerSnapshotSummary(
@@ -126,6 +156,84 @@ export function buildMonitorDrawerSnapshotSummary(
     currentIssueLabel: "Review current package status.",
     currentIssueTone: "info",
     needsAction: false,
+  };
+}
+
+export function buildMonitorDrawerSubmissionSummary(
+  schoolDetail: SchoolDetailSnapshot | null,
+  schoolDrawerSubmissions: IndicatorSubmission[],
+): MonitorDrawerSubmissionSummary | null {
+  if (!schoolDetail) {
+    return null;
+  }
+
+  const sortedSubmissions = schoolDrawerSubmissions.slice().sort(compareMonitorPackagePriority);
+  const latestActivitySubmission = sortedSubmissions[0] ?? null;
+  const latestMonitorRelevantSubmission =
+    sortedSubmissions.find((submission) => isMonitorRelevantPackageStatus(submission.status)) ?? null;
+
+  const latestActivityStatus = latestActivitySubmission?.status ?? null;
+  const monitorRelevantStatus = latestMonitorRelevantSubmission?.status ?? null;
+
+  const submissionLineageLabel = latestMonitorRelevantSubmission
+    ? `Monitor-facing package context is driven by package #${latestMonitorRelevantSubmission.id}.`
+    : latestActivitySubmission
+      ? `Latest activity is package #${latestActivitySubmission.id}, but no monitor-relevant package has been submitted yet.`
+      : "No indicator package activity is available yet for this school.";
+
+  let submissionStateExplanation = "";
+  if (!latestActivitySubmission) {
+    submissionStateExplanation = "No package activity yet. Monitor is waiting for the School Head to start the active package.";
+  } else if (
+    latestActivitySubmission
+    && latestMonitorRelevantSubmission
+    && latestActivitySubmission.id !== latestMonitorRelevantSubmission.id
+    && String(latestActivityStatus ?? "").trim().toLowerCase() === "draft"
+  ) {
+    submissionStateExplanation = `Latest activity is a draft (${latestActivitySubmission.academicYear?.name ?? "Unknown school year"}), but the actionable monitor package is still #${latestMonitorRelevantSubmission.id} (${String(monitorRelevantStatus ?? "not submitted").toLowerCase()}).`;
+  } else if (!latestMonitorRelevantSubmission) {
+    submissionStateExplanation = "Recent activity exists, but the school has not yet produced a submitted, returned, or validated active package for monitor action.";
+  } else if (String(monitorRelevantStatus ?? "").trim().toLowerCase() === "returned") {
+    submissionStateExplanation = "The latest monitor-relevant package was returned for correction. Monitor is waiting for School Head revisions.";
+  } else if (String(monitorRelevantStatus ?? "").trim().toLowerCase() === "submitted") {
+    submissionStateExplanation = "The latest monitor-relevant package is submitted and awaiting monitor review.";
+  } else if (String(monitorRelevantStatus ?? "").trim().toLowerCase() === "validated") {
+    submissionStateExplanation = "The latest monitor-relevant package is validated. Review history remains available for context.";
+  } else {
+    submissionStateExplanation = "Review the current package lineage and status for this school.";
+  }
+
+  return {
+    requirementModeLabel: schoolDetail.requirementModeLabel,
+    activePackageLabel: schoolDetail.activePackageLabel,
+    monitorRelevantPackageStatus: monitorRelevantStatus,
+    latestActivityStatus,
+    latestMonitorRelevantSubmissionId: latestMonitorRelevantSubmission?.id ?? null,
+    latestPackageSchoolYear: latestMonitorRelevantSubmission?.academicYear?.name?.trim() || null,
+    latestPackageReportingPeriod: latestMonitorRelevantSubmission?.reportingPeriod ?? null,
+    latestPackageSubmittedAt:
+      latestMonitorRelevantSubmission?.submittedAt
+      ?? latestMonitorRelevantSubmission?.updatedAt
+      ?? latestMonitorRelevantSubmission?.createdAt
+      ?? null,
+    latestPackageReviewedAt: latestMonitorRelevantSubmission?.reviewedAt ?? null,
+    latestPackageComplianceRatePercent:
+      typeof latestMonitorRelevantSubmission?.summary?.complianceRatePercent === "number"
+      && Number.isFinite(latestMonitorRelevantSubmission.summary.complianceRatePercent)
+        ? latestMonitorRelevantSubmission.summary.complianceRatePercent
+        : null,
+    latestActivitySubmissionId: latestActivitySubmission?.id ?? null,
+    latestActivitySchoolYear: latestActivitySubmission?.academicYear?.name?.trim() || null,
+    latestActivityAt:
+      latestActivitySubmission?.updatedAt
+      ?? latestActivitySubmission?.submittedAt
+      ?? latestActivitySubmission?.createdAt
+      ?? null,
+    submissionLineageLabel,
+    submissionStateExplanation,
+    needsMonitorAction:
+      String(monitorRelevantStatus ?? "").trim().toLowerCase() === "submitted"
+      || schoolDetail.awaitingReviewCount > 0,
   };
 }
 
@@ -282,13 +390,14 @@ export function useMonitorDrawerViewModel({
     () =>
       schoolDrawerSubmissions.map((submission) => ({
         id: submission.id,
-        schoolYear:
+      schoolYear:
           (submission.academicYear?.name ?? "").trim() ||
           deriveSchoolYearLabel(submission.submittedAt ?? submission.updatedAt ?? submission.createdAt),
         reportingPeriod: submission.reportingPeriod ?? "N/A",
         status: submission.status ?? null,
         submittedAt: submission.submittedAt ?? submission.updatedAt ?? submission.createdAt,
         reviewedAt: submission.reviewedAt ?? null,
+        updatedAt: submission.updatedAt ?? null,
         complianceRatePercent:
           typeof submission.summary?.complianceRatePercent === "number" && Number.isFinite(submission.summary.complianceRatePercent)
             ? submission.summary.complianceRatePercent
@@ -399,6 +508,11 @@ export function useMonitorDrawerViewModel({
     [schoolDetail],
   );
 
+  const schoolDrawerSubmissionSummary = useMemo(
+    () => buildMonitorDrawerSubmissionSummary(schoolDetail, schoolDrawerSubmissions),
+    [schoolDetail, schoolDrawerSubmissions],
+  );
+
   const schoolDrawerCriticalAlerts = useMemo<SchoolDrawerCriticalAlert[]>(() => {
     if (!schoolDetail) return [];
 
@@ -482,6 +596,7 @@ export function useMonitorDrawerViewModel({
     returnedDrawerIndicatorKeySet,
     schoolDetail,
     schoolDrawerSnapshotSummary,
+    schoolDrawerSubmissionSummary,
     schoolDrawerCriticalAlerts,
   };
 }

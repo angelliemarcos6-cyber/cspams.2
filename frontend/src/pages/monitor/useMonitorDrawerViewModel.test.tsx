@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildMonitorDrawerSnapshotSummary } from "@/pages/monitor/useMonitorDrawerViewModel";
+import {
+  buildMonitorDrawerSnapshotSummary,
+  buildMonitorDrawerSubmissionSummary,
+} from "@/pages/monitor/useMonitorDrawerViewModel";
 
 describe("buildMonitorDrawerSnapshotSummary", () => {
   it("makes private active package requirements explicit in the snapshot summary", () => {
@@ -58,5 +61,74 @@ describe("buildMonitorDrawerSnapshotSummary", () => {
     expect(summary?.currentIssueLabel).toBe("Returned package needs correction.");
     expect(summary?.needsAction).toBe(true);
     expect(summary?.summaryHeadline).toContain("returned for correction");
+  });
+});
+
+describe("buildMonitorDrawerSubmissionSummary", () => {
+  it("keeps monitor package truth on the latest submitted or returned package when newer activity is only a draft", () => {
+    const summary = buildMonitorDrawerSubmissionSummary(
+      {
+        schoolKey: "school-3",
+        schoolCode: "401779",
+        schoolName: "Private College",
+        region: "II",
+        level: "High School",
+        type: "Private",
+        schoolTypeRaw: "private",
+        requirementModeLabel: "Active package requirements: FM-QAD uploads only.",
+        activePackageLabel: "FM-QAD uploads only",
+        address: "N/A",
+        hasComplianceRecord: true,
+        indicatorStatus: "returned",
+        hasActivePackageSubmission: true,
+        missingCount: 0,
+        awaitingReviewCount: 0,
+        lastActivityAt: null,
+        reportedStudents: 0,
+        reportedTeachers: 0,
+        synchronizedStudents: 0,
+        synchronizedTeachers: 0,
+      },
+      [
+        {
+          id: "draft-9",
+          formType: "indicator",
+          status: "draft",
+          statusLabel: "Draft",
+          reportingPeriod: "ANNUAL",
+          version: 9,
+          notes: null,
+          reviewNotes: null,
+          submittedAt: null,
+          reviewedAt: null,
+          createdAt: "2026-05-17T08:00:00.000Z",
+          updatedAt: "2026-05-17T09:00:00.000Z",
+          summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+          indicators: [],
+          academicYear: { id: "year-2", name: "2026-2027" },
+        } as never,
+        {
+          id: "returned-5",
+          formType: "indicator",
+          status: "returned",
+          statusLabel: "Returned",
+          reportingPeriod: "ANNUAL",
+          version: 5,
+          notes: null,
+          reviewNotes: null,
+          submittedAt: "2026-05-16T09:00:00.000Z",
+          reviewedAt: null,
+          createdAt: "2026-05-16T08:00:00.000Z",
+          updatedAt: "2026-05-16T09:00:00.000Z",
+          summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 72 },
+          indicators: [],
+          academicYear: { id: "year-1", name: "2025-2026" },
+        } as never,
+      ],
+    );
+
+    expect(summary?.latestActivitySubmissionId).toBe("draft-9");
+    expect(summary?.latestMonitorRelevantSubmissionId).toBe("returned-5");
+    expect(summary?.submissionStateExplanation).toContain("Latest activity is a draft");
   });
 });

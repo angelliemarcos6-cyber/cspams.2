@@ -32,6 +32,25 @@ export interface MonitorDrawerSnapshotSummary {
   needsAction: boolean;
 }
 
+export interface MonitorDrawerSubmissionSummary {
+  requirementModeLabel: string;
+  activePackageLabel: string;
+  monitorRelevantPackageStatus: string | null;
+  latestActivityStatus: string | null;
+  latestMonitorRelevantSubmissionId: string | null;
+  latestPackageSchoolYear: string | null;
+  latestPackageReportingPeriod: string | null;
+  latestPackageSubmittedAt: string | null;
+  latestPackageReviewedAt: string | null;
+  latestPackageComplianceRatePercent: number | null;
+  latestActivitySubmissionId: string | null;
+  latestActivitySchoolYear: string | null;
+  latestActivityAt: string | null;
+  submissionLineageLabel: string;
+  submissionStateExplanation: string;
+  needsMonitorAction: boolean;
+}
+
 export interface IndicatorMatrixRowCell {
   target: string;
   actual: string;
@@ -53,6 +72,7 @@ export interface SchoolIndicatorPackageRow {
   status: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
+  updatedAt: string | null;
   complianceRatePercent: number | null;
   reviewedBy: string;
 }
