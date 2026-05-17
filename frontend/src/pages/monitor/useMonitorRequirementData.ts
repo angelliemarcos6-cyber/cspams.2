@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { MonitorSchoolRecordsListRow, MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type { MonitorTopNavigatorId, QueueLane, RequirementFilter, SchoolQuickPreset } from "@/pages/monitor/monitorFilters";
+import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
 import type { SchoolRecord, SchoolStatus } from "@/types";
 import {
   isAwaitingReview,
@@ -17,6 +18,69 @@ import {
 } from "@/pages/monitor/monitorRequirementRules";
 
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
+
+export interface MonitorRequirementSummaryState {
+  packageSchoolType: "public" | "private";
+  requirementModeLabel: string;
+  activePackageLabel: string;
+  indicatorStatus: string | null;
+  hasActivePackageSubmission: boolean;
+  hasAnySubmitted: boolean;
+  isComplete: boolean;
+  awaitingReviewCount: number;
+  missingCount: number;
+}
+
+function normalizeMonitorPackageStatus(status: string | null | undefined): string | null {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  if (!normalizedStatus) {
+    return null;
+  }
+
+  if (normalizedStatus === "draft") {
+    return "draft";
+  }
+  if (normalizedStatus === "submitted") {
+    return "submitted";
+  }
+  if (normalizedStatus === "validated") {
+    return "validated";
+  }
+  if (normalizedStatus === "returned") {
+    return "returned";
+  }
+
+  return null;
+}
+
+export function buildMonitorRequirementSummaryState(
+  record: Pick<SchoolRecord, "type" | "indicatorLatest">,
+  hasComplianceRecord: boolean,
+): MonitorRequirementSummaryState {
+  const requirementProfile = resolveSubmissionRequirementProfile(record.type);
+  const normalizedIndicatorStatus = normalizeMonitorPackageStatus(record.indicatorLatest?.status ?? null);
+  const hasActivePackageSubmission = isPassedToMonitor(normalizedIndicatorStatus);
+  const awaitingReviewCount = isAwaitingReview(normalizedIndicatorStatus) ? 1 : 0;
+  const missingCount = (hasComplianceRecord ? 0 : 1) + (hasActivePackageSubmission ? 0 : 1);
+
+  return {
+    packageSchoolType: requirementProfile.schoolType,
+    requirementModeLabel:
+      requirementProfile.schoolType === "private"
+        ? "Active package requirements: FM-QAD uploads only."
+        : "Active package requirements: BMEF and SMEA.",
+    activePackageLabel:
+      requirementProfile.schoolType === "private"
+        ? "FM-QAD uploads only"
+        : "BMEF and SMEA",
+    indicatorStatus: normalizedIndicatorStatus,
+    hasActivePackageSubmission,
+    hasAnySubmitted: hasComplianceRecord || hasActivePackageSubmission,
+    isComplete: missingCount === 0,
+    awaitingReviewCount,
+    missingCount,
+  };
+}
 
 interface UseMonitorRequirementDataArgs {
   records: SchoolRecord[];
@@ -147,8 +211,12 @@ export function useMonitorRequirementData({
           schoolName: normalizedName,
           region: normalizedRegion,
           schoolStatus,
+          packageSchoolType: "public",
+          requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+          activePackageLabel: "BMEF and SMEA",
           hasComplianceRecord: false,
           indicatorStatus: null,
+          hasActivePackageSubmission: false,
           hasAnySubmitted: false,
           isComplete: false,
           awaitingReviewCount: 0,
@@ -196,24 +264,38 @@ export function useMonitorRequirementData({
       setLastActivity(row, record.lastUpdated);
 
       const indicatorLatest = record.indicatorLatest ?? null;
+      const summaryState = buildMonitorRequirementSummaryState(record, true);
+      row.packageSchoolType = summaryState.packageSchoolType;
+      row.requirementModeLabel = summaryState.requirementModeLabel;
+      row.activePackageLabel = summaryState.activePackageLabel;
+      row.indicatorStatus = summaryState.indicatorStatus;
+      row.hasActivePackageSubmission = summaryState.hasActivePackageSubmission;
+      row.awaitingReviewCount = summaryState.awaitingReviewCount;
+      row.missingCount = summaryState.missingCount;
+      row.hasAnySubmitted = summaryState.hasAnySubmitted;
+      row.isComplete = summaryState.isComplete;
       if (indicatorLatest) {
-        row.indicatorStatus = indicatorLatest.status ?? null;
         setLastActivity(row, indicatorLatest.updatedAt, indicatorLatest.submittedAt, indicatorLatest.createdAt);
       }
     }
 
     return [...rows.values()]
       .map((row) => {
-        const indicatorSubmitted = isPassedToMonitor(row.indicatorStatus);
-        const missingCount = (row.hasComplianceRecord ? 0 : 1) + (indicatorSubmitted ? 0 : 1);
-        const awaitingReviewCount = isAwaitingReview(row.indicatorStatus) ? 1 : 0;
+        const summaryState = {
+          packageSchoolType: row.packageSchoolType,
+          requirementModeLabel: row.requirementModeLabel,
+          activePackageLabel: row.activePackageLabel,
+          indicatorStatus: row.indicatorStatus,
+          hasActivePackageSubmission: row.hasActivePackageSubmission,
+          hasAnySubmitted: row.hasAnySubmitted,
+          isComplete: row.isComplete,
+          awaitingReviewCount: row.awaitingReviewCount,
+          missingCount: row.missingCount,
+        };
 
         return {
           ...row,
-          hasAnySubmitted: row.hasComplianceRecord || indicatorSubmitted,
-          isComplete: missingCount === 0,
-          missingCount,
-          awaitingReviewCount,
+          ...summaryState,
         };
       })
       .sort((a, b) => a.schoolName.localeCompare(b.schoolName));

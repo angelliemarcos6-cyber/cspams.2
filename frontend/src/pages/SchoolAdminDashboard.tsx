@@ -28,6 +28,7 @@ import {
   getActiveReportFileTypes,
   getSecondaryHistoricalVisibleFiles,
   getSecondaryHistoricalFileTypes,
+  resolveExactSubmissionItemByMetricCode,
   resolveSecondarySubmittedReportFileDefinitions,
   resolveSubmissionSchoolId,
   resolveSubmissionPresentationSchoolType,
@@ -195,26 +196,7 @@ export function resolveSubmittedReportIndicatorByMetricCode(
   indicators: IndicatorSubmissionItem[],
   expectedMetricCode: string | null | undefined,
 ): IndicatorSubmissionItem | null {
-  const normalizedExpectedMetricCode = normalizeMetricLookupKey(expectedMetricCode);
-  if (!normalizedExpectedMetricCode) {
-    return null;
-  }
-
-  let matchedIndicator: IndicatorSubmissionItem | null = null;
-
-  for (const indicator of indicators) {
-    if (normalizeMetricLookupKey(indicator.metric?.code) !== normalizedExpectedMetricCode) {
-      continue;
-    }
-
-    if (matchedIndicator) {
-      return null;
-    }
-
-    matchedIndicator = indicator;
-  }
-
-  return matchedIndicator;
+  return resolveExactSubmissionItemByMetricCode(indicators, expectedMetricCode);
 }
 
 function normalizeFileExtension(filename: string | null | undefined): string {
@@ -224,11 +206,7 @@ function normalizeFileExtension(filename: string | null | undefined): string {
 }
 
 function normalizeMetricLookupKey(label: string | null | undefined): string {
-  return String(label ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  return String(label ?? "").trim();
 }
 
 function isFinalizedSubmissionStatus(status: string | null | undefined): boolean {

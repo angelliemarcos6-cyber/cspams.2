@@ -9,8 +9,12 @@ export interface MonitorSchoolRequirementSummary {
   schoolName: string;
   region: string;
   schoolStatus: SchoolStatus | null;
+  packageSchoolType: "public" | "private";
+  requirementModeLabel: string;
+  activePackageLabel: string;
   hasComplianceRecord: boolean;
   indicatorStatus: string | null;
+  hasActivePackageSubmission: boolean;
   hasAnySubmitted: boolean;
   isComplete: boolean;
   awaitingReviewCount: number;

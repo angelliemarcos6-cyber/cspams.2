@@ -8,9 +8,12 @@ export interface SchoolDetailSnapshot {
   level: string;
   type: string;
   schoolTypeRaw: string | null;
+  requirementModeLabel: string;
+  activePackageLabel: string;
   address: string;
   hasComplianceRecord: boolean;
   indicatorStatus: string | null;
+  hasActivePackageSubmission: boolean;
   missingCount: number;
   awaitingReviewCount: number;
   lastActivityAt: string | null;

@@ -157,6 +157,33 @@ export function resolveExactMetricIdentity(
   return null;
 }
 
+export function resolveExactSubmissionItemByMetricCode(
+  indicators: readonly IndicatorSubmissionItem[],
+  expectedMetricCode: string | null | undefined,
+): IndicatorSubmissionItem | null {
+  const normalizedExpectedMetricCode = String(expectedMetricCode ?? "").trim();
+  if (!normalizedExpectedMetricCode) {
+    return null;
+  }
+
+  let matchedIndicator: IndicatorSubmissionItem | null = null;
+
+  for (const indicator of indicators) {
+    const metricCode = String(indicator.metric?.code ?? "").trim();
+    if (metricCode !== normalizedExpectedMetricCode) {
+      continue;
+    }
+
+    if (matchedIndicator) {
+      return null;
+    }
+
+    matchedIndicator = indicator;
+  }
+
+  return matchedIndicator;
+}
+
 export function getActiveWorkspaceFileTypes(
   submission: Pick<IndicatorSubmission, "presentation" | "completion" | "schoolType" | "school"> | null | undefined,
   fallbackSchoolType?: string | null,

@@ -15,8 +15,10 @@ import {
   resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
   resolveSubmissionRequirementProfile,
+  resolveExactSubmissionItemByMetricCode,
   resolveVisibleSubmissionFileDefinitions,
 } from "@/utils/submissionRequirements";
+import type { IndicatorSubmissionItem } from "@/types";
 
 describe("defaultRequiredSubmissionFileTypesForSchoolType", () => {
   it("returns only core file types for public schools", () => {
@@ -387,5 +389,38 @@ describe("resolveSecondarySubmittedReportFileDefinitions", () => {
     });
 
     expect(result).toEqual([]);
+  });
+});
+
+describe("resolveExactSubmissionItemByMetricCode", () => {
+  function indicator(metricCode: string): IndicatorSubmissionItem {
+    return {
+      id: metricCode,
+      metric: {
+        id: metricCode,
+        code: metricCode,
+        name: metricCode,
+        category: "test",
+        framework: "imeta",
+        dataType: "number",
+      },
+      targetValue: null,
+      actualValue: null,
+      varianceValue: null,
+      complianceStatus: "met",
+      remarks: null,
+    };
+  }
+
+  it("returns the unique exact metric-code match", () => {
+    expect(resolveExactSubmissionItemByMetricCode([indicator("NER"), indicator("RR")], "NER")?.id).toBe("NER");
+  });
+
+  it("returns null when duplicate exact metric-code rows exist", () => {
+    expect(resolveExactSubmissionItemByMetricCode([indicator("NER"), indicator("NER")], "NER")).toBeNull();
+  });
+
+  it("does not use loose normalized matching", () => {
+    expect(resolveExactSubmissionItemByMetricCode([indicator("NER")], " ner ")).toBeNull();
   });
 });

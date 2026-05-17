@@ -3,6 +3,11 @@ import type { QueueLane, RequirementFilter } from "@/pages/monitor/monitorFilter
 import { normalizeSchoolKey } from "@/pages/monitor/monitorRequirementRules";
 import type { SchoolStatus } from "@/types";
 
+type MonitorRequirementStatusRow = Pick<
+  MonitorSchoolRequirementSummary,
+  "indicatorStatus" | "missingCount" | "awaitingReviewCount"
+>;
+
 export function statusTone(status: SchoolStatus) {
   if (status === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (status === "pending") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
@@ -81,11 +86,11 @@ export function requirementFilterLabel(value: RequirementFilter): string {
   return "All statuses";
 }
 
-export function isUrgentRequirement(row: MonitorSchoolRequirementSummary): boolean {
+export function isUrgentRequirement(row: MonitorRequirementStatusRow): boolean {
   return row.missingCount > 0 || row.indicatorStatus === "returned";
 }
 
-export function urgencyRowTone(row: MonitorSchoolRequirementSummary): string {
+export function urgencyRowTone(row: MonitorRequirementStatusRow): string {
   if (row.missingCount > 0) {
     return "bg-rose-50/80";
   }
@@ -95,14 +100,14 @@ export function urgencyRowTone(row: MonitorSchoolRequirementSummary): string {
   return "";
 }
 
-export function queuePriorityLabel(row: MonitorSchoolRequirementSummary): string {
+export function queuePriorityLabel(row: MonitorRequirementStatusRow): string {
   if (row.indicatorStatus === "returned") return "Returned";
   if (row.missingCount > 0) return "Missing";
   if (row.awaitingReviewCount > 0) return "For Review";
   return "Normal";
 }
 
-export function queuePriorityTone(row: MonitorSchoolRequirementSummary): string {
+export function queuePriorityTone(row: MonitorRequirementStatusRow): string {
   if (row.indicatorStatus === "returned") {
     return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   }

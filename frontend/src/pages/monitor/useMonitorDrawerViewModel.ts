@@ -55,12 +55,14 @@ export function buildMonitorDrawerSnapshotSummary(
   }
 
   const requirementProfile = resolveSubmissionRequirementProfile(schoolDetail.schoolTypeRaw);
-  const activePackageLabel = requirementProfile.schoolType === "private"
-    ? "FM-QAD uploads only"
-    : "BMEF and SMEA";
-  const requirementModeLabel = requirementProfile.schoolType === "private"
-    ? "Active package requirements: FM-QAD uploads only."
-    : "Active package requirements: BMEF and SMEA.";
+  const activePackageLabel = schoolDetail.activePackageLabel || (
+    requirementProfile.schoolType === "private" ? "FM-QAD uploads only" : "BMEF and SMEA"
+  );
+  const requirementModeLabel = schoolDetail.requirementModeLabel || (
+    requirementProfile.schoolType === "private"
+      ? "Active package requirements: FM-QAD uploads only."
+      : "Active package requirements: BMEF and SMEA."
+  );
 
   if (!schoolDetail.hasComplianceRecord) {
     return {
@@ -351,6 +353,7 @@ export function useMonitorDrawerViewModel({
     const record = recordBySchoolKey.get(schoolDrawerKey);
     const studentStats = studentStatsBySchoolKey.get(schoolDrawerKey);
     const accurateCounts = accurateSyncedCountsBySchoolKey[schoolDrawerKey];
+    const requirementProfile = resolveSubmissionRequirementProfile(record?.type);
 
     if (!summary && !record) return null;
 
@@ -362,9 +365,18 @@ export function useMonitorDrawerViewModel({
       level: record?.level ?? "N/A",
       type: schoolTypeLabel(record?.type),
       schoolTypeRaw: record?.type ?? null,
+      requirementModeLabel:
+        summary?.requirementModeLabel
+        ?? (requirementProfile.schoolType === "private"
+          ? "Active package requirements: FM-QAD uploads only."
+          : "Active package requirements: BMEF and SMEA."),
+      activePackageLabel:
+        summary?.activePackageLabel
+        ?? (requirementProfile.schoolType === "private" ? "FM-QAD uploads only" : "BMEF and SMEA"),
       address: record?.address ?? record?.district ?? "N/A",
       hasComplianceRecord: summary?.hasComplianceRecord ?? false,
       indicatorStatus: summary?.indicatorStatus ?? null,
+      hasActivePackageSubmission: summary?.hasActivePackageSubmission ?? false,
       missingCount: summary?.missingCount ?? 0,
       awaitingReviewCount: summary?.awaitingReviewCount ?? 0,
       lastActivityAt: summary?.lastActivityAt ?? record?.lastUpdated ?? null,
