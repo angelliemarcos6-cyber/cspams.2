@@ -4940,8 +4940,8 @@ function SchoolIndicatorPanelComponent({
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
       <div className="border-b border-slate-200 bg-white px-4 py-4">
         <div className="rounded-sm border border-slate-200 bg-slate-50/80 p-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="min-w-0">
+          <div className="flex justify-end">
+            {false && <div className="min-w-0">
               <p className="text-[11px] font-semibold tracking-wide text-slate-500">Form status</p>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span
@@ -4988,7 +4988,7 @@ function SchoolIndicatorPanelComponent({
                   Submitted by {submittedByLabel ?? "Unknown"} • {formatDateTime(submittedAtLabel)}
                 </p>
               )}
-            </div>
+            </div>}
 
             <div className="w-full md:w-[320px]">
               <p className="text-right text-lg font-bold leading-none text-slate-900">
