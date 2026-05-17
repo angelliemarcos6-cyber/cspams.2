@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildMonitorDrawerHistorySummary,
   buildMonitorDrawerSnapshotSummary,
   buildMonitorDrawerSubmissionSummary,
 } from "@/pages/monitor/useMonitorDrawerViewModel";
@@ -130,5 +131,83 @@ describe("buildMonitorDrawerSubmissionSummary", () => {
     expect(summary?.latestActivitySubmissionId).toBe("draft-9");
     expect(summary?.latestMonitorRelevantSubmissionId).toBe("returned-5");
     expect(summary?.submissionStateExplanation).toContain("Latest activity is a draft");
+  });
+});
+
+describe("buildMonitorDrawerHistorySummary", () => {
+  it("explains when the latest package has no indicator rows but an older package can still drive history", () => {
+    const summary = buildMonitorDrawerHistorySummary([
+      {
+        id: "draft-9",
+        formType: "indicator",
+        status: "draft",
+        statusLabel: "Draft",
+        reportingPeriod: "ANNUAL",
+        version: 9,
+        notes: null,
+        reviewNotes: null,
+        submittedAt: null,
+        reviewedAt: null,
+        createdAt: "2026-05-17T08:00:00.000Z",
+        updatedAt: "2026-05-17T09:00:00.000Z",
+        summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+        indicators: [],
+        academicYear: { id: "year-2", name: "2026-2027" },
+      } as never,
+      {
+        id: "returned-5",
+        formType: "indicator",
+        status: "returned",
+        statusLabel: "Returned",
+        reportingPeriod: "ANNUAL",
+        version: 5,
+        notes: null,
+        reviewNotes: null,
+        submittedAt: "2026-05-16T09:00:00.000Z",
+        reviewedAt: null,
+        createdAt: "2026-05-16T08:00:00.000Z",
+        updatedAt: "2026-05-16T09:00:00.000Z",
+        summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 72 },
+        indicators: [
+          {
+            id: "indicator-1",
+            metric: { id: "metric-1", code: "M001", name: "Metric 1", sortOrder: 1, inputSchema: null },
+          },
+        ],
+        academicYear: { id: "year-1", name: "2025-2026" },
+      } as never,
+    ]);
+
+    expect(summary?.latestHistoryPackageId).toBe("draft-9");
+    expect(summary?.latestRenderableSubmissionId).toBe("returned-5");
+    expect(summary?.packagesWithRenderableRowsCount).toBe(1);
+    expect(summary?.packagesWithoutRenderableRowsCount).toBe(1);
+    expect(summary?.historyFallbackReason).toContain("Latest package has no indicator rows");
+  });
+
+  it("explains when packages exist but none contain renderable indicator rows", () => {
+    const summary = buildMonitorDrawerHistorySummary([
+      {
+        id: "pkg-1",
+        formType: "indicator",
+        status: "submitted",
+        statusLabel: "Submitted",
+        reportingPeriod: "ANNUAL",
+        version: 1,
+        notes: null,
+        reviewNotes: null,
+        submittedAt: "2026-05-16T09:00:00.000Z",
+        reviewedAt: null,
+        createdAt: "2026-05-16T08:00:00.000Z",
+        updatedAt: "2026-05-16T09:00:00.000Z",
+        summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 72 },
+        indicators: [],
+        academicYear: { id: "year-1", name: "2025-2026" },
+      } as never,
+    ]);
+
+    expect(summary?.latestRenderableSubmissionId).toBeNull();
+    expect(summary?.historyAvailabilityLabel).toBe("Packages exist without indicator detail");
+    expect(summary?.historyFallbackReason).toContain("none contain indicator rows");
   });
 });

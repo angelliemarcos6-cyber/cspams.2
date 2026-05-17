@@ -23,6 +23,7 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   schoolDetail: MonitorSchoolDrawerData["schoolDetail"];
   schoolDrawerSnapshotSummary: MonitorSchoolDrawerData["schoolDrawerSnapshotSummary"];
   schoolDrawerSubmissionSummary: MonitorSchoolDrawerData["schoolDrawerSubmissionSummary"];
+  schoolDrawerHistorySummary: MonitorSchoolDrawerData["schoolDrawerHistorySummary"];
   schoolDrawerCriticalAlerts: MonitorSchoolDrawerData["schoolDrawerCriticalAlerts"];
   schoolIndicatorPackageRows: MonitorSchoolDrawerData["schoolIndicatorPackageRows"];
   latestSchoolPackage: MonitorSchoolDrawerData["latestSchoolPackage"];
@@ -59,6 +60,7 @@ export function buildMonitorSchoolDrawerProps({
   schoolDetail,
   schoolDrawerSnapshotSummary,
   schoolDrawerSubmissionSummary,
+  schoolDrawerHistorySummary,
   schoolDrawerCriticalAlerts,
   schoolIndicatorPackageRows,
   latestSchoolPackage,
@@ -99,6 +101,7 @@ export function buildMonitorSchoolDrawerProps({
       schoolDetail,
       schoolDrawerSnapshotSummary,
       schoolDrawerSubmissionSummary,
+      schoolDrawerHistorySummary,
       schoolDrawerCriticalAlerts,
       schoolIndicatorPackageRows,
       latestSchoolPackage,

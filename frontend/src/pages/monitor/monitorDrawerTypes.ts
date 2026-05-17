@@ -51,6 +51,20 @@ export interface MonitorDrawerSubmissionSummary {
   needsMonitorAction: boolean;
 }
 
+export interface MonitorDrawerHistorySummary {
+  historyPackageCount: number;
+  historySchoolYearCount: number;
+  latestHistoryPackageId: string | null;
+  latestHistorySchoolYear: string | null;
+  latestRenderableSubmissionId: string | null;
+  latestRenderableSchoolYear: string | null;
+  packagesWithRenderableRowsCount: number;
+  packagesWithoutRenderableRowsCount: number;
+  historyAvailabilityLabel: string;
+  historyExplanation: string;
+  historyFallbackReason: string | null;
+}
+
 export interface IndicatorMatrixRowCell {
   target: string;
   actual: string;
