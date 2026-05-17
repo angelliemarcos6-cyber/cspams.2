@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildMonitorDrawerYearDetail } from "@/pages/monitor/monitorSchoolDetailYear";
 import { buildMonitorDrawerHistorySummary } from "@/pages/monitor/monitorSchoolDetailHistory";
+import {
+  buildMonitorSchoolIndicatorMatrix,
+  deriveMissingMonitorDrawerIndicatorKeys,
+  deriveReturnedMonitorDrawerIndicatorKeys,
+} from "@/pages/monitor/monitorSchoolDetailMatrix";
+import {
+  buildMonitorSchoolDetailAlerts,
+  buildMonitorSchoolDetailSnapshot,
+} from "@/pages/monitor/monitorSchoolDetailAlerts";
 
 describe("buildMonitorDrawerYearDetail", () => {
   it("builds a simple public selected-year checklist and keeps finalized report truth year-scoped", () => {
@@ -249,5 +258,133 @@ describe("buildMonitorDrawerHistorySummary", () => {
     expect(summary?.latestHistoryPackageId).toBe("draft-9");
     expect(summary?.latestRenderableSubmissionId).toBe("returned-5");
     expect(summary?.historyFallbackReason).toContain("Latest package has no indicator rows");
+  });
+});
+
+describe("monitor school detail matrix helpers", () => {
+  it("keeps current-year missing and returned keys tied to the selected year only", () => {
+    const submissions = [
+      {
+        id: "sub-2025",
+        formType: "indicator",
+        status: "returned",
+        statusLabel: "Returned",
+        reportingPeriod: "ANNUAL",
+        version: 1,
+        submittedAt: "2026-05-17T08:00:00.000Z",
+        reviewedAt: null,
+        createdAt: "2026-05-17T07:00:00.000Z",
+        updatedAt: "2026-05-17T08:00:00.000Z",
+        summary: { totalIndicators: 2, metIndicators: 1, belowTargetIndicators: 1, complianceRatePercent: 50 },
+        indicators: [
+          {
+            id: "a1",
+            metric: { id: "m1", code: "IMETA_HEAD_NAME", name: "Name", sortOrder: 1, inputSchema: null },
+            actualDisplay: "Jane Doe",
+            targetDisplay: null,
+            complianceStatus: "met",
+            targetTypedValue: null,
+            actualTypedValue: null,
+          },
+          {
+            id: "k1",
+            metric: { id: "m2", code: "NER", name: "NER", sortOrder: 2, inputSchema: null },
+            actualDisplay: "95.00%",
+            targetDisplay: "",
+            complianceStatus: "returned",
+            targetTypedValue: null,
+            actualTypedValue: null,
+          },
+        ],
+        academicYear: { id: "year-1", name: "2025-2026" },
+      } as never,
+      {
+        id: "sub-2026",
+        formType: "indicator",
+        status: "validated",
+        statusLabel: "Validated",
+        reportingPeriod: "ANNUAL",
+        version: 1,
+        submittedAt: "2027-05-17T08:00:00.000Z",
+        reviewedAt: null,
+        createdAt: "2027-05-17T07:00:00.000Z",
+        updatedAt: "2027-05-17T08:00:00.000Z",
+        summary: { totalIndicators: 1, metIndicators: 1, belowTargetIndicators: 0, complianceRatePercent: 100 },
+        indicators: [
+          {
+            id: "a2",
+            metric: { id: "m1", code: "IMETA_HEAD_NAME", name: "Name", sortOrder: 1, inputSchema: null },
+            actualDisplay: "John Doe",
+            targetDisplay: null,
+            complianceStatus: "met",
+            targetTypedValue: null,
+            actualTypedValue: null,
+          },
+        ],
+        academicYear: { id: "year-2", name: "2026-2027" },
+      } as never,
+    ];
+
+    const matrix = buildMonitorSchoolIndicatorMatrix(submissions as never);
+    const rowKeySet = new Set(matrix.rows.map((row) => row.key));
+
+    expect(deriveMissingMonitorDrawerIndicatorKeys(matrix.rows, "2025-2026")).toContain("NER");
+    expect(deriveMissingMonitorDrawerIndicatorKeys(matrix.rows, "2026-2027")).toContain("NER");
+    expect(deriveReturnedMonitorDrawerIndicatorKeys(submissions as never, "2025-2026", rowKeySet)).toEqual(["NER"]);
+    expect(deriveReturnedMonitorDrawerIndicatorKeys(submissions as never, "2026-2027", rowKeySet)).toEqual([]);
+  });
+});
+
+describe("monitor school detail snapshot helpers", () => {
+  it("builds school detail and alerts without driving current-year truth from history helpers", () => {
+    const detail = buildMonitorSchoolDetailSnapshot({
+      schoolDrawerKey: "school-1",
+      schoolRequirementByKey: new Map([
+        ["school-1", {
+          schoolCode: "401777",
+          schoolName: "AMA CC - Santiago City",
+          region: "II",
+          requirementModeLabel: "",
+          activePackageLabel: "",
+          hasComplianceRecord: false,
+          indicatorStatus: "returned",
+          hasActivePackageSubmission: true,
+          missingCount: 2,
+          awaitingReviewCount: 1,
+          lastActivityAt: null,
+        } as never],
+      ]),
+      recordBySchoolKey: new Map([
+        ["school-1", {
+          schoolId: "401777",
+          schoolCode: "401777",
+          schoolName: "AMA CC - Santiago City",
+          region: "II",
+          level: "High School",
+          type: "private",
+          address: "N/A",
+          district: "N/A",
+          studentCount: 10,
+          teacherCount: 2,
+          lastUpdated: null,
+        } as never],
+      ]),
+      studentStatsBySchoolKey: new Map([["school-1", { students: 8, teachers: new Set(["t1"]) }]]),
+      accurateSyncedCountsBySchoolKey: { "school-1": { students: 8, teachers: 1 } },
+    });
+
+    expect(detail?.type).toBe("Private");
+    expect(detail?.schoolTypeRaw).toBe("private");
+
+    const alerts = buildMonitorSchoolDetailAlerts(detail, "Unable to load school submissions.");
+    expect(alerts.map((alert) => alert.id)).toEqual([
+      "missing-compliance-record",
+      "returned-package",
+      "missing-required-indicators",
+      "pending-review",
+      "student-count-mismatch",
+      "teacher-count-mismatch",
+      "submission-load-issue",
+    ]);
   });
 });
