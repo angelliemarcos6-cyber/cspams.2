@@ -7,6 +7,7 @@ import {
   resolveEditableWorkspaceSubmission,
   resolveMetricFromIndicatorInWorkspace,
   resolvePreferredWorkspaceSubmission,
+  shouldReplaceInScopeWorkspaceSubmission,
 } from "@/components/indicators/SchoolIndicatorPanel";
 import { buildSubmissionUploadedFileFingerprint } from "@/utils/submissionRequirements";
 import type { IndicatorMetric, IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
@@ -172,7 +173,7 @@ describe("workspace submission precedence", () => {
     expect(resolvePreferredWorkspaceSubmission([submitted, returned], null)?.id).toBe("returned-1");
   });
 
-  it("falls back to the editing submission only after no editable draft or returned row exists", () => {
+  it("prefers the freshest finalized row instead of a stale finalized editing submission id", () => {
     const submitted = buildSubmission({
       id: "submitted-1",
       status: "submitted",
@@ -184,7 +185,23 @@ describe("workspace submission precedence", () => {
       updatedAt: "2026-05-17T08:00:00Z",
     });
 
-    expect(resolvePreferredWorkspaceSubmission([submitted, validated], "validated-1")?.id).toBe("validated-1");
+    expect(resolvePreferredWorkspaceSubmission([submitted, validated], "validated-1")?.id).toBe("submitted-1");
+  });
+
+  it("replaces a stale finalized in-scope row when a fresher finalized row becomes preferred", () => {
+    const current = buildSubmission({
+      id: "submitted-older",
+      status: "submitted",
+      updatedAt: "2026-05-17T08:00:00Z",
+    });
+    const preferred = buildSubmission({
+      id: "submitted-newer",
+      status: "submitted",
+      updatedAt: "2026-05-17T09:00:00Z",
+    });
+
+    expect(shouldReplaceInScopeWorkspaceSubmission(current, preferred)).toBe(true);
+    expect(shouldReplaceInScopeWorkspaceSubmission(preferred, current)).toBe(false);
   });
 });
 

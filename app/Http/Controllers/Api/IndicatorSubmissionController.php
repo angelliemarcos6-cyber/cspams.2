@@ -149,6 +149,8 @@ class IndicatorSubmissionController extends Controller
                 'submittedBy:id,name,email',
                 'reviewedBy:id,name,email',
             ])
+            ->orderByRaw('COALESCE(submitted_at, updated_at, created_at) DESC')
+            ->orderByDesc('version')
             ->orderByDesc('id');
 
         $syncedAt = now()->toISOString();

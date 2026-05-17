@@ -239,20 +239,32 @@ export function resolvePreferredWorkspaceSubmission(
   editingSubmissionId: string | null,
 ): IndicatorSubmission | null {
   const ranked = submissions.slice().sort(compareWorkspaceSubmissionRecency);
-  const editingSubmission = editingSubmissionId
-    ? ranked.find((submission) => submission.id === editingSubmissionId) ?? null
-    : null;
   const editableSubmission = resolveEditableWorkspaceSubmission(ranked, editingSubmissionId);
 
   if (editableSubmission) {
     return editableSubmission;
   }
 
-  if (editingSubmission) {
-    return editingSubmission;
+  return ranked[0] ?? null;
+}
+
+export function shouldReplaceInScopeWorkspaceSubmission(
+  current: IndicatorSubmission | null,
+  preferred: IndicatorSubmission | null,
+): boolean {
+  if (!preferred) {
+    return false;
   }
 
-  return ranked[0] ?? null;
+  if (!current) {
+    return true;
+  }
+
+  if (current.id === preferred.id) {
+    return false;
+  }
+
+  return compareWorkspaceSubmissionRecency(preferred, current) < 0;
 }
 
 function buildWorkspaceSubmissionFingerprint(
@@ -2022,12 +2034,7 @@ function SchoolIndicatorPanelComponent({
       )
         ? (scopedSubmissionsForYear.find((submission) => submission.id === current.id) ?? current)
         : null;
-      if (
-        currentInScope
-        && preferredWorkspaceSubmission
-        && currentInScope.id !== preferredWorkspaceSubmission.id
-        && isDraftOrReturnedWorkflowStatus(preferredWorkspaceSubmission.status)
-      ) {
+      if (shouldReplaceInScopeWorkspaceSubmission(currentInScope, preferredWorkspaceSubmission)) {
         return preferredWorkspaceSubmission;
       }
 
@@ -2066,12 +2073,7 @@ function SchoolIndicatorPanelComponent({
           )
             ? current
             : null;
-          if (
-            currentInScope
-            && preferredSubmission
-            && currentInScope.id !== preferredSubmission.id
-            && isDraftOrReturnedWorkflowStatus(preferredSubmission.status)
-          ) {
+          if (shouldReplaceInScopeWorkspaceSubmission(currentInScope, preferredSubmission)) {
             return preferredSubmission;
           }
 

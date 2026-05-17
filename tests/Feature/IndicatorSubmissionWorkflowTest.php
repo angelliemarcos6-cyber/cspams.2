@@ -47,6 +47,46 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             });
     }
 
+    public function test_indicator_submission_list_prefers_meaningful_recency_over_id_order(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+
+        $olderButFresher = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [],
+        ])->assertCreated();
+
+        $newerButStaler = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [],
+        ])->assertCreated();
+
+        $olderId = (string) $olderButFresher->json('data.id');
+        $newerId = (string) $newerButStaler->json('data.id');
+
+        $this->assertNotSame($olderId, $newerId);
+
+        \App\Models\IndicatorSubmission::query()->whereKey($olderId)->update([
+            'updated_at' => now()->addMinute(),
+        ]);
+        \App\Models\IndicatorSubmission::query()->whereKey($newerId)->update([
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $listed = $this->withToken($token)->getJson('/api/indicators/submissions?per_page=10');
+
+        $listed->assertOk()
+            ->assertJsonPath('data.0.id', $olderId)
+            ->assertJsonPath('data.1.id', $newerId);
+    }
+
     public function test_auto_calculated_kpi_overrides_manual_payload_values_when_provided(): void
     {
         $this->seedIndicatorFixtures();
