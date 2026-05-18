@@ -2000,6 +2000,10 @@ class AuthController extends Controller
 
     private function shouldIssueBearerToken(Request $request): bool
     {
+        // Deployed dashboard flows are bearer-first. Cookie-backed stateful
+        // sessions remain available for local/testing and explicit same-site
+        // deployments, but dashboard API access should continue to receive a
+        // bearer token by default.
         return true;
     }
 

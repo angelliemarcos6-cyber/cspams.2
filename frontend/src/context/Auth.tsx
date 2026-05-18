@@ -229,6 +229,51 @@ function assertBearerTokenAuthPayload(payload: BearerTokenAuthPayload, operation
   return token;
 }
 
+function describeAuthOperation(operationLabel: string): string {
+  switch (operationLabel) {
+    case "login":
+      return "login";
+    case "verify-mfa":
+      return "MFA verification";
+    case "reset-required-password":
+      return "password reset";
+    case "mfa-reset-complete":
+      return "MFA reset";
+    default:
+      return "authentication";
+  }
+}
+
+function toAuthVerificationError(error: unknown, operationLabel: string): Error {
+  const action = describeAuthOperation(operationLabel);
+
+  if (isApiError(error)) {
+    if (error.status === 0) {
+      return new ApiError(
+        `Your ${action} succeeded, but the server could not be reached to verify dashboard access. Please try again.`,
+        error.status,
+        error.payload,
+        error.validationErrors,
+      );
+    }
+
+    if (error.status === 401) {
+      return new ApiError(
+        `Your ${action} succeeded, but dashboard access could not be verified. Please sign in again.`,
+        error.status,
+        error.payload,
+        error.validationErrors,
+      );
+    }
+  }
+
+  if (error instanceof Error) {
+    return new Error(`Your ${action} succeeded, but dashboard access could not be verified. ${error.message}`);
+  }
+
+  return new Error(`Your ${action} succeeded, but dashboard access could not be verified. Please try again.`);
+}
+
 function readStoredAuthSession(): StoredAuthSession {
   if (typeof window === "undefined") {
     return {};
@@ -398,6 +443,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     writeStoredAuthSession({ mode: "cookie" });
   }, []);
 
+  // Deployed dashboard flows are bearer-first. Cookie mode remains available
+  // only for local/testing and explicit same-site session deployments.
   const activeApiToken = user
     ? (sessionMode === "cookie" ? COOKIE_SESSION_TOKEN : bearerToken.trim())
     : "";
@@ -447,11 +494,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const establishAuthenticatedSession = useCallback(
     async (payload: BearerTokenAuthPayload, operationLabel: string): Promise<SessionUser> => {
-      if (normalizeBearerToken(payload)) {
-        return establishBearerSession(payload, operationLabel);
-      }
+      try {
+        if (normalizeBearerToken(payload)) {
+          return establishBearerSession(payload, operationLabel);
+        }
 
-      return establishCookieSession();
+        return establishCookieSession();
+      } catch (error) {
+        throw toAuthVerificationError(error, operationLabel);
+      }
     },
     [establishBearerSession, establishCookieSession],
   );
@@ -784,7 +835,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const normalizedUser = await establishAuthenticatedSession(payload, "login");
+      let normalizedUser: SessionUser;
+      try {
+        normalizedUser = await establishAuthenticatedSession(payload, "login");
+      } catch (error) {
+        throw toAuthVerificationError(error, "login");
+      }
 
       return {
         status: "authenticated",
@@ -809,7 +865,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      await establishAuthenticatedSession(payload, "verify-mfa");
+      try {
+        await establishAuthenticatedSession(payload, "verify-mfa");
+      } catch (error) {
+        throw toAuthVerificationError(error, "verify-mfa");
+      }
     } finally {
       setIsAuthenticating(false);
     }
@@ -837,7 +897,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        await establishAuthenticatedSession(payload, "reset-required-password");
+        try {
+          await establishAuthenticatedSession(payload, "reset-required-password");
+        } catch (error) {
+          throw toAuthVerificationError(error, "reset-required-password");
+        }
       } finally {
         setIsAuthenticating(false);
       }
@@ -943,7 +1007,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        await establishAuthenticatedSession(payload, "mfa-reset-complete");
+        try {
+          await establishAuthenticatedSession(payload, "mfa-reset-complete");
+        } catch (error) {
+          throw toAuthVerificationError(error, "mfa-reset-complete");
+        }
 
         return {
           backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],

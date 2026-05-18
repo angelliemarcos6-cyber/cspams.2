@@ -444,9 +444,7 @@ describe("AuthProvider logout", () => {
         role: "monitor",
         login: "monitor@cspams.local",
         password: "Password123!",
-      })).rejects.toMatchObject({
-        status: 401,
-      });
+      })).rejects.toThrow("Your login succeeded, but dashboard access could not be verified. Please sign in again.");
     });
 
     expect(result.current.user).toBeNull();
