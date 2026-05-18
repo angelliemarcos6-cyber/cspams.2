@@ -191,7 +191,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_SESSION_KEEPALIVE_MS = 4 * 60 * 1000;
 const KEEPALIVE_CONSECUTIVE_401_LIMIT = 3;
 const AUTH_REFRESH_RETRY_WINDOW_MS = 30_000;
-const AUTH_SESSION_STORAGE_KEY = "cspams.auth.session.v1";
+const AUTH_SESSION_STORAGE_KEY = "cspams.auth.session.v2";
+const LEGACY_AUTH_SESSION_STORAGE_KEY = "cspams.auth.session.v1";
 
 type AuthSessionMode = "cookie" | "bearer";
 
@@ -233,27 +234,42 @@ function readStoredAuthSession(): StoredAuthSession {
     return {};
   }
 
-  const raw = window.sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY);
-  if (!raw) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as StoredAuthSession | null;
-    if (!parsed || typeof parsed !== "object") {
+  const parseStoredSession = (raw: string | null): StoredAuthSession => {
+    if (!raw) {
       return {};
     }
 
-    return {
-      mode: parsed.mode === "cookie" || parsed.mode === "bearer" ? parsed.mode : undefined,
-      token: typeof parsed.token === "string" ? parsed.token : null,
-      tokenType: typeof parsed.tokenType === "string" ? parsed.tokenType : null,
-      expiresAt: typeof parsed.expiresAt === "string" ? parsed.expiresAt : null,
-      refreshAfter: typeof parsed.refreshAfter === "string" ? parsed.refreshAfter : null,
-    };
-  } catch {
-    return {};
+    try {
+      const parsed = JSON.parse(raw) as StoredAuthSession | null;
+      if (!parsed || typeof parsed !== "object") {
+        return {};
+      }
+
+      return {
+        mode: parsed.mode === "cookie" || parsed.mode === "bearer" ? parsed.mode : undefined,
+        token: typeof parsed.token === "string" ? parsed.token : null,
+        tokenType: typeof parsed.tokenType === "string" ? parsed.tokenType : null,
+        expiresAt: typeof parsed.expiresAt === "string" ? parsed.expiresAt : null,
+        refreshAfter: typeof parsed.refreshAfter === "string" ? parsed.refreshAfter : null,
+      };
+    } catch {
+      return {};
+    }
+  };
+
+  const currentSession = parseStoredSession(window.sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY));
+  if (currentSession.mode || currentSession.token || currentSession.tokenType || currentSession.expiresAt || currentSession.refreshAfter) {
+    return currentSession;
   }
+
+  const legacySession = parseStoredSession(window.sessionStorage.getItem(LEGACY_AUTH_SESSION_STORAGE_KEY));
+  window.sessionStorage.removeItem(LEGACY_AUTH_SESSION_STORAGE_KEY);
+  if (legacySession.mode === "bearer" && normalizeBearerToken(legacySession)) {
+    writeStoredAuthSession(legacySession);
+    return legacySession;
+  }
+
+  return {};
 }
 
 function writeStoredAuthSession(payload: StoredAuthSession): void {
@@ -269,6 +285,7 @@ function writeStoredAuthSession(payload: StoredAuthSession): void {
 
   if (!mode && !token && !tokenType && !expiresAt && !refreshAfter) {
     window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+    window.sessionStorage.removeItem(LEGACY_AUTH_SESSION_STORAGE_KEY);
     return;
   }
 
@@ -279,6 +296,7 @@ function writeStoredAuthSession(payload: StoredAuthSession): void {
     expiresAt,
     refreshAfter,
   }));
+  window.sessionStorage.removeItem(LEGACY_AUTH_SESSION_STORAGE_KEY);
 }
 
 function finalizeClientLogout(

@@ -101,7 +101,7 @@ describe("App hard-reload session restoration", () => {
       expectedText: "School Admin Dashboard",
     },
   ])("keeps $hash after a successful cookie-session restore", async ({ hash, user, expectedText }) => {
-    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({ mode: "cookie" }));
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({ mode: "cookie" }));
     window.history.replaceState(null, "", `/${hash}`);
 
     const fetchMock = vi.fn().mockResolvedValue(

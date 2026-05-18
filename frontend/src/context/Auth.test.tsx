@@ -108,7 +108,7 @@ describe("AuthProvider logout", () => {
   });
 
   it("restores auth from a persisted cookie-session descriptor on hard reload", async () => {
-    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
       mode: "cookie",
     }));
 
@@ -149,7 +149,7 @@ describe("AuthProvider logout", () => {
   });
 
   it("does not fall back to cookie-session after bearer keepalive failure", async () => {
-    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
       mode: "bearer",
       token: "token-before-keepalive",
       tokenType: "Bearer",
@@ -296,7 +296,7 @@ describe("AuthProvider logout", () => {
       expect(result.current.isAuthenticating).toBe(false);
       expect(result.current.apiToken).toBe("temporary-bearer-token-1");
     });
-    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toContain("\"mode\":\"bearer\"");
+    expect(window.sessionStorage.getItem("cspams.auth.session.v2")).toContain("\"mode\":\"bearer\"");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       `${getApiBaseUrl()}/api/auth/login`,
@@ -451,7 +451,7 @@ describe("AuthProvider logout", () => {
 
     expect(result.current.user).toBeNull();
     expect(result.current.apiToken).toBe("");
-    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("cspams.auth.session.v2")).toBeNull();
   });
 
   it("verifies bearer-token usability before completing MFA sign-in", async () => {
@@ -565,7 +565,7 @@ describe("AuthProvider logout", () => {
   });
 
   it("keeps bearer refresh behavior stable for persisted bearer-mode sessions", async () => {
-    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
       mode: "bearer",
       token: "stale-token",
       tokenType: "Bearer",
@@ -654,7 +654,7 @@ describe("AuthProvider logout", () => {
   });
 
   it("does not force logout on a transient bearer keepalive 401 when refresh succeeds", async () => {
-    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
       mode: "bearer",
       token: "token-before-keepalive",
       tokenType: "Bearer",
@@ -744,5 +744,70 @@ describe("AuthProvider logout", () => {
     });
 
     expect(result.current.user).not.toBeNull();
+  });
+
+  it("ignores stale legacy cookie-mode restore state from older builds", async () => {
+    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+      mode: "cookie",
+    }));
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+    expect(result.current.user).toBeNull();
+    expect(result.current.apiToken).toBe("");
+    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("cspams.auth.session.v2")).toBeNull();
+  });
+
+  it("migrates legacy bearer restore state from older builds", async () => {
+    window.sessionStorage.setItem("cspams.auth.session.v1", JSON.stringify({
+      mode: "bearer",
+      token: "legacy-bearer-token",
+      tokenType: "Bearer",
+    }));
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          user: {
+            id: 14,
+            name: "Monitor User",
+            email: "monitor@cspams.local",
+            role: "monitor",
+            schoolId: null,
+            schoolCode: null,
+            schoolName: null,
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
+    const requestInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    const headers = new Headers(requestInit?.headers as HeadersInit);
+    expect(headers.get("Authorization")).toBe("Bearer legacy-bearer-token");
+    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("cspams.auth.session.v2")).toContain("\"mode\":\"bearer\"");
+    expect(result.current.user?.id).toBe(14);
   });
 });
