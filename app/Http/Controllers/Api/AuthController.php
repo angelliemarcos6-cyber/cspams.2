@@ -1760,7 +1760,7 @@ class AuthController extends Controller
 
         $this->purgeExpiredTokens($user);
 
-        $currentTokenId = $user->currentAccessToken()?->id;
+        $currentTokenId = $this->currentPersonalAccessTokenId($user);
         $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
 
         $tokenEntries = $user->tokens()
@@ -1830,7 +1830,7 @@ class AuthController extends Controller
                 return response()->json(['message' => 'Session/device not found.'], Response::HTTP_NOT_FOUND);
             }
 
-            $isCurrentToken = (int) ($user->currentAccessToken()?->id ?? 0) === (int) $token->id;
+            $isCurrentToken = (int) ($this->currentPersonalAccessTokenId($user) ?? 0) === (int) $token->id;
             $token->delete();
 
             if ($isCurrentToken && ! $this->isBearerAuthenticatedRequest($request)) {
@@ -1917,7 +1917,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $currentTokenId = $user->currentAccessToken()?->id;
+        $currentTokenId = $this->currentPersonalAccessTokenId($user);
         $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
         $summary = $this->revokeUserSessionsAndTokens($user, $currentTokenId, $currentSessionId);
 
@@ -1985,6 +1985,17 @@ class AuthController extends Controller
     private function isBearerAuthenticatedRequest(Request $request): bool
     {
         return trim((string) $request->bearerToken()) !== '';
+    }
+
+    private function currentPersonalAccessTokenId(User $user): ?int
+    {
+        $currentToken = $user->currentAccessToken();
+
+        if (! $currentToken instanceof PersonalAccessToken) {
+            return null;
+        }
+
+        return (int) $currentToken->id;
     }
 
     private function shouldIssueBearerToken(Request $request): bool

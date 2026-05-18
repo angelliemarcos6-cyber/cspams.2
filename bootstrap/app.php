@@ -19,8 +19,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Keep CSRF protection on the web middleware group.
-        // API auth in this app is bearer-token based via auth:sanctum.
+        // Keep CSRF protection on the web middleware group and enable
+        // Sanctum's stateful SPA middleware so first-party dashboard auth
+        // requests can establish and reuse browser sessions through the API.
+        $middleware->statefulApi();
         $middleware->validateCsrfTokens();
         $middleware->throttleApi('api');
         $middleware->redirectGuestsTo(static function (Request $request): ?string {
