@@ -218,7 +218,7 @@ describe("AuthProvider logout", () => {
     expect(result.current.user?.id).toBe(4);
   });
 
-  it("establishes cookie-session login and persists a reload-safe auth descriptor", async () => {
+  it("establishes bearer-backed login and persists a reload-safe auth descriptor", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/login")) {
@@ -293,15 +293,19 @@ describe("AuthProvider logout", () => {
     await waitFor(() => {
       expect(result.current.user?.email).toBe("monitor@cspams.local");
       expect(result.current.isAuthenticating).toBe(false);
-      expect(result.current.apiToken).toBe(COOKIE_SESSION_TOKEN);
+      expect(result.current.apiToken).toBe("temporary-bearer-token-1");
     });
-    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toContain("\"mode\":\"cookie\"");
+    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toContain("\"mode\":\"bearer\"");
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const requestInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
-    const headers = new Headers(requestInit?.headers as HeadersInit);
-    expect(requestInit?.credentials).toBe("include");
-    expect(headers.get("Authorization")).toBeNull();
+    const loginInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    const loginHeaders = new Headers(loginInit?.headers as HeadersInit);
+    expect(loginInit?.credentials).toBe("include");
+    expect(loginHeaders.get("Authorization")).toBeNull();
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
+    const meInit = (fetchMock.mock.calls[1] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    const meHeaders = new Headers(meInit?.headers as HeadersInit);
+    expect(meInit?.credentials).toBe("omit");
+    expect(meHeaders.get("Authorization")).toBe("Bearer temporary-bearer-token-1");
   });
 
   it("accepts cookie-session login responses even when no bearer token is returned", async () => {
@@ -446,11 +450,11 @@ describe("AuthProvider logout", () => {
     expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toBeNull();
   });
 
-  it("verifies cookie-session usability before completing MFA sign-in", async () => {
+  it("verifies bearer-token usability before completing MFA sign-in", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/verify-mfa")) {
-        return new Response(JSON.stringify({ user: { id: 2, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null } }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ token: "mfa-token", tokenType: "Bearer", user: { id: 2, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null } }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (url.endsWith("/api/auth/me")) {
         return new Response(JSON.stringify({ user: { id: 2, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null } }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -475,13 +479,14 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/verify-mfa`,
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
+    expect(result.current.apiToken).toBe("mfa-token");
   });
 
-  it("verifies cookie-session usability before completing required-password reset sign-in", async () => {
+  it("verifies bearer-token usability before completing required-password reset sign-in", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/reset-required-password")) {
-        return new Response(JSON.stringify({ user: { id: 3, name: "School Head", email: "head@cspams.local", role: "school_head", schoolId: 42, schoolCode: "401777", schoolName: "AMA CC - Santiago City" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ token: "reset-token", tokenType: "Bearer", user: { id: 3, name: "School Head", email: "head@cspams.local", role: "school_head", schoolId: 42, schoolCode: "401777", schoolName: "AMA CC - Santiago City" } }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (url.endsWith("/api/auth/me")) {
         return new Response(JSON.stringify({ user: { id: 3, name: "School Head", email: "head@cspams.local", role: "school_head", schoolId: 42, schoolCode: "401777", schoolName: "AMA CC - Santiago City" } }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -512,13 +517,14 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/reset-required-password`,
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
+    expect(result.current.apiToken).toBe("reset-token");
   });
 
-  it("verifies cookie-session usability before completing MFA reset sign-in", async () => {
+  it("verifies bearer-token usability before completing MFA reset sign-in", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/mfa/reset/complete")) {
-        return new Response(JSON.stringify({ user: { id: 4, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null }, backupCodes: ["ABC123"], message: "Done" }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ token: "reset-mfa-token", tokenType: "Bearer", user: { id: 4, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null }, backupCodes: ["ABC123"], message: "Done" }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       if (url.endsWith("/api/auth/me")) {
         return new Response(JSON.stringify({ user: { id: 4, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null } }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -548,6 +554,7 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/mfa/reset/complete`,
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
+    expect(result.current.apiToken).toBe("reset-mfa-token");
   });
 
   it("keeps bearer refresh behavior stable for persisted bearer-mode sessions", async () => {

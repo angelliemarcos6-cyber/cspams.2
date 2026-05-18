@@ -269,9 +269,9 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   if (token && token !== COOKIE_SESSION_TOKEN) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  if (mutating && useCookieSession) {
+  if (mutating) {
     let xsrfToken = readXsrfToken();
-    if (!xsrfToken) {
+    if (!xsrfToken && useCookieSession) {
       await ensureCsrfCookie(true);
       xsrfToken = readXsrfToken();
     }

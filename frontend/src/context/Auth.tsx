@@ -405,6 +405,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return normalizedUser;
   }, [applyCookieSession, clearAuthError]);
 
+  const establishBearerSession = useCallback(
+    async (payload: BearerTokenAuthPayload, operationLabel: string): Promise<SessionUser> => {
+      const token = assertBearerTokenAuthPayload(payload, operationLabel);
+      const response = await apiRequest<MeResponse>("/api/auth/me", {
+        token,
+        timeoutMs: 15_000,
+      });
+
+      const normalizedUser = normalizeUser(response.user);
+      applyAuthPayload({
+        ...payload,
+        token,
+      });
+      keepAliveConsecutive401Ref.current = 0;
+      setUser(normalizedUser);
+      clearAuthError();
+
+      return normalizedUser;
+    },
+    [applyAuthPayload, clearAuthError],
+  );
+
+  const establishAuthenticatedSession = useCallback(
+    async (payload: BearerTokenAuthPayload, operationLabel: string): Promise<SessionUser> => {
+      if (normalizeBearerToken(payload)) {
+        return establishBearerSession(payload, operationLabel);
+      }
+
+      return establishCookieSession();
+    },
+    [establishBearerSession, establishCookieSession],
+  );
+
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -733,7 +766,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const normalizedUser = await establishCookieSession();
+      const normalizedUser = await establishAuthenticatedSession(payload, "login");
 
       return {
         status: "authenticated",
@@ -742,12 +775,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, [establishCookieSession]);
+  }, [establishAuthenticatedSession]);
 
   const verifyMfa = useCallback(async ({ role, login: loginValue, challengeId, code }: VerifyMonitorMfaInput) => {
     setIsAuthenticating(true);
     try {
-      await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
+      const payload = await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
         body: {
@@ -758,11 +791,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      await establishCookieSession();
+      await establishAuthenticatedSession(payload, "verify-mfa");
     } finally {
       setIsAuthenticating(false);
     }
-  }, [establishCookieSession]);
+  }, [establishAuthenticatedSession]);
 
   const resetRequiredPassword = useCallback(
     async ({
@@ -774,7 +807,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }: LoginInput & { newPassword: string; confirmPassword: string }) => {
       setIsAuthenticating(true);
       try {
-        await apiRequest<ResetRequiredPasswordResponse>("/api/auth/reset-required-password", {
+        const payload = await apiRequest<ResetRequiredPasswordResponse>("/api/auth/reset-required-password", {
           method: "POST",
           token: COOKIE_SESSION_TOKEN,
           body: {
@@ -786,12 +819,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        await establishCookieSession();
+        await establishAuthenticatedSession(payload, "reset-required-password");
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [establishCookieSession],
+    [establishAuthenticatedSession],
   );
 
   const requestMonitorPasswordReset = useCallback(async (email: string, role: Exclude<UserRole, null> = "monitor") => {
@@ -892,7 +925,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        await establishCookieSession();
+        await establishAuthenticatedSession(payload, "mfa-reset-complete");
 
         return {
           backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
@@ -902,7 +935,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthenticating(false);
       }
     },
-    [establishCookieSession],
+    [establishAuthenticatedSession],
   );
 
   const completeAccountSetup = useCallback(
