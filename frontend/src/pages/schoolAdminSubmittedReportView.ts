@@ -194,6 +194,7 @@ export function buildSubmittedReportSourceContext(
 export function resolveIndicatorValue(
   indicator: IndicatorSubmissionItem | null | undefined,
   kind: "target" | "actual",
+  selectedYear?: string | null,
 ): string {
-  return resolveSubmissionItemDisplayValue(indicator, kind);
+  return resolveSubmissionItemDisplayValue(indicator, kind, { selectedYear });
 }

@@ -1008,6 +1008,49 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.indicators.0.complianceStatus', 'below_target');
     }
 
+    public function test_yearly_integer_matrix_display_omits_forced_decimal_places(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $year = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+
+        $metric = PerformanceMetric::query()->create([
+            'code' => 'MANUAL_INTEGER_MATRIX',
+            'name' => 'Manual Integer Matrix',
+            'category' => MetricCategory::COMPLIANCE->value,
+            'framework' => 'i_meta',
+            'data_type' => MetricDataType::YEARLY_MATRIX->value,
+            'input_schema' => [
+                'years' => [$year],
+                'valueType' => 'integer',
+                'comparison' => 'greater_or_equal',
+            ],
+            'sort_order' => 9993,
+            'is_active' => true,
+        ]);
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'MANUAL_INTEGER_MATRIX',
+                    'target' => ['values' => [$year => 1500]],
+                    'actual' => ['values' => [$year => 1515]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.indicators.0.metric.code', 'MANUAL_INTEGER_MATRIX')
+            ->assertJsonPath('data.indicators.0.targetDisplay', "{$year}: 1,500")
+            ->assertJsonPath('data.indicators.0.actualDisplay', "{$year}: 1,515");
+    }
+
     public function test_submit_fails_when_bmef_and_smea_are_missing_even_if_group_b_values_exist(): void
     {
         $this->seedIndicatorFixtures();

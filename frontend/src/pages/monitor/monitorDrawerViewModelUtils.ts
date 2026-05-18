@@ -115,6 +115,103 @@ export function toDisplayValue(value: unknown): string {
   return String(value).trim();
 }
 
+function formatReportNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatReportInteger(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return Math.round(value).toLocaleString();
+}
+
+function formatReportPercentage(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+}
+
+function formatReportCurrency(value: number, currency: string): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${currency} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function normalizeBooleanDisplay(value: unknown): string {
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "yes" || normalized === "true" || normalized === "1") {
+    return "Yes";
+  }
+  if (normalized === "no" || normalized === "false" || normalized === "0") {
+    return "No";
+  }
+
+  return String(value ?? "").trim() || "-";
+}
+
+function metricValueType(indicator: IndicatorSubmissionItem | null | undefined): string {
+  return String(indicator?.metric?.inputSchema?.valueType ?? "").trim().toLowerCase();
+}
+
+function metricCurrency(indicator: IndicatorSubmissionItem | null | undefined): string {
+  return String(indicator?.metric?.inputSchema?.currency ?? "PHP").trim() || "PHP";
+}
+
+function formatMetricScopedReportValue(
+  raw: unknown,
+  indicator: IndicatorSubmissionItem | null | undefined,
+): string {
+  if (raw === null || raw === undefined) {
+    return "-";
+  }
+
+  const valueType = metricValueType(indicator);
+  const currency = metricCurrency(indicator);
+
+  if (valueType === "yes_no") {
+    return normalizeBooleanDisplay(raw);
+  }
+
+  if (valueType === "text" || valueType === "enum") {
+    return formatSubmittedReportValue(raw);
+  }
+
+  const numeric = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(numeric)) {
+    return formatSubmittedReportValue(raw);
+  }
+
+  if (valueType === "currency") {
+    return formatReportCurrency(numeric, currency);
+  }
+
+  if (valueType === "percentage") {
+    return formatReportPercentage(numeric);
+  }
+
+  if (valueType === "integer") {
+    return formatReportInteger(numeric);
+  }
+
+  return formatReportNumber(numeric);
+}
+
 export function formatSubmittedReportValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "-";
@@ -195,6 +292,25 @@ function typedScalarValue(payload: Record<string, unknown> | null | undefined): 
   );
 }
 
+function typedScalarRawValue(payload: Record<string, unknown> | null | undefined): unknown {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const typed = payload as Record<string, unknown>;
+  if (typed.value !== undefined && typed.value !== null && String(typed.value).trim() !== "") {
+    return typed.value;
+  }
+  if (typed.scalar_value !== undefined && typed.scalar_value !== null && String(typed.scalar_value).trim() !== "") {
+    return typed.scalar_value;
+  }
+  if (typed.raw_value !== undefined && typed.raw_value !== null && String(typed.raw_value).trim() !== "") {
+    return typed.raw_value;
+  }
+
+  return null;
+}
+
 function typedCompositeValue(payload: Record<string, unknown> | null | undefined): string {
   const valuesByYear = typedYearValues(payload);
   const sortedYears = sortSchoolYears(Object.keys(valuesByYear));
@@ -212,9 +328,78 @@ function typedCompositeValue(payload: Record<string, unknown> | null | undefined
     .join(", ");
 }
 
+function typedYearRawValue(
+  payload: Record<string, unknown> | null | undefined,
+  selectedYear: string | null | undefined,
+): unknown {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const typed = payload as { values?: unknown };
+  if (!typed.values || typeof typed.values !== "object") {
+    return null;
+  }
+
+  const values = typed.values as Record<string, unknown>;
+  const normalizedYear = String(selectedYear ?? "").trim();
+  if (normalizedYear && Object.prototype.hasOwnProperty.call(values, normalizedYear)) {
+    return values[normalizedYear];
+  }
+
+  const definedEntries = Object.entries(values).filter(([, value]) => String(value ?? "").trim() !== "");
+  if (definedEntries.length === 1) {
+    return definedEntries[0]?.[1] ?? null;
+  }
+
+  return null;
+}
+
+function selectedYearDisplaySegment(
+  displayRaw: unknown,
+  selectedYear: string | null | undefined,
+): string {
+  const normalizedDisplay = toDisplayValue(displayRaw);
+  if (!normalizedDisplay) {
+    return "";
+  }
+
+  const normalizedYear = String(selectedYear ?? "").trim();
+  if (!normalizedYear) {
+    return normalizedDisplay;
+  }
+
+  const segments = normalizedDisplay
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  for (const segment of segments) {
+    if (segment.startsWith(`${normalizedYear}:`)) {
+      return segment.slice(normalizedYear.length + 1).trim();
+    }
+    if (segment.startsWith(`${normalizedYear} `)) {
+      return segment.slice(normalizedYear.length).trim();
+    }
+  }
+
+  if (segments.length === 1) {
+    const segment = segments[0] ?? "";
+    if (segment.startsWith(`${normalizedYear}:`)) {
+      return segment.slice(normalizedYear.length + 1).trim();
+    }
+    if (segment.startsWith(`${normalizedYear} `)) {
+      return segment.slice(normalizedYear.length).trim();
+    }
+  }
+
+  return normalizedDisplay;
+}
+
 export function resolveSubmissionItemDisplayValue(
   indicator: IndicatorSubmissionItem | null | undefined,
   kind: "target" | "actual",
+  options?: { selectedYear?: string | null },
 ): string {
   if (!indicator) {
     return "-";
@@ -233,6 +418,24 @@ export function resolveSubmissionItemDisplayValue(
   const typed = typedRaw && typeof typedRaw === "object"
     ? (typedRaw as Record<string, unknown>)
     : null;
+  const selectedYear = String(options?.selectedYear ?? "").trim();
+
+  if (selectedYear) {
+    const selectedYearTypedValue = typedYearRawValue(typed, selectedYear);
+    if (selectedYearTypedValue !== null && selectedYearTypedValue !== undefined && String(selectedYearTypedValue).trim() !== "") {
+      return formatMetricScopedReportValue(selectedYearTypedValue, indicator);
+    }
+
+    const selectedYearDisplayValue = selectedYearDisplaySegment(displayRaw, selectedYear);
+    if (selectedYearDisplayValue.length > 0) {
+      return formatMetricScopedReportValue(selectedYearDisplayValue, indicator);
+    }
+
+    const selectedYearScalarValue = typedScalarRawValue(typed);
+    if (selectedYearScalarValue !== null && selectedYearScalarValue !== undefined) {
+      return formatMetricScopedReportValue(selectedYearScalarValue, indicator);
+    }
+  }
 
   return formatSubmittedReportValue(
     toDisplayValue(displayRaw)

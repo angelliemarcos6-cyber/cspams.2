@@ -1724,7 +1724,7 @@ class IndicatorSubmissionController extends Controller
                 }
 
                 if (is_numeric($value)) {
-                    $formatted = number_format((float) $value, 2);
+                    $formatted = $this->formatYearlyMatrixDisplayNumber((float) $value, $valueType);
                     if ($valueType === 'percentage') {
                         return "{$year}: {$formatted}%";
                     }
@@ -1746,6 +1746,23 @@ class IndicatorSubmissionController extends Controller
             'display' => $display,
             'comparable' => $normalized,
         ];
+    }
+
+    private function formatYearlyMatrixDisplayNumber(float $value, string $valueType): string
+    {
+        if ($valueType === 'integer') {
+            return number_format($value, 0);
+        }
+
+        if ($valueType === 'percentage' || $valueType === 'currency') {
+            return number_format($value, 2);
+        }
+
+        if (floor($value) === $value) {
+            return number_format($value, 0);
+        }
+
+        return number_format($value, 2);
     }
 
     private function resolveEnumOptionValue(string $value, Collection $options): ?string

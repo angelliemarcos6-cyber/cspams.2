@@ -63,6 +63,7 @@ function buildMonitorChecklistSectionItems(
   currentYearRows: IndicatorMatrixRow[],
   latestYearIndicators: ReturnType<typeof submissionRows>,
   selectedYearWorkflowStatus: string | null,
+  selectedYearLabel: string | null,
 ): MonitorDrawerChecklistItem[] {
   const sectionDefinitions = [
     { id: "school_achievements", label: "School Achievements", category: SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL },
@@ -82,11 +83,11 @@ function buildMonitorChecklistSectionItems(
       }
 
       if (isSchoolAchievements) {
-        return hasDisplayValue(resolveIndicatorValue(indicator, "actual"));
+        return hasDisplayValue(resolveIndicatorValue(indicator, "actual", selectedYearLabel));
       }
 
-      return hasDisplayValue(resolveIndicatorValue(indicator, "target"))
-        && hasDisplayValue(resolveIndicatorValue(indicator, "actual"));
+      return hasDisplayValue(resolveIndicatorValue(indicator, "target", selectedYearLabel))
+        && hasDisplayValue(resolveIndicatorValue(indicator, "actual", selectedYearLabel));
     });
 
     let statusLabel: MonitorDrawerChecklistItem["statusLabel"] = isComplete ? "Complete" : "Missing";
@@ -276,7 +277,7 @@ export function buildMonitorDrawerYearDetail(
       key: row.key,
       label: row.label,
       value: selectedYearFinalizedSubmission
-        ? resolveIndicatorValue(resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code), "actual")
+        ? resolveIndicatorValue(resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code), "actual", effectiveSelectedYear)
         : "-",
     }));
 
@@ -287,14 +288,14 @@ export function buildMonitorDrawerYearDetail(
       return {
         key: row.key,
         label: row.label,
-        target: indicator ? resolveIndicatorValue(indicator, "target") : "-",
-        actual: indicator ? resolveIndicatorValue(indicator, "actual") : "-",
+        target: indicator ? resolveIndicatorValue(indicator, "target", effectiveSelectedYear) : "-",
+        actual: indicator ? resolveIndicatorValue(indicator, "actual", effectiveSelectedYear) : "-",
         status: String(indicator?.complianceStatus ?? "-").trim() || "-",
       };
     });
 
   const checklistItems = [
-    ...buildMonitorChecklistSectionItems(currentYearRows, latestYearIndicatorRows, selectedYearWorkflowStatus),
+    ...buildMonitorChecklistSectionItems(currentYearRows, latestYearIndicatorRows, selectedYearWorkflowStatus, effectiveSelectedYear),
     ...buildMonitorChecklistFileItems(schoolDetail.schoolTypeRaw, latestYearSubmission, selectedYearWorkflowStatus),
   ];
   const checklistCompleteCount = checklistItems.filter(

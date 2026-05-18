@@ -595,6 +595,11 @@ export function SchoolAdminDashboard() {
     };
   }, [fetchSubmission, groupASubmittedSubmission]);
   const groupAReportView = useMemo(() => {
+    const reportYearLabel = selectedYearLabel(
+      effectiveAcademicYearId,
+      academicYears,
+      currentAcademicYearOption?.name ?? "N/A",
+    );
     const selectedSubmission = resolveSubmittedReportSubmissionForView(groupASubmittedSubmission, {
       selectedSchoolId,
       selectedAcademicYearId: effectiveAcademicYearId,
@@ -647,7 +652,7 @@ export function SchoolAdminDashboard() {
         key: row.key,
         label: row.label,
         indicator,
-        value: resolveIndicatorValue(indicator, "actual"),
+        value: resolveIndicatorValue(indicator, "actual", reportYearLabel),
       };
     });
     const kpiRows = KPI_ROWS.map((row) => {
@@ -656,8 +661,8 @@ export function SchoolAdminDashboard() {
         key: row.key,
         label: row.label,
         indicator,
-        target: resolveIndicatorValue(indicator, "target"),
-        actual: resolveIndicatorValue(indicator, "actual"),
+        target: resolveIndicatorValue(indicator, "target", reportYearLabel),
+        actual: resolveIndicatorValue(indicator, "actual", reportYearLabel),
         status: formatComplianceStatusLabel(indicator?.complianceStatus),
       };
     });
@@ -690,7 +695,7 @@ export function SchoolAdminDashboard() {
       schoolAchievementRows,
       kpiRows,
     };
-  }, [effectiveAcademicYearId, groupASubmittedSubmission, hydratedSubmittedReportSubmission, selectedSchoolId]);
+  }, [academicYears, currentAcademicYearOption?.name, effectiveAcademicYearId, groupASubmittedSubmission, hydratedSubmittedReportSubmission, selectedSchoolId]);
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({
       schoolType: resolveSubmissionPresentationSchoolType(groupAReportView.submission, user?.schoolType ?? null),
@@ -1348,8 +1353,8 @@ export function SchoolAdminDashboard() {
                       {submittedIndicatorRows.map((item) => (
                         <tr key={`modal-${item.id}`} className="border-b border-slate-100 text-sm text-slate-800">
                           <td className="px-3 py-2">{item.metric?.name ?? "Untitled indicator"}</td>
-                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "target")}</td>
-                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "actual")}</td>
+                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "target", selectedReportYearLabel)}</td>
+                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "actual", selectedReportYearLabel)}</td>
                           <td className="px-3 py-2 text-center">{formatComplianceStatusLabel(item.complianceStatus)}</td>
                         </tr>
                       ))}

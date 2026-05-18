@@ -59,7 +59,13 @@ describe("buildMonitorDrawerYearDetail", () => {
           indicators: [
             {
               id: "a1",
-              metric: { id: "m1", code: "IMETA_HEAD_NAME", name: "Name", sortOrder: 1, inputSchema: null },
+              metric: {
+                id: "m1",
+                code: "IMETA_HEAD_NAME",
+                name: "Name",
+                sortOrder: 1,
+                inputSchema: { valueType: "text", years: ["2025-2026"] },
+              },
               targetValue: null,
               actualValue: null,
               varianceValue: null,
@@ -70,12 +76,20 @@ describe("buildMonitorDrawerYearDetail", () => {
             },
             {
               id: "k1",
-              metric: { id: "m2", code: "NER", name: "NER", sortOrder: 2, inputSchema: null },
+              metric: {
+                id: "m2",
+                code: "NER",
+                name: "NER",
+                sortOrder: 2,
+                inputSchema: { valueType: "percentage", years: ["2025-2026"] },
+              },
               targetValue: 100,
               actualValue: 98,
               varianceValue: 2,
-              actualDisplay: "98.00%",
-              targetDisplay: "100.00%",
+              actualDisplay: "2025-2026: 98.00% | 2026-2027: 0.00%",
+              targetDisplay: "2025-2026: 100.00% | 2026-2027: 0.00%",
+              targetTypedValue: { values: { "2025-2026": 100 } },
+              actualTypedValue: { values: { "2025-2026": 98 } },
               complianceStatus: "met",
               remarks: null,
             },

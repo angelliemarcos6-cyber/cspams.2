@@ -91,11 +91,22 @@ function buildEnrollmentIndicator(value: number) {
       name: "TOTAL NUMBER OF ENROLMENT",
       category: "school_achievements_learning_outcomes",
       framework: "imeta",
-      dataType: "number",
+      dataType: "yearly_matrix",
+      inputSchema: {
+        valueType: "integer",
+        years: ["2025-2026", "2026-2027"],
+      },
     },
     targetValue: null,
     actualValue: value,
     varianceValue: null,
+    actualTypedValue: {
+      values: {
+        "2025-2026": value,
+        "2026-2027": 9999,
+      },
+    },
+    actualDisplay: `2025-2026: ${value}.00 | 2026-2027: 9999.00`,
     complianceStatus: "met",
     remarks: null,
   };
@@ -204,7 +215,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("Source package: #101 (Submitted).")).not.toBeNull();
     });
-    expect(screen.getByText("1515")).not.toBeNull();
+    expect(screen.getByText("1,515")).not.toBeNull();
     expect(screen.queryByText("Source package: #202 (Submitted).")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Academic year filter"), {
@@ -214,7 +225,71 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("Source package: #202 (Submitted).")).not.toBeNull();
     });
-    expect(screen.getByText("9999")).not.toBeNull();
+    expect(screen.getByText("9,999")).not.toBeNull();
+  });
+
+  it("renders selected-year integer report values without joined year text or forced decimals", async () => {
+    const submitted = buildSubmission({
+      id: "integer-101",
+      indicators: [buildEnrollmentIndicator(1515)],
+      items: [],
+      summary: {
+        totalIndicators: 1,
+        metIndicators: 0,
+        belowTargetIndicators: 0,
+        complianceRatePercent: 0,
+      },
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: vi.fn().mockResolvedValue(undefined),
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submitted],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => submitted),
+      loadSubmissionsForYear: vi.fn(async () => [submitted]),
+      refreshAllSubmissions: vi.fn().mockResolvedValue(undefined),
+      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("1,515")).not.toBeNull();
+    });
+    expect(screen.queryByText(/2026-2027:/)).toBeNull();
+    expect(screen.queryByText("1515.00")).toBeNull();
   });
 
   it("renders production KPI compliance labels instead of raw backend enums", async () => {
