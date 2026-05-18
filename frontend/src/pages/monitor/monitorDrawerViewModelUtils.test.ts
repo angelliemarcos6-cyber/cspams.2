@@ -118,6 +118,47 @@ describe("resolveSubmissionItemDisplayValue", () => {
     expect(resolveSubmissionItemDisplayValue(indicator, "actual", { selectedYear: "2025-2026" })).toBe("96.00%");
   });
 
+  it("formats ratio and index style number metrics with deliberate generic precision", () => {
+    const indicator = item({
+      metric: {
+        id: "metric-4",
+        code: "GPI",
+        name: "Gender Parity Index",
+        category: "learner",
+        framework: "targets_met",
+        dataType: "yearly_matrix",
+        inputSchema: { valueType: "number", years: ["2025-2026", "2026-2027"] },
+      },
+      actualTypedValue: {
+        values: {
+          "2025-2026": 1.234,
+          "2026-2027": 2,
+        },
+      },
+    });
+
+    expect(resolveSubmissionItemDisplayValue(indicator, "actual", { selectedYear: "2025-2026" })).toBe("1.23");
+    expect(resolveSubmissionItemDisplayValue(indicator, "actual", { selectedYear: "2026-2027" })).toBe("2");
+  });
+
+  it("falls back to the selected-year display segment when typed year data is unavailable", () => {
+    const indicator = item({
+      metric: {
+        id: "metric-5",
+        code: "WASH_RATIO",
+        name: "Water and Sanitation Facility to Pupil Ratio",
+        category: "infrastructure",
+        framework: "targets_met",
+        dataType: "yearly_matrix",
+        inputSchema: { valueType: "number", years: ["2025-2026", "2026-2027"] },
+      },
+      actualDisplay: "2025-2026: 1.50 | 2026-2027: 2.00",
+    });
+
+    expect(resolveSubmissionItemDisplayValue(indicator, "actual", { selectedYear: "2025-2026" })).toBe("1.5");
+    expect(resolveSubmissionItemDisplayValue(indicator, "actual", { selectedYear: "2026-2027" })).toBe("2");
+  });
+
   it("renders numeric zero instead of a dash", () => {
     const indicator = item({
       actualValue: 0,

@@ -115,6 +115,9 @@ export function toDisplayValue(value: unknown): string {
   return String(value).trim();
 }
 
+// Generic report-number formatting is intentionally conservative. Whole numbers
+// stay whole, while true decimal measures such as ratios and indices keep up to
+// 2 decimals unless a stricter metric family rule is introduced later.
 function formatReportNumber(value: number): string {
   if (!Number.isFinite(value)) {
     return "-";
@@ -421,6 +424,10 @@ export function resolveSubmissionItemDisplayValue(
   const selectedYear = String(options?.selectedYear ?? "").trim();
 
   if (selectedYear) {
+    // Selected-year report cells must prefer structured year data over a joined
+    // full-series display string. The joined display remains useful for
+    // reference/history contexts, but it is not the source of truth for a
+    // single selected-year report cell.
     const selectedYearTypedValue = typedYearRawValue(typed, selectedYear);
     if (selectedYearTypedValue !== null && selectedYearTypedValue !== undefined && String(selectedYearTypedValue).trim() !== "") {
       return formatMetricScopedReportValue(selectedYearTypedValue, indicator);
