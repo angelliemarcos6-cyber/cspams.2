@@ -219,6 +219,7 @@ describe("AuthProvider logout", () => {
   });
 
   it("establishes bearer-backed login and persists a reload-safe auth descriptor", async () => {
+    document.cookie = "";
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/login")) {
@@ -297,11 +298,14 @@ describe("AuthProvider logout", () => {
     });
     expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toContain("\"mode\":\"bearer\"");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      `${getApiBaseUrl()}/api/auth/login`,
+      `${getApiBaseUrl()}/api/auth/me`,
+    ]);
     const loginInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
     const loginHeaders = new Headers(loginInit?.headers as HeadersInit);
     expect(loginInit?.credentials).toBe("include");
     expect(loginHeaders.get("Authorization")).toBeNull();
-    expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
     const meInit = (fetchMock.mock.calls[1] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
     const meHeaders = new Headers(meInit?.headers as HeadersInit);
     expect(meInit?.credentials).toBe("omit");
@@ -451,6 +455,7 @@ describe("AuthProvider logout", () => {
   });
 
   it("verifies bearer-token usability before completing MFA sign-in", async () => {
+    document.cookie = "";
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/verify-mfa")) {
@@ -479,6 +484,8 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/verify-mfa`,
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
+    const verifyInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    expect(verifyInit?.credentials).toBe("include");
     expect(result.current.apiToken).toBe("mfa-token");
   });
 

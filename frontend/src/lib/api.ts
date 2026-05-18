@@ -40,6 +40,7 @@ interface ApiRequestOptions {
   body?: unknown;
   signal?: AbortSignal;
   timeoutMs?: number;
+  credentialsMode?: RequestCredentials;
   extraHeaders?: Record<string, string>;
 }
 
@@ -248,9 +249,10 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
 }
 
 export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiRawResponse<T>> {
-  const { method = "GET", token, body, signal, timeoutMs, extraHeaders } = options;
+  const { method = "GET", token, body, signal, timeoutMs, credentialsMode, extraHeaders } = options;
   const mutating = isMutatingMethod(method);
   const useCookieSession = token === COOKIE_SESSION_TOKEN;
+  const credentials = credentialsMode ?? (useCookieSession ? "include" : "omit");
   const requestTimeoutMs =
     typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : DEFAULT_REQUEST_TIMEOUT_MS;
 
@@ -288,7 +290,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
   const fetchRequest = () =>
     fetchWithTimeout(`${API_BASE_URL}${path}`, {
       method,
-      credentials: useCookieSession ? "include" : "omit",
+      credentials,
       headers,
       body:
         body === undefined

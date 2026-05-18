@@ -77,4 +77,31 @@ describe("api request helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("supports credentialed public auth-entry requests without forcing csrf bootstrap", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ token: "demo-token" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiRequest("/api/auth/login", {
+      method: "POST",
+      credentialsMode: "include",
+      body: {
+        role: "monitor",
+        login: "cspamsmonitor@gmail.com",
+        password: "Demo@123456",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/login`);
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const headers = new Headers(requestInit?.headers as HeadersInit);
+    expect(requestInit?.credentials).toBe("include");
+    expect(headers.get("Authorization")).toBeNull();
+  });
 });
