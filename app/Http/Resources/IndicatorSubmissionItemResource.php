@@ -14,9 +14,10 @@ class IndicatorSubmissionItemResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $targetValue = $this->target_value;
+        $isRecordedActualOnly = $this->compliance_status === 'recorded';
+        $targetValue = $isRecordedActualOnly ? null : $this->target_value;
         $actualValue = $this->actual_value;
-        $varianceValue = $this->variance_value;
+        $varianceValue = $isRecordedActualOnly ? null : $this->variance_value;
 
         return [
             'id' => (string) $this->id,
@@ -36,9 +37,9 @@ class IndicatorSubmissionItemResource extends JsonResource
             'targetValue' => $targetValue === null ? null : (float) $targetValue,
             'actualValue' => $actualValue === null ? null : (float) $actualValue,
             'varianceValue' => $varianceValue === null ? null : (float) $varianceValue,
-            'targetTypedValue' => $this->target_typed_value,
+            'targetTypedValue' => $isRecordedActualOnly ? null : $this->target_typed_value,
             'actualTypedValue' => $this->actual_typed_value,
-            'targetDisplay' => $this->target_display,
+            'targetDisplay' => $isRecordedActualOnly ? '-' : $this->target_display,
             'actualDisplay' => $this->actual_display,
             'complianceStatus' => $this->compliance_status,
             'remarks' => $this->remarks,
