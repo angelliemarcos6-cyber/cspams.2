@@ -2,22 +2,15 @@
 
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class MonitorMfaCodeNotification extends Notification implements ShouldQueue
+class MonitorMfaCodeNotification extends Notification
 {
-    use Queueable;
-
     public function __construct(
         private readonly string $code,
         private readonly string $expiresAt,
-    ) {
-        $this->onConnection($this->resolveQueueConnection());
-        $this->onQueue($this->resolveQueueName());
-    }
+    ) {}
 
     /**
      * @return array<int, string>
@@ -41,24 +34,5 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
     public function verificationCode(): string
     {
         return $this->code;
-    }
-
-    private function resolveQueueConnection(): string
-    {
-        $configured = trim((string) config('auth_mfa.monitor.queue_connection', ''));
-        if ($configured !== '') {
-            return $configured;
-        }
-
-        $default = trim((string) config('queue.default', 'database'));
-
-        return strtolower($default) === 'sync' ? 'database' : $default;
-    }
-
-    private function resolveQueueName(): string
-    {
-        $configured = trim((string) config('auth_mfa.monitor.queue', 'mail'));
-
-        return $configured !== '' ? $configured : 'mail';
     }
 }

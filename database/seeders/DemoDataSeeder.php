@@ -99,7 +99,7 @@ class DemoDataSeeder extends Seeder
         $monitor->account_status = AccountStatus::ACTIVE->value;
 
         if ($monitorWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
-            $monitor->password = Hash::make($this->demoPasswordForKey('monitor'));
+            $monitor->password = Hash::make($this->demoMonitorPassword());
             $monitor->must_reset_password = false;
             $monitor->password_changed_at = now();
             $monitor->email_verified_at = now();
@@ -414,6 +414,16 @@ class DemoDataSeeder extends Seeder
         $fingerprint = strtoupper(substr(hash_hmac('sha256', $key, $appKey), 0, 10));
 
         return 'Demo@' . $fingerprint . '!';
+    }
+
+    private function demoMonitorPassword(): string
+    {
+        $configured = trim((string) env('CSPAMS_DEMO_MONITOR_PASSWORD', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        return 'Demo@123456';
     }
 
     private function shouldSyncSeedPasswords(): bool

@@ -15,7 +15,7 @@ trait InteractsWithSeededCredentials
         }
 
         if ($normalizedRole === 'monitor') {
-            return $this->demoPasswordForKey('monitor');
+            return $this->demoMonitorPassword();
         }
 
         return $this->demoPasswordForKey($normalizedRole);
@@ -36,5 +36,15 @@ trait InteractsWithSeededCredentials
         $fingerprint = strtoupper(substr(hash_hmac('sha256', $key, $appKey), 0, 10));
 
         return 'Demo@' . $fingerprint . '!';
+    }
+
+    protected function demoMonitorPassword(): string
+    {
+        $configured = trim((string) env('CSPAMS_DEMO_MONITOR_PASSWORD', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        return 'Demo@123456';
     }
 }
