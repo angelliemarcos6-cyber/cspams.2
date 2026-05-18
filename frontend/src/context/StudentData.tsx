@@ -456,7 +456,7 @@ function emitStudentUpdateEvent(detailInput: { schoolId?: unknown; schoolCode?: 
 }
 
 export function StudentDataProvider({ children }: { children: ReactNode }) {
-  const { role, user, apiToken } = useAuth();
+  const { role, user, apiToken, handleUnauthorizedResponse } = useAuth();
   const token = user ? apiToken : "";
   const sessionKey = user ? `${user.role}:${user.id}` : "";
 
@@ -515,7 +515,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     async (err: unknown) => {
       if (isApiError(err)) {
         if (err.status === 401) {
-          setError("Your session expired. Please sign in again.");
+          await handleUnauthorizedResponse();
           return;
         }
 
@@ -527,7 +527,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [],
+    [handleUnauthorizedResponse],
   );
 
   const requestStudents = useCallback(

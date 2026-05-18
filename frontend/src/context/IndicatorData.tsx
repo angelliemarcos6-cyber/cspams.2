@@ -711,7 +711,7 @@ export function filterSchoolHeadScopedSubmissions(
 }
 
 export function IndicatorDataProvider({ children }: { children: ReactNode }) {
-  const { user, apiToken } = useAuth();
+  const { user, apiToken, handleUnauthorizedResponse } = useAuth();
   const token = user ? apiToken : "";
   const sessionKey = buildIndicatorDataSessionKey(user);
 
@@ -772,7 +772,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     async (err: unknown) => {
       if (isApiError(err)) {
         if (err.status === 401) {
-          setError("Your session expired. Please sign in again.");
+          await handleUnauthorizedResponse();
           return;
         }
 
@@ -784,7 +784,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       setError(err instanceof Error ? err.message : "Unexpected server error.");
     },
-    [],
+    [handleUnauthorizedResponse],
   );
 
   const listSubmissions = useCallback(

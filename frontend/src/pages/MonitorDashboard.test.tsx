@@ -122,6 +122,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       isAuthenticating: false,
       isLoggingOut: false,
       clearAuthError: vi.fn(),
+      handleUnauthorizedResponse: vi.fn(),
       login: vi.fn(),
       verifyMfa: vi.fn(),
       requestMonitorPasswordReset: vi.fn(),

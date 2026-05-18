@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
+import { ApiError, apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, isApiError } from "@/lib/api";
 import { stopRealtimeBridge } from "@/lib/realtime";
 import { clearClientSessionArtifacts } from "@/lib/sessionCleanup";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
@@ -115,6 +115,7 @@ interface AuthContextType {
   isAuthenticating: boolean;
   isLoggingOut: boolean;
   clearAuthError: () => void;
+  handleUnauthorizedResponse: () => Promise<boolean>;
   login: (input: LoginInput) => Promise<LoginResult>;
   verifyMfa: (input: VerifyMonitorMfaInput) => Promise<void>;
   requestMonitorPasswordReset: (
@@ -284,12 +285,15 @@ function finalizeClientLogout(
   setUser: (user: SessionUser | null) => void,
   clearTokenSession: () => void,
   clearAuthError: () => void,
+  options?: { preserveAuthError?: boolean },
 ): void {
   stopRealtimeBridge();
   clearClientSessionArtifacts();
   clearTokenSession();
   setUser(null);
-  clearAuthError();
+  if (!options?.preserveAuthError) {
+    clearAuthError();
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -385,6 +389,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthErrorCode(null);
     setAccountStatus(null);
   }, []);
+
+  const establishCookieSession = useCallback(async (): Promise<SessionUser> => {
+    const payload = await apiRequest<MeResponse>("/api/auth/me", {
+      token: COOKIE_SESSION_TOKEN,
+      timeoutMs: 15_000,
+    });
+
+    const normalizedUser = normalizeUser(payload.user);
+    applyCookieSession();
+    keepAliveConsecutive401Ref.current = 0;
+    setUser(normalizedUser);
+    clearAuthError();
+
+    return normalizedUser;
+  }, [applyCookieSession, clearAuthError]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -524,6 +543,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return pendingRefresh;
   }, [applyAuthPayload, clearAuthError, clearTokenSession]);
 
+  const requestAuthenticatedUser = useCallback(async (): Promise<MeResponse> => {
+    const requestToken = sessionMode === "cookie"
+      ? COOKIE_SESSION_TOKEN
+      : bearerTokenRef.current.trim();
+    if (!requestToken) {
+      throw new ApiError("Unauthenticated.", 401, null);
+    }
+
+    if (sessionMode !== "cookie" && shouldRefreshBearerToken()) {
+      const refreshed = await refreshBearerToken();
+      if (!refreshed && !bearerTokenRef.current.trim()) {
+        throw new ApiError("Unauthenticated.", 401, null);
+      }
+    }
+
+    try {
+      return await apiRequest<MeResponse>("/api/auth/me", {
+        token: requestToken,
+        timeoutMs: 15_000,
+      });
+    } catch (err) {
+      if (!(isApiError(err) && err.status === 401)) {
+        throw err;
+      }
+
+      if (sessionMode === "cookie") {
+        throw err;
+      }
+
+      const refreshed = await refreshBearerToken();
+      if (!refreshed) {
+        throw err;
+      }
+
+      const retryToken = bearerTokenRef.current.trim();
+      if (!retryToken) {
+        throw err;
+      }
+
+      return await apiRequest<MeResponse>("/api/auth/me", {
+        token: retryToken,
+        timeoutMs: 15_000,
+      });
+    }
+  }, [refreshBearerToken, sessionMode, shouldRefreshBearerToken]);
+
+  const markConfirmedSessionExpiry = useCallback(() => {
+    setAuthError("Your session expired. Please sign in again.");
+    setAuthErrorCode(401);
+    setAccountStatus(null);
+    finalizeClientLogout(setUser, clearTokenSession, clearAuthError, { preserveAuthError: true });
+  }, [clearAuthError, clearTokenSession]);
+
+  const handleUnauthorizedResponse = useCallback(async (): Promise<boolean> => {
+    if (!user || isLoggingOut) {
+      return true;
+    }
+
+    try {
+      const payload = await requestAuthenticatedUser();
+      keepAliveConsecutive401Ref.current = 0;
+      setUser(normalizeUser(payload.user));
+      clearAuthError();
+      return false;
+    } catch (err) {
+      if (isApiError(err) && err.status === 401) {
+        markConfirmedSessionExpiry();
+        return true;
+      }
+
+      throw err;
+    }
+  }, [clearAuthError, isLoggingOut, markConfirmedSessionExpiry, requestAuthenticatedUser, user]);
+
   const sendSessionKeepAlive = useCallback(async () => {
     if (!user || isLoggingOut || keepAliveInFlightRef.current) {
       return;
@@ -531,58 +624,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     keepAliveInFlightRef.current = true;
     try {
-      const requestToken = sessionMode === "cookie"
-        ? COOKIE_SESSION_TOKEN
-        : bearerTokenRef.current.trim();
-      if (!requestToken) {
-        keepAliveConsecutive401Ref.current += 1;
-        return;
-      }
-
-      if (sessionMode !== "cookie" && shouldRefreshBearerToken()) {
-        const refreshed = await refreshBearerToken();
-        if (!refreshed && !bearerTokenRef.current.trim()) {
-          keepAliveConsecutive401Ref.current += 1;
-          return;
-        }
-      }
-
-      let payload: MeResponse;
-      try {
-        payload = await apiRequest<MeResponse>("/api/auth/me", {
-          token: requestToken,
-          timeoutMs: 15_000,
-        });
-      } catch (err) {
-        if (!(isApiError(err) && err.status === 401)) {
-          throw err;
-        }
-
-        if (sessionMode === "cookie") {
-          throw err;
-        }
-
-        const refreshed = await refreshBearerToken();
-        if (!refreshed) {
-          throw err;
-        }
-
-        const retryToken = bearerTokenRef.current.trim();
-        if (!retryToken) {
-          throw err;
-        }
-
-        payload = await apiRequest<MeResponse>("/api/auth/me", {
-          token: retryToken,
-          timeoutMs: 15_000,
-        });
-      }
-
+      const payload = await requestAuthenticatedUser();
       keepAliveConsecutive401Ref.current = 0;
-      setAuthError("");
-      setAuthErrorCode(null);
-      setAccountStatus(null);
-
       setUser(normalizeUser(payload.user));
       clearAuthError();
     } catch (err) {
@@ -594,15 +637,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        setAuthError("Your session expired. Please sign in again.");
-        setAuthErrorCode(401);
-        setAccountStatus(null);
-        finalizeClientLogout(setUser, clearTokenSession, clearAuthError);
+        markConfirmedSessionExpiry();
       }
     } finally {
       keepAliveInFlightRef.current = false;
     }
-  }, [clearAuthError, clearTokenSession, isLoggingOut, refreshBearerToken, sessionMode, shouldRefreshBearerToken, user]);
+  }, [clearAuthError, isLoggingOut, markConfirmedSessionExpiry, requestAuthenticatedUser, user]);
 
   useEffect(() => {
     if (!user) {
@@ -693,11 +733,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      applyCookieSession();
-      const normalizedUser = normalizeUser(payload.user);
-      keepAliveConsecutive401Ref.current = 0;
-      setUser(normalizedUser);
-      clearAuthError();
+      const normalizedUser = await establishCookieSession();
 
       return {
         status: "authenticated",
@@ -706,12 +742,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsAuthenticating(false);
     }
-  }, [applyCookieSession, clearAuthError]);
+  }, [establishCookieSession]);
 
   const verifyMfa = useCallback(async ({ role, login: loginValue, challengeId, code }: VerifyMonitorMfaInput) => {
     setIsAuthenticating(true);
     try {
-      const payload = await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
+      await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
         method: "POST",
         token: COOKIE_SESSION_TOKEN,
         body: {
@@ -722,13 +758,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
 
-      applyCookieSession();
-      setUser(normalizeUser(payload.user));
-      clearAuthError();
+      await establishCookieSession();
     } finally {
       setIsAuthenticating(false);
     }
-  }, [applyCookieSession, clearAuthError]);
+  }, [establishCookieSession]);
 
   const resetRequiredPassword = useCallback(
     async ({
@@ -740,7 +774,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }: LoginInput & { newPassword: string; confirmPassword: string }) => {
       setIsAuthenticating(true);
       try {
-        const payload = await apiRequest<ResetRequiredPasswordResponse>("/api/auth/reset-required-password", {
+        await apiRequest<ResetRequiredPasswordResponse>("/api/auth/reset-required-password", {
           method: "POST",
           token: COOKIE_SESSION_TOKEN,
           body: {
@@ -752,14 +786,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        applyCookieSession();
-        setUser(normalizeUser(payload.user));
-        clearAuthError();
+        await establishCookieSession();
       } finally {
         setIsAuthenticating(false);
       }
     },
-    [applyCookieSession, clearAuthError],
+    [establishCookieSession],
   );
 
   const requestMonitorPasswordReset = useCallback(async (email: string, role: Exclude<UserRole, null> = "monitor") => {
@@ -860,9 +892,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        applyCookieSession();
-        setUser(normalizeUser(payload.user));
-        clearAuthError();
+        await establishCookieSession();
 
         return {
           backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
@@ -872,7 +902,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAuthenticating(false);
       }
     },
-    [applyCookieSession, clearAuthError],
+    [establishCookieSession],
   );
 
   const completeAccountSetup = useCallback(
@@ -991,6 +1021,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticating,
       isLoggingOut,
       clearAuthError,
+      handleUnauthorizedResponse,
       login,
       verifyMfa,
       requestMonitorPasswordReset,
@@ -1014,6 +1045,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticating,
       isLoggingOut,
       clearAuthError,
+      handleUnauthorizedResponse,
       login,
       verifyMfa,
       requestMonitorPasswordReset,

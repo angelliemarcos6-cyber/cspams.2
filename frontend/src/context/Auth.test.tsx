@@ -39,6 +39,23 @@ describe("AuthProvider logout", () => {
         );
       }
 
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
       if (url.endsWith("/api/auth/logout") || url.endsWith("/sanctum/csrf-cookie")) {
         return new Response(null, { status: 204 });
       }
@@ -224,6 +241,23 @@ describe("AuthProvider logout", () => {
         );
       }
 
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
       if (url.endsWith("/sanctum/csrf-cookie")) {
         return new Response(null, { status: 204 });
       }
@@ -262,17 +296,35 @@ describe("AuthProvider logout", () => {
       expect(result.current.apiToken).toBe(COOKIE_SESSION_TOKEN);
     });
     expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toContain("\"mode\":\"cookie\"");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const requestInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
     const headers = new Headers(requestInit?.headers as HeadersInit);
     expect(requestInit?.credentials).toBe("include");
     expect(headers.get("Authorization")).toBeNull();
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
   });
 
   it("accepts cookie-session login responses even when no bearer token is returned", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/login")) {
+        return new Response(
+          JSON.stringify({
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (url.endsWith("/api/auth/me")) {
         return new Response(
           JSON.stringify({
             user: {
@@ -325,6 +377,177 @@ describe("AuthProvider logout", () => {
       expect(result.current.user?.id).toBe(1);
       expect(result.current.apiToken).toBe(COOKIE_SESSION_TOKEN);
     });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
+  });
+
+  it("does not leave a false authenticated session when login succeeds but cookie-session verification fails", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/login")) {
+        return new Response(
+          JSON.stringify({
+            token: "temporary-bearer-token-1",
+            tokenType: "Bearer",
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({
+            message: "Unauthenticated.",
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (url.endsWith("/sanctum/csrf-cookie")) {
+        return new Response(null, { status: 204 });
+      }
+
+      return new Response(JSON.stringify({ message: "Unexpected request" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await expect(result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      })).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.apiToken).toBe("");
+    expect(window.sessionStorage.getItem("cspams.auth.session.v1")).toBeNull();
+  });
+
+  it("verifies cookie-session usability before completing MFA sign-in", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/verify-mfa")) {
+        return new Response(JSON.stringify({ user: { id: 2, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(JSON.stringify({ user: { id: 2, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ message: "Unexpected request" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.verifyMfa({ role: "monitor", login: "monitor@cspams.local", challengeId: "challenge-1", code: "123456" });
+    });
+
+    expect(result.current.user?.id).toBe(2);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      `${getApiBaseUrl()}/api/auth/verify-mfa`,
+      `${getApiBaseUrl()}/api/auth/me`,
+    ]);
+  });
+
+  it("verifies cookie-session usability before completing required-password reset sign-in", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/reset-required-password")) {
+        return new Response(JSON.stringify({ user: { id: 3, name: "School Head", email: "head@cspams.local", role: "school_head", schoolId: 42, schoolCode: "401777", schoolName: "AMA CC - Santiago City" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(JSON.stringify({ user: { id: 3, name: "School Head", email: "head@cspams.local", role: "school_head", schoolId: 42, schoolCode: "401777", schoolName: "AMA CC - Santiago City" } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ message: "Unexpected request" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.resetRequiredPassword({
+        role: "school_head",
+        login: "401777",
+        password: "Temp123!",
+        newPassword: "NewPassword123!",
+        confirmPassword: "NewPassword123!",
+      });
+    });
+
+    expect(result.current.user?.id).toBe(3);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      `${getApiBaseUrl()}/api/auth/reset-required-password`,
+      `${getApiBaseUrl()}/api/auth/me`,
+    ]);
+  });
+
+  it("verifies cookie-session usability before completing MFA reset sign-in", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/mfa/reset/complete")) {
+        return new Response(JSON.stringify({ user: { id: 4, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null }, backupCodes: ["ABC123"], message: "Done" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(JSON.stringify({ user: { id: 4, name: "Monitor User", email: "monitor@cspams.local", role: "monitor", schoolId: null, schoolCode: null, schoolName: null } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ message: "Unexpected request" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.completeMonitorMfaReset({
+        login: "monitor@cspams.local",
+        password: "Password123!",
+        requestId: 10,
+        approvalToken: "approve1",
+      });
+    });
+
+    expect(result.current.user?.id).toBe(4);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      `${getApiBaseUrl()}/api/auth/mfa/reset/complete`,
+      `${getApiBaseUrl()}/api/auth/me`,
+    ]);
   });
 
   it("keeps bearer refresh behavior stable for persisted bearer-mode sessions", async () => {

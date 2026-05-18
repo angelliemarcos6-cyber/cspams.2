@@ -251,7 +251,7 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, role, apiToken } = useAuth();
+  const { user, role, apiToken, handleUnauthorizedResponse } = useAuth();
   const token = user ? apiToken : "";
   const sessionKey = buildDataProviderSessionKey(user);
 
@@ -320,7 +320,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     async (err: unknown) => {
       if (isApiError(err)) {
         if (err.status === 401) {
-          setError("Your session expired. Please sign in again.");
+          await handleUnauthorizedResponse();
           setSyncStatus("error");
           return;
         }
@@ -335,7 +335,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setError(err instanceof Error ? err.message : "Unexpected server error.");
       setSyncStatus("error");
     },
-    [],
+    [handleUnauthorizedResponse],
   );
 
   const syncRecords = useCallback(
