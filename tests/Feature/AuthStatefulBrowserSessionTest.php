@@ -39,7 +39,8 @@ class AuthStatefulBrowserSessionTest extends TestCase
 
         $login->assertOk()
             ->assertJsonPath('user.role', 'school_head')
-            ->assertJsonPath('user.schoolCode', $schoolCode);
+            ->assertJsonPath('user.schoolCode', $schoolCode)
+            ->assertJsonPath('token', fn ($value) => is_string($value) && $value !== '');
 
         $cookies = $this->mergeBrowserCookies($cookies, $login);
 
@@ -87,13 +88,46 @@ class AuthStatefulBrowserSessionTest extends TestCase
         ], $cookies);
 
         $verify->assertOk()
-            ->assertJsonPath('user.role', 'monitor');
+            ->assertJsonPath('user.role', 'monitor')
+            ->assertJsonPath('token', fn ($value) => is_string($value) && $value !== '');
 
         $cookies = $this->mergeBrowserCookies($cookies, $verify);
 
         $me = $this->browserJson('GET', '/api/auth/me', [], $cookies);
         $me->assertOk()
             ->assertJsonPath('user.role', 'monitor');
+    }
+
+    public function test_school_head_browser_login_can_explicitly_request_stateful_session_without_bearer_token(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->with('school')->firstOrFail();
+        $schoolCode = (string) $schoolHead->school?->school_code;
+
+        $cookies = $this->bootstrapBrowserSessionCookies();
+
+        $login = $this->browserJson('POST', '/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $this->demoPasswordForLogin('school_head', $schoolCode),
+        ], $cookies, [
+            'X-CSPAMS-Auth-Mode' => 'stateful',
+        ]);
+
+        $login->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonMissingPath('token');
+
+        $cookies = $this->mergeBrowserCookies($cookies, $login);
+
+        $me = $this->browserJson('GET', '/api/auth/me', [], $cookies, [
+            'X-CSPAMS-Auth-Mode' => 'stateful',
+        ]);
+        $me->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.schoolCode', $schoolCode);
     }
 
     /**
@@ -113,9 +147,9 @@ class AuthStatefulBrowserSessionTest extends TestCase
      * @param array<string, mixed> $payload
      * @param array<string, string> $cookies
      */
-    private function browserJson(string $method, string $uri, array $payload, array $cookies)
+    private function browserJson(string $method, string $uri, array $payload, array $cookies, array $extraHeaders = [])
     {
-        $headers = $this->browserHeaders();
+        $headers = array_merge($this->browserHeaders(), $extraHeaders);
         if ($method !== 'GET' && isset($cookies['XSRF-TOKEN'])) {
             $headers['X-XSRF-TOKEN'] = urldecode($cookies['XSRF-TOKEN']);
         }

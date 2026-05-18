@@ -2004,7 +2004,23 @@ class AuthController extends Controller
         // sessions remain available for local/testing and explicit same-site
         // deployments, but dashboard API access should continue to receive a
         // bearer token by default.
+        //
+        // The only supported opt-out is an explicit same-site browser request
+        // that already has session capability and deliberately asks for a
+        // stateful-session-only contract. This keeps the default production
+        // behavior stable while making the exception intentional and testable.
+        if ($request->hasSession() && $this->requestsExplicitStatefulSessionOnly($request)) {
+            return false;
+        }
+
         return true;
+    }
+
+    private function requestsExplicitStatefulSessionOnly(Request $request): bool
+    {
+        $requestedMode = strtolower(trim((string) $request->header('X-CSPAMS-Auth-Mode', '')));
+
+        return $requestedMode === 'stateful';
     }
 
     private function resolveUserForLogin(string $role, string $login): ?User
