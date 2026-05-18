@@ -8,6 +8,8 @@ use App\Models\School;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
+use App\Support\Domain\MetricCategory;
+use App\Support\Domain\MetricDataType;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
@@ -880,8 +882,16 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.summary.totalIndicators', 3)
+            ->assertJsonPath('data.summary.metIndicators', 0)
+            ->assertJsonPath('data.summary.belowTargetIndicators', 0)
+            ->assertJsonPath('data.summary.recordedIndicators', 3)
+            ->assertJsonPath('data.indicators.0.targetValue', 0)
+            ->assertJsonPath('data.indicators.0.targetTypedValue', null)
             ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 'Maria Santos')
+            ->assertJsonPath('data.indicators.0.complianceStatus', 'recorded')
             ->assertJsonPath("data.indicators.1.actualTypedValue.values.{$year}", 'Level 2')
+            ->assertJsonPath('data.indicators.1.complianceStatus', 'recorded')
             ->assertJsonPath("data.indicators.2.actualTypedValue.values.{$year}", true);
     }
 
@@ -920,16 +930,28 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
-        /** @var PerformanceMetric $metric */
-        $metric = PerformanceMetric::query()->where('code', 'NER')->firstOrFail();
-        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+        $year = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+        $metric = PerformanceMetric::query()->create([
+            'code' => 'MANUAL_KPI_GE',
+            'name' => 'Manual KPI GE',
+            'category' => MetricCategory::LEARNER->value,
+            'framework' => 'targets_met',
+            'data_type' => MetricDataType::YEARLY_MATRIX->value,
+            'input_schema' => [
+                'years' => [$year],
+                'valueType' => 'percentage',
+                'comparison' => 'greater_or_equal',
+            ],
+            'sort_order' => 9991,
+            'is_active' => true,
+        ]);
 
         $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
             'reporting_period' => 'Q1',
             'indicators' => [
                 [
-                    'metric_code' => 'NER',
+                    'metric_code' => 'MANUAL_KPI_GE',
                     'target' => ['values' => [$year => 96]],
                     'actual' => ['values' => [$year => 94]],
                 ],
@@ -937,9 +959,51 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
 
         $created->assertStatus(Response::HTTP_CREATED)
-            ->assertJsonPath('data.indicators.0.metric.code', 'NER')
+            ->assertJsonPath('data.indicators.0.metric.code', 'MANUAL_KPI_GE')
             ->assertJsonPath("data.indicators.0.targetTypedValue.values.{$year}", 96)
-            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 94);
+            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 94)
+            ->assertJsonPath('data.indicators.0.complianceStatus', 'below_target');
+    }
+
+    public function test_less_or_equal_kpi_uses_not_exceeding_target_comparison(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $year = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+        $metric = PerformanceMetric::query()->create([
+            'code' => 'MANUAL_KPI_LEQ',
+            'name' => 'Manual KPI LEQ',
+            'category' => MetricCategory::LEARNER->value,
+            'framework' => 'targets_met',
+            'data_type' => MetricDataType::YEARLY_MATRIX->value,
+            'input_schema' => [
+                'years' => [$year],
+                'valueType' => 'percentage',
+                'comparison' => 'less_or_equal',
+            ],
+            'sort_order' => 9992,
+            'is_active' => true,
+        ]);
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_code' => 'MANUAL_KPI_LEQ',
+                    'target' => ['values' => [$year => 2]],
+                    'actual' => ['values' => [$year => 4]],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.indicators.0.metric.code', 'MANUAL_KPI_LEQ')
+            ->assertJsonPath('data.indicators.0.complianceStatus', 'below_target');
     }
 
     public function test_submit_fails_when_bmef_and_smea_are_missing_even_if_group_b_values_exist(): void

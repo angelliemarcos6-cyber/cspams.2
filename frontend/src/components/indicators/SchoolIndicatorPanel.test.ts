@@ -7,6 +7,7 @@ import {
   resolveEditableWorkspaceSubmission,
   resolveMetricFromIndicatorInWorkspace,
   resolvePreferredWorkspaceSubmission,
+  shouldRestorePersistedWorkspaceDraft,
   shouldReplaceInScopeWorkspaceSubmission,
   workspaceDraftGuidanceCopy,
   workspaceFileDraftStatusLabel,
@@ -20,6 +21,17 @@ describe("buildWorkspaceAutosavePayloadOptions", () => {
       allowIncomplete: true,
       includeAllEntries: false,
     });
+  });
+});
+
+describe("shouldRestorePersistedWorkspaceDraft", () => {
+  it("ignores legacy note-only autosave payloads after optional note removal", () => {
+    expect(
+      shouldRestorePersistedWorkspaceDraft({
+        metricEntries: {},
+        ...({ notes: "Legacy note-only draft" } as Record<string, unknown>),
+      } as never),
+    ).toBe(false);
   });
 });
 

@@ -101,6 +101,25 @@ function buildEnrollmentIndicator(value: number) {
   };
 }
 
+function buildKpiIndicator(overrides?: Partial<Record<"targetValue" | "actualValue" | "complianceStatus", number | string | null>>) {
+  return {
+    id: "kpi-ner",
+    metric: {
+      id: "NER",
+      code: "NER",
+      name: "Net Enrollment Rate (NER)",
+      category: "learner",
+      framework: "targets_met",
+      dataType: "yearly_matrix",
+    },
+    targetValue: typeof overrides?.targetValue === "number" ? overrides.targetValue : 96,
+    actualValue: typeof overrides?.actualValue === "number" ? overrides.actualValue : 94,
+    varianceValue: -2,
+    complianceStatus: typeof overrides?.complianceStatus === "string" ? overrides.complianceStatus : "below_target",
+    remarks: null,
+  };
+}
+
 describe("SchoolAdminDashboard submitted report view", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -196,5 +215,68 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("Source package: #202 (Submitted).")).not.toBeNull();
     });
     expect(screen.getByText("9999")).not.toBeNull();
+  });
+
+  it("renders production KPI compliance labels instead of raw backend enums", async () => {
+    const submitted = buildSubmission({
+      id: "kpi-101",
+      indicators: [buildKpiIndicator()],
+      items: [],
+      summary: {
+        totalIndicators: 1,
+        metIndicators: 0,
+        belowTargetIndicators: 1,
+        complianceRatePercent: 0,
+      },
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: vi.fn().mockResolvedValue(undefined),
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submitted],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => submitted),
+      loadSubmissionsForYear: vi.fn(async () => [submitted]),
+      refreshAllSubmissions: vi.fn().mockResolvedValue(undefined),
+      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Not met")).not.toBeNull();
+    });
+    expect(screen.queryByText("below_target")).toBeNull();
   });
 });

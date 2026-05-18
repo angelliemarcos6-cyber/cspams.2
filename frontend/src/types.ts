@@ -9,7 +9,7 @@ export type AccountStatus =
 
 export type SchoolStatus = "active" | "inactive" | "pending";
 export type WorkflowStatus = "draft" | "submitted" | "validated" | "returned";
-export type IndicatorComplianceStatus = "met" | "below_target";
+export type IndicatorComplianceStatus = "met" | "below_target" | "recorded";
 export type MetricDataType = "number" | "currency" | "yes_no" | "enum" | "yearly_matrix" | "text";
 
 export interface MetricInputSchema {
@@ -502,6 +502,7 @@ export interface IndicatorSubmissionSummary {
   totalIndicators: number;
   metIndicators: number;
   belowTargetIndicators: number;
+  recordedIndicators?: number;
   complianceRatePercent: number;
 }
 

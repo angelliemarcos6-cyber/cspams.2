@@ -21,8 +21,10 @@ class IndicatorSubmissionResource extends JsonResource
         $totalIndicators = $itemCollection->count();
         $metIndicators = $itemCollection->where('compliance_status', 'met')->count();
         $belowTargetIndicators = $itemCollection->where('compliance_status', 'below_target')->count();
-        $complianceRate = $totalIndicators > 0
-            ? round(($metIndicators / $totalIndicators) * 100, 2)
+        $recordedIndicators = $itemCollection->where('compliance_status', 'recorded')->count();
+        $comparableIndicators = $metIndicators + $belowTargetIndicators;
+        $complianceRate = $comparableIndicators > 0
+            ? round(($metIndicators / $comparableIndicators) * 100, 2)
             : 0.0;
         /** @var SubmissionFileRequirementResolver $requirementResolver */
         $requirementResolver = app(SubmissionFileRequirementResolver::class);
@@ -65,6 +67,7 @@ class IndicatorSubmissionResource extends JsonResource
                 'totalIndicators' => $totalIndicators,
                 'metIndicators' => $metIndicators,
                 'belowTargetIndicators' => $belowTargetIndicators,
+                'recordedIndicators' => $recordedIndicators,
                 'complianceRatePercent' => $complianceRate,
             ],
             'files' => $this->buildSubmissionFiles(),

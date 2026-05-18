@@ -12,7 +12,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
 import {
   SUBMISSION_FILE_DEFINITIONS,
@@ -91,7 +91,6 @@ interface MissingFieldTarget {
 
 interface LocalDraftSnapshot {
   academicYearId: string;
-  notes: string;
   metricEntries: MetricEntryState;
   savedAt: string | null;
   editingSubmissionId: string | null;
@@ -1067,6 +1066,12 @@ function hasMeaningfulMetricEntries(entries: MetricEntryState | undefined): bool
   });
 }
 
+export function shouldRestorePersistedWorkspaceDraft(
+  persisted: { metricEntries?: MetricEntryState } | null | undefined,
+): boolean {
+  return hasMeaningfulMetricEntries(persisted?.metricEntries);
+}
+
 function normalizeBooleanInput(value: unknown): "" | "yes" | "no" {
   if (typeof value === "boolean") {
     return value ? "yes" : "no";
@@ -1417,7 +1422,6 @@ function SchoolIndicatorPanelComponent({
 
   const [workspaceAcademicYearId, setWorkspaceAcademicYearId] = useState("");
   const reportingPeriod = "ANNUAL";
-  const [notes, setNotes] = useState("");
   const [metricEntries, setMetricEntries] = useState<MetricEntryState>({});
   const [submitError, setSubmitError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
@@ -1434,7 +1438,6 @@ function SchoolIndicatorPanelComponent({
   const [missingJumpIndex, setMissingJumpIndex] = useState(0);
   const [pendingFocusCellId, setPendingFocusCellId] = useState<string | null>(null);
   const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
-  const [showOptionalNotes, setShowOptionalNotes] = useState(false);
   const [pendingLocalDraft, setPendingLocalDraft] = useState<LocalDraftSnapshot | null>(null);
   const [restoreBannerDismissed, setRestoreBannerDismissed] = useState(false);
   const [serverAutosaveAt, setServerAutosaveAt] = useState<string | null>(null);
@@ -1470,7 +1473,6 @@ function SchoolIndicatorPanelComponent({
   const workspaceYearRequestRef = useRef(0);
   const workspaceFingerprintRef = useRef("");
   const metricEntriesRef = useRef<MetricEntryState>({});
-  const notesRef = useRef("");
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
   const fileUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -1478,9 +1480,6 @@ function SchoolIndicatorPanelComponent({
   useEffect(() => {
     metricEntriesRef.current = metricEntries;
   }, [metricEntries]);
-  useEffect(() => {
-    notesRef.current = notes;
-  }, [notes]);
 
   const normalizedSubmitError = useMemo(() => normalizeSessionMessage(submitError), [submitError]);
   const normalizedIndicatorError = useMemo(() => normalizeSessionMessage(error), [error]);
@@ -1701,7 +1700,6 @@ function SchoolIndicatorPanelComponent({
           autosaveKey,
           JSON.stringify({
             academicYearId: guardAcademicYearId,
-            notes,
             metricEntries,
             editingSubmissionId: guardEditingSubmissionId,
             savedAt,
@@ -1714,7 +1712,7 @@ function SchoolIndicatorPanelComponent({
     }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [activeAcademicYearId, autosaveKey, complianceMetrics.length, editingSubmissionId, metricEntries, notes]);
+  }, [activeAcademicYearId, autosaveKey, complianceMetrics.length, editingSubmissionId, metricEntries]);
 
   const submissions = useMemo(
     () => (allSubmissions.length > 0 || submissionSnapshot.length === 0 ? allSubmissions : submissionSnapshot),
@@ -2169,15 +2167,12 @@ function SchoolIndicatorPanelComponent({
 
       const persisted = JSON.parse(raw) as {
         academicYearId?: string;
-        notes?: string;
         metricEntries?: MetricEntryState;
         savedAt?: string;
         editingSubmissionId?: string;
       };
 
-      const hasDraft =
-        Boolean((persisted.notes ?? "").trim())
-        || hasMeaningfulMetricEntries(persisted.metricEntries);
+      const hasDraft = shouldRestorePersistedWorkspaceDraft(persisted);
 
       if (!hasDraft) {
         setPendingLocalDraft(null);
@@ -2186,7 +2181,6 @@ function SchoolIndicatorPanelComponent({
 
       setPendingLocalDraft({
         academicYearId: persisted.academicYearId ?? activeAcademicYearId,
-        notes: typeof persisted.notes === "string" ? persisted.notes : "",
         metricEntries: persisted.metricEntries && typeof persisted.metricEntries === "object" ? persisted.metricEntries : {},
         savedAt: persisted.savedAt ?? null,
         editingSubmissionId: typeof persisted.editingSubmissionId === "string" ? persisted.editingSubmissionId : null,
@@ -2611,7 +2605,6 @@ function SchoolIndicatorPanelComponent({
     markRecentlyMaterializedWorkspaceSubmission(submission);
     setActiveWorkspaceSubmission(submission);
     setEditingSubmissionId(submission?.id ?? null);
-    setNotes(submission?.notes ?? (submission ? notesRef.current : ""));
     setMetricEntries(nextEntries);
     setServerAutosaveAt(submission?.updatedAt ?? null);
     setAutosaveError("");
@@ -3229,7 +3222,7 @@ function SchoolIndicatorPanelComponent({
   }, [firstMissingByCategory, focusMissingTarget]);
 
   const buildComparablePayloadFromWorkspaceState = useCallback((
-    source: { academicYearId: string | null; noteValue: string | null; entryState: MetricEntryState },
+    source: { academicYearId: string | null; entryState: MetricEntryState },
   ): { payload: IndicatorSubmissionPayload | null; fingerprint: string } => {
     if (!source.academicYearId) {
       return { payload: null, fingerprint: "" };
@@ -3351,7 +3344,6 @@ function SchoolIndicatorPanelComponent({
     const payload: IndicatorSubmissionPayload = {
       academicYearId: Number(source.academicYearId),
       reportingPeriod,
-      notes: (source.noteValue ?? "").trim() || null,
       indicators: entries.map((entry) => ({
         metricId: entry.metricId,
         targetValue: entry.targetValue,
@@ -3395,7 +3387,6 @@ function SchoolIndicatorPanelComponent({
 
     return buildComparablePayloadFromWorkspaceState({
       academicYearId: submission.academicYear?.id ?? activeAcademicYearId,
-      noteValue: submission.notes ?? "",
       entryState: savedEntries,
     });
   }, [activeAcademicYearId, buildComparablePayloadFromWorkspaceState, complianceMetrics]);
@@ -3465,13 +3456,11 @@ function SchoolIndicatorPanelComponent({
       const leftComparable = {
         academicYearId: normalizeText(left.payload.academicYearId),
         reportingPeriod: normalizeText(left.payload.reportingPeriod),
-        notes: normalizeText(left.payload.notes),
         indicators: normalizeIndicators(left.payload),
       };
       const rightComparable = {
         academicYearId: normalizeText(right.payload.academicYearId),
         reportingPeriod: normalizeText(right.payload.reportingPeriod),
-        notes: normalizeText(right.payload.notes),
         indicators: normalizeIndicators(right.payload),
       };
 
@@ -3765,7 +3754,6 @@ function SchoolIndicatorPanelComponent({
     const payload: IndicatorSubmissionPayload = {
       academicYearId: Number(activeAcademicYearId),
       reportingPeriod,
-      notes: notes.trim() || null,
       indicators: payloadEntries.map((entry) => ({
         metricId: entry.metricId,
         metricCode: entry.metricCode,
@@ -3797,7 +3785,7 @@ function SchoolIndicatorPanelComponent({
     }
 
     return { payload, reason: "", fingerprint: JSON.stringify(payload) };
-  }, [activeAcademicYearId, metricEntries, missingCountByCategory, missingFieldTargets, notes, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, workspaceSchoolYears]);
+  }, [activeAcademicYearId, metricEntries, missingCountByCategory, missingFieldTargets, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, workspaceSchoolYears]);
 
   const hasUnsavedWorkspaceChanges = useMemo(() => {
     const activeSubmission = (
@@ -3808,7 +3796,7 @@ function SchoolIndicatorPanelComponent({
     const shouldCompareFullWorkspace = Boolean(activeSubmission);
 
     if (!activeSubmission) {
-      return hasMeaningfulMetricEntries(metricEntries) || notes.trim() !== "";
+      return hasMeaningfulMetricEntries(metricEntries);
     }
 
     const currentPayload = buildSubmissionPayloadFromCurrentWorkspace({
@@ -3825,7 +3813,6 @@ function SchoolIndicatorPanelComponent({
     isSubmissionInAcademicYear,
     latestActiveWorkspaceSubmission,
     metricEntries,
-    notes,
   ]);
   useEffect(() => {
     hasUnsavedWorkspaceChangesRef.current = hasUnsavedWorkspaceChanges;
@@ -4195,7 +4182,6 @@ function SchoolIndicatorPanelComponent({
         dismissRestoreBanner: true,
         action: () => {
           workspaceDataOwnerRef.current = "local";
-          setNotes(pendingLocalDraft.notes);
           setMetricEntries(buildMetricEntriesForLocalRestore(complianceMetrics, pendingLocalDraft.metricEntries));
           setEditingSubmissionId(inScopeSubmissionId);
           setAutosaveAt(pendingLocalDraft.savedAt);
@@ -5062,46 +5048,6 @@ function SchoolIndicatorPanelComponent({
               <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             </div>
           </div>
-        </div>
-
-        <div className="border-t border-slate-200/80 pt-3">
-          {showOptionalNotes || notes.trim().length > 0 ? (
-            <div className="space-y-2 rounded-sm border border-slate-200 bg-white p-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <label htmlFor="indicator-notes" className="block text-[12px] font-medium tracking-normal text-slate-500">
-                  Optional note
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowOptionalNotes(false)}
-                  disabled={isWorkspaceReadOnly}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                  aria-label="Collapse optional note"
-                  title="Collapse"
-                >
-                  <XCircle className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <textarea
-                id="indicator-notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                rows={3}
-                placeholder="Add optional note"
-                disabled={isWorkspaceReadOnly}
-                className="w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowOptionalNotes(true)}
-              disabled={isWorkspaceReadOnly}
-              className="text-xs font-semibold text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline"
-            >
-              + Add optional note
-            </button>
-          )}
         </div>
 
         <div className="space-y-2 pt-3">

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSchoolAdminRefreshBatches,
   buildDashboardViewYearStorageKey,
+  formatComplianceStatusLabel,
   resolveInitialSubmittedReportAcademicYearId,
   resolveSchoolAdminHeaderContext,
 } from "@/pages/SchoolAdminDashboard";
@@ -204,6 +205,14 @@ describe("buildSubmittedReportBlankStateLines", () => {
       "No finalized submitted report package exists yet for the selected academic year.",
       "The report tables are shown for reference. Finalized values will appear here after you submit the package.",
     ]);
+  });
+});
+
+describe("formatComplianceStatusLabel", () => {
+  it("maps backend compliance enums to production-facing KPI wording", () => {
+    expect(formatComplianceStatusLabel("met")).toBe("Met");
+    expect(formatComplianceStatusLabel("below_target")).toBe("Not met");
+    expect(formatComplianceStatusLabel("recorded")).toBe("Recorded");
   });
 });
 

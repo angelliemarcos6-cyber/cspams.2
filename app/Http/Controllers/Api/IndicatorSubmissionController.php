@@ -1346,6 +1346,7 @@ class IndicatorSubmissionController extends Controller
         $schema = is_array($metric->input_schema) ? $metric->input_schema : [];
         $dataType = $this->metricDataType($metric);
         $comparison = (string) ($schema['comparison'] ?? $this->defaultComparison($dataType));
+        $isActualOnlyMetric = $this->isActualOnlyWorkspaceMetric($metric);
 
         $targetRaw = array_key_exists('target', $row)
             ? $row['target']
@@ -1354,15 +1355,30 @@ class IndicatorSubmissionController extends Controller
             ? $row['actual']
             : ($row['actual_value'] ?? null);
 
-        if ($this->isActualOnlyWorkspaceMetric($metric) && $targetRaw === null && $actualRaw !== null) {
-            $targetRaw = $actualRaw;
+        if ($isActualOnlyMetric) {
+            if ($actualRaw === null) {
+                throw ValidationException::withMessages([
+                    "indicators.{$index}" => 'Actual value is required for this indicator.',
+                ]);
+            }
+
+            $actualParsed = $this->parseMetricValue($dataType, $actualRaw, $schema, "indicators.{$index}.actual");
+
+            return [
+                'target_value' => 0.0,
+                'actual_value' => $actualParsed['numeric'] === null ? null : round($actualParsed['numeric'], 2),
+                'variance_value' => 0.0,
+                'target_typed_value' => null,
+                'actual_typed_value' => $actualParsed['typed'],
+                'target_display' => '-',
+                'actual_display' => $actualParsed['display'],
+                'compliance_status' => 'recorded',
+            ];
         }
 
         if ($targetRaw === null || $actualRaw === null) {
             throw ValidationException::withMessages([
-                "indicators.{$index}" => $this->isActualOnlyWorkspaceMetric($metric)
-                    ? 'Actual value is required for this indicator.'
-                    : 'Both target and actual values are required for this indicator.',
+                "indicators.{$index}" => 'Both target and actual values are required for this indicator.',
             ]);
         }
 

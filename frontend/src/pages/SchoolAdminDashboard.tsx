@@ -144,6 +144,26 @@ function formatDisplayValue(value: unknown): string {
   return String(value);
 }
 
+export function formatComplianceStatusLabel(value: unknown): string {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "met") return "Met";
+    if (normalized === "below_target") return "Not met";
+    if (normalized === "recorded") return "Recorded";
+  }
+
+  return formatDisplayValue(value);
+}
+
+function isCountableComplianceStatus(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === "met" || normalized === "below_target" || normalized === "recorded";
+}
+
 function buildSubmissionRefreshFingerprint(submission: IndicatorSubmission | null | undefined): string {
   if (!submission?.id) {
     return "";
@@ -638,7 +658,7 @@ export function SchoolAdminDashboard() {
         indicator,
         target: resolveIndicatorValue(indicator, "target"),
         actual: resolveIndicatorValue(indicator, "actual"),
-        status: formatDisplayValue(indicator?.complianceStatus),
+        status: formatComplianceStatusLabel(indicator?.complianceStatus),
       };
     });
 
@@ -658,7 +678,13 @@ export function SchoolAdminDashboard() {
       submission,
       hasSubmittedPackage: Boolean(submission),
       getIndicatorByGroupAKey,
-      completedIndicators: submission?.summary?.metIndicators ?? 0,
+      completedIndicators: indicators.length > 0
+        ? indicators.filter((indicator) => isCountableComplianceStatus(indicator.complianceStatus)).length
+        : (
+          (submission?.summary?.metIndicators ?? 0)
+          + (submission?.summary?.belowTargetIndicators ?? 0)
+          + (submission?.summary?.recordedIndicators ?? 0)
+        ),
       totalIndicators: submission?.summary?.totalIndicators ?? 0,
       indicators,
       schoolAchievementRows,
@@ -1324,7 +1350,7 @@ export function SchoolAdminDashboard() {
                           <td className="px-3 py-2">{item.metric?.name ?? "Untitled indicator"}</td>
                           <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "target")}</td>
                           <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "actual")}</td>
-                          <td className="px-3 py-2 text-center">{formatDisplayValue(item.complianceStatus)}</td>
+                          <td className="px-3 py-2 text-center">{formatComplianceStatusLabel(item.complianceStatus)}</td>
                         </tr>
                       ))}
                     </tbody>
