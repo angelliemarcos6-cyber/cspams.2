@@ -304,7 +304,7 @@ describe("AuthProvider logout", () => {
     ]);
     const loginInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
     const loginHeaders = new Headers(loginInit?.headers as HeadersInit);
-    expect(loginInit?.credentials).toBe("include");
+    expect(loginInit?.credentials).toBe("omit");
     expect(loginHeaders.get("Authorization")).toBeNull();
     const meInit = (fetchMock.mock.calls[1] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
     const meHeaders = new Headers(meInit?.headers as HeadersInit);
@@ -483,7 +483,7 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
     const verifyInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
-    expect(verifyInit?.credentials).toBe("include");
+    expect(verifyInit?.credentials).toBe("omit");
     expect(result.current.apiToken).toBe("mfa-token");
   });
 

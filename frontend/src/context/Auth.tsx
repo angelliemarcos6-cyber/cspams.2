@@ -812,7 +812,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const payload = await apiRequest<LoginResponse>("/api/auth/login", {
         method: "POST",
         timeoutMs: 30_000,
-        credentialsMode: "include",
         body: {
           role,
           login: loginValue,
@@ -856,7 +855,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const payload = await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
         method: "POST",
-        credentialsMode: "include",
         body: {
           role,
           login: loginValue,
@@ -887,7 +885,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<ResetRequiredPasswordResponse>("/api/auth/reset-required-password", {
           method: "POST",
-          credentialsMode: "include",
           body: {
             role,
             login: loginValue,
@@ -919,7 +916,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       return await apiRequest<RequestMonitorPasswordResetResponse>("/api/auth/forgot-password", {
         method: "POST",
-        credentialsMode: "include",
         body: {
           role,
           email: normalizedEmail,
@@ -942,7 +938,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         return await apiRequest<ResetMonitorPasswordResponse>("/api/auth/reset-password", {
           method: "POST",
-          credentialsMode: "include",
           body: {
             role: role ?? undefined,
             email: normalizedEmail,
@@ -968,7 +963,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       return await apiRequest<RequestMonitorMfaResetResponse>("/api/auth/mfa/reset/request", {
         method: "POST",
-        credentialsMode: "include",
         body: {
           role: "monitor",
           login: normalizedLogin,
@@ -997,7 +991,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<CompleteMonitorMfaResetResponse>("/api/auth/mfa/reset/complete", {
           method: "POST",
-          credentialsMode: "include",
           body: {
             role: "monitor",
             login: normalizedLogin,
@@ -1030,7 +1023,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<CompleteAccountSetupResponse>("/api/auth/setup-account", {
           method: "POST",
-          credentialsMode: "include",
           body: {
             token,
             password,
