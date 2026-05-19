@@ -849,7 +849,7 @@ function buildMetricEntriesForLocalRestore(metrics: IndicatorMetric[], snapshot:
   return next;
 }
 
-function buildResetEntryForMetric(
+export function buildResetEntryForMetric(
   metric: IndicatorMetric,
   selectedYears: string[],
   currentEntry?: MetricEntryValue,
@@ -873,8 +873,8 @@ function buildResetEntryForMetric(
       : defaultEntry;
 
   if (dataType === "number" || dataType === "currency") {
-    nextEntry.targetValue = "0";
-    nextEntry.actualValue = "0";
+    nextEntry.targetValue = "";
+    nextEntry.actualValue = "";
   } else if (dataType === "enum") {
     nextEntry.targetEnum = "";
     nextEntry.actualEnum = "";
@@ -888,8 +888,8 @@ function buildResetEntryForMetric(
     const metricScopedYears = resolveMetricYearsInScope(metric, selectedYears);
     const yearsToReset = metricScopedYears.length > 0 ? metricScopedYears : selectedYears;
     for (const year of yearsToReset) {
-      nextEntry.targetMatrix[year] = "0";
-      nextEntry.actualMatrix[year] = "0";
+      nextEntry.targetMatrix[year] = "";
+      nextEntry.actualMatrix[year] = "";
     }
   }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildResetEntryForMetric,
   buildReportFileSubmissionByType,
   buildStrictSubmittedByType,
   buildWorkspaceAutosavePayloadOptions,
@@ -21,6 +22,71 @@ describe("buildWorkspaceAutosavePayloadOptions", () => {
       allowIncomplete: true,
       includeAllEntries: false,
     });
+  });
+});
+
+describe("buildResetEntryForMetric", () => {
+  it("clears reset numeric cells back to blank instead of synthetic zeroes", () => {
+    const metric = buildMetric({
+      dataType: "number",
+      inputSchema: {},
+    });
+
+    expect(
+      buildResetEntryForMetric(metric, [], {
+        targetValue: "12",
+        actualValue: "34",
+        targetText: "",
+        actualText: "",
+        targetBoolean: "",
+        actualBoolean: "",
+        targetEnum: "",
+        actualEnum: "",
+        targetMatrix: {},
+        actualMatrix: {},
+        remarks: "note",
+      }),
+    ).toMatchObject({
+      targetValue: "",
+      actualValue: "",
+      remarks: "",
+    });
+  });
+
+  it("clears reset yearly-matrix cells back to blank so missing-state and completion recalculate correctly", () => {
+    const metric = buildMetric({
+      dataType: "yearly_matrix",
+      inputSchema: {
+        valueType: "integer",
+        years: ["2025-2026", "2026-2027"],
+      },
+    });
+
+    const entry = buildResetEntryForMetric(metric, ["2025-2026"], {
+      targetValue: "",
+      actualValue: "",
+      targetText: "",
+      actualText: "",
+      targetBoolean: "",
+      actualBoolean: "",
+      targetEnum: "",
+      actualEnum: "",
+      targetMatrix: {
+        "2025-2026": "585",
+        "2026-2027": "900",
+      },
+      actualMatrix: {
+        "2025-2026": "585",
+        "2026-2027": "900",
+      },
+      remarks: "note",
+    });
+
+    expect(entry.targetMatrix["2025-2026"]).toBe("");
+    expect(entry.actualMatrix["2025-2026"]).toBe("");
+    expect(entry.targetMatrix["2026-2027"]).toBe("900");
+    expect(entry.actualMatrix["2026-2027"]).toBe("900");
+    expect(entry.remarks).toBe("");
   });
 });
 
