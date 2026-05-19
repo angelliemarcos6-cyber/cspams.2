@@ -111,6 +111,13 @@ interface LightweightIndicatorSubmission {
     activeWorkspaceFileTypes?: IndicatorSubmissionFileType[];
     secondaryHistoricalFileTypes?: IndicatorSubmissionFileType[];
   };
+  scopeProgress?: {
+    requiredScopeIds?: string[];
+    submittedScopeIds?: string[];
+    pendingScopeIds?: string[];
+    submittedRequiredScopeCount?: number;
+    totalRequiredScopeCount?: number;
+  };
   files?: IndicatorSubmissionFiles;
   academicYear?: {
     id: string;
@@ -157,12 +164,17 @@ export interface IndicatorDataContextType {
   loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   bootstrapSubmission: (payload: BootstrapIndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
   createSubmission: (payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
-  updateSubmission: (id: string, payload: IndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
+  updateSubmission: (
+    id: string,
+    payload: IndicatorSubmissionPayload,
+    options?: { workspaceSection?: string | null },
+  ) => Promise<IndicatorSubmission>;
   fetchSubmission: (id: string) => Promise<IndicatorSubmission>;
   resetSubmissionWorkspace: (id: string, workspace: GroupBWorkspaceResetTarget) => Promise<IndicatorSubmission>;
   uploadSubmissionFile: (id: string, type: IndicatorSubmissionFileType, file: File) => Promise<IndicatorSubmission>;
   downloadSubmissionFile: (id: string, type: IndicatorSubmissionFileType) => Promise<void>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
+  submitSubmissionScopes: (id: string, targets: string[]) => Promise<IndicatorSubmission>;
   reviewSubmission: (id: string, decision: ReviewDecision, notes?: string) => Promise<IndicatorSubmission>;
   loadHistory: (id: string) => Promise<FormSubmissionHistoryEntry[]>;
 }
@@ -504,6 +516,7 @@ function patchSubmissionWithLightweightPayload(
     updatedAt: patch.updatedAt ?? current.updatedAt,
     completion: nextCompletion,
     presentation: patch.presentation ?? current.presentation,
+    scopeProgress: patch.scopeProgress ?? current.scopeProgress,
     files: nextFiles,
     academicYear: patch.academicYear?.id
       ? {
@@ -608,6 +621,13 @@ export function materializeSubmissionFromLightweightPayload(
       secondaryHistoricalFileTypes: uploadedFileTypes.filter((type) => !(
         patch.completion?.requiredFileTypes ?? defaultRequiredSubmissionFileTypesForSchoolType(schoolType)
       ).includes(type)),
+    },
+    scopeProgress: patch.scopeProgress ?? {
+      requiredScopeIds: [],
+      submittedScopeIds: [],
+      pendingScopeIds: [],
+      submittedRequiredScopeCount: 0,
+      totalRequiredScopeCount: 0,
     },
     indicators: [],
     academicYear: {
@@ -1387,8 +1407,33 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [runSubmissionMutation, token],
   );
 
+  const submitSubmissionScopes = useCallback(
+    async (id: string, targets: string[]): Promise<IndicatorSubmission> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      return runSubmissionMutation(async () => {
+        const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}/submit-scopes`, {
+          method: "POST",
+          token,
+          timeoutMs: 60_000,
+          body: {
+            targets,
+          },
+        });
+        return response.data;
+      }, { backgroundSync: false });
+    },
+    [runSubmissionMutation, token],
+  );
+
   const updateSubmission = useCallback(
-    async (id: string, payload: IndicatorSubmissionPayload): Promise<IndicatorSubmission> => {
+    async (
+      id: string,
+      payload: IndicatorSubmissionPayload,
+      options?: { workspaceSection?: string | null },
+    ): Promise<IndicatorSubmission> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
@@ -1413,6 +1458,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
         if (typeof payload.replace_missing === "boolean") {
           body.replace_missing = payload.replace_missing;
+        }
+        if (options?.workspaceSection) {
+          body.workspace_section = options.workspaceSection;
         }
 
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
@@ -1629,6 +1677,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       uploadSubmissionFile,
       downloadSubmissionFile,
       submitSubmission,
+      submitSubmissionScopes,
       reviewSubmission,
       loadHistory,
     }),
@@ -1656,6 +1705,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       uploadSubmissionFile,
       downloadSubmissionFile,
       submitSubmission,
+      submitSubmissionScopes,
       reviewSubmission,
       loadHistory,
     ],

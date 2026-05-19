@@ -92,6 +92,15 @@ function firstValidationMessage(errors: ApiValidationErrors | null): string | nu
   return null;
 }
 
+function areEquivalentErrorMessages(left: string | null, right: string | null): boolean {
+  if (!left || !right) {
+    return false;
+  }
+
+  const normalize = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+  return normalize(left) === normalize(right);
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly payload: unknown;
@@ -339,7 +348,9 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
     if (firstError) {
       const isGenericValidationMessage =
         !baseMessage || baseMessage.toLowerCase() === "the given data was invalid.";
-      message = isGenericValidationMessage ? firstError : `${message} ${firstError}`;
+      message = isGenericValidationMessage || areEquivalentErrorMessages(baseMessage, firstError)
+        ? firstError
+        : `${message} ${firstError}`;
     }
 
     throw new ApiError(message, response.status, payload, validationErrors);

@@ -103,4 +103,28 @@ describe("api request helpers", () => {
     expect(requestInit?.credentials).toBe("omit");
     expect(headers.get("Authorization")).toBeNull();
   });
+
+  it("does not duplicate identical backend message and validation error text", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        message: "Submission is incomplete. Missing: FM-QAD-001 file.",
+        errors: {
+          submission: ["Submission is incomplete. Missing: FM-QAD-001 file."],
+        },
+      }), {
+        status: 422,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    await expect(
+      apiRequest("/api/indicators/submissions/example/submit", {
+        method: "POST",
+        token: "sample-bearer-token",
+      }),
+    ).rejects.toMatchObject({
+      message: "Submission is incomplete. Missing: FM-QAD-001 file.",
+      status: 422,
+    });
+  });
 });

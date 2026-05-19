@@ -23,6 +23,7 @@ use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
+use App\Support\Indicators\SubmissionScopeProgressResolver;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -383,6 +384,7 @@ class IndicatorSubmissionController extends Controller
         $notes = $request->filled('notes')
             ? trim($request->string('notes')->toString())
             : null;
+        $workspaceSection = strtolower(trim((string) $request->input('workspace_section', '')));
         $mode = strtolower(trim((string) $request->input('mode', '')));
         $shouldReplaceMissing = $request->boolean('replace_missing')
             || $mode === 'full_replace';
@@ -394,6 +396,7 @@ class IndicatorSubmissionController extends Controller
             $academicYearId,
             $reportingPeriod,
             $notes,
+            $workspaceSection,
             $indicatorRows,
             $currentStatus,
             $shouldReplaceMissing,
@@ -459,6 +462,9 @@ class IndicatorSubmissionController extends Controller
                     'below_target_count' => $indicatorRows->where('compliance_status', 'below_target')->count(),
                     'replace_missing' => $shouldReplaceMissing,
                     'deleted_indicator_count' => $deletedCount,
+                    'touchedScopes' => GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)
+                        ? [$workspaceSection]
+                        : [],
                 ],
             );
 
@@ -565,6 +571,7 @@ class IndicatorSubmissionController extends Controller
                 'path' => $path,
                 'filename' => $originalFilename !== '' ? $originalFilename : $filename,
                 'size_bytes' => $sizeBytes,
+                'touchedScopes' => [$fileType],
             ],
         );
 
@@ -695,6 +702,76 @@ class IndicatorSubmissionController extends Controller
         return $this->fullSubmissionResponse($submission);
     }
 
+    public function submitScopes(Request $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanSubmit($user, $submission->school_id);
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+
+        $fromStatus = $this->statusValue($submission->status);
+        if (! in_array($fromStatus, [
+            FormSubmissionStatus::DRAFT->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only draft or returned indicator submissions can submit individual scopes.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'targets' => ['required', 'array', 'min:1'],
+            'targets.*' => ['required', 'string'],
+        ]);
+
+        $targets = $scopeProgressResolver->normalizeScopeIds(
+            $submission,
+            array_map(static fn (mixed $value): string => (string) $value, (array) ($validated['targets'] ?? [])),
+        );
+
+        if ($targets === []) {
+            throw ValidationException::withMessages([
+                'targets' => 'Select at least one valid submission scope.',
+            ]);
+        }
+
+        $missingRequirements = $scopeProgressResolver->missingRequirementLabelsForScopes($submission, $targets);
+        if ($missingRequirements !== []) {
+            throw ValidationException::withMessages([
+                'targets' => 'Submission scope is incomplete. Missing: ' . implode(', ', $missingRequirements) . '.',
+            ]);
+        }
+
+        app(FormSubmissionHistoryLogger::class)->log(
+            formType: IndicatorSubmission::FORM_TYPE,
+            submissionId: $submission->id,
+            schoolId: $submission->school_id,
+            academicYearId: $submission->academic_year_id,
+            action: 'scope_submitted',
+            fromStatus: $fromStatus,
+            toStatus: $fromStatus ?? FormSubmissionStatus::DRAFT->value,
+            actorId: $user->id,
+            notes: 'Submission scopes sent for monitor review: ' . implode(', ', array_map(
+                [$scopeProgressResolver, 'scopeLabel'],
+                $targets,
+            )) . '.',
+            metadata: [
+                'targets' => $targets,
+            ],
+        );
+
+        event(new CspamsUpdateBroadcast([
+            'entity' => 'indicators',
+            'eventType' => 'indicators.scopes_submitted',
+            'submissionId' => (string) $submission->id,
+            'schoolId' => (string) $submission->school_id,
+            'academicYearId' => (string) $submission->academic_year_id,
+            'targets' => $targets,
+        ]));
+
+        return $this->lightweightSubmissionResponse($submission);
+    }
+
     public function review(ReviewIndicatorSubmissionRequest $request, IndicatorSubmission $submission): JsonResponse
     {
         $user = $this->requireUser($request);
@@ -814,7 +891,10 @@ class IndicatorSubmissionController extends Controller
             toStatus: $fromStatus ?? FormSubmissionStatus::DRAFT->value,
             actorId: $user->id,
             notes: $this->historyNoteForWorkspaceReset($workspace),
-            metadata: $metadata,
+            metadata: [
+                ...$metadata,
+                'touchedScopes' => [$workspace],
+            ],
         );
 
         event(new CspamsUpdateBroadcast([
@@ -860,6 +940,9 @@ class IndicatorSubmissionController extends Controller
         $requiredFileTypes = $requirementResolver->requiredTypesForSubmission($submission);
         $missingFileTypes = $requirementResolver->missingTypesForSubmission($submission);
         $secondaryHistoricalFileTypes = $requirementResolver->secondaryHistoricalTypesForSubmission($submission);
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
 
         // Keep mutation payloads small by returning state-only fields (no items.metric eager loading).
         return response()->json([
@@ -894,6 +977,7 @@ class IndicatorSubmissionController extends Controller
                     'activeWorkspaceFileTypes' => $requiredFileTypes,
                     'secondaryHistoricalFileTypes' => $secondaryHistoricalFileTypes,
                 ],
+                'scopeProgress' => $scopeProgress,
                 'files' => $this->buildSubmissionFilesPayload($submission, false),
             ],
         ], $status);

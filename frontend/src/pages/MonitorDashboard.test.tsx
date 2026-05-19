@@ -253,6 +253,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       uploadSubmissionFile: vi.fn(),
       downloadSubmissionFile: vi.fn(),
       submitSubmission: vi.fn(),
+      submitSubmissionScopes: vi.fn(),
       reviewSubmission: vi.fn(),
       loadHistory: vi.fn(),
     } satisfies IndicatorDataContextType;

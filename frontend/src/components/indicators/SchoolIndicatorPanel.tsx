@@ -727,7 +727,64 @@ export function workspaceFileDraftStatusLabel(uploaded: boolean): "Uploaded" | "
 }
 
 export function workspaceDraftGuidanceCopy(): string {
-  return "You can save sections and upload files individually. Final Submit sends the full package to the monitor for review.";
+  return "You can save sections, upload files individually, and submit each workspace item individually. Final Submit sends the full package to the monitor for review.";
+}
+
+interface WorkspaceProgressSummaryInput {
+  categoryProgressById: Map<string, { total: number; complete: number }>;
+  categoryIds: string[];
+  fileTypes: IndicatorSubmissionFileType[];
+  uploadedFileTypes: Record<IndicatorSubmissionFileType, boolean>;
+  submittedScopeIds: string[];
+}
+
+export interface WorkspaceProgressSummary {
+  totalScopeCount: number;
+  readyScopeCount: number;
+  submittedScopeCount: number;
+  readyPercent: number;
+  readyScopeIds: string[];
+  submittedScopeIds: string[];
+  readyUnsubmittedScopeIds: string[];
+}
+
+export function buildWorkspaceProgressSummary({
+  categoryProgressById,
+  categoryIds,
+  fileTypes,
+  uploadedFileTypes,
+  submittedScopeIds,
+}: WorkspaceProgressSummaryInput): WorkspaceProgressSummary {
+  const readyScopeIds = [
+    ...categoryIds.filter((categoryId) => {
+      const progress = categoryProgressById.get(categoryId);
+      return Boolean(progress && progress.total > 0 && progress.complete >= progress.total);
+    }),
+    ...fileTypes.filter((type) => uploadedFileTypes[type]),
+  ];
+  const allScopeIds = [...categoryIds, ...fileTypes];
+  const submittedVisibleScopeIds = submittedScopeIds.filter((scopeId) => allScopeIds.includes(scopeId));
+  const readyUnsubmittedScopeIds = readyScopeIds.filter((scopeId) => !submittedVisibleScopeIds.includes(scopeId));
+  const totalScopeCount = allScopeIds.length;
+  const readyScopeCount = readyScopeIds.length;
+
+  return {
+    totalScopeCount,
+    readyScopeCount,
+    submittedScopeCount: submittedVisibleScopeIds.length,
+    readyPercent: totalScopeCount > 0 ? Math.round((readyScopeCount / totalScopeCount) * 100) : 0,
+    readyScopeIds,
+    submittedScopeIds: submittedVisibleScopeIds,
+    readyUnsubmittedScopeIds,
+  };
+}
+
+function buildFileMissingReason(fileLabels: string[]): string {
+  if (fileLabels.length === 0) {
+    return "";
+  }
+
+  return `Upload required files: ${fileLabels.join(", ")}.`;
 }
 
 function currentSchoolYearStart(now: Date = new Date()): number {
@@ -1417,6 +1474,7 @@ function SchoolIndicatorPanelComponent({
     uploadSubmissionFile,
     downloadSubmissionFile,
     submitSubmission,
+    submitSubmissionScopes,
     loadHistory,
   } = useIndicatorData();
 
@@ -1842,15 +1900,6 @@ function SchoolIndicatorPanelComponent({
     () => orderedComplianceMetrics.reduce((count, metric) => count + Number(metricCompletionById.get(metric.id) ?? false), 0),
     [metricCompletionById, orderedComplianceMetrics],
   );
-  const completionPercent = useMemo(
-    () => (totalIndicators > 0 ? Math.round((completeIndicators / totalIndicators) * 100) : 0),
-    [completeIndicators, totalIndicators],
-  );
-  const completionBarToneClass = useMemo(() => {
-    if (completionPercent >= 80) return "bg-emerald-500";
-    if (completionPercent >= 50) return "bg-amber-500";
-    return "bg-rose-500";
-  }, [completionPercent]);
   const missingFieldTargets = useMemo(() => {
     const targets: MissingFieldTarget[] = [];
 
@@ -1903,7 +1952,7 @@ function SchoolIndicatorPanelComponent({
 
     return [...map.values()];
   }, [missingFieldTargets]);
-  const submitBlockedReason = useMemo(
+  const indicatorMissingReason = useMemo(
     () => buildMissingReason(missingFieldTargets.length, missingCountByCategory),
     [missingCountByCategory, missingFieldTargets.length],
   );
@@ -1981,11 +2030,19 @@ function SchoolIndicatorPanelComponent({
       }
 
       summary.set(submission.id, {
-        missingCount: missingTargets.length,
-        reason: buildMissingReason(
-          missingTargets.length,
-          [...perCategory.values()],
-        ),
+        missingCount: missingTargets.length + (submission.completion?.missingFileTypes?.length ?? 0),
+        reason: [
+          buildMissingReason(
+            missingTargets.length,
+            [...perCategory.values()],
+          ),
+          buildFileMissingReason(
+            (submission.completion?.missingFileTypes ?? [])
+              .map((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type]?.shortLabel)
+              .filter((label): label is string => Boolean(label))
+              .map((label) => `${label} file`),
+          ),
+        ].filter((reason) => reason !== "").join(" "),
       });
     }
 
@@ -2744,6 +2801,32 @@ function SchoolIndicatorPanelComponent({
     activeWorkspaceSubmission,
     latestActiveWorkspaceSubmission,
   ]);
+  const submittedScopeIds = useMemo(
+    () => activeFormSubmission?.scopeProgress?.submittedScopeIds ?? [],
+    [activeFormSubmission],
+  );
+  const workspaceProgressSummary = useMemo(
+    () => buildWorkspaceProgressSummary({
+      categoryProgressById,
+      categoryIds: visibleCategoryMetrics.map((category) => category.id),
+      fileTypes: visibleFileDefinitions.map((definition) => definition.type),
+      uploadedFileTypes: submittedByFileType,
+      submittedScopeIds,
+    }),
+    [categoryProgressById, visibleCategoryMetrics, visibleFileDefinitions, submittedByFileType, submittedScopeIds],
+  );
+  const missingRequiredFileDefinitions = useMemo(
+    () => visibleFileDefinitions.filter((definition) => !submittedByFileType[definition.type]),
+    [submittedByFileType, visibleFileDefinitions],
+  );
+  const finalSubmitBlockedReason = useMemo(() => {
+    const reasons = [
+      indicatorMissingReason,
+      buildFileMissingReason(missingRequiredFileDefinitions.map((definition) => `${definition.shortLabel} file`)),
+    ].filter((reason) => reason !== "");
+
+    return reasons.join(" ");
+  }, [indicatorMissingReason, missingRequiredFileDefinitions]);
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
     ?? activeFormSubmission?.createdBy?.name
@@ -2775,6 +2858,11 @@ function SchoolIndicatorPanelComponent({
     [activeCategoryId, complianceTabs],
   );
   const activeUploadType = activeTab?.kind === "upload" ? activeTab.uploadType : null;
+  const activeScopeId = activeTab?.kind === "upload"
+    ? activeTab.uploadType
+    : activeTab?.kind === "category"
+      ? activeTab.id
+      : null;
   const activeCategory = useMemo(
     () => (activeTab?.kind === "category"
       ? visibleCategoryMetrics.find((category) => category.id === activeTab.id) ?? null
@@ -2845,17 +2933,45 @@ function SchoolIndicatorPanelComponent({
     return `Update ${sectionLabel}`;
   }, [activeCategory, activeSaveSection, workspaceMode]);
   const submitActionLabel = workspaceMode === "submitted_editing" ? "Re-submit" : "Submit";
-  const showSubmitEligibilityHelper = canShowSaveAndSubmitActions && missingFieldTargets.length > 0;
+  const showSubmitEligibilityHelper = canShowSaveAndSubmitActions && finalSubmitBlockedReason !== "";
   const saveActionDisabledTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
     : undefined;
   const submitActionTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
-    : missingFieldTargets.length > 0
-      ? "Complete required fields before submitting."
+    : finalSubmitBlockedReason !== ""
+      ? "Complete all required sections and files before final submit."
       : workspaceMode === "submitted_editing"
         ? "Re-submit to monitor"
         : "Submit to monitor";
+  const activeScopeReady = useMemo(() => (
+    activeScopeId ? workspaceProgressSummary.readyScopeIds.includes(activeScopeId) : false
+  ), [activeScopeId, workspaceProgressSummary.readyScopeIds]);
+  const activeScopeSubmitted = useMemo(() => (
+    activeScopeId ? workspaceProgressSummary.submittedScopeIds.includes(activeScopeId) : false
+  ), [activeScopeId, workspaceProgressSummary.submittedScopeIds]);
+  const activeScopeSubmitLabel = useMemo(() => {
+    if (!activeScopeId) {
+      return "Submit This Item";
+    }
+
+    const scopeLabel = activeTab?.kind === "category" && activeCategory
+      ? categoryTabLabel(activeCategory)
+      : workspaceSaveSectionLabel(activeScopeId as WorkspaceSaveSection);
+    return activeScopeSubmitted ? `Re-submit ${scopeLabel}` : `Submit ${scopeLabel}`;
+  }, [activeCategory, activeScopeId, activeScopeSubmitted, activeTab]);
+  const activeScopeSubmitTitle = isWorkspaceReadOnly
+    ? "This academic year is not open for encoding."
+    : !activeScopeReady
+      ? "Complete or upload this workspace item before submitting it."
+      : activeScopeSubmitted
+        ? "Re-submit this workspace item to monitor."
+        : "Submit this workspace item to monitor.";
+  const workspaceProgressToneClass = useMemo(() => {
+    if (workspaceProgressSummary.readyPercent >= 80) return "bg-emerald-500";
+    if (workspaceProgressSummary.readyPercent >= 50) return "bg-amber-500";
+    return "bg-rose-500";
+  }, [workspaceProgressSummary.readyPercent]);
   const getCategoryRailStatusLabel = useCallback(
     (progress: { total: number; complete: number } | null): string => {
       if (workspaceMode === "submitted_locked") return "Submitted";
@@ -3853,7 +3969,11 @@ function SchoolIndicatorPanelComponent({
       );
       const submissionIdToUpdate = canUpdateActiveSubmission ? mutableSubmission?.id ?? null : null;
       const result = submissionIdToUpdate
-        ? await updateSubmission(submissionIdToUpdate, payload)
+        ? await updateSubmission(
+            submissionIdToUpdate,
+            payload,
+            { workspaceSection: activeTab?.kind === "category" ? activeTab.id : null },
+          )
         : await createSubmission(payload);
       if (guard) {
         if (
@@ -4379,7 +4499,11 @@ function SchoolIndicatorPanelComponent({
       await runCriticalWorkspaceMutation({
         mutation: async () => {
           const submissionToSave = await ensureWorkspaceSubmission();
-          return updateSubmission(submissionToSave.id, payload);
+          return updateSubmission(
+            submissionToSave.id,
+            payload,
+            { workspaceSection: activeCategory?.id ?? null },
+          );
         },
         onSuccess: (saved) => {
           preserveLocalWorkspaceAfterMutationRef.current = {
@@ -4494,6 +4618,115 @@ function SchoolIndicatorPanelComponent({
         onError: (err) => {
           console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to submit package."));
+        },
+      });
+    });
+  };
+
+  const handleSubmitActiveScope = async () => {
+    await runGroupBAction("Submit scope", async () => {
+      if (!activeScopeId) {
+        setSubmitError("Select a workspace item to submit.");
+        return;
+      }
+      if (workspaceMode === "read_only_year") {
+        setSubmitError("This academic year is not yet open for encoding.");
+        return;
+      }
+      if (isActiveCategoryLocked) {
+        setSubmitError("This submitted report is read-only. Click Edit to continue.");
+        return;
+      }
+      if (!activeScopeReady) {
+        setSubmitError("Complete or upload this workspace item before submitting it.");
+        return;
+      }
+      if (activeTab?.kind === "upload" && hasUnsavedWorkspaceChanges) {
+        setSubmitError("Save your indicator changes before submitting a file scope.");
+        return;
+      }
+
+      submittedEditPreserveContextRef.current = null;
+      if (!ensureWorkspaceLineageAlignment()) {
+        return;
+      }
+
+      await runCriticalWorkspaceMutation({
+        mutation: async () => {
+          let submissionToSubmit = mutableActiveWorkspaceSubmission ?? editableWorkspaceSubmissionInScope ?? latestActiveWorkspaceSubmission;
+
+          if (activeTab?.kind === "category") {
+            const prepared = buildSubmissionPayloadFromCurrentWorkspace({
+              metrics: activeCategory?.metrics ?? [],
+            });
+            if (!prepared.payload) {
+              setSubmitError(prepared.reason || `Complete ${activeScopeSubmitLabel} before submitting.`);
+              return null;
+            }
+
+            const submissionIdToUpdate = (
+              submissionToSubmit && isSubmissionInAcademicYear(submissionToSubmit, prepared.payload.academicYearId)
+                ? submissionToSubmit.id
+                : null
+            );
+            const canUpdateActiveSubmission = Boolean(
+              submissionIdToUpdate && isDraftOrReturnedWorkflowStatus(submissionToSubmit?.status),
+            );
+
+            if (!submissionIdToUpdate || !canUpdateActiveSubmission) {
+              submissionToSubmit = await createSubmission(prepared.payload);
+            } else if (hasUnsavedWorkspaceChanges) {
+              submissionToSubmit = await updateSubmission(
+                submissionIdToUpdate,
+                prepared.payload,
+                { workspaceSection: activeScopeId },
+              );
+            }
+
+            if (!submissionToSubmit) {
+              throw new Error("Unable to resolve the submission to submit.");
+            }
+
+            setActiveWorkspaceSubmission(submissionToSubmit);
+            setEditingSubmissionId(submissionToSubmit.id);
+            setPendingLocalDraft(null);
+            setAutosaveError("");
+            const savedAt = new Date().toISOString();
+            setServerAutosaveAt(savedAt);
+            lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
+          }
+
+          if (!submissionToSubmit) {
+            throw new Error("Create or upload a draft package before submitting this workspace item.");
+          }
+
+          return await submitSubmissionScopes(submissionToSubmit.id, [activeScopeId]);
+        },
+        onSuccess: (result) => {
+          if (!result) {
+            return Promise.resolve();
+          }
+
+          return fetchFreshWorkspaceSubmission(result).then((freshResult) => {
+            setOptimisticSubmittedByType(
+              SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((accumulator, type) => {
+                accumulator[type] = hasUploadedSubmissionFile(freshResult, type);
+                return accumulator;
+              }, {} as Record<IndicatorSubmissionFileType, boolean>),
+            );
+            setActiveWorkspaceSubmission(freshResult);
+            setEditingSubmissionId(freshResult.id);
+            rehydrateWorkspaceFromSubmission(freshResult);
+            submittedEditPreserveContextRef.current = null;
+            return refreshResolvedWorkspace();
+          });
+        },
+        getSuccessMessage: (result) => result
+          ? `${activeScopeSubmitLabel} submitted from package #${result.id}.`
+          : `${activeScopeSubmitLabel} submitted.`,
+        onError: (err) => {
+          console.error("[GroupB] API error:", err);
+          setSubmitError(toGroupBActionErrorMessage(err, `Unable to submit ${activeScopeSubmitLabel}.`));
         },
       });
     });
@@ -4983,17 +5216,23 @@ function SchoolIndicatorPanelComponent({
             */}
             <div className="w-full md:w-[320px]">
               <p className="text-right text-lg font-bold leading-none text-slate-900">
-                {completeIndicators}/{totalIndicators} complete
+                {workspaceProgressSummary.readyScopeCount}/{workspaceProgressSummary.totalScopeCount} workspace items ready
+              </p>
+              <p className="mt-1 text-right text-[11px] font-medium text-slate-500">
+                Indicators: {completeIndicators}/{totalIndicators} complete
+                {workspaceProgressSummary.totalScopeCount > 0
+                  ? ` | Submitted: ${workspaceProgressSummary.submittedScopeCount}/${workspaceProgressSummary.totalScopeCount}`
+                  : ""}
               </p>
               <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
                 <div
-                  className={`h-1.5 rounded-full transition-[width] duration-300 ${completionBarToneClass}`}
-                  style={{ width: `${completionPercent}%` }}
+                  className={`h-1.5 rounded-full transition-[width] duration-300 ${workspaceProgressToneClass}`}
+                  style={{ width: `${workspaceProgressSummary.readyPercent}%` }}
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={completionPercent}
-                  aria-label="Indicator completion progress"
+                  aria-valuenow={workspaceProgressSummary.readyPercent}
+                  aria-label="Submission workspace progress"
                 />
               </div>
               {workspaceMode === "read_only_year" && (
@@ -5078,6 +5317,8 @@ function SchoolIndicatorPanelComponent({
                     const uploadSubmitted = tab.kind === "upload"
                       ? submittedByFileType[tab.uploadType]
                       : null;
+                    const isScopeSubmitted = workspaceProgressSummary.submittedScopeIds.includes(tab.id);
+                    const isScopeReady = workspaceProgressSummary.readyScopeIds.includes(tab.id);
                     const categoryRailBadge = tab.kind === "category"
                       ? getCategoryRailBadge(missingCount ?? 0)
                       : null;
@@ -5099,28 +5340,36 @@ function SchoolIndicatorPanelComponent({
                           <span className="block truncate text-[11px] font-semibold uppercase tracking-wide">
                             {tab.label}
                           </span>
-                          {tab.kind === "category" && progress ? (
+                          {isScopeSubmitted ? (
+                            <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
+                              Submitted
+                            </span>
+                          ) : tab.kind === "category" && progress ? (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
                               {getCategoryRailStatusLabel(progress)}
                             </span>
                           ) : (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-600">
-                              {workspaceFileDraftStatusLabel(Boolean(uploadSubmitted))}
+                              {isScopeReady ? "Ready" : workspaceFileDraftStatusLabel(Boolean(uploadSubmitted))}
                             </span>
                           )}
                         </span>
                         <span
                           className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
-                            tab.kind === "category"
+                            isScopeSubmitted
+                              ? "border-primary-300 bg-primary-50 text-primary-700"
+                              : tab.kind === "category"
                               ? (categoryRailBadge?.tone ?? "border-slate-300 bg-white text-slate-600")
                               : (uploadSubmitted
                                 ? "border-primary-300 bg-primary-50 text-primary-700"
                                 : "border-amber-300 bg-amber-50 text-amber-700")
                           }`}
                         >
-                          {tab.kind === "category"
+                          {isScopeSubmitted
+                            ? "Submitted"
+                            : tab.kind === "category"
                             ? (categoryRailBadge?.label ?? "Draft")
-                            : workspaceFileDraftStatusLabel(Boolean(uploadSubmitted))}
+                            : (isScopeReady ? "Ready" : workspaceFileDraftStatusLabel(Boolean(uploadSubmitted)))}
                         </span>
                       </button>
                     );
@@ -5726,7 +5975,7 @@ function SchoolIndicatorPanelComponent({
         )}
         {showSubmitEligibilityHelper && (
           <p className="text-xs font-semibold text-amber-700">
-            {submitBlockedReason || "Complete required fields before submitting."}
+            {finalSubmitBlockedReason || "Complete required sections and files before final submit."}
           </p>
         )}
         {canShowSaveAndSubmitActions && (
@@ -5771,13 +6020,31 @@ function SchoolIndicatorPanelComponent({
           {canShowSaveAndSubmitActions && (
             <button
               type="button"
+              onClick={() => void handleSubmitActiveScope()}
+              disabled={
+                isManualActionBlocked
+                || isSubmissionDataLoading
+                || !activeScopeId
+                || !activeScopeReady
+                || isWorkspaceReadOnly
+              }
+              title={activeScopeSubmitTitle}
+              className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-white px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <Send className="h-4 w-4" />
+              {activeScopeSubmitLabel}
+            </button>
+          )}
+          {canShowSaveAndSubmitActions && (
+            <button
+              type="button"
               onClick={() => void handleCreateAndSubmit()}
               disabled={
                 isManualActionBlocked
                 || isSubmissionDataLoading
                 || complianceMetrics.length === 0
                 || isWorkspaceReadOnly
-                || missingFieldTargets.length > 0
+                || finalSubmitBlockedReason !== ""
               }
               title={submitActionTitle}
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-70"

@@ -6,6 +6,7 @@ use App\Models\IndicatorSubmission;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
+use App\Support\Indicators\SubmissionScopeProgressResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -35,6 +36,9 @@ class IndicatorSubmissionResource extends JsonResource
         $requiredFileTypes = $requirementResolver->requiredTypesForSubmission($this->resource);
         $missingFileTypes = $requirementResolver->missingTypesForSubmission($this->resource);
         $secondaryHistoricalFileTypes = $requirementResolver->secondaryHistoricalTypesForSubmission($this->resource);
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($this->resource);
 
         return [
             'id' => (string) $this->id,
@@ -90,6 +94,7 @@ class IndicatorSubmissionResource extends JsonResource
                 'activeWorkspaceFileTypes' => $requiredFileTypes,
                 'secondaryHistoricalFileTypes' => $secondaryHistoricalFileTypes,
             ],
+            'scopeProgress' => $scopeProgress,
             'indicators' => IndicatorSubmissionItemResource::collection($itemCollection),
             'createdBy' => $this->when(
                 $this->relationLoaded('createdBy') && $this->createdBy,

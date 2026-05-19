@@ -46,6 +46,7 @@ describe("SchoolIndicatorPanel optional note removal", () => {
       uploadSubmissionFile: vi.fn(),
       downloadSubmissionFile: vi.fn(),
       submitSubmission: vi.fn(),
+      submitSubmissionScopes: vi.fn(),
       loadHistory: vi.fn(),
     });
   });

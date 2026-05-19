@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildWorkspaceProgressSummary,
   buildResetEntryForMetric,
   buildReportFileSubmissionByType,
   buildStrictSubmittedByType,
@@ -110,7 +111,48 @@ describe("workspace draft guidance", () => {
   it("explains that sections and files can be persisted before final submit", () => {
     expect(workspaceDraftGuidanceCopy()).toContain("save sections");
     expect(workspaceDraftGuidanceCopy()).toContain("upload files individually");
+    expect(workspaceDraftGuidanceCopy()).toContain("submit each workspace item individually");
     expect(workspaceDraftGuidanceCopy()).toContain("Final Submit");
+  });
+});
+
+describe("buildWorkspaceProgressSummary", () => {
+  it("combines completed indicator sections and uploaded required files into one truthful workspace summary", () => {
+    const summary = buildWorkspaceProgressSummary({
+      categoryProgressById: new Map([
+        ["school_achievements_learning_outcomes", { total: 43, complete: 43 }],
+        ["key_performance_indicators", { total: 19, complete: 12 }],
+      ]),
+      categoryIds: [
+        "school_achievements_learning_outcomes",
+        "key_performance_indicators",
+      ],
+      fileTypes: ["fm_qad_001", "fm_qad_002"],
+      uploadedFileTypes: {
+        bmef: false,
+        smea: false,
+        fm_qad_001: true,
+        fm_qad_002: false,
+        fm_qad_003: false,
+        fm_qad_004: false,
+        fm_qad_008: false,
+        fm_qad_009: false,
+        fm_qad_010: false,
+        fm_qad_011: false,
+        fm_qad_034: false,
+        fm_qad_041: false,
+      },
+      submittedScopeIds: ["school_achievements_learning_outcomes"],
+    });
+
+    expect(summary.totalScopeCount).toBe(4);
+    expect(summary.readyScopeCount).toBe(2);
+    expect(summary.submittedScopeCount).toBe(1);
+    expect(summary.readyScopeIds).toEqual([
+      "school_achievements_learning_outcomes",
+      "fm_qad_001",
+    ]);
+    expect(summary.readyUnsubmittedScopeIds).toEqual(["fm_qad_001"]);
   });
 });
 

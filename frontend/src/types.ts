@@ -544,6 +544,13 @@ export interface IndicatorSubmission {
     activeWorkspaceFileTypes?: IndicatorSubmissionFileType[];
     secondaryHistoricalFileTypes?: IndicatorSubmissionFileType[];
   };
+  scopeProgress?: {
+    requiredScopeIds?: string[];
+    submittedScopeIds?: string[];
+    pendingScopeIds?: string[];
+    submittedRequiredScopeCount?: number;
+    totalRequiredScopeCount?: number;
+  };
   indicators: IndicatorSubmissionItem[];
   items?: IndicatorSubmissionItem[];
   createdBy?: {

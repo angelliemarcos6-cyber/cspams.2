@@ -4,6 +4,8 @@ namespace App\Http\Requests\Api;
 
 use App\Models\PerformanceMetric;
 use App\Support\Domain\ReportingPeriod;
+use App\Support\Indicators\GroupBWorkspaceDefinition;
+use App\Support\Indicators\SubmissionFileDefinition;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
@@ -27,6 +29,16 @@ class UpsertIndicatorSubmissionRequest extends FormRequest
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'mode' => ['sometimes', 'nullable', 'string', Rule::in(['upsert', 'full_replace'])],
             'replace_missing' => ['sometimes', 'nullable', 'boolean'],
+            'workspace_section' => [
+                'sometimes',
+                'nullable',
+                'string',
+                Rule::in([
+                    GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS,
+                    GroupBWorkspaceDefinition::KEY_PERFORMANCE,
+                    ...SubmissionFileDefinition::types(),
+                ]),
+            ],
             'indicators' => ['sometimes', 'array'],
             'indicators.*.metric_id' => ['sometimes', 'nullable', 'integer'],
             'indicators.*.metric_code' => ['sometimes', 'nullable', 'string', 'max:255'],

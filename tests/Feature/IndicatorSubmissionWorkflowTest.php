@@ -1127,6 +1127,112 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.completion.missingFileTypes', []);
     }
 
+    public function test_private_school_can_submit_a_single_fm_qad_scope_without_other_private_files(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf')
+            ->assertOk();
+
+        $scoped = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['fm_qad_001'],
+        ]);
+
+        $scoped->assertOk()
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('fm_qad_001', $ids, true))
+            ->assertJsonPath('data.scopeProgress.submittedRequiredScopeCount', 1);
+
+        $finalSubmit = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+        $finalSubmit->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission']);
+    }
+
+    public function test_public_school_can_submit_bmef_scope_without_smea_being_uploaded_yet(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $scoped = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ]);
+
+        $scoped->assertOk()
+            ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true))
+            ->assertJsonPath('data.scopeProgress.pendingScopeIds', fn (array $ids): bool => in_array('smea', $ids, true));
+    }
+
+    public function test_school_head_partial_section_submit_validates_only_the_selected_section_scope(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ]);
+        $created->assertCreated();
+
+        $submissionId = (string) $created->json('data.id');
+        $scoped = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => [GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS],
+        ]);
+
+        $scoped->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['targets'])
+            ->assertJsonPath('errors.targets.0', 'Submission scope is incomplete. Missing: School Achievements section.');
+
+        $invalidKpi = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => [GroupBWorkspaceDefinition::KEY_PERFORMANCE],
+        ]);
+
+        $invalidKpi->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['targets']);
+    }
+
     public function test_submit_with_group_b_values_and_uploaded_files_returns_full_submission_resource(): void
     {
         Storage::fake('local');
