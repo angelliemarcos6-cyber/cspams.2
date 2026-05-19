@@ -45,6 +45,20 @@ class MonitorMfaAuthTest extends TestCase
         Notification::assertSentTo($monitor, MonitorMfaCodeNotification::class);
     }
 
+    public function test_monitor_login_invalid_credentials_returns_explicit_error_code(): void
+    {
+        $this->seed();
+
+        $response = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => 'WrongPassword123!',
+        ]);
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('errorCode', 'invalid_credentials');
+    }
+
     public function test_monitor_can_verify_mfa_and_receive_dashboard_token(): void
     {
         $this->seed();

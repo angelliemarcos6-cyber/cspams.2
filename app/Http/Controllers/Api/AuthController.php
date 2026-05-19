@@ -82,7 +82,10 @@ class AuthController extends Controller
                 : 'Invalid credentials for the selected role.';
 
             return response()->json(
-                ['message' => $message],
+                [
+                    'message' => $message,
+                    'errorCode' => 'invalid_credentials',
+                ],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -151,7 +154,10 @@ class AuthController extends Controller
                 );
 
                 return response()->json(
-                    ['message' => 'Unable to send verification code. Please try again or contact your administrator.'],
+                    [
+                        'message' => 'Unable to send verification code. Please try again or contact your administrator.',
+                        'errorCode' => 'mfa_delivery_failed',
+                    ],
                     Response::HTTP_SERVICE_UNAVAILABLE,
                 );
             }
@@ -662,7 +668,10 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Invalid credentials for the selected role.'],
+                [
+                    'message' => 'Invalid credentials for the selected role.',
+                    'errorCode' => 'invalid_credentials',
+                ],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -694,7 +703,10 @@ class AuthController extends Controller
             Cache::forget($this->monitorMfaCacheKey($challengeId));
 
             return response()->json(
-                ['message' => 'Verification challenge expired. Please sign in again.'],
+                [
+                    'message' => 'Verification challenge expired. Please sign in again.',
+                    'errorCode' => 'challenge_missing_or_expired',
+                ],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, GraduationCap, ClipboardList, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/Auth";
-import { isApiError } from "@/lib/api";
+import { getApiBaseUrl, isApiError } from "@/lib/api";
 import type { UserRole } from "@/types";
 
 type LoginRole = Exclude<UserRole, null>;
@@ -57,6 +57,14 @@ const ROLE_META: Record<
 
 const LOGIN_FIELD_LABEL = "Login ID";
 const LOGIN_FIELD_HINT = "Enter school code or monitor email";
+
+function describeApiOrigin(): string {
+  try {
+    return new URL(getApiBaseUrl()).origin;
+  } catch {
+    return getApiBaseUrl();
+  }
+}
 
 export function Login() {
   const navigate = useNavigate();
@@ -256,6 +264,18 @@ export function Login() {
           clearMfaState();
           clearResetState();
           setError("Your account setup is complete, but your Division Monitor has not activated it yet.");
+        } else if (err.status === 0) {
+          if (pendingMfa === null) {
+            clearResetState();
+          }
+          setError(`Unable to reach the CSPAMS API at ${describeApiOrigin()}. Check the deployed API URL and network access.`);
+        } else if (
+          pendingMfa === null &&
+          err.status === 503 &&
+          (err.payload as { errorCode?: string } | null)?.errorCode === "mfa_delivery_failed"
+        ) {
+          clearResetState();
+          setError("Your monitor credentials were accepted, but the verification code email could not be delivered. Check mail configuration or try again.");
         } else {
           if (pendingMfa === null) {
             clearResetState();
