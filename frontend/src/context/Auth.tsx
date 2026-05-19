@@ -204,6 +204,11 @@ interface StoredAuthSession {
   refreshAfter?: string | null;
 }
 
+interface StatefulAuthEntryRequestOptions {
+  credentialsMode?: RequestCredentials;
+  extraHeaders?: Record<string, string>;
+}
+
 function parseBooleanEnvFlag(value: unknown): boolean | null {
   if (typeof value !== "string") {
     return null;
@@ -232,6 +237,19 @@ function supportsStatefulBrowserAuth(): boolean {
   }
 
   return !import.meta.env.PROD;
+}
+
+function statefulAuthEntryRequestOptions(): StatefulAuthEntryRequestOptions {
+  if (!supportsStatefulBrowserAuth()) {
+    return {};
+  }
+
+  return {
+    credentialsMode: "include",
+    extraHeaders: {
+      "X-CSPAMS-Auth-Mode": "stateful",
+    },
+  };
 }
 
 function normalizeRole(role: string): Exclude<UserRole, null> {
@@ -857,6 +875,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const payload = await apiRequest<LoginResponse>("/api/auth/login", {
         method: "POST",
         timeoutMs: 30_000,
+        ...statefulAuthEntryRequestOptions(),
         body: {
           role,
           login: loginValue,
@@ -900,6 +919,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const payload = await apiRequest<AuthenticatedResponse>("/api/auth/verify-mfa", {
         method: "POST",
+        ...statefulAuthEntryRequestOptions(),
         body: {
           role,
           login: loginValue,
@@ -930,6 +950,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<ResetRequiredPasswordResponse>("/api/auth/reset-required-password", {
           method: "POST",
+          ...statefulAuthEntryRequestOptions(),
           body: {
             role,
             login: loginValue,
@@ -1036,6 +1057,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await apiRequest<CompleteMonitorMfaResetResponse>("/api/auth/mfa/reset/complete", {
           method: "POST",
+          ...statefulAuthEntryRequestOptions(),
           body: {
             role: "monitor",
             login: normalizedLogin,

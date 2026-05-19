@@ -305,8 +305,9 @@ describe("AuthProvider logout", () => {
     ]);
     const loginInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
     const loginHeaders = new Headers(loginInit?.headers as HeadersInit);
-    expect(loginInit?.credentials).toBe("omit");
+    expect(loginInit?.credentials).toBe("include");
     expect(loginHeaders.get("Authorization")).toBeNull();
+    expect(loginHeaders.get("X-CSPAMS-Auth-Mode")).toBe("stateful");
     const meInit = (fetchMock.mock.calls[1] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
     const meHeaders = new Headers(meInit?.headers as HeadersInit);
     expect(meInit?.credentials).toBe("omit");
@@ -388,6 +389,10 @@ describe("AuthProvider logout", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
+    const loginInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    const loginHeaders = new Headers(loginInit?.headers as HeadersInit);
+    expect(loginInit?.credentials).toBe("include");
+    expect(loginHeaders.get("X-CSPAMS-Auth-Mode")).toBe("stateful");
   });
 
   it("does not restore cookie-session state when explicit stateful browser auth is disabled", async () => {
@@ -460,6 +465,76 @@ describe("AuthProvider logout", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.current.user).toBeNull();
     expect(result.current.apiToken).toBe("");
+  });
+
+  it("uses stateless bearer-entry login transport when explicit stateful browser auth is disabled", async () => {
+    vi.stubEnv("VITE_ENABLE_STATEFUL_SPA_API", "false");
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/login")) {
+        return new Response(
+          JSON.stringify({
+            token: "temporary-bearer-token-1",
+            tokenType: "Bearer",
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      if (url.endsWith("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      return new Response(JSON.stringify({ message: "Unexpected request" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      });
+    });
+
+    const loginInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    const loginHeaders = new Headers(loginInit?.headers as HeadersInit);
+    expect(loginInit?.credentials).toBe("omit");
+    expect(loginHeaders.get("X-CSPAMS-Auth-Mode")).toBeNull();
   });
 
   it("does not leave a false authenticated session when login succeeds but cookie-session verification fails", async () => {
@@ -556,7 +631,9 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
     const verifyInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
-    expect(verifyInit?.credentials).toBe("omit");
+    expect(verifyInit?.credentials).toBe("include");
+    const verifyHeaders = new Headers(verifyInit?.headers as HeadersInit);
+    expect(verifyHeaders.get("X-CSPAMS-Auth-Mode")).toBe("stateful");
     expect(result.current.apiToken).toBe("mfa-token");
   });
 
@@ -595,6 +672,10 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/reset-required-password`,
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
+    const resetInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    const resetHeaders = new Headers(resetInit?.headers as HeadersInit);
+    expect(resetInit?.credentials).toBe("include");
+    expect(resetHeaders.get("X-CSPAMS-Auth-Mode")).toBe("stateful");
     expect(result.current.apiToken).toBe("reset-token");
   });
 
@@ -632,6 +713,10 @@ describe("AuthProvider logout", () => {
       `${getApiBaseUrl()}/api/auth/mfa/reset/complete`,
       `${getApiBaseUrl()}/api/auth/me`,
     ]);
+    const completeResetInit = (fetchMock.mock.calls[0] as unknown as [unknown, RequestInit | undefined] | undefined)?.[1];
+    const completeResetHeaders = new Headers(completeResetInit?.headers as HeadersInit);
+    expect(completeResetInit?.credentials).toBe("include");
+    expect(completeResetHeaders.get("X-CSPAMS-Auth-Mode")).toBe("stateful");
     expect(result.current.apiToken).toBe("reset-mfa-token");
   });
 
