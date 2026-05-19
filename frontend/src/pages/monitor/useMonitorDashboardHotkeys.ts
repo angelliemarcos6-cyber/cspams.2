@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { isEditableKeyboardTarget, isRefreshShortcut } from "@/lib/keyboardShortcuts";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 
 interface UseMonitorDashboardHotkeysArgs<TQuickJumpItem extends { targetId: string }> {
@@ -11,15 +12,7 @@ interface UseMonitorDashboardHotkeysArgs<TQuickJumpItem extends { targetId: stri
   onFocusGlobalSearch: () => void;
   onCycleSchoolFocus: (direction: 1 | -1) => void;
   onTriggerKeyboardReview: () => void;
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  const tagName = target.tagName.toLowerCase();
-  return tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable;
+  onRefreshDashboard: () => void;
 }
 
 export function useMonitorDashboardHotkeys<TQuickJumpItem extends { targetId: string }>({
@@ -32,13 +25,14 @@ export function useMonitorDashboardHotkeys<TQuickJumpItem extends { targetId: st
   onFocusGlobalSearch,
   onCycleSchoolFocus,
   onTriggerKeyboardReview,
+  onRefreshDashboard,
 }: UseMonitorDashboardHotkeysArgs<TQuickJumpItem>) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      if (isEditableTarget(event.target)) return;
+      if (isEditableKeyboardTarget(event.target)) return;
 
       const shortcutIndex = Number(event.key) - 1;
       if (!Number.isInteger(shortcutIndex)) return;
@@ -59,7 +53,7 @@ export function useMonitorDashboardHotkeys<TQuickJumpItem extends { targetId: st
 
     const onQuickJumpHotkey = (event: KeyboardEvent) => {
       if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) return;
-      if (isEditableTarget(event.target)) return;
+      if (isEditableKeyboardTarget(event.target)) return;
 
       const shortcutIndex = Number(event.key) - 1;
       if (!Number.isInteger(shortcutIndex) || shortcutIndex < 0 || shortcutIndex >= quickJumpItems.length) {
@@ -83,8 +77,15 @@ export function useMonitorDashboardHotkeys<TQuickJumpItem extends { targetId: st
     if (typeof window === "undefined") return;
 
     const onKeyboardShortcut = (event: KeyboardEvent) => {
+      if (isEditableKeyboardTarget(event.target)) return;
+
+      if (isRefreshShortcut(event)) {
+        event.preventDefault();
+        onRefreshDashboard();
+        return;
+      }
+
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (isEditableTarget(event.target)) return;
 
       if (event.key === "/") {
         event.preventDefault();
@@ -111,5 +112,5 @@ export function useMonitorDashboardHotkeys<TQuickJumpItem extends { targetId: st
 
     window.addEventListener("keydown", onKeyboardShortcut);
     return () => window.removeEventListener("keydown", onKeyboardShortcut);
-  }, [onCycleSchoolFocus, onFocusGlobalSearch, onTriggerKeyboardReview]);
+  }, [onCycleSchoolFocus, onFocusGlobalSearch, onRefreshDashboard, onTriggerKeyboardReview]);
 }

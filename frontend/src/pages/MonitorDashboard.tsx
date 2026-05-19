@@ -577,6 +577,9 @@ export function MonitorDashboard() {
     onFocusGlobalSearch: focusGlobalSearch,
     onCycleSchoolFocus: cycleSchoolFocus,
     onTriggerKeyboardReview: triggerKeyboardReview,
+    onRefreshDashboard: () => {
+      void handleRefreshDashboard();
+    },
   });
 
   const {

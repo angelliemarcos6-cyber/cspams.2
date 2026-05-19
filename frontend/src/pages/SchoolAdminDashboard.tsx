@@ -21,6 +21,7 @@ import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import { isEditableKeyboardTarget, isRefreshShortcut } from "@/lib/keyboardShortcuts";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import {
   buildSubmittedReportBlankStateLines,
@@ -967,6 +968,21 @@ export function SchoolAdminDashboard() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [activeReportModalType, closeReportModal]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleRefreshShortcut = (event: KeyboardEvent) => {
+      if (isEditableKeyboardTarget(event.target) || !isRefreshShortcut(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      void handleRefreshAll();
+    };
+
+    window.addEventListener("keydown", handleRefreshShortcut);
+    return () => window.removeEventListener("keydown", handleRefreshShortcut);
+  }, [handleRefreshAll]);
 
   /* ── Render ── */
   return (

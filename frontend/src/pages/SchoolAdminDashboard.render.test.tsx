@@ -7,6 +7,9 @@ import type { IndicatorSubmission } from "@/types";
 const useAuthMock = vi.fn();
 const useDataMock = vi.fn();
 const useIndicatorDataMock = vi.fn();
+let refreshRecordsMock = vi.fn();
+let refreshSubmissionsMock = vi.fn();
+let refreshAllSubmissionsMock = vi.fn();
 
 vi.mock("@/context/Auth", () => ({
   useAuth: () => useAuthMock(),
@@ -135,6 +138,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.sessionStorage.clear();
+    refreshRecordsMock = vi.fn().mockResolvedValue(undefined);
+    refreshSubmissionsMock = vi.fn().mockResolvedValue(undefined);
+    refreshAllSubmissionsMock = vi.fn().mockResolvedValue(undefined);
   });
 
   it("keeps selected-year report truth stable even when broader cached submissions contain another finalized year", async () => {
@@ -181,7 +187,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
       lastSyncedAt: "2026-05-17T00:00:00.000Z",
       syncScope: "records",
       syncStatus: "up_to_date",
-      refreshRecords: vi.fn().mockResolvedValue(undefined),
+      refreshRecords: refreshRecordsMock,
     });
 
     const loadSubmissionsForYear = vi.fn(async (_schoolId: string, yearId: string) => {
@@ -206,8 +212,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
       downloadSubmissionFile: vi.fn(),
       fetchSubmission,
       loadSubmissionsForYear,
-      refreshAllSubmissions: vi.fn().mockResolvedValue(undefined),
-      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
     });
 
     render(<SchoolAdminDashboard />);
@@ -267,7 +273,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
       lastSyncedAt: "2026-05-17T00:00:00.000Z",
       syncScope: "records",
       syncStatus: "up_to_date",
-      refreshRecords: vi.fn().mockResolvedValue(undefined),
+      refreshRecords: refreshRecordsMock,
     });
 
     useIndicatorDataMock.mockReturnValue({
@@ -279,8 +285,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
       downloadSubmissionFile: vi.fn(),
       fetchSubmission: vi.fn(async () => submitted),
       loadSubmissionsForYear: vi.fn(async () => [submitted]),
-      refreshAllSubmissions: vi.fn().mockResolvedValue(undefined),
-      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
     });
 
     render(<SchoolAdminDashboard />);
@@ -331,7 +337,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
       lastSyncedAt: "2026-05-17T00:00:00.000Z",
       syncScope: "records",
       syncStatus: "up_to_date",
-      refreshRecords: vi.fn().mockResolvedValue(undefined),
+      refreshRecords: refreshRecordsMock,
     });
 
     useIndicatorDataMock.mockReturnValue({
@@ -343,8 +349,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
       downloadSubmissionFile: vi.fn(),
       fetchSubmission: vi.fn(async () => submitted),
       loadSubmissionsForYear: vi.fn(async () => [submitted]),
-      refreshAllSubmissions: vi.fn().mockResolvedValue(undefined),
-      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
     });
 
     render(<SchoolAdminDashboard />);
@@ -353,5 +359,75 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("Not met")).not.toBeNull();
     });
     expect(screen.queryByText("below_target")).toBeNull();
+  });
+
+  it("uses Ctrl+R to refresh School Head dashboard data instead of forcing a browser reload", async () => {
+    const submitted = buildSubmission({
+      id: "refresh-101",
+      indicators: [buildEnrollmentIndicator(1515)],
+      items: [],
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submitted],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => submitted),
+      loadSubmissionsForYear: vi.fn(async () => [submitted]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(refreshRecordsMock).toHaveBeenCalled();
+      expect(refreshSubmissionsMock).toHaveBeenCalled();
+      expect(refreshAllSubmissionsMock).toHaveBeenCalled();
+    });
+
+    refreshRecordsMock.mockClear();
+    refreshSubmissionsMock.mockClear();
+    refreshAllSubmissionsMock.mockClear();
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(refreshRecordsMock).toHaveBeenCalledTimes(1);
+      expect(refreshSubmissionsMock).toHaveBeenCalledTimes(1);
+      expect(refreshAllSubmissionsMock).toHaveBeenCalledTimes(1);
+    });
   });
 });
