@@ -19,11 +19,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $appEnv = strtolower(trim((string) env('APP_ENV', 'production')));
+        $explicitStatefulSpaApi = filter_var(
+            env('CSPAMS_ENABLE_STATEFUL_SPA_API', false),
+            FILTER_VALIDATE_BOOL,
+            FILTER_NULL_ON_FAILURE,
+        );
+
         // Keep Sanctum's stateful SPA middleware available for local/testing
         // and explicit same-site deployments, but do not force it by default
         // in production where the dashboard frontend/backend may be split-origin.
-        $enableStatefulSpaApi = app()->environment(['local', 'testing'])
-            || filter_var(env('CSPAMS_ENABLE_STATEFUL_SPA_API', false), FILTER_VALIDATE_BOOL);
+        $enableStatefulSpaApi = in_array($appEnv, ['local', 'testing'], true)
+            || ($explicitStatefulSpaApi ?? false);
 
         if ($enableStatefulSpaApi) {
             $middleware->statefulApi();
