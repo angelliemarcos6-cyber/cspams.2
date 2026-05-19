@@ -204,6 +204,36 @@ interface StoredAuthSession {
   refreshAfter?: string | null;
 }
 
+function parseBooleanEnvFlag(value: unknown): boolean | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") {
+    return null;
+  }
+
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
+function supportsStatefulBrowserAuth(): boolean {
+  const explicit = parseBooleanEnvFlag(import.meta.env.VITE_ENABLE_STATEFUL_SPA_API);
+  if (explicit !== null) {
+    return explicit;
+  }
+
+  return !import.meta.env.PROD;
+}
+
 function normalizeRole(role: string): Exclude<UserRole, null> {
   return role === "monitor" ? "monitor" : "school_head";
 }
@@ -279,6 +309,8 @@ function readStoredAuthSession(): StoredAuthSession {
     return {};
   }
 
+  const statefulBrowserAuthEnabled = supportsStatefulBrowserAuth();
+
   const parseStoredSession = (raw: string | null): StoredAuthSession => {
     if (!raw) {
       return {};
@@ -303,7 +335,11 @@ function readStoredAuthSession(): StoredAuthSession {
   };
 
   const currentSession = parseStoredSession(window.sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY));
-  if (currentSession.mode || currentSession.token || currentSession.tokenType || currentSession.expiresAt || currentSession.refreshAfter) {
+  if (currentSession.mode === "cookie" && !statefulBrowserAuthEnabled) {
+    window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+  } else if (
+    currentSession.mode || currentSession.token || currentSession.tokenType || currentSession.expiresAt || currentSession.refreshAfter
+  ) {
     return currentSession;
   }
 
@@ -322,20 +358,22 @@ function writeStoredAuthSession(payload: StoredAuthSession): void {
     return;
   }
 
+  const statefulBrowserAuthEnabled = supportsStatefulBrowserAuth();
   const mode = payload.mode === "cookie" || payload.mode === "bearer" ? payload.mode : null;
   const token = typeof payload.token === "string" && payload.token.trim() ? payload.token.trim() : null;
   const tokenType = typeof payload.tokenType === "string" && payload.tokenType.trim() ? payload.tokenType.trim() : null;
   const expiresAt = typeof payload.expiresAt === "string" && payload.expiresAt.trim() ? payload.expiresAt.trim() : null;
   const refreshAfter = typeof payload.refreshAfter === "string" && payload.refreshAfter.trim() ? payload.refreshAfter.trim() : null;
+  const effectiveMode = mode === "cookie" && !statefulBrowserAuthEnabled ? null : mode;
 
-  if (!mode && !token && !tokenType && !expiresAt && !refreshAfter) {
+  if (!effectiveMode && !token && !tokenType && !expiresAt && !refreshAfter) {
     window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
     window.sessionStorage.removeItem(LEGACY_AUTH_SESSION_STORAGE_KEY);
     return;
   }
 
   window.sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify({
-    mode,
+    mode: effectiveMode,
     token,
     tokenType,
     expiresAt,
@@ -499,6 +537,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return establishBearerSession(payload, operationLabel);
         }
 
+        if (!supportsStatefulBrowserAuth()) {
+          throw new Error(`Missing bearer token in ${operationLabel} response.`);
+        }
+
         return establishCookieSession();
       } catch (error) {
         throw toAuthVerificationError(error, operationLabel);
@@ -513,10 +555,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initialRestoreMode = initialAuthSession.mode === "cookie" || initialAuthSession.mode === "bearer"
       ? initialAuthSession.mode
       : null;
+    const restoreMode = initialRestoreMode === "cookie" && !supportsStatefulBrowserAuth()
+      ? null
+      : initialRestoreMode;
 
     const restore = async () => {
       const requestToken = bearerTokenRef.current.trim();
-      const restoreToken = initialRestoreMode === "cookie"
+      const restoreToken = restoreMode === "cookie"
         ? COOKIE_SESSION_TOKEN
         : requestToken;
       if (!restoreToken) {
@@ -534,7 +579,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         if (!active) return;
-        if (initialRestoreMode === "cookie") {
+        if (restoreMode === "cookie") {
           applyCookieSession();
         }
         setUser(normalizeUser(payload.user));

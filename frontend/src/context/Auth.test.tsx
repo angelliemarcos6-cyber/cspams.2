@@ -15,6 +15,7 @@ describe("AuthProvider logout", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("clears the current user and client session artifacts after a successful 204 logout response", async () => {
@@ -387,6 +388,78 @@ describe("AuthProvider logout", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe(`${getApiBaseUrl()}/api/auth/me`);
+  });
+
+  it("does not restore cookie-session state when explicit stateful browser auth is disabled", async () => {
+    vi.stubEnv("VITE_ENABLE_STATEFUL_SPA_API", "false");
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
+      mode: "cookie",
+    }));
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+    expect(result.current.user).toBeNull();
+    expect(result.current.apiToken).toBe("");
+    expect(window.sessionStorage.getItem("cspams.auth.session.v2")).toBeNull();
+  });
+
+  it("does not fall back to cookie-session login when explicit stateful browser auth is disabled", async () => {
+    vi.stubEnv("VITE_ENABLE_STATEFUL_SPA_API", "false");
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/auth/login")) {
+        return new Response(
+          JSON.stringify({
+            user: {
+              id: 1,
+              name: "Monitor User",
+              email: "monitor@cspams.local",
+              role: "monitor",
+              schoolId: null,
+              schoolCode: null,
+              schoolName: null,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      return new Response(JSON.stringify({ message: "Unexpected request" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await expect(result.current.login({
+        role: "monitor",
+        login: "monitor@cspams.local",
+        password: "Password123!",
+      })).rejects.toThrow("Your login succeeded, but dashboard access could not be verified. Missing bearer token in login response.");
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.user).toBeNull();
+    expect(result.current.apiToken).toBe("");
   });
 
   it("does not leave a false authenticated session when login succeeds but cookie-session verification fails", async () => {
